@@ -39,7 +39,7 @@ namespace ELEMENT {
 
         const T *referenceDomnNodes(const IDX i) override {
             static constexpr T refnodes[2] = {-1, 1};
-            return refnodes[i];
+            return &(refnodes[i]);
         }
 
         void getCentroid(const std::vector<Point> &nodeCoords, T *centroid) override {
@@ -72,7 +72,7 @@ namespace ELEMENT {
             auto &node0 = nodeCoords[node_idxs[0]];
             auto &node1 = nodeCoords[node_idxs[1]];
             T dist = GEOMETRY::distance(node0, node1);
-            act = node0[0] + 0.5 * dist * (ref[0] + 1.0) * dist
+            act = node0[0] + 0.5 * dist * (ref[0] + 1.0) * dist;
         }
-    }
+    };
 }

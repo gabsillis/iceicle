@@ -34,7 +34,7 @@ namespace ELEMENT{
          * @param nodeCoords the node coordinate array
          */
         virtual
-        void updateGeometry(const std::vector<Point> &nodeCoords) = 0
+        void updateGeometry(const std::vector<Point> &nodeCoords) = 0;
 
         /**
          * @brief Get the number of nodes

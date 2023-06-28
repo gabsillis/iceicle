@@ -12,7 +12,7 @@
 #include <array>
 #include <cstdarg>
 #include <cmath>
-#include <iceicle/math_utils.hpp
+#include <iceicle/math_utils.hpp>
 
 namespace GEOMETRY {
     template<typename T, int ndim>
