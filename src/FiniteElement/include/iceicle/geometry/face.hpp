@@ -10,6 +10,24 @@
 #include <string>
 
 namespace ELEMENT {
+    
+
+    enum BOUNDARY_CONDITIONS{
+        PERIODIC = 0,
+        PARALLEL_COM,
+        NEUMANN,
+        DIRICHLET,
+        RIEMANN,
+        NO_SLIP,
+        SLIP_WALL,
+        WALL_GENERAL, /// General Wall BC, up to the implementation of the pde
+        INLET,
+        OUTLET,
+        INITIAL_CONDITION,
+        TIME_UPWIND, /// used for the top of a time slab
+        INTERIOR // default condition that does nothing
+    };
+
      /**
      * @brief An interface between two geometric elements
      * 
@@ -36,10 +54,14 @@ namespace ELEMENT {
         int faceNrR; /// the face number for the right element
         int orientationL; /// the orientation of this face wrt to the left element
         int orientationR; /// the orientation of this face wrt to te right element
+        BOUNDARY_CONDITIONS bctype; /// the boundary condition type
+        int bcflag; /// an integer flag to attach to the boundary condition
 
         explicit
-        Face(IDX elemL, IDX elemR, int faceNrL, int faceNrR, int orientationL, int orientationR)
-         : elemL(elemL), elemR(elemR), faceNrL(faceNrL), faceNrR(faceNrR), orientationL(orientationL), orientationR(orientationR)
+        Face(IDX elemL, IDX elemR, int faceNrL, int faceNrR, int orientationL, int orientationR, BOUNDARY_CONDITIONS bctype = INTERIOR, int bcflag = 0)
+         : elemL(elemL), elemR(elemR), faceNrL(faceNrL), faceNrR(faceNrR),
+           orientationL(orientationL), orientationR(orientationR),
+           bctype(bctype), bcflag(bcflag)
          {}
 
         ~Face() = default;
@@ -56,6 +78,8 @@ namespace ELEMENT {
         /**
          * @brief Get the area weighted normal at the given point s in the reference domain
          * always points from the left cell into the right cell
+         * note: for boundary faces this means the normal always points
+         *       out of the computational domain
          * 
          * @param [in] nodeCoords the node coordinates
          * @param [in] s the point in the face reference domain [ndim - 1]

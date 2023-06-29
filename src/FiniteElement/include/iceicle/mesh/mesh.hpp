@@ -73,8 +73,8 @@ namespace MESH {
             for(auto &elptr : elements){
                 out << "Element: " << iel << "\n";
                 out << "Nodes: { ";
-                for(int inode = 0; inode < elptr->getNNodes(); ++inode){
-                    out << elptr->getNodes()[inode] << " ";
+                for(int inode = 0; inode < elptr->n_nodes(); ++inode){
+                    out << elptr->nodes()[inode] << " ";
                 }
                 out << "}\n";
                 ++iel;
@@ -94,8 +94,8 @@ namespace MESH {
                     out << "normal at s=0: (" <<  normal[0] << ", " << normal[1] << ")\n";
                 }
                 out << "Nodes: { ";
-                IDX *nodeslist = fac.getNodes();
-                for(int inode = 0; inode < fac.nnodes(); ++inode){
+                IDX *nodeslist = fac.nodes();
+                for(int inode = 0; inode < fac.n_nodes(); ++inode){
                     out << nodeslist[inode] << " ";
                 }
                 out << "}\n";
@@ -106,21 +106,4 @@ namespace MESH {
            }
         }
     };
-
-    enum BOUNDARY_CONDITIONS{
-        PERIODIC = 0,
-        PARALLEL_COM,
-        NEUMANN,
-        DIRICHLET,
-        RIEMANN,
-        NO_SLIP,
-        SLIP_WALL,
-        WALL_GENERAL, /// General Wall BC, up to the implementation of the pde
-        INLET,
-        OUTLET,
-        INITIAL_CONDITION,
-        TIME_UPWIND, /// used for the top of a time slab
-        INTERIOR // default condition that does nothing
-    };
-
 }
