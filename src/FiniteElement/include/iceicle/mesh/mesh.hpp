@@ -90,7 +90,7 @@ namespace MESH {
                 if constexpr(ndim == 2){
                      GEOMETRY::Point<T, 1> s = {0};
                     Point normal;
-                    fac.getNormal(nodes, s, normal.data.data());
+                    fac.getNormal(nodes, s, normal);
                     out << "normal at s=0: (" <<  normal[0] << ", " << normal[1] << ")\n";
                 }
                 out << "Nodes: { ";

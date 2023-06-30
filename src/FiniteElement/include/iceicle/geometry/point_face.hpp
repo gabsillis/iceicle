@@ -33,7 +33,7 @@ namespace ELEMENT {
             IDX elemR,
             int faceNrL,
             int faceNrR,
-            IDX nodeIdx,
+            IDX node,
             bool positiveNormal,
             BOUNDARY_CONDITIONS bctype = INTERIOR,
             int bcflag = 0

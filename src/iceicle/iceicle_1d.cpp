@@ -11,7 +11,16 @@ int main(int argc, char *argv[]) {
 
     // construct a parallel segment mesh with periodic bcs
     MESH::ParSegmentMesh<double, int> mesh(10, 0.0, 0.1);
-    mesh.printElements(std::cout);
-    mesh.printFaces(std::cout);
+    int nproc, myid;
+    MPI_Comm_size(MPI_COMM_WORLD, &nproc);
+    MPI_Comm_rank(MPI_COMM_WORLD, &myid);
+    for(int i = 0; i < nproc; ++i){
+        MPI_Barrier(MPI_COMM_WORLD);
+        if(i == myid){
+            std::cout << "Processor " << myid << ":\n";
+            mesh.printElements(std::cout);
+            mesh.printFaces(std::cout);
+        }
+    }
     MPI_Finalize();
 }
