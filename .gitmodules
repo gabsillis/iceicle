@@ -1,0 +1,3 @@
+[submodule "numericaltoolbox"]
+	path = numericaltoolbox
+	url = git@gitlab.com:gabsillis/numericaltoolbox.git

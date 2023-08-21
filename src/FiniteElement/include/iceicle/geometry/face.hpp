@@ -5,7 +5,7 @@
  */
 #pragma once
 #include <iceicle/geometry/point.hpp>
-#include <iceicle/math_utils.hpp>
+#include <Numtool/MathUtils.hpp>
 #include <vector>
 #include <string>
 

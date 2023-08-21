@@ -45,6 +45,7 @@ add_custom_target(OUTPUTDIR ALL COMMAND ${CMAKE_COMMAND} -E make_directory ${CMA
 set(CMAKE_CXX_STANDARD 20)
 
 # Include subdirectories
+add_subdirectory(numericaltoolbox)
 add_subdirectory(src)
 
 #TESTING

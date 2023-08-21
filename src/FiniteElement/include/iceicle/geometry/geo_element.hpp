@@ -8,6 +8,7 @@
 #pragma once
 #include <vector>
 #include <iceicle/geometry/point.hpp>
+#include <Numtool/matrixT.hpp>
 
 namespace ELEMENT{
     
