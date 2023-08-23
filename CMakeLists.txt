@@ -1,6 +1,7 @@
 cmake_minimum_required(VERSION 3.12.0)
 project(ICEICLE_PROJECT VERSION 0.1.0)
 
+set(CMAKE_CXX_STANDARD 20)
 
 # FLOATING POINT AND DOUBLE TYPES
 # in order of priority
@@ -33,7 +34,6 @@ endif()
 
 # Generate Compile Commands
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)	
-set(CMAKE_CXX_STANDARD 20)
 
 find_package(MPI)
 
@@ -42,7 +42,6 @@ set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin/obj)
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin/obj)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 add_custom_target(OUTPUTDIR ALL COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/output)
-set(CMAKE_CXX_STANDARD 20)
 
 # Include subdirectories
 add_subdirectory(numericaltoolbox)

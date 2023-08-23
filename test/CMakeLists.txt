@@ -1,0 +1,2 @@
+add_executable(simplex_trans_ex SimplexTransformExample.cpp)
+target_link_libraries(simplex_trans_ex PUBLIC iceicle_fe) 
