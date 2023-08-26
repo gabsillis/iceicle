@@ -58,6 +58,60 @@ namespace ELEMENT::TRANSFORMATIONS {
         // ===================
         // = Shape Functions =
         // ===================
+        
+        /**
+         * @brief Calculate the 1d shape function value at xi
+         * P_m(xi) as defined by Silvester
+         * @param m the shape function index
+         * @param xi the function argument
+         * @return T the shape function P_m(xi)
+         */
+        inline T shapefcn_1d(int m, T xi) const {
+            if(m == 0) return 1; // TODO: check if branchless cmov is used
+            T prod = (Pn * xi); // case i = 1
+            for(int i = 2; i <= m; ++i){
+                prod *= (Pn * xi - i + 1) / i;
+            }
+            return prod;
+        }
+
+        inline T dshapefcn_1d(int m, T xi) const {
+            // if m is zero then derivative is zero
+            if(m == 0) return 0;
+            // first term of logarithmic derivative version
+            // product of shape functions
+            T prodTerm = shapefcn_1d(m, xi);
+            // sum term of the logarithmic derivatives
+            T sumTerm = 0;
+            for(int i = 1; i <= m; ++i){
+                sumTerm += ((T) Pn) / (Pn * xi - i + 1);
+            }
+            return prodTerm * sumTerm;
+        }
+
+        T d2shapefcn_1d(int m, T xi) const {
+            // second derivative zero conditions
+            if(m == 0 || m == 1) return 0;
+
+            // first term of logarithmic derivative version
+            // product of shape functions
+            T prodTerm = shapefcn_1d(m, xi);
+            // sum term of the logarithmic derivatives
+            T sumTerm = 0;
+            for(int i = 1; i <= m; ++i){
+                sumTerm += Pn / (Pn * xi - i + 1);
+            }
+
+            // sum term for logarithmic 2nd deriv
+            T sumTerm2 = 0;
+            for(int i = 1; i <= m; ++i){
+                sumTerm2 += SQUARED(Pn) / SQUARED(Pn * xi - i + 1);
+            }
+            return prodTerm * sumTerm * (sumTerm - sumTerm2);
+        }
+
+
+
         /**
          * @brief Calculate the shape function product for the argument (xi)
          * 
@@ -232,7 +286,7 @@ namespace ELEMENT::TRANSFORMATIONS {
         }
 
         /** @brief get the number of nodes that define the element */
-        constexpr int nnodes(){
+        constexpr int nnodes() const {
             return nnode;
         }
 
@@ -244,11 +298,11 @@ namespace ELEMENT::TRANSFORMATIONS {
          * @param [in] xi the position in the refernce domain
          * @param [out] x the position in the physical domain
          */
-        void Transform(
+        void transform(
                 std::vector<Point> &node_coords,
                 std::vector<IDX> &node_indices,
-                T *xi, T *x
-        ){
+                const Point &xi, Point &x
+        ) const {
             x[0] = 0;
             x[1] = 0;
             for(int inode = 0; inode < nnode; ++inode){
@@ -258,5 +312,7 @@ namespace ELEMENT::TRANSFORMATIONS {
                 x[1] += node_coords[node_id][1] * shpval;
             }
         }
+
+        const Point *reference_nodes() const { return xi_poin; }
     };
 }
