@@ -2,8 +2,8 @@
 
 #include <Numtool/integer_utils.hpp>
 #include <Numtool/point.hpp>
-#include <complex>
 #include <vector>
+#include <span>
 
 namespace ELEMENT::TRANSFORMATIONS {
     
@@ -25,6 +25,123 @@ namespace ELEMENT::TRANSFORMATIONS {
         // = Helper funcs  =
         // = for Silvester =
         // =================
+
+        void gen_free_index_set(
+            int nfree, int maxdim, bool cgns_flip,
+            std::vector<std::vector<int>> &free_index_set
+        ){
+            using init_list = std::initializer_list<int>;
+            // base case: 2 free indices
+            if(nfree == 2){
+                for(int idim = nfree-1; idim <= maxdim; ++idim){
+                    // generate all the free indices added in the idim-th dimension
+                    for(int jdim = 0; jdim < idim; ++jdim){
+                        free_index_set.emplace_back((init_list){jdim, idim});
+                    }
+                }
+
+                // Manual fix for CGNS shenanigans
+                // (for the 2D triangle a ccw convention is adopted and then promptly abandoned)
+                if(cgns_flip && free_index_set.size() > 0){
+                    free_index_set[1] = {1, 2};
+                    free_index_set[0] = {0, 2};
+                }
+            } else {
+                for(int idim = nfree-1; idim <= maxdim; ++idim){
+                    // generate all the free indices recursively
+                    // [[nfree = ndim-1, maxdim = idim-1], idim]
+                    int start = free_index_set.size();
+                    gen_free_index_set(nfree-1, idim-1, cgns_flip, free_index_set);
+                    for(int iindices = start; iindices < free_index_set.size(); ++iindices){
+                        free_index_set[iindices].push_back(idim); // add idim to the end of each
+                    }
+                }
+            }
+        }
+
+        /**
+         * @brief generate the Silvester numbers for nodes
+         * starting with the vertices, then edge nodes, then face nodes, ...
+         * @param nfree the number of "free indices" these are the index locations
+         *  in the Silvester numbers that are nonzero. ndim free indices makes a vertex, ndim-1 
+         *  makes an edge, and so on
+         * @param free_indices the free indices to generate all the combinations for
+         *  note: the full array will be passed recursively but smaller spans will be used each
+         *  recursion
+         * @param order_sum the maximum order of the free indices (note this is not Pn because
+         *  this is a recursive algorithm
+         * @param cgns_flip use the reverse order for the 3-1 edge, 
+         *  this happens in the cgns standard
+         * @param [out] ijk_list the pointer of where to start adding nodes
+         * @return the number of nodes filled
+         */
+        int gen_silvester_numbers(
+            int nfree,
+            std::vector<int> &free_indices,
+            int order_sum,
+            bool cgns_flip,
+            int **ijk_list
+        ){
+            if(nfree == 2){
+                int inode = 0;
+                // base case:
+                // The two Silvester numbers sum up to order_sum
+                // Silvester number != 0
+                // Generate all the combinations
+                if(!cgns_flip)[[likely]] { // Generally we don't need the flip
+                    for(int ibary = order_sum - 1; ibary >= 1; ++ibary, ++inode){
+                        int point[nbary] = ijk_list[inode];
+                        std::fill_n(point, nbary, 0);
+                        point[free_indices[0]] = ibary;
+                        point[free_indices[1]] = order_sum - ibary;
+                    }
+                } else {
+                    // reverse the order for the 3-1 edge in cgns
+                    for(int ibary = 1; ibary < order_sum; ++ibary, ++inode){
+                        int point[nbary] = ijk_list[inode];
+                        std::fill_n(point, nbary, 0);
+                        point[free_indices[0]] = ibary;
+                        point[free_indices[1]] = order_sum - ibary;
+                    }
+                }
+                return inode;
+            } else {
+                // the highest you can put in this index
+                // while filling the rest with ones
+                int max_bary = order_sum - nfree + 1;
+
+                int **list_unfilled = ijk_list;
+                for(int ibary = 1; ibary < max_bary; ++ibary){
+                    // recursive fill
+                    int npoins = gen_silvester_numbers(
+                            nfree-1, free_indices,
+                            order_sum-ibary, list_unfilled
+                    );
+                    
+                    // fill the rest with ibary and increment list_unfilled to next section
+                    for(;list_unfilled != ijk_list + npoins; ++list_unfilled){
+                        list_unfilled[0][free_indices[nfree-1]] = ibary;
+                    }
+                }
+            }
+        }
+
+        void fill_nodes(bool cgns_flip, int **ijk_list){
+            // vertices
+            for(int inode = 0; inode < nbary; ++inode){
+                int point[nbary] = ijk_list[inode];
+                std::fill_n(point, nbary, 0);
+                point[inode] = Pn;
+            }
+
+            // all interior nodes (hierarchically)
+            for(int nfree = 2; nfree <= nbary; ++nfree){
+                std::vector<std::vector<int>> free_indices{};
+                gen_free_index_set(nfree, ndim, cgns_flip, free_indices);
+                // note: starting at +nbary because vertices take up nbary spots
+                gen_silvester_numbers(nfree, free_indices, cgns_flip, ijk_list + nbary);
+            }
+        }
 
         template<int narg>
         int ijk_sum(int ijk[narg]){
