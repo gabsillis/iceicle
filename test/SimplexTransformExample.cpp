@@ -21,7 +21,8 @@ Point2D vortex_transform(Point2D original){
     return pt_moved;
 }
 
-int main(int argc, char *argv[]){
+/** @brief plot and label the points in 2d reference domain */
+void example1(){
     SimplexElementTransformation<double, int, 2, 3> trans{};
 
     const Point2D *reference_nodes = trans.reference_nodes();
@@ -43,6 +44,26 @@ int main(int argc, char *argv[]){
     }
     show();
     */
+}
+
+/**
+ * @brief move a reference domain with the taylor-green vortex
+ * and compare with a dense point cloud
+ */
+void example2(){
+    SimplexElementTransformation<double, int, 2, 3> trans{};
+
+    const Point2D *reference_nodes = trans.reference_nodes();
+
+    std::vector<double> x{};
+    std::vector<double> y{};
+    for(int inode = 0; inode < trans.nnodes(); ++inode){
+        x.push_back(reference_nodes[inode][0]);
+        y.push_back(reference_nodes[inode][1]);
+    }
+
+    string poins_str = trans.print_ijk_poin();
+    std::cout << poins_str << endl;
 
     std::cout << endl << "Press any key to continue..." << endl;
     cin.get();
@@ -63,7 +84,7 @@ int main(int argc, char *argv[]){
     for(int inode = 0; inode < dense_trans.nnodes(); ++inode){
         Point2D xi = dense_trans.reference_nodes()[inode];
         Point2D xpt;
-        trans.transform(points, node_numbers, xi, xpt);
+        trans.transform(points, node_numbers.data(), xi, xpt);
         x.push_back(xpt[0]);
         y.push_back(xpt[1]);
     }
@@ -80,4 +101,8 @@ int main(int argc, char *argv[]){
     hold(on);
     scatter(x_act, y_act);
     show();
+}
+
+int main(int argc, char *argv[]){
+    example2();
 }

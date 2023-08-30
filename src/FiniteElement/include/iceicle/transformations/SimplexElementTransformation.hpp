@@ -448,7 +448,7 @@ namespace ELEMENT::TRANSFORMATIONS {
          */
         void transform(
                 std::vector<Point> &node_coords,
-                std::vector<IDX> &node_indices,
+                IDX *node_indices,
                 const Point &xi, Point &x
         ) const {
             x[0] = 0;
@@ -479,5 +479,83 @@ namespace ELEMENT::TRANSFORMATIONS {
             }
             return pt_ss.str();
         }
+    };
+
+
+    /**
+     * @brief transformation from the reference trace space
+     * to the left and right reference element space
+     *
+     * note: this is a reference space to reference space transformation
+     * @tparam T the floating point type
+     * @tparam IDX the indexing type for large lists
+     * @tparam ndim the number of dimensions (for the element space)
+     * @tparam Pn the polynomial order of the elements
+     */
+    template<typename T, typename IDX, int ndim, int Pn>
+    class SimplexTraceTransformation {
+        private:
+        static constexpr int trace_ndim = ndim - 1;
+        using ElPoint = MATH::GEOMETRY::Point<T, ndim>;
+        using TracePoint = MATH::GEOMETRY::Point<T, ndim>;
+        
+        public:
+
+        /**
+         * @brief transform from the trace space reference domain 
+         *        to the left and right element reference domain
+         *
+         * WARNING: This assumes the vertices are the first ndim+1 nodes
+         * This is the current ordering used in SimplexElementTransformation
+         * @param [in] node_indicesL the global node indices for the left element
+         * @param [in] node_indicesR the global node indices for the right element
+         * @param [in] faceNrL the left trace number 
+         * (the position of the barycentric coordinate that is 0 for all points on the face)
+         * @param [in] faceNrR the right trace number (see faceNrL)
+         * @param [in] s the location in the trace reference domain
+         * @param [out] xiL the position in the left reference domain
+         * @param [out] xiR the position in the right reference domain
+         */
+        void transform(
+                IDX *node_indicesL,
+                IDX *node_indicesR,
+                int traceNrL, int traceNrR,
+                const TracePoint &s,
+                ElPoint &xiL, ElPoint &xiR
+        ) const {
+            // Generate the barycentric coordinates for the TracePoint
+            T sbary[trace_ndim + 1];
+            sbary[trace_ndim] = 1.0;
+            for(int idim = 0; idim < trace_ndim; ++idim){
+                sbary[idim] = s[idim];
+                sbary[trace_ndim] -= s[idim];
+            }
+
+            // Left element
+            // set the barycentric coordinate to 0
+            // unless this is out of bounds (the modular index will just get overwritten)
+            xiL[traceNrL % ndim] = 0;
+            // copy over the barycentric coordinates, skipping faceNr
+            for(int idim = 0; idim < traceNrL; ++idim)
+                { xiL[idim] = sbary[idim]; }
+            for(int idim = traceNrL + 1; idim < ndim; ++idim)
+                { xiL[idim] = sbary[idim - 1]; }
+
+            // Right element
+            // set the barycentric coordinate to 0
+            // unless this is out of bounds (the modular index will just get overwritten)
+            xiR[traceNrR % ndim] = 0;
+            static constexpr int nvert = ndim + 1;
+            // find the vertex indices where the global node index is the same
+            for(int ivert = 0; ivert < nvert - 1; ++ivert){ // don't need last bary coord
+                for(int jvert = 0; jvert < nvert; ++jvert){
+                    if(node_indicesR[ivert] == node_indicesL[jvert]){
+                        xiR[ivert] = xiL[jvert]; // copy the matching barycentric coordinate
+                        continue; // move on to the next right element vertex
+                    }
+                }
+            }
+        }
+        
     };
 }
