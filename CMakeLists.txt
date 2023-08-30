@@ -46,12 +46,28 @@ add_custom_target(OUTPUTDIR ALL COMMAND ${CMAKE_COMMAND} -E make_directory ${CMA
 add_subdirectory(numericaltoolbox)
 add_subdirectory(src)
 
+include(FetchContent)
+# matplotlib-cpp integration
+option(ENABLE_MATPLOTLIB_CPP "Enables matplotlib-cpp" ON)
+if(ENABLE_MATPLOTLIB_CPP)
+  FetchContent_Declare(
+    matplotplusplus
+    GIT_REPOSITORY https://github.com/alandefreitas/matplotplusplus
+    GIT_TAG origin/master
+  )
+
+  FetchContent_GetProperties(matplotplusplus)
+  if(NOT matplotplusplus_POPULATED)
+      FetchContent_Populate(matplotplusplus)
+      add_subdirectory(${matplotplusplus_SOURCE_DIR} ${matplotplusplus_BINARY_DIR} EXCLUDE_FROM_ALL)
+  endif()
+endif()
+
 #TESTING
 option(ENABLE_TESTING_ICEICLE "Enables testing and downlod gtest for ICEicle" ON)
 IF(ENABLE_TESTING_ICEICLE)
 # replacing find_package with a download
 #  find_package(GTest REQUIRED)
-  include(FetchContent)
   FetchContent_Declare(
     googletest
     GIT_REPOSITORY https://github.com/google/googletest.git

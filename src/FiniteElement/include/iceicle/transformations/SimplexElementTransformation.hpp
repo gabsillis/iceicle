@@ -21,6 +21,12 @@ namespace ELEMENT::TRANSFORMATIONS {
         // === Aliases ===
         using Point = MATH::GEOMETRY::Point<T, ndim>;
 
+        // === Constants ===
+        static constexpr int nbary = ndim + 1; // the number of barycentric coordinates needed to describe a point
+        static constexpr int nnode = MATH::binomial<Pn + ndim, ndim>(); // the number of nodes
+        /// The number of faces
+        static constexpr int nfac = ndim + 1;
+
         // =================
         // = Helper funcs  =
         // = for Silvester =
@@ -42,9 +48,9 @@ namespace ELEMENT::TRANSFORMATIONS {
 
                 // Manual fix for CGNS shenanigans
                 // (for the 2D triangle a ccw convention is adopted and then promptly abandoned)
-                if(cgns_flip && free_index_set.size() > 0){
+                if(cgns_flip && free_index_set.size() > 2){
                     free_index_set[1] = {1, 2};
-                    free_index_set[0] = {0, 2};
+                    free_index_set[2] = {0, 2};
                 }
             } else {
                 for(int idim = nfree-1; idim <= maxdim; ++idim){
@@ -80,7 +86,7 @@ namespace ELEMENT::TRANSFORMATIONS {
             std::vector<int> &free_indices,
             int order_sum,
             bool cgns_flip,
-            int **ijk_list
+            std::array<int, nbary> *ijk_list
         ){
             if(nfree == 2){
                 int inode = 0;
@@ -90,16 +96,16 @@ namespace ELEMENT::TRANSFORMATIONS {
                 // Generate all the combinations
                 if(!cgns_flip)[[likely]] { // Generally we don't need the flip
                     for(int ibary = order_sum - 1; ibary >= 1; ++ibary, ++inode){
-                        int point[nbary] = ijk_list[inode];
-                        std::fill_n(point, nbary, 0);
+                        std::array<int, nbary> &point = ijk_list[inode];
+                        std::fill_n(point.begin(), nbary, 0);
                         point[free_indices[0]] = ibary;
                         point[free_indices[1]] = order_sum - ibary;
                     }
                 } else {
                     // reverse the order for the 3-1 edge in cgns
                     for(int ibary = 1; ibary < order_sum; ++ibary, ++inode){
-                        int point[nbary] = ijk_list[inode];
-                        std::fill_n(point, nbary, 0);
+                        std::array<int, nbary> &point = ijk_list[inode];
+                        std::fill_n(point.begin(), nbary, 0);
                         point[free_indices[0]] = ibary;
                         point[free_indices[1]] = order_sum - ibary;
                     }
@@ -110,36 +116,49 @@ namespace ELEMENT::TRANSFORMATIONS {
                 // while filling the rest with ones
                 int max_bary = order_sum - nfree + 1;
 
-                int **list_unfilled = ijk_list;
+                int inode = 0;
+                std::array<int, nbary> *list_unfilled = ijk_list;
                 for(int ibary = 1; ibary < max_bary; ++ibary){
                     // recursive fill
                     int npoins = gen_silvester_numbers(
                             nfree-1, free_indices,
-                            order_sum-ibary, list_unfilled
+                            order_sum-ibary, cgns_flip,
+                            list_unfilled
                     );
                     
                     // fill the rest with ibary and increment list_unfilled to next section
                     for(;list_unfilled != ijk_list + npoins; ++list_unfilled){
-                        list_unfilled[0][free_indices[nfree-1]] = ibary;
+                        (*list_unfilled)[free_indices[nfree-1]] = ibary;
                     }
+                    inode += npoins;
                 }
+                return inode;
             }
         }
 
-        void fill_nodes(bool cgns_flip, int **ijk_list){
+        void fill_nodes(
+            bool cgns_flip,
+            std::array<std::array<int, nbary>, nnode> &ijk_list
+        ){
             // vertices
             for(int inode = 0; inode < nbary; ++inode){
-                int point[nbary] = ijk_list[inode];
-                std::fill_n(point, nbary, 0);
+                std::array<int, nbary> &point = ijk_list[inode];
+                std::fill_n(point.begin(), nbary, 0);
                 point[inode] = Pn;
             }
 
             // all interior nodes (hierarchically)
+            int fill_start = nbary; // already filled vertices
             for(int nfree = 2; nfree <= nbary; ++nfree){
-                std::vector<std::vector<int>> free_indices{};
-                gen_free_index_set(nfree, ndim, cgns_flip, free_indices);
-                // note: starting at +nbary because vertices take up nbary spots
-                gen_silvester_numbers(nfree, free_indices, cgns_flip, ijk_list + nbary);
+                std::vector<std::vector<int>> free_index_set{};
+                gen_free_index_set(nfree, ndim, cgns_flip, free_index_set);
+
+                for(auto &free_indices : free_index_set){
+                    int fill_inc = gen_silvester_numbers(
+                        nfree, free_indices, cgns_flip,
+                        Pn, ijk_list.data() + fill_start);
+                    fill_start += fill_inc;
+                }
             }
         }
 
@@ -336,12 +355,8 @@ namespace ELEMENT::TRANSFORMATIONS {
         inline T area_coord_3(T xi, T eta) const { return 1.0 - xi - eta; }
 
 
-        static constexpr int nbary = ndim + 1; // the number of barycentric coordinates needed to describe a point
-        static constexpr int nnode = MATH::binomial<Pn + ndim, ndim>(); // the number of nodes
-        /// The number of faces
-        static constexpr int nfac = ndim + 1;
         /// The array of the Silvester numbering for each reference domain node
-        int ijk_poin[nnode][ndim + 1];
+        std::array<std::array<int, nbary>, nnode> ijk_poin;
         /// The reference domain coordinates of each reference node
         Point xi_poin[nnode];
 
@@ -354,11 +369,13 @@ namespace ELEMENT::TRANSFORMATIONS {
         /// NOTE: Convention Note
         /// An endpoint is where the ijk_poin array has an entry whose integer value == Pn
         /// Let the index of the ijk_poin[inode] in which this occurs be the endpoint index
-        int endpoint_nodes[ndim + 1]; 
+        int endpoint_nodes[nbary]; 
 
 
         public:
         SimplexElementTransformation() : face_inodes(nfac) {
+            
+            /**
             // Generate the Silvester numbering for each reference domain node
             ijk_poin[0][0] = Pn;
             endpoint_nodes[0] = 0;
@@ -382,6 +399,8 @@ namespace ELEMENT::TRANSFORMATIONS {
                     }
                 }
             }
+            */
+            fill_nodes(true, ijk_poin);
 
             // Generate the reference domain coordinates for each reference domain node
             for(int inode = 0; inode < nnode; ++inode){

@@ -1,17 +1,29 @@
 #include <iceicle/transformations/SimplexElementTransformation.hpp>
 #include <fstream>
+#include <matplot/matplot.h>
 int main(int argc, char *argv[]){
     using namespace ELEMENT::TRANSFORMATIONS;
     using namespace std;
+    using namespace matplot;
     using Point = MATH::GEOMETRY::Point<double, 2>;
     SimplexElementTransformation<double, int, 2, 3> trans{};
 
     const Point *reference_nodes = trans.reference_nodes();
 
-    ofstream out("SimplexTransformTest_ReferenceNodes.dat");
+    std::vector<double> x{};
+    std::vector<double> y{};
     for(int inode = 0; inode < trans.nnodes(); ++inode){
-        out << reference_nodes[inode][0] << " " << reference_nodes[inode][1] << std::endl;
+        x.push_back(reference_nodes[inode][0]);
+        y.push_back(reference_nodes[inode][1]);
     }
+
+    scatter(x, y);
+    for(int inode = 0; inode < trans.nnodes(); ++inode){
+        text(x[inode], y[inode], to_string(inode));
+    }
+    show();
+    return 0;
+    
 
     // make a curved triangley boi
     std::vector<Point> points = {
