@@ -1,5 +1,5 @@
 import numpy as np
-ndim = 3
+ndim = 2
 order = 4
 nbary = ndim + 1
 nodes = []

@@ -4,9 +4,10 @@
 #include <Numtool/point.hpp>
 #include <vector>
 #include <span>
-
+#include <string>
+#include <sstream>
 namespace ELEMENT::TRANSFORMATIONS {
-    
+
     /**
      * @brief Transformation for an arbitrary simplex to the reference simplex
      *
@@ -95,7 +96,7 @@ namespace ELEMENT::TRANSFORMATIONS {
                 // Silvester number != 0
                 // Generate all the combinations
                 if(!cgns_flip)[[likely]] { // Generally we don't need the flip
-                    for(int ibary = order_sum - 1; ibary >= 1; ++ibary, ++inode){
+                    for(int ibary = order_sum - 1; ibary >= 1; --ibary, ++inode){
                         std::array<int, nbary> &point = ijk_list[inode];
                         std::fill_n(point.begin(), nbary, 0);
                         point[free_indices[0]] = ibary;
@@ -118,7 +119,7 @@ namespace ELEMENT::TRANSFORMATIONS {
 
                 int inode = 0;
                 std::array<int, nbary> *list_unfilled = ijk_list;
-                for(int ibary = 1; ibary < max_bary; ++ibary){
+                for(int ibary = 1; ibary <= max_bary; ++ibary){
                     // recursive fill
                     int npoins = gen_silvester_numbers(
                             nfree-1, free_indices,
@@ -127,7 +128,8 @@ namespace ELEMENT::TRANSFORMATIONS {
                     );
                     
                     // fill the rest with ibary and increment list_unfilled to next section
-                    for(;list_unfilled != ijk_list + npoins; ++list_unfilled){
+                    std::array<int, nbary> *start = list_unfilled;
+                    for(;list_unfilled != start + npoins; ++list_unfilled){
                         (*list_unfilled)[free_indices[nfree-1]] = ibary;
                     }
                     inode += npoins;
@@ -154,10 +156,20 @@ namespace ELEMENT::TRANSFORMATIONS {
                 gen_free_index_set(nfree, ndim, cgns_flip, free_index_set);
 
                 for(auto &free_indices : free_index_set){
-                    int fill_inc = gen_silvester_numbers(
-                        nfree, free_indices, cgns_flip,
-                        Pn, ijk_list.data() + fill_start);
-                    fill_start += fill_inc;
+                    // loop over all sets of free indices and generate the silvester numbers
+                    if(free_indices[0] == 0 && free_indices[1] == 2){
+                        // for cgns flip the 3-1 edge
+                        // note if cgns_flip = false this changes nothing
+                        int fill_inc = gen_silvester_numbers(
+                            nfree, free_indices, Pn, cgns_flip,
+                            ijk_list.data() + fill_start);
+                        fill_start += fill_inc;
+                    } else {
+                        int fill_inc = gen_silvester_numbers(
+                            nfree, free_indices, Pn, false,
+                            ijk_list.data() + fill_start);
+                        fill_start += fill_inc;
+                    }
                 }
             }
         }
@@ -450,5 +462,22 @@ namespace ELEMENT::TRANSFORMATIONS {
         }
 
         const Point *reference_nodes() const { return xi_poin; }
+
+        // ===============
+        // = Diagnostics =
+        // ===============
+
+        std::string print_ijk_poin(){
+            using namespace std;
+            ostringstream pt_ss{};
+            for(int inode = 0; inode < nnodes(); ++inode){
+                pt_ss << inode << ". [ ";
+                for(int ibary = 0; ibary < nbary; ++ibary){
+                    pt_ss << ijk_poin[inode][ibary] << " ";
+                }
+                pt_ss << "]" << endl;
+            }
+            return pt_ss.str();
+        }
     };
 }

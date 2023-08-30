@@ -1,14 +1,30 @@
 #include <iceicle/transformations/SimplexElementTransformation.hpp>
 #include <fstream>
 #include <matplot/matplot.h>
+#include <iostream>
+#include <cmath>
+
+using namespace ELEMENT::TRANSFORMATIONS;
+using namespace std;
+using namespace matplot;
+using Point2D = MATH::GEOMETRY::Point<double, 2>;
+
+Point2D vortex_transform(Point2D original){
+    double dt = 0.01;
+    Point2D pt_moved = original;
+    for(int k = 0; k < 100; ++k){
+        double x = pt_moved[0];
+        double y = pt_moved[1];
+        pt_moved[0] +=  cos(x)*sin(y) * dt;
+        pt_moved[1] += -sin(x)*cos(y) * dt;
+    }
+    return pt_moved;
+}
+
 int main(int argc, char *argv[]){
-    using namespace ELEMENT::TRANSFORMATIONS;
-    using namespace std;
-    using namespace matplot;
-    using Point = MATH::GEOMETRY::Point<double, 2>;
     SimplexElementTransformation<double, int, 2, 3> trans{};
 
-    const Point *reference_nodes = trans.reference_nodes();
+    const Point2D *reference_nodes = trans.reference_nodes();
 
     std::vector<double> x{};
     std::vector<double> y{};
@@ -17,48 +33,51 @@ int main(int argc, char *argv[]){
         y.push_back(reference_nodes[inode][1]);
     }
 
+    string poins_str = trans.print_ijk_poin();
+    std::cout << poins_str << endl;
+
+    /*
     scatter(x, y);
     for(int inode = 0; inode < trans.nnodes(); ++inode){
         text(x[inode], y[inode], to_string(inode));
     }
     show();
-    return 0;
-    
+    */
 
-    // make a curved triangley boi
-    std::vector<Point> points = {
-        {1.0, 0.0},
-        {0.7, 0.45},
-        {0.66, -0.038},
-        {0.417,0.75},
-        {0.297, 0.292},
-        {0.33, -0.059},
-        {-0.038, 1.023},
-        {0.055, 0.691},
-        {-0.05, 0.35},
-        {0.0, 0.0}
-    };
+    std::cout << endl << "Press any key to continue..." << endl;
+    cin.get();
 
-    std::vector<Point> points_ref = {
-        {1 ,0},
-        {0.666667, 0.333333},
-        {0.666667, 0},
-        {0.333333, 0.666667},
-        {0.333333, 0.333333},
-        {0.333333, 0},
-        {0 ,1 },
-        {0 ,0.666667},
-        {0 ,0.333333},
-        {0 ,0}
-    };
-    std::vector<int> indices = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9};
-
-    ofstream out2("SimplexTransformTest_DiscretizedVis.dat");
-    SimplexElementTransformation<double, int, 2, 20> dense_trans;
-    for(int i = 0; i < dense_trans.nnodes(); ++i){
-        Point ref = dense_trans.reference_nodes()[i]; // use the denser simplex to visualize the points curving
-        Point phys;
-        trans.transform(points, indices, ref, phys);
-        out2 << phys[0] << " " << phys[1] << std::endl;
+    // make a curved triangley boi with vortex
+    std::vector<Point2D> points{};
+    std::vector<int> node_numbers{};
+    for(int inode = 0; inode < trans.nnodes(); ++inode){
+        Point2D pt = trans.reference_nodes()[inode];
+        pt = vortex_transform(pt);
+        points.push_back(pt);
+        node_numbers.push_back(inode);
     }
+
+    SimplexElementTransformation<double, int, 2, 20> dense_trans;
+    x.clear();
+    y.clear();
+    for(int inode = 0; inode < dense_trans.nnodes(); ++inode){
+        Point2D xi = dense_trans.reference_nodes()[inode];
+        Point2D xpt;
+        trans.transform(points, node_numbers, xi, xpt);
+        x.push_back(xpt[0]);
+        y.push_back(xpt[1]);
+    }
+
+    vector<double> x_act{};
+    vector<double> y_act{};
+    for(int inode = 0; inode < dense_trans.nnodes(); ++inode){
+        Point2D xpt = vortex_transform(dense_trans.reference_nodes()[inode]);
+        x_act.push_back(xpt[0]);
+        y_act.push_back(xpt[1]);
+    }
+
+    scatter(x, y);
+    hold(on);
+    scatter(x_act, y_act);
+    show();
 }
