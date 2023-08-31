@@ -37,13 +37,11 @@ void example1(){
     string poins_str = trans.print_ijk_poin();
     std::cout << poins_str << endl;
 
-    /*
     scatter(x, y);
     for(int inode = 0; inode < trans.nnodes(); ++inode){
         text(x[inode], y[inode], to_string(inode));
     }
     show();
-    */
 }
 
 /**
