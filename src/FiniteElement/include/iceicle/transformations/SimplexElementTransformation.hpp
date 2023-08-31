@@ -451,13 +451,13 @@ namespace ELEMENT::TRANSFORMATIONS {
                 IDX *node_indices,
                 const Point &xi, Point &x
         ) const {
-            x[0] = 0;
-            x[1] = 0;
+            std::fill_n(&(x[0]), ndim, 0.0);
             for(int inode = 0; inode < nnode; ++inode){
                 T shpval = shp(xi, inode);
                 IDX node_id = node_indices[inode];
-                x[0] += node_coords[node_id][0] * shpval;
-                x[1] += node_coords[node_id][1] * shpval;
+                for(int idim = 0; idim < ndim; ++idim){
+                    x[idim] += node_coords[node_id][idim] * shpval;
+                }
             }
         }
 
@@ -497,7 +497,7 @@ namespace ELEMENT::TRANSFORMATIONS {
         private:
         static constexpr int trace_ndim = ndim - 1;
         using ElPoint = MATH::GEOMETRY::Point<T, ndim>;
-        using TracePoint = MATH::GEOMETRY::Point<T, ndim>;
+        using TracePoint = MATH::GEOMETRY::Point<T, trace_ndim>;
         
         public:
 
