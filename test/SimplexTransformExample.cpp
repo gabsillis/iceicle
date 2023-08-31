@@ -103,6 +103,61 @@ void example2(){
     show();
 }
 
+/** @brief show the transformation on a curved trace */
+void example3(){
+    SimplexElementTransformation<double, int, 2, 2> trans{};
+    SimplexTraceTransformation<double, int, 2, 2> trace_trans{};
+    std::vector<Point2D> nodes = {
+        {0.0, 0.0}, // 0
+        {1.0, 0.0}, // 1
+        {2.0, 0.0}, // 2
+        {0.0, 1.0}, // 3
+        {1.4, 1.4}, // 4
+        {2.0, 1.0}, // 5
+        {0.0, 2.0}, // 6
+        {1.0, 2.0}, // 7
+        {2.0, 2.0}  // 8
+    };
+
+    std::vector<int> idxs1 = 
+        { 2, 6, 0, 4, 3, 1 };
+    std::vector<int> idxs2 = 
+        { 2, 8, 6, 5, 7, 4 };
+
+    int traceNrL = 2;
+    int traceNrR = 1;
+
+    std::vector<double> xL{};
+    std::vector<double> yL{};
+    std::vector<double> xR{};
+    std::vector<double> yR{};
+    double ds = 0.1;
+    for(int ipoin = 0; ipoin < 11; ++ipoin){
+        MATH::GEOMETRY::Point<double, 2> s = {ipoin * ds};
+        Point2D xiL, xiR;
+        trace_trans.transform(idxs1.data(), idxs2.data(), traceNrL, traceNrR, s, xiL, xiR);
+        Point2D xptL, xptR;
+        trans.transform(nodes, idxs1.data(), xiL, xptL);
+        trans.transform(nodes, idxs2.data(), xiR, xptR);
+        xL.push_back(xptL[0]);
+        yL.push_back(xptL[1]);
+        xR.push_back(xptR[0]);
+        yR.push_back(xptR[1]);
+    }
+
+    scatter(xL, yL);
+    hold(on);
+    scatter(xR, yR);
+
+
+    for(int inode = 0; inode < 11; ++inode){
+        text(xL[inode], yL[inode] + 0.1, to_string(inode));
+        text(xR[inode], yR[inode] - 0.1, to_string(inode));
+    }
+    show();
+}
+
+
 int main(int argc, char *argv[]){
-    example2();
+    example3();
 }

@@ -547,6 +547,7 @@ namespace ELEMENT::TRANSFORMATIONS {
             xiR[traceNrR % ndim] = 0;
             static constexpr int nvert = ndim + 1;
             // find the vertex indices where the global node index is the same
+            // O(n^2) but probably better than nlogn algorithms because of small size
             for(int ivert = 0; ivert < nvert - 1; ++ivert){ // don't need last bary coord
                 for(int jvert = 0; jvert < nvert; ++jvert){
                     if(node_indicesR[ivert] == node_indicesL[jvert]){
