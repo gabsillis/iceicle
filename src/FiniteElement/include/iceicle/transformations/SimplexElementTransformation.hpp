@@ -48,7 +48,7 @@ namespace ELEMENT::TRANSFORMATIONS {
                 }
 
                 // Manual fix for CGNS shenanigans
-                // (for the 2D triangle a ccw convention is adopted and then promptly abandoned)
+                // (for the 2D triangle a ccw convention is adopted and then promptly abandoned for higher dim)
                 if(cgns_flip && free_index_set.size() > 2){
                     free_index_set[1] = {1, 2};
                     free_index_set[2] = {0, 2};
@@ -57,10 +57,12 @@ namespace ELEMENT::TRANSFORMATIONS {
                 for(int idim = nfree-1; idim <= maxdim; ++idim){
                     // generate all the free indices recursively
                     // [[nfree = ndim-1, maxdim = idim-1], idim]
-                    int start = free_index_set.size();
-                    gen_free_index_set(nfree-1, idim-1, cgns_flip, free_index_set);
-                    for(int iindices = start; iindices < free_index_set.size(); ++iindices){
-                        free_index_set[iindices].push_back(idim); // add idim to the end of each
+                    std::vector<std::vector<int>> sublist{};
+                    gen_free_index_set(nfree-1, idim-1, cgns_flip, sublist);
+                    for(std::vector<int> &free_indices : sublist){
+                        std::vector<int> &new_free_indices = free_indices;
+                        new_free_indices.push_back(idim);
+                        free_index_set.push_back(std::move(new_free_indices));
                     }
                 }
             }

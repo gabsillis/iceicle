@@ -23,8 +23,7 @@ Point2D vortex_transform(Point2D original){
 }
 
 Point3D vortex_transform(Point3D original){
-    //double dt = 0.01;
-    double dt = 0.0;
+    double dt = 0.01;
     Point3D pt_moved = original;
     for(int k = 0; k < 100; ++k){
         double x = pt_moved[0];
@@ -227,7 +226,7 @@ void example4(){
 
     scatter3(x, y, z);
     hold(on);
-    //scatter3(x_act, y_act, z_act);
+    scatter3(x_act, y_act, z_act);
     show();
 }
 

@@ -124,7 +124,7 @@ for nfree in range(3, nbary + 1):
             print(gen_vertices(nfree, free_indices, order))
             for node in gen_vertices(nfree, free_indices, order):
                 nodes.append(node)
-
+print("Nodes: ")
 # print out the nodes!
 i = 1
 for node in nodes:
