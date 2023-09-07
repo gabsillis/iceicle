@@ -269,7 +269,8 @@ void example5(){
 
     SimplexElementTransformation<double, int, 2, 8> trace_domain{};
 
-    for(int ipoin = 0; ipoin < trace_domain.nnodes(); ++ipoin){
+    for(int ipoin = 0; ipoin < trace_domain.nnodes(); ++ipoin)
+    if(ipoin != 28) { // eliminate a center node to make sure it works
         MATH::GEOMETRY::Point<double, 2> s = trace_domain.reference_nodes()[ipoin];
         Point3D xiL, xiR;
         trace_trans.transform(idxs1.data(), idxs2.data(), traceNrL, traceNrR, s, xiL, xiR);
@@ -286,7 +287,7 @@ void example5(){
 
     scatter3(xL, yL, zL);
     hold(on);
-    //scatter3(xR, yR, zL);
+    scatter3(xR, yR, zL);
 
 /*
     for(int inode = 0; inode < trace_domain.nnodes(); ++inode){
@@ -298,5 +299,5 @@ void example5(){
 }
 
 int main(int argc, char *argv[]){
-    example4();
+    example5();
 }
