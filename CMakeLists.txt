@@ -71,7 +71,7 @@ IF(ENABLE_TESTING_ICEICLE)
   FetchContent_Declare(
     googletest
     GIT_REPOSITORY https://github.com/google/googletest.git
-    GIT_TAG        7274ec186442c96e4c7dcc99c684a03e5db2ff48 # main branch as of Aug 15
+    GIT_TAG        v1.14.0
   )
 
   FetchContent_MakeAvailable(googletest)

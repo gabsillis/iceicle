@@ -18,7 +18,9 @@ namespace ELEMENT::TRANSFORMATIONS {
      */
     template<typename T, typename IDX, int ndim, int Pn>
     class SimplexElementTransformation {
-       private:
+        private:
+        friend void _test_simplex_transform(); // give testing class access
+
         // === Aliases ===
         using Point = MATH::GEOMETRY::Point<T, ndim>;
 
@@ -217,7 +219,7 @@ namespace ELEMENT::TRANSFORMATIONS {
          * @return T the shape function P_m(xi)
          */
         inline T shapefcn_1d(int m, T xi) const {
-            if(m == 0) return 1; // TODO: check if branchless cmov is used
+            if(m == 0) return (T) 1.0; // TODO: check if branchless cmov is used
             T prod = (Pn * xi); // case i = 1
             for(int i = 2; i <= m; ++i){
                 prod *= (Pn * xi - i + 1) / i;
@@ -225,9 +227,20 @@ namespace ELEMENT::TRANSFORMATIONS {
             return prod;
         }
 
-        inline T dshapefcn_1d(int m, T xi) const {
+        /** @brief calculate the 1d shape function derivative
+         *         using the logarithmic derivative
+         *  WARNING: has singularity
+         *  @param m the shape function index
+         *  @param xi the function argument
+         *  @return T the shape function derivative
+         */
+        inline T dshapefcn_1d_logder(int m, T xi) const {
             // if m is zero then derivative is zero
-            if(m == 0) return 0;
+            if(m == 0) return (T) 0;
+
+            // more expensive version when close logarithmic derivative singularity (doesn't catch all cases)
+            if(std::abs(xi) <= 1e-8) return dshapefcn_1d(m, xi);
+
             // first term of logarithmic derivative version
             // product of shape functions
             T prodTerm = shapefcn_1d(m, xi);
@@ -239,9 +252,43 @@ namespace ELEMENT::TRANSFORMATIONS {
             return prodTerm * sumTerm;
         }
 
-        T d2shapefcn_1d(int m, T xi) const {
+        /** @brief calculate the 1d shape function derivative
+         *         using the full product rule O(Pn^2)
+         *
+         *  @param m the shape function index
+         *  @param xi the function argument
+         *  @return T the shape function derivative
+         */
+        inline T dshapefcn_1d(int m, T xi) const {
+            
+            // if m is zero then derivative is zero
+            if(m == 0) return 0;
+
+            T sum = 0;
+            for(int i = 1; i <= m; ++i){
+                T prod = (i == 1) ? 1 : Pn * xi; // base case j = 1
+                for(int j = 2; j < i; ++j) prod *= (Pn * xi - j + 1) / j;
+                for(int j = i + 1; j <= m; ++j) prod *= (Pn * xi - j + 1) / j;
+
+                sum += (Pn * prod) / i; // prod makes sure floating point division happens
+            }
+            return sum;
+        }
+
+
+        /** @brief calculate the 1d shape function second derivative
+         *         using the logarithmic derivative
+         *  WARNING: has singularity
+         *  @param m the shape function index
+         *  @param xi the function argument
+         *  @return T the shape function second derivative
+         */
+        inline T d2shapefcn_1d_logder(int m, T xi) const {
             // second derivative zero conditions
             if(m == 0 || m == 1) return 0;
+
+            // more expensive version when close logarithmic derivative singularity
+            if(std::abs(xi) <= 1e-8) return dshapefcn_1d(m, xi);
 
             // first term of logarithmic derivative version
             // product of shape functions
@@ -258,6 +305,33 @@ namespace ELEMENT::TRANSFORMATIONS {
                 sumTerm2 += SQUARED(Pn) / SQUARED(Pn * xi - i + 1);
             }
             return prodTerm * sumTerm * (sumTerm - sumTerm2);
+        }
+
+        
+        /** @brief calculate the 1d shape function second derivative
+         *         using the product rule
+         *  WARNING: does not handle the case where m is 0 or 1
+         *  @param m the shape function index
+         *  @param xi the function argument
+         *  @return T the shape function second derivative
+         */
+        inline T d2shapefcn_1d(int m, T xi) const {
+            // second derivative zero conditions
+            if(m == 0 || m == 1) return 0;
+
+            T sum = 0;
+            for(int i = 1; i <= m; ++i){
+                T inner_sum = 0;
+                for(int j = 1; j <= m; ++j) if(j != i) {
+                    T prod = 1;
+                    for(int k = 1; k <= m; ++k) if(k != i && k !=j) {
+                        prod *= (Pn * xi - k + 1) / k;
+                    }
+                    inner_sum += (Pn * prod) / j;
+                }
+                sum += (Pn * inner_sum) / i;
+            }
+            return sum;
         }
 
 
@@ -374,7 +448,7 @@ namespace ELEMENT::TRANSFORMATIONS {
         /// The reference domain coordinates of each reference node
         Point xi_poin[nnode];
 
-        std::vector<std::vector<int>> face_inodes; /// the local node indices of the points of each face in order
+ //       std::vector<std::vector<int>> face_inodes; /// the local node indices of the points of each face in order
 
         /// provides connectivity to local inode for face endpoints
         int face_endpoints[nfac][ndim];
@@ -387,7 +461,7 @@ namespace ELEMENT::TRANSFORMATIONS {
 
 
         public:
-        SimplexElementTransformation() : face_inodes(nfac) {
+        SimplexElementTransformation() {
             
             /**
             // Generate the Silvester numbering for each reference domain node
@@ -418,6 +492,11 @@ namespace ELEMENT::TRANSFORMATIONS {
 
             // Generate the reference domain coordinates for each reference domain node
             for(int inode = 0; inode < nnode; ++inode){
+                
+                for(int ivert = 0; ivert < nbary; ++ivert) {
+                    if(ijk_poin[inode][ivert] == Pn) endpoint_nodes[ivert] = inode;
+                }
+
                 for(int idim = 0; idim < ndim; ++idim){
                     T xi_idim = ((T) ijk_poin[inode][idim]) / Pn;
                     xi_poin[inode][idim] = xi_idim;
@@ -463,6 +542,85 @@ namespace ELEMENT::TRANSFORMATIONS {
             }
         }
 
+        /**
+         * @brief get the Jacobian matrix of the transformation
+         * J = \frac{\partial T(s)}{\partial s} = \frac{\partial x}[\partial \xi}
+         * @param [in] node_coords the coordinates of all the nodes
+         * @param [in] node_indices the indices in node_coords that pretain to this element in order
+         * @param [in] xi the position in the reference domain at which to calculate the Jacobian
+         * @param [out] the jacobian matrix
+         */
+        void Jacobian(
+            std::vector<Point> &node_coords,
+            IDX *node_indices,
+            const Point &xi,
+            T J[ndim][ndim]
+        ) {
+            // Get a 1D pointer representation of the matrix head
+            T *Jptr = J[0];
+
+            // fill with zeros
+            std::fill_n(Jptr, ndim * ndim, 0.0);
+
+            for(int inode = 0; inode < nnode; ++inode){
+                IDX global_inode = node_indices[inode];
+                const Point &node = node_coords[global_inode];
+                for(int idim = 0; idim < ndim; ++idim) { // idim corresponds to x
+                    for(int jdim = 0; jdim < ndim; ++jdim) { // jdim corresponds to \xi
+                        J[idim][jdim] += dshp(xi, inode, jdim) * node[idim];
+                    }
+                }
+            }
+        }
+
+        /**
+         * @brief get the Hessian of the transformation
+         * H_{kij} = \frac{\partial T(s)_k}{\partial s_i \partial s_j} 
+         *         = \frac{\partial x_k}{\partial \xi_i \partial \xi_j}
+         * @param [in] node_coords the coordinates of all the nodes
+         * @param [in] node_indices the indices in node_coords that pretain to this element in order
+         * @param [in] xi the position in the reference domain at which to calculate the hessian
+         * @param [out] the Hessian in tensor form indexed [k][i][j] as described above
+         */
+        void Hessian(
+            std::vector<Point> &node_coords,
+            IDX *node_indices,
+            const Point &xi,
+            T hess[ndim][ndim][ndim]
+        ){
+            // Get a 1D pointer representation
+            T *Hptr = hess[0][0];
+
+            // fill with zeros
+            std::fill_n(Hptr, ndim * ndim * ndim, 0.0);
+
+            for(int inode = 0; inode < nnode; ++inode){
+                IDX global_inode = node_indices[inode];
+                const Point &node = node_coords[global_inode];
+                for(int kdim = 0; kdim < ndim; ++kdim) { // k corresponds to xi
+                    for(int idim = 0; idim < ndim; ++idim) {
+                        for(int jdim = idim; jdim < ndim; ++jdim) { // fill symmetric part later
+                            // H_{kij} = \sum\limits_p \frac{\partial N_p(\xi)}{\partial \xi_i \partial \xi_j} x_{p, k}
+                            hess[kdim][idim][jdim] += dshp2(xi, inode, idim, jdim) * node[kdim];
+                        }
+                    }
+                }
+            }
+
+            // finish filling symmetric part
+            for(int kdim = 0; kdim < ndim; ++kdim){
+                for(int idim = 0; idim < ndim; ++idim){
+                    for(int jdim = 0; jdim < idim; ++jdim){
+                        hess[kdim][idim][jdim] = hess[kdim][jdim][idim];
+                    }
+                }
+            }
+        }
+
+        /**
+         * @brief get a pointer to the array of Lagrange points in the reference domain
+         * @return the Lagrange points in the reference domain
+         */
         const Point *reference_nodes() const { return xi_poin; }
 
         // ===============
