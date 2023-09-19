@@ -36,7 +36,7 @@ namespace ELEMENT::TRANSFORMATIONS {
                 auto dual_xi = make_dual(xi);
                 auto dualf = shpfcn(dual_xi);
                 const std::function<double(double)> &funcref = shpfcn;
-                EXPECT_NEAR(trans.dshapefcn_1d(m, xi), dualf.gradient, 1e-5);
+                EXPECT_NEAR(trans.dshapefcn_1d(m, xi), dualf.gradient, 10 * std::numeric_limits<double>::epsilon());
             }
         }
     }
