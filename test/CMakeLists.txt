@@ -4,6 +4,7 @@ target_link_libraries(simplex_trans_ex PUBLIC iceicle_fe)
 
 add_executable(test_felib 
   TestSimplexTransform.cpp
+  TestSimplexQuadrature.cpp
 )
 target_link_libraries( test_felib PUBLIC iceicle_fe )
 target_link_libraries( test_felib PUBLIC nt_autodiff) 

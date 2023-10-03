@@ -9,9 +9,20 @@
  * 
  */
 #pragma once
-#include <iceicle/geometry/point.hpp>
+#include <Numtool/point.hpp>
 
 namespace QUADRATURE {
+   
+    /**
+     * @brief a QuadraturePoint which contains the abscisse and the quadrature weight
+     * @tparam T the floating point type
+     * @pram ndim the number of dimensions for the point
+     */
+    template<typename T, int ndim>
+    struct QuadraturePoint {
+        MATH::GEOMETRY::Point<T, ndim> abscisse;
+        T weight;
+    };
 
     /**
      * @brief An abstract definition of a quadrature rule
@@ -42,27 +53,24 @@ namespace QUADRATURE {
         int npoints() const = 0;
 
         /**
-         * @brief Gets the quadrature points in the reference domain
-         * 
-         * @return const GEOMETRY::Point<T, ndim>* an array of the points
+         * @brief get the ipointh QuadraturePoint which is a struct that
+         * contains the quadrature abscisse and the quadrature weight
+         * @param ipoint the point index
+         * @return the QuadraturePoint
          */
         virtual
-        const GEOMETRY::Point<T, ndim> *quadraturePoints() const = 0;
+        const QuadraturePoint<T, ndim> &getPoint(int ipoint) const  = 0;
 
-        /**
-         * @brief The quadrature waights
-         * 
-         * @return const T* an array wi[npoint]
-         */
-        virtual
-        const T *quadratureWeights() const = 0;
+        /** @brief get the quadrature point at that index (see getPoint) */
+        inline
+        const QuadraturePoint<T, ndim> &operator[](int ipoint) const { return getPoint(ipoint); };
     };
 
     /**
      * @brief Quadrature rule for the trace space
      * 
      * @tparam T the floating point type
-     * @tparam TS_ndim 
+     * @tparam TS_ndim number of dimensions in the trace space (ndim - 1)
      */
     template<typename T, typename IDX, int TS_ndim>
     class TraceQuadratureRule {
@@ -73,20 +81,17 @@ namespace QUADRATURE {
          * @return int the number of quadrature points
          */
         virtual int npoints() const = 0;
-
         /**
-         * @brief The quadrature points for this trace space
-         * Points are in the local trace space for the face,
-         * this corresponds the local trace space for the Left hand element
-         * @return const GEOMETRY::Point<T, ndim - 1>* array of points, size = npoints()
+         * @brief get the ipointh QuadraturePoint which is a struct that
+         * contains the quadrature abscisse and the quadrature weight
+         * @param ipoint the point index
+         * @return the QuadraturePoint
          */
-        virtual const GEOMETRY::Point<T, TS_ndim> *quadraturePoints() const = 0;
+        virtual
+        const QuadraturePoint<T, TS_ndim> &getPoint(int ipoint) const  = 0;
 
-        /**
-         * @brief The quadrature weights for this trace space
-         * 
-         * @return const T* array of weights, size = npoints()
-         */
-        virtual const T *quadratureWeights() const = 0;
+        /** @brief get the quadrature point at that index (see getPoint) */
+        inline
+        const QuadraturePoint<T, TS_ndim> &operator[](int ipoint) const { return getPoint(ipoint); };
     };
 }

@@ -5,6 +5,7 @@
  */
 
 #include <iceicle/quadrature/QuadratureRule.hpp>
+#include <Numtool/integer_utils.hpp>
 
 namespace QUADRATURE {
 
@@ -14,6 +15,7 @@ namespace QUADRATURE {
      * based on implementation in mfem mfem/fem/intrules.cpp
      * 
      * see also https://epubs-siam-org/doi/epdf/10.1137/0715019
+     * doi: https://doi.org/10.1137/0715019
      * @tparam T The floating point type
      * @tparam IDX The Index Type
      * @tparam ndim the number of spatial dimensions
@@ -32,9 +34,7 @@ namespace QUADRATURE {
             // ==================
             // = Working Arrays =
             // ==================
-            T weights[num_poin];
-            GEOMETRY::Point<T, ndim> abscisse[num_poin];
-
+            QuadraturePoint<T, ndim> qpoints[num_poin];
 
             public:
             GrundmannMollerSimplexQuadrature(){
@@ -64,12 +64,12 @@ namespace QUADRATURE {
                     int k = order - ipoin;
                     int beta[ndim] = {0};
                     int sums[ndim] = {0};
-                    for( ; ;++iarr ){
-
+                    for( ; ; ){
+                        QuadraturePoint<T, ndim> &qpoint = qpoints[iarr++];
                         // set the points and weights
-                        weights[iarr] = weight;
+                        qpoint.weight = weight;
                         for(int idim = 0; idim < ndim; ++idim){
-                            abscisse[iarr][idim] = static_cast<double>(2 * beta[idim] + 1) / (d + ndim - 2 * ipoin);
+                            qpoint.abscisse[idim] = static_cast<double>(2 * beta[idim] + 1) / (d + ndim - 2 * ipoin);
                         }
 
                         // mfem method of incrementing beta (mfem/fem/intrules.cpp)
@@ -77,7 +77,6 @@ namespace QUADRATURE {
                         while(sums[j] == k){
                             beta[j++] = 0;
                             if(j == ndim){
-                                ++iarr;
                                 goto done_beta;
                             }
                         }
@@ -94,9 +93,7 @@ namespace QUADRATURE {
 
             int npoints() const override { return num_poin; }
 
-            const GEOMETRY::Point<T, ndim> *quadraturePoints() const override { return abscisse; }
-
-            const T *quadratureWeights() const override { return weights; }
+            const QuadraturePoint<T, ndim> &getPoint(int ipoint) const override { return qpoints[ipoint]; }
         };
 
 }
