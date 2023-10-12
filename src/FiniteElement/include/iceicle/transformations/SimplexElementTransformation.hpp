@@ -555,7 +555,7 @@ namespace ELEMENT::TRANSFORMATIONS {
             IDX *node_indices,
             const Point &xi,
             T J[ndim][ndim]
-        ) {
+        ) const {
             // Get a 1D pointer representation of the matrix head
             T *Jptr = J[0];
 

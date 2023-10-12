@@ -4,7 +4,7 @@
  * @brief geometric face definition
  */
 #pragma once
-#include <iceicle/geometry/point.hpp>
+#include <Numtool/point.hpp>
 #include <Numtool/MathUtils.hpp>
 #include <vector>
 #include <string>
@@ -43,7 +43,7 @@ namespace ELEMENT {
     template<typename T, typename IDX, int ndim>
     class Face{
         
-        using Point = GEOMETRY::Point<T, ndim>;
+        using Point = MATH::GEOMETRY::Point<T, ndim>;
         public:
 
         IDX elemL; /// the element on the left side of this face
@@ -73,7 +73,7 @@ namespace ELEMENT {
          * @param nodeCoords the node coordinate array
          */
         virtual
-        void updateGeometry(std::vector< GEOMETRY::Point<T, ndim> > &nodeCoords) = 0;
+        void updateGeometry(std::vector< MATH::GEOMETRY::Point<T, ndim> > &nodeCoords) = 0;
 
         /**
          * @brief Get the area weighted normal at the given point s in the reference domain
@@ -88,7 +88,7 @@ namespace ELEMENT {
         virtual
         void getNormal(
             std::vector< Point > &nodeCoords,
-            const GEOMETRY::Point<T, ndim - 1> &s,
+            const MATH::GEOMETRY::Point<T, ndim - 1> &s,
             T *n
         ) = 0;
 
@@ -110,7 +110,7 @@ namespace ELEMENT {
         virtual
         void getUnitNormal(
             std::vector< Point > &nodeCoords,
-            const GEOMETRY::Point<T, ndim - 1> &s,
+            const MATH::GEOMETRY::Point<T, ndim - 1> &s,
             T *result
         ){
             // naive implementation
@@ -130,7 +130,7 @@ namespace ELEMENT {
         virtual
         void convertRefToAct(
             std::vector< Point > &nodeCoords,
-            const GEOMETRY::Point<T, ndim - 1> &s,
+            const MATH::GEOMETRY::Point<T, ndim - 1> &s,
             T *result
         ) = 0;
 
@@ -140,7 +140,7 @@ namespace ELEMENT {
          * @return const GOEMETRY::Point<T, ndim> & the center point of the face
          */
         virtual
-        const GEOMETRY::Point<T, ndim> &getCentroid() = 0;
+        const Point &getCentroid() = 0;
 
         /**
          * @brief Square root of the Riemann metric 
@@ -151,8 +151,8 @@ namespace ELEMENT {
          */
         virtual
         T rootRiemannMetric(
-            std::vector<GEOMETRY::Point<T, ndim> > &nodeCoords,
-            const GEOMETRY::Point<T, ndim - 1> &s
+            std::vector< Point > &nodeCoords,
+            const MATH::GEOMETRY::Point<T, ndim - 1> &s
         ) = 0;
 
         /**

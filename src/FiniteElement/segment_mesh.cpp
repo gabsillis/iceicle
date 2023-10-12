@@ -24,8 +24,7 @@ namespace MESH {
     ) {
         // namespaces used and type aliases
         using namespace ELEMENT;
-        using namespace GEOMETRY;
-        using Point = GEOMETRY::Point<T, 1>;
+        using Point = MATH::GEOMETRY::Point<T, 1>;
         static constexpr int ndim = 1;
 
         // Generate the nodes and elements
@@ -129,8 +128,7 @@ namespace MESH {
 
         // namespaces used and type aliases
         using namespace ELEMENT;
-        using namespace GEOMETRY;
-        using Point = GEOMETRY::Point<T, 1>;
+        using Point = MATH::GEOMETRY::Point<T, 1>;
         static constexpr int ndim = 1;
 
         // Generate the nodes and elements

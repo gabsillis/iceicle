@@ -27,7 +27,7 @@ namespace MESH {
         // ================
         using Element = ELEMENT::GeometricElement<T, IDX, ndim>;
         using Face = ELEMENT::Face<T, IDX, ndim>;
-        using Point = GEOMETRY::Point<T, ndim>;
+        using Point = MATH::GEOMETRY::Point<T, ndim>;
 
         public:
         // ===========================
@@ -35,7 +35,7 @@ namespace MESH {
         // ===========================
 
         /// The node coordinates
-        std::vector< GEOMETRY::Point<T, ndim> > nodes;
+        std::vector< MATH::GEOMETRY::Point<T, ndim> > nodes;
 
         /// A list of unique pointers of geometric elements
         std::vector<std::unique_ptr<Element>> elements;
@@ -88,7 +88,7 @@ namespace MESH {
                 Face &fac = *(faces[ifac]);
                 out << "Face index: " << ifac << "\n";
                 if constexpr(ndim == 2){
-                     GEOMETRY::Point<T, 1> s = {0};
+                    MATH::GEOMETRY::Point<T, 1> s = {0};
                     Point normal;
                     fac.getNormal(nodes, s, normal);
                     out << "normal at s=0: (" <<  normal[0] << ", " << normal[1] << ")\n";

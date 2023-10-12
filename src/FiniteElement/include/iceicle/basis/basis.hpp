@@ -12,6 +12,9 @@
 /**
  * @brief namespace for basis functions
  */
+#pragma once
+#include <stdexcept>
+
  namespace BASIS {
 
     template<typename T, int ndim>
@@ -58,33 +61,8 @@
          */
         virtual
         void evalHessBasis(const T*a, int ibasis, T Hessian[ndim][ndim]) {
-            ERR::throwError("Not implemented.");
+            throw std::logic_error("Not Overriden");
         };
-
-        /**
-         * @brief Evaluate the basis function along the trace of the domain 
-         * 
-         * @param s_local the coordinates in the local reference trace space
-         * This may not be consistent with s_local of a neighboring element sharing the same trace space
-         * A conversion from the reference coordinates of the trace to the coordinates local to an element is required
-         * @param faceNr The number of the face/trace
-         * @param [out] b the values of the basis functions at the point [size = nbasis]
-         */
-        virtual
-        void evalTraceBasis(const T *s_local, int faceNr, T *b) = 0;
-
-        /**
-         * @brief evaluate the gradient of the basis function along the trace of the domain
-         *
-         * @param [in] s_local the coordinates in the local reference trace space
-         * This may not be consistent with s_local of a neighboring element sharing the same trace space
-         * ReferenceDomains provide the coordinate conversions
-         * @param [in] faceNr the number of the face/trace
-         * @param [out] dBidxj the derivative of basis function i with respect to reference domain
-         *              coordinates x_j (see evalGradBasis for details)
-         */
-        virtual
-        void evalGradTraceBasis(const T *s_local, int faceNr, T **dBidxj) = 0;
 
         /**
          * @brief Tell if a basis is orthonormal (L2 inner product B_i \otimes B_j is diagonal) or not
@@ -113,5 +91,5 @@
          */
         virtual
         inline int getPolynomialOrder() = 0;
-    }
+    };
  }

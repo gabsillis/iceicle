@@ -1,6 +1,7 @@
 add_library(iceicle_fe segment_mesh.cpp)
 target_link_libraries(iceicle_fe PUBLIC iceicle_util)
 target_link_libraries(iceicle_fe PUBLIC nt_general)
+target_link_libraries(iceicle_fe PUBLIC nt_tensor)
 target_link_libraries(iceicle_fe PUBLIC nt_tmp)
 target_link_libraries(iceicle_fe PUBLIC nt_geometry)
 target_link_libraries(iceicle_fe PUBLIC ${MPI_C_LIBRARIES})

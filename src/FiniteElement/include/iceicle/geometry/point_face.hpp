@@ -12,7 +12,7 @@ namespace ELEMENT {
     template<typename T, typename IDX>
     class PointFace final : public Face<T, IDX, 1> {
         static constexpr int ndim = 1;
-        using Point = GEOMETRY::Point<T, ndim>;
+        using Point = MATH::GEOMETRY::Point<T, ndim>;
 
         // === Index data ===
         /// the node corresponding to this face
@@ -51,7 +51,7 @@ namespace ELEMENT {
 
         inline void getNormal(
             std::vector< Point > &nodeCoords,
-            const GEOMETRY::Point<T, ndim - 1> &s,
+            const MATH::GEOMETRY::Point<T, ndim - 1> &s,
             T *n
         ) override {
             n[0] = normal;
@@ -60,7 +60,7 @@ namespace ELEMENT {
         inline T getArea() override { return area; }
 
         inline void getUnitNormal(std::vector< Point > &nodeCoords,
-            const GEOMETRY::Point<T, ndim - 1> &s,
+            const MATH::GEOMETRY::Point<T, ndim - 1> &s,
             T *n
         ) override {
             n[0] = normal;
@@ -68,7 +68,7 @@ namespace ELEMENT {
 
         void convertRefToAct(
             std::vector< Point > &nodeCoords,
-            const GEOMETRY::Point<T, ndim - 1> &s,
+            const MATH::GEOMETRY::Point<T, ndim - 1> &s,
             T *result
         ) override {
             result[0] = nodeCoords[node][0];
@@ -77,8 +77,8 @@ namespace ELEMENT {
         inline const Point &getCentroid() override { return centroid; }
 
         T rootRiemannMetric(
-            std::vector<GEOMETRY::Point<T, ndim> > &nodeCoords,
-            const GEOMETRY::Point<T, ndim - 1> &s
+            std::vector<MATH::GEOMETRY::Point<T, ndim> > &nodeCoords,
+            const MATH::GEOMETRY::Point<T, ndim - 1> &s
         ) override {
             return 1.0;
         }
