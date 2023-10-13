@@ -53,22 +53,12 @@ namespace MESH {
         /// interior faces must be a contiguous set
         std::vector<std::unique_ptr<Face>> faces;
 
-        /**
-         * @brief precompute geometric quantities
-         * e.g. Jacobians
-         */
-        void computeGeometry(){
-            for(auto &elptr : elements) elptr->updateGeometry(nodes);
-            for(auto &facptr : faces) facptr->updateGeometry(nodes);
-        }
-
         inline IDX nelem() { return elements.size(); }
 
         // ================
         // = Diagonostics =
         // ================
         void printElements(std::ostream &out){
-            computeGeometry();
             int iel = 0;
             for(auto &elptr : elements){
                 out << "Element: " << iel << "\n";
@@ -82,7 +72,6 @@ namespace MESH {
         }
 
         void printFaces(std::ostream &out){
-            computeGeometry();
             out << "\nInterior Faces\n";
             for(int ifac = interiorFaceStart; ifac < interiorFaceEnd; ++ifac){
                 Face &fac = *(faces[ifac]);

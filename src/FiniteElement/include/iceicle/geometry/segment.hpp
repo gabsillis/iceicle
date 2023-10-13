@@ -6,6 +6,7 @@
  */
 #pragma once
 #include <iceicle/geometry/geo_element.hpp>
+#include <iceicle/transformations/SegmentTransformation.hpp>
 
 namespace ELEMENT {
 
@@ -21,21 +22,31 @@ namespace ELEMENT {
 
         public:
 
+        static inline TRANSFORMATIONS::SegmentTransformation<T, IDX> transform{};
+
         Segment(IDX node1, IDX node2) {
             node_idxs[0] = node1;
             node_idxs[1] = node2;
         }
 
-        constexpr int n_nodes() override { return nnodes; }
+        constexpr int n_nodes() const override { return nnodes; }
 
-        IDX *nodes() override { return node_idxs; }
+        const IDX *nodes() const override { return node_idxs; }
 
-        void getCentroid(const std::vector<Point> &nodeCoords, T *centroid) override {
-            auto &node0 = nodeCoords[node_idxs[0]];
-            auto &node1 = nodeCoords[node_idxs[1]];
-            centroid[0] = 0.5 * (node0[0] + node1[0]);
+        void Jacobian(
+            std::vector<Point> &node_coords,
+            const Point &xi,
+            T J[ndim][ndim]
+        ) const override 
+        { transform.Jacobian(node_coords, node_idxs, xi, J); }
+
+
+        void Hessian(
+            std::vector<Point> &node_coords,
+            const Point &xi,
+            T hess[ndim][ndim][ndim]
+        ) const override {
+            transform.Hessian(node_coords, node_idxs, xi, hess);
         }
-
-        void updateGeometry(std::vector< MATH::GEOMETRY::Point<T, ndim> > &nodeCoords) override {}
     };
 }

@@ -34,7 +34,7 @@ namespace ELEMENT{
          * @return int the number of nodes for this element
          */
         virtual
-        constexpr int n_nodes() = 0;
+        constexpr int n_nodes() const = 0;
 
         /**
          * @brief Get the nodes array for this element
@@ -42,24 +42,35 @@ namespace ELEMENT{
          * @return std::ptrdiff_t* the array of nodes
          */
         virtual
-        IDX *nodes() = 0;
+        const IDX *nodes() const = 0;
 
         /**
-         * @brief Get the location of the centroid of the element
-         * @param [in] nodeCoords the node coordinates
-         * @param [out] centroid the centroid of the element [ndim]
+         * @brief get the Jacobian matrix of the transformation
+         * J = \frac{\partial T(s)}{\partial s} = \frac{\partial x}[\partial \xi}
+         * @param [in] node_coords the coordinates of all the nodes
+         * @param [in] xi the position in the reference domain at which to calculate the Jacobian
+         * @param [out] the jacobian matrix
          */
         virtual
-        void getCentroid(const std::vector< Point > &nodeCoords, T *centroid) = 0;
+        void Jacobian(
+            std::vector<Point> &node_coords,
+            const Point &xi,
+            T J[ndim][ndim]
+        ) const = 0;
 
-         /**
-         * @brief Perform geometry precomputation
-         * calculates normals, etc.
-         * 
-         * @param nodeCoords the node coordinate array
+        /**
+         * @brief get the Hessian of the transformation
+         * H_{kij} = \frac{\partial T(s)_k}{\partial s_i \partial s_j} 
+         *         = \frac{\partial x_k}{\partial \xi_i \partial \xi_j}
+         * @param [in] node_coords the coordinates of all the nodes
+         * @param [in] xi the position in the reference domain at which to calculate the hessian
+         * @param [out] the Hessian in tensor form indexed [k][i][j] as described above
          */
         virtual
-        void updateGeometry(std::vector< Point > &nodeCoords) = 0;
-
+        void Hessian(
+            std::vector<Point> &node_coords,
+            const Point &xi,
+            T hess[ndim][ndim][ndim]
+        ) const = 0;
     };
 }

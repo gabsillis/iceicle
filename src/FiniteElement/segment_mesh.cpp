@@ -89,9 +89,6 @@ namespace MESH {
         }
         BMesh::bdyFaceStart = interiorFaceEnd;
         BMesh::bdyFaceEnd = faces.size();
-
-        // perform precomputation
-        computeGeometry();
     }
 
     template<>
@@ -194,7 +191,5 @@ namespace MESH {
         BMesh::bdyFaceStart = interiorFaceEnd;
         BMesh::bdyFaceEnd = faces.size();
 
-        // perform precomputation
-        computeGeometry();
     }
 }

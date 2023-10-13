@@ -334,7 +334,7 @@ namespace ELEMENT::TRANSFORMATIONS {
             return sum;
         }
 
-
+        public:
 
         /**
          * @brief Calculate the shape function product for the argument (xi)
@@ -431,7 +431,8 @@ namespace ELEMENT::TRANSFORMATIONS {
 
             return term1 - term2;
         }
-
+    
+        private:
         /**
          * @brief Get the third area coordinate for a reference Triangle
          * given the location in the reference domain
@@ -552,7 +553,7 @@ namespace ELEMENT::TRANSFORMATIONS {
          */
         void Jacobian(
             std::vector<Point> &node_coords,
-            IDX *node_indices,
+            const IDX *node_indices,
             const Point &xi,
             T J[ndim][ndim]
         ) const {
@@ -584,10 +585,10 @@ namespace ELEMENT::TRANSFORMATIONS {
          */
         void Hessian(
             std::vector<Point> &node_coords,
-            IDX *node_indices,
+            const IDX *node_indices,
             const Point &xi,
             T hess[ndim][ndim][ndim]
-        ){
+        ) const {
             // Get a 1D pointer representation
             T *Hptr = hess[0][0];
 

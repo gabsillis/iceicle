@@ -166,8 +166,6 @@ namespace ELEMENT {
         /**
          * @brief evaluate the first derivatives of the basis functions
          *        with respect to physical domain coordinates
-         * @tparam Transformation the element transformation from reference to physical domain
-         *                        SFINAE: Jacobian(node coordinates, node connectivity, point, jacobian matrix)
          * @param [in] xi the point in the reference domain (uses Point class)
          * @param [in] transformation the transformation from the reference domain to the physical domain
          *                            (must be compatible with the geometric element)
@@ -179,10 +177,8 @@ namespace ELEMENT {
          *                takes a pointer to the first element of this data structure
          *                [size = [nbasis : i][ndim : j]] 
          */
-        template<typename Transformation>
         void evalPhysGradBasis(
             const Point &xi,
-            Transformation transformation,
             std::vector<Point> &node_list,
             T **dBidxj
         ) const {
@@ -191,7 +187,7 @@ namespace ELEMENT {
 
             // get the Jacobian
             T J[ndim][ndim];
-            transformation.Jacobian(node_list, geo_el->nodes(), xi, J);
+            geo_el->Jacobian(node_list, geo_el->nodes(), xi, J);
 
             // the inverse of J = adj(J) / det(J)
             T adjJ[ndim][ndim]; // note: this will be a symmetric matrix
