@@ -401,6 +401,15 @@ namespace ELEMENT::TRANSFORMATIONS {
             }
         }
 
+        /**
+         * @brief Calculate the second derivative of the shape function at the point xi in the reference domain
+         *
+         * @param xi the n-dimensional point in the reference domain
+         * @param inode the node number (basis number) to calculate the shape functio for
+         * @param ideriv the direction index of the derivative
+         * @param jderiv the direction index for the second derivative
+         * @return the second derivative for the given node in the given directions at xi
+         */
         T dshp2(const T *xi, int inode, int ideriv, int jderiv) const {
             T term1, term2;
             T lambda_n = 1;
