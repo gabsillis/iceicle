@@ -35,7 +35,7 @@ namespace BASIS {
 
         int nbasis() const override { return transform.nnodes(); }
 
-        void evalBasis(const T *xi, T *Bi){
+        void evalBasis(const T *xi, T *Bi) const override {
             for(int inode = 0; inode < transform.nnodes(); ++inode){
                 Bi[inode] = transform.shp(xi, inode);
             }
