@@ -22,7 +22,7 @@ namespace ELEMENT {
 
         public:
 
-        static inline TRANSFORMATIONS::SegmentTransformation<T, IDX> transform{};
+        static inline TRANSFORMATIONS::SegmentTransformation<T, IDX> transformation{};
 
         Segment(IDX node1, IDX node2) {
             node_idxs[0] = node1;
@@ -33,12 +33,15 @@ namespace ELEMENT {
 
         const IDX *nodes() const override { return node_idxs; }
 
+        void transform(std::vector<Point> &node_coords, const Point &pt_ref, Point &pt_phys) const  override {
+            return transformation.transform(node_coords, node_idxs, pt_ref, pt_phys);        
+        }
         void Jacobian(
             std::vector<Point> &node_coords,
             const Point &xi,
             T J[ndim][ndim]
         ) const override 
-        { transform.Jacobian(node_coords, node_idxs, xi, J); }
+        { transformation.Jacobian(node_coords, node_idxs, xi, J); }
 
 
         void Hessian(
@@ -46,7 +49,7 @@ namespace ELEMENT {
             const Point &xi,
             T hess[ndim][ndim][ndim]
         ) const override {
-            transform.Hessian(node_coords, node_idxs, xi, hess);
+            transformation.Hessian(node_coords, node_idxs, xi, hess);
         }
     };
 }

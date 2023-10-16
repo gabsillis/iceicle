@@ -45,6 +45,15 @@ namespace ELEMENT{
         const IDX *nodes() const = 0;
 
         /**
+         * @brief transform from the reference domain to the physical domain
+         * @param [in] node_coords the coordinates of all the nodes
+         * @param [in] pt_ref the point in the refernce domain
+         * @param [out] pt_phys the point in the physical domain
+         */
+        virtual 
+        void transform(std::vector<Point> &node_coords, const Point &pt_ref, Point &pt_phys) const = 0;
+
+        /**
          * @brief get the Jacobian matrix of the transformation
          * J = \frac{\partial T(s)}{\partial s} = \frac{\partial x}[\partial \xi}
          * @param [in] node_coords the coordinates of all the nodes

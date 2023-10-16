@@ -17,30 +17,35 @@ namespace ELEMENT {
 
         public:
         /// @brief the transformation that properly converts to the reference domain for this element (must be inline to init)
-        static inline TRANSFORMATIONS::SimplexElementTransformation<T, IDX, ndim, Pn> transform{};
+        static inline TRANSFORMATIONS::SimplexElementTransformation<T, IDX, ndim, Pn> transformation{};
 
         private:
         // ================
         // = Private Data =
         // =   Members    =
         // ================
-        IDX _nodes[transform.n_nodes()];
+        IDX _nodes[transformation.n_nodes()];
 
         public:
         // ====================
         // = GeometricElement =
         // =  Implementation  =
         // ====================
-        constexpr int n_nodes() override { return transform.n_nodes(); }
+        constexpr int n_nodes() override { return transformation.n_nodes(); }
 
         IDX *nodes() override { return _nodes; }
+
+        void transform(std::vector<Point> &node_coords, const Point &pt_ref, Point &pt_phys)
+        const override {
+            return transformation.transform(node_coords, _nodes, pt_ref, pt_phys);
+        }
 
         void Jacobian(
             std::vector< Point > &node_coords,
             const Point &xi,
             T J[ndim][ndim]
         ) const override {
-            return transform.Jacobian(node_coords, _nodes, xi, J);
+            return transformation.Jacobian(node_coords, _nodes, xi, J);
         }
 
         void Hessian(
@@ -48,7 +53,7 @@ namespace ELEMENT {
             const Point &xi,
             T hess[ndim][ndim][ndim]
         ) const override {
-            return transform.Hessian(node_coords, _nodes, xi, hess);
+            return transformation.Hessian(node_coords, _nodes, xi, hess);
         }
     };
 }
