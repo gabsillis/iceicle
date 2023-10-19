@@ -92,7 +92,10 @@ namespace FE {
         }
 
         /** @brief get the data pointer */
-        inline T *getData() const{return data;}
+        inline const T *getData() const {return data;}
+
+        /** @brief get the data pointer */
+        inline T *getData() {return data;}
 
         /** @brief get a pointer to the coefficients for each basis for the given equation index */
         T *getDataPtrForEq(int ieq) const{ return &data[ieq * nbasis_]; }

@@ -50,7 +50,7 @@ namespace ELEMENT {
         }
 
         /* @brief get the evaluations of the basis functions at the igaussth quadrature pt */
-        std::vector<T> &operator[](int igauss) const { return data[igauss]; }
+        const std::vector<T> &operator[](int igauss) const { return data[igauss]; }
     };
 
     template<
@@ -250,7 +250,7 @@ namespace ELEMENT {
         // =========================
 
         /** @brief get the number of quadrature points in the quadrature rule */
-        int nQP() const { return quadrule.npoin(); }
+        int nQP() const { return quadrule.npoints(); }
 
         /** @brief get the "QuadraturePoint" (contains point and weight) at the given quadrature point index */
         const QUADRATURE::QuadraturePoint<T, ndim> getQP(int qp_idx) const { return quadrule[qp_idx]; }

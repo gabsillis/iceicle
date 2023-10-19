@@ -32,7 +32,7 @@ namespace SOLVERS {
          * @param node_coords the global node coordinates array
          */
         ElementLinearSolver(const ELEMENT::FiniteElement<T, IDX, ndim> &el, std::vector< Point > &node_coords) 
-        : mass(el.nbasis(), el.nbasis()), pi(el.nbasis()) {
+        : mass(el.nbasis(), el.nbasis()), pi{} {
             // calculate and decompose the mass matrix
             mass = 0.0; // fill with zeros
             
@@ -43,17 +43,16 @@ namespace SOLVERS {
 
                 // calculate the jacobian determinant
                 el.geo_el->Jacobian(node_coords, quadpt.abscisse, J);
-                T detJ = MATH::MATRIX_T::determinant<ndim, T>(J);
+                T detJ = MATH::MATRIX_T::determinant<ndim, T>(*J);
 
                 // integrate Bi * Bj
                 for(int ibasis = 0; ibasis < el.nbasis(); ++ibasis){
                     for(int jbasis = 0; jbasis < el.nbasis(); ++jbasis){
-                        mass[ibasis][jbasis] = el.basisQP(ig, ibasis) * el.basisQP(ig, jbasis) * quadpt.weight * detJ;
+                        mass[ibasis][jbasis] += el.basisQP(ig, ibasis) * el.basisQP(ig, jbasis) * quadpt.weight * detJ;
                     }
                 }
             }
-            
-            MATH::MATRIX::SOLVERS::decompose_lu(mass, pi);
+            pi = MATH::MATRIX::SOLVERS::decompose_lu(mass);
         }
 
         /**
@@ -63,8 +62,7 @@ namespace SOLVERS {
          * @param [in] b the residual
          */
         void solve(FE::ElementData<T, neq> &u, FE::ElementData<T, neq> &b){
-            MATH::MATRIX::SOLVERS::fwd_sub_lu(mass, pi, b, u);
-            MATH::MATRIX::SOLVERS::back_sub_lu(mass, u, u);
+            MATH::MATRIX::SOLVERS::sub_lu(mass, pi, b.getData(), u.getData());
         }
     };
 }

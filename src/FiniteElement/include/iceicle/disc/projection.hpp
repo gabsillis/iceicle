@@ -52,12 +52,12 @@ namespace DISC {
                 // convert the quadrature point to the physical domain
                 const QUADRATURE::QuadraturePoint<T, ndim> quadpt = el.getQP(ig);
                 Point phys_pt{};
-                el.transform(node_coords, quadpt, phys_pt);
+                el.transform(node_coords, quadpt.abscisse, phys_pt);
 
                 // calculate the jacobian determinant
                 T J[ndim][ndim];
                 el.geo_el->Jacobian(node_coords, quadpt.abscisse, J);
-                T detJ = MATH::MATRIX_T::determinant<ndim, T>(J);
+                T detJ = MATH::MATRIX_T::determinant<ndim, T>(*J);
 
                 // evaluate the function at the point in the physical domain
                 T feval[neq];

@@ -6,6 +6,7 @@ add_executable(test_felib
   TestSimplexTransform.cpp
   TestSimplexQuadrature.cpp
   TestSimplexLagrange.cpp
+  TestSimplexFE.cpp
 )
 target_link_libraries( test_felib PUBLIC iceicle_fe )
 target_link_libraries( test_felib PUBLIC nt_autodiff) 

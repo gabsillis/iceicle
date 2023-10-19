@@ -24,16 +24,16 @@ namespace ELEMENT {
         // = Private Data =
         // =   Members    =
         // ================
-        IDX _nodes[transformation.n_nodes()];
+        IDX _nodes[transformation.nnodes()];
 
         public:
         // ====================
         // = GeometricElement =
         // =  Implementation  =
         // ====================
-        constexpr int n_nodes() override { return transformation.n_nodes(); }
+        constexpr int n_nodes() const override { return transformation.nnodes(); }
 
-        IDX *nodes() override { return _nodes; }
+        const IDX *nodes() const override { return _nodes; }
 
         void transform(std::vector<Point> &node_coords, const Point &pt_ref, Point &pt_phys)
         const override {
@@ -55,5 +55,8 @@ namespace ELEMENT {
         ) const override {
             return transformation.Hessian(node_coords, _nodes, xi, hess);
         }
+
+        /** @brief set the node index at idx to value */
+        void setNode(int idx, int value){_nodes[idx] = value; }
     };
 }

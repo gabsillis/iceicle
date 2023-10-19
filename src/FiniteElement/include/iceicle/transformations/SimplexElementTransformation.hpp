@@ -539,7 +539,7 @@ namespace ELEMENT::TRANSFORMATIONS {
          */
         void transform(
                 std::vector<Point> &node_coords,
-                IDX *node_indices,
+                const IDX *node_indices,
                 const Point &xi, Point &x
         ) const {
             std::fill_n(&(x[0]), ndim, 0.0);
