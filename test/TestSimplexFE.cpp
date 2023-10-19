@@ -57,24 +57,24 @@ TEST(test_simplex_4d, project_nl_func){
     simplex1.transform(node_coords, testpt_ref, testpt_act);
     
     // test projection for many orders of basis function
-    {
-        static constexpr int Pn = 1;
-        SimplexLagrangeBasis<double, int, 4, 1> basis{};
-        QUADRATURE::GrundmannMollerSimplexQuadrature<double, int, 4, 1> quadrule{};
+    auto testproject = [&]<int Pn>() {
+        static constexpr int neq = 1;
+        SimplexLagrangeBasis<double, int, 4, Pn> basis{};
+        QUADRATURE::GrundmannMollerSimplexQuadrature<double, int, 4, Pn> quadrule{};
         FEEvaluation<double, int, 4> evals(basis, quadrule);
         FiniteElement<double, int, 4> fe(&simplex1, basis, quadrule, evals, 0);
 
         MATH::Vector<double, int> udata(basis.nbasis());
         MATH::Vector<double, int> resdata(basis.nbasis());
         
-        FE::ElementData<double, 1> u(basis.nbasis(), udata.data());
-        FE::ElementData<double, 1> res(basis.nbasis(), resdata.data());
+        FE::ElementData<double, neq> u(basis.nbasis(), udata.data());
+        FE::ElementData<double, neq> res(basis.nbasis(), resdata.data());
 
         // get the domain integral of the projection
         proj.domainIntegral(fe, node_coords, res);
        
         // solve for u
-        SOLVERS::ElementLinearSolver<double, int, 4, 1> solver(fe, node_coords);
+        SOLVERS::ElementLinearSolver<double, int, 4, neq> solver(fe, node_coords);
         solver.solve(u, res);
 
         // get error
@@ -91,7 +91,15 @@ TEST(test_simplex_4d, project_nl_func){
             << " | f_act: " << std::setw(16) << f_act
             << " | error: " << std::setw(16) << f_act - f_approx << std::endl;
 
-    }
+    };
 
-    
+    testproject.template operator()<1>();
+    testproject.template operator()<2>();
+    testproject.template operator()<3>();
+    testproject.template operator()<4>();
+    testproject.template operator()<5>();
+    testproject.template operator()<6>();
+    testproject.template operator()<7>();
+    testproject.template operator()<8>();
+    testproject.template operator()<9>();
 }
