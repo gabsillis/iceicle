@@ -77,20 +77,36 @@ TEST(test_simplex_4d, project_nl_func){
         SOLVERS::ElementLinearSolver<double, int, 4, neq> solver(fe, node_coords);
         solver.solve(u, res);
 
-        // get error
-
-       
+        // get error at centroid
         MATH::Vector<double, int> Bi(basis.nbasis());
         fe.evalBasis(testpt_ref, Bi.data());
         double f_approx = udata.dot(Bi);
         double f_act;
         testfunc(testpt_act, &f_act);
+        double err_centroid = f_act - f_approx;
+
+        // get L2 error
+        double errL2 = 0;
+        for(int igauss = 0; igauss < fe.nQP(); ++igauss){
+            auto qp = fe.getQP(igauss);
+            testpt_ref = qp.abscisse;
+            simplex1.transform(node_coords, testpt_ref, testpt_act);
+            double f_approx = udata.dot(Bi);
+            double f_act;
+            testfunc(testpt_act, &f_act);
+            double J[4][4];
+            simplex1.Jacobian(node_coords, qp.abscisse, J);
+            double detJ = MATH::MATRIX_T::determinant<4, double>(*J);
+            errL2 += SQUARED(f_approx - f_act) * detJ * qp.weight;
+        }
+        errL2 = std::sqrt(errL2);
 
         std::cout << "Pn: " << std::setw(3) << Pn 
             << " | f_approx: " << std::setw(16) << f_approx
             << " | f_act: " << std::setw(16) << f_act
-            << " | error: " << std::setw(16) << f_act - f_approx << std::endl;
-
+            << " | error centroid: " << std::setw(16) << err_centroid
+            << " | error L2: " << std::setw(16) << errL2
+            << " | log err L2: " << std::setw(16) << std::log(errL2) << std::endl;
     };
 
     testproject.template operator()<1>();
