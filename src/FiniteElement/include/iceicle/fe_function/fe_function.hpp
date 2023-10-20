@@ -91,6 +91,13 @@ namespace FE {
             }
         }
 
+        /** @brief set all values to a scalar value */
+        ElementData<T, neq> &operator=(T val){
+            for(int i = 0; i < neq * nbasis_; ++i)
+                data[i] = val;
+            return *this;
+        }
+
         /** @brief get the data pointer */
         inline const T *getData() const {return data;}
 

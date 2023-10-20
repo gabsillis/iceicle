@@ -40,7 +40,7 @@ namespace DISC {
          *        /int f(x) v dx
          * @param el the element
          * @param node_coords the node coordinates array
-         * @param res the residual function 
+         * @param res the residual function (WARNING: MUST BE ZEROED OUT)
          */
         void domainIntegral(
             const ELEMENT::FiniteElement<T, IDX, ndim> &el,
