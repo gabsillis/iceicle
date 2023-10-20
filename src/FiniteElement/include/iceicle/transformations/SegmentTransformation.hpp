@@ -43,7 +43,7 @@ namespace ELEMENT::TRANSFORMATIONS {
          */
         void precompute(
             std::vector<Point> &node_coords,
-            IDX *node_indices
+            const IDX *node_indices
         ){ jacobian_ = std::abs(node_coords[node_indices[1]][0] - node_coords[node_indices[0]][0]) / 2.0; }
 
         /**
@@ -56,7 +56,7 @@ namespace ELEMENT::TRANSFORMATIONS {
          */
         void transform(
             std::vector<Point> &node_coords,
-            IDX *node_indices,
+            const IDX *node_indices,
             const Point &xi, Point &x
         ) const {
             T x1 = node_coords[node_indices[0]][0];
@@ -75,11 +75,11 @@ namespace ELEMENT::TRANSFORMATIONS {
          */
         void Jacobian(
             std::vector<Point> &node_coords,
-            IDX *node_indices,
+            const IDX *node_indices,
             const Point &xi,
             T J[ndim][ndim]
         ) const {
-            J[0] = jacobian_;  
+            J[0][0] = jacobian_;  
         }
 
         /**
@@ -93,10 +93,10 @@ namespace ELEMENT::TRANSFORMATIONS {
          */
         void Hessian(
             std::vector<Point> &node_coords,
-            IDX *node_indices,
+            const IDX *node_indices,
             const Point &xi,
             T hess[ndim][ndim][ndim]
-        ){
+        ) const {
             hess[0][0][0] = 0.0;
         }
 

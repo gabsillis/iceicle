@@ -50,7 +50,7 @@ namespace ELEMENT {
         }
 
         /* @brief get the evaluations of the basis functions at the igaussth quadrature pt */
-        std::vector<T> &operator[](int igauss) const { return data[igauss]; }
+        const std::vector<T> &operator[](int igauss) const { return data[igauss]; }
     };
 
     template<
@@ -129,6 +129,17 @@ namespace ELEMENT {
             const std::vector<T> &eval = qp_evals[quadrature_pt_idx];
             std::copy(eval.begin(), eval.end(), Bi);
         }
+
+        /**
+         * @brief directly access the evaluation of the given basis function at the given quadrature point
+         * cost: pointer dereference
+         * @param [in] quadrature_pt_idx the index of the quadrature point in [0, ngauss()]
+         * @param [in] ibasis the index of the basis function
+         * @return the evaluation of the basis function at the given quadrature point
+         */
+        inline T basisQP(int quadrature_pt_idx, int ibasis) const {
+            return qp_evals[quadrature_pt_idx][ibasis];
+        }
        
         /**
          * @brief evaluate the first derivatives of the basis functions
@@ -166,8 +177,6 @@ namespace ELEMENT {
         /**
          * @brief evaluate the first derivatives of the basis functions
          *        with respect to physical domain coordinates
-         * @tparam Transformation the element transformation from reference to physical domain
-         *                        SFINAE: Jacobian(node coordinates, node connectivity, point, jacobian matrix)
          * @param [in] xi the point in the reference domain (uses Point class)
          * @param [in] transformation the transformation from the reference domain to the physical domain
          *                            (must be compatible with the geometric element)
@@ -179,10 +188,8 @@ namespace ELEMENT {
          *                takes a pointer to the first element of this data structure
          *                [size = [nbasis : i][ndim : j]] 
          */
-        template<typename Transformation>
         void evalPhysGradBasis(
             const Point &xi,
-            Transformation transformation,
             std::vector<Point> &node_list,
             T **dBidxj
         ) const {
@@ -191,7 +198,7 @@ namespace ELEMENT {
 
             // get the Jacobian
             T J[ndim][ndim];
-            transformation.Jacobian(node_list, geo_el->nodes(), xi, J);
+            geo_el->Jacobian(node_list, geo_el->nodes(), xi, J);
 
             // the inverse of J = adj(J) / det(J)
             T adjJ[ndim][ndim]; // note: this will be a symmetric matrix
@@ -212,6 +219,55 @@ namespace ELEMENT {
                     }
                 }
             }
+        }
+
+        /**
+         * @brief evaluate the first derivatives of the basis functions
+         *        with respect to physical domain coordinates at the given quadrature point
+         *
+         * TODO: prestore
+         * @param [in] quadrature_pt_idx the quadrature point index
+         * @param [in] transformation the transformation from the reference domain to the physical domain
+         *                            (must be compatible with the geometric element)
+         * @param [in] node_list the list of global node coordinates
+         * @param [out] dBidxj the values of the first derivatives wrt the physical domain
+         *                This is in the form of a 2d pointer array that must be preallocated
+         *                row major order and contiguous
+         *                \frac{dB_i}{dx_j} where i is ibasis
+         *                takes a pointer to the first element of this data structure
+         *                [size = [nbasis : i][ndim : j]] 
+         */
+        void evalPhysGradBasisQP(
+            int quadrature_pt_idx,
+            std::vector<Point> &node_list,
+            T **dBidxj
+        ) const {
+            return evalPhysGradBasis(quadrule[quadrature_pt_idx].abscisse, node_list, dBidxj);
+        }
+
+        // =========================
+        // = Quadrature Operations =
+        // =========================
+
+        /** @brief get the number of quadrature points in the quadrature rule */
+        int nQP() const { return quadrule.npoints(); }
+
+        /** @brief get the "QuadraturePoint" (contains point and weight) at the given quadrature point index */
+        const QUADRATURE::QuadraturePoint<T, ndim> getQP(int qp_idx) const { return quadrule[qp_idx]; }
+
+        // ========================
+        // = Geometric Operations =
+        // ========================
+
+        
+        /**
+         * @brief transform from the reference domain to the physical domain
+         * @param [in] node_coords the coordinates of all the nodes
+         * @param [in] pt_ref the point in the refernce domain
+         * @param [out] pt_phys the point in the physical domain
+         */
+        inline void transform(std::vector<Point> &node_coords, const Point &pt_ref, Point &pt_phys) const {
+            return geo_el->transform(node_coords, pt_ref,  pt_phys);
         }
     };
 

@@ -334,7 +334,7 @@ namespace ELEMENT::TRANSFORMATIONS {
             return sum;
         }
 
-
+        public:
 
         /**
          * @brief Calculate the shape function product for the argument (xi)
@@ -401,6 +401,15 @@ namespace ELEMENT::TRANSFORMATIONS {
             }
         }
 
+        /**
+         * @brief Calculate the second derivative of the shape function at the point xi in the reference domain
+         *
+         * @param xi the n-dimensional point in the reference domain
+         * @param inode the node number (basis number) to calculate the shape functio for
+         * @param ideriv the direction index of the derivative
+         * @param jderiv the direction index for the second derivative
+         * @return the second derivative for the given node in the given directions at xi
+         */
         T dshp2(const T *xi, int inode, int ideriv, int jderiv) const {
             T term1, term2;
             T lambda_n = 1;
@@ -431,7 +440,8 @@ namespace ELEMENT::TRANSFORMATIONS {
 
             return term1 - term2;
         }
-
+    
+        private:
         /**
          * @brief Get the third area coordinate for a reference Triangle
          * given the location in the reference domain
@@ -529,7 +539,7 @@ namespace ELEMENT::TRANSFORMATIONS {
          */
         void transform(
                 std::vector<Point> &node_coords,
-                IDX *node_indices,
+                const IDX *node_indices,
                 const Point &xi, Point &x
         ) const {
             std::fill_n(&(x[0]), ndim, 0.0);
@@ -552,7 +562,7 @@ namespace ELEMENT::TRANSFORMATIONS {
          */
         void Jacobian(
             std::vector<Point> &node_coords,
-            IDX *node_indices,
+            const IDX *node_indices,
             const Point &xi,
             T J[ndim][ndim]
         ) const {
@@ -584,10 +594,10 @@ namespace ELEMENT::TRANSFORMATIONS {
          */
         void Hessian(
             std::vector<Point> &node_coords,
-            IDX *node_indices,
+            const IDX *node_indices,
             const Point &xi,
             T hess[ndim][ndim][ndim]
-        ){
+        ) const {
             // Get a 1D pointer representation
             T *Hptr = hess[0][0];
 

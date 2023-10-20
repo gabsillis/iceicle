@@ -27,7 +27,7 @@
          * @return int the number of basis functions
          */
         virtual
-        int nbasis() = 0;
+        int nbasis() const = 0;
 
         /**
          * @brief evaluate basis functions
@@ -36,7 +36,7 @@
          * @param [out] Bi the values of the basis functions at the point [size = nbasis]
          */
         virtual
-        void evalBasis(const T *xi, T *Bi) = 0;
+        void evalBasis(const T *xi, T *Bi) const = 0;
 
         /**
          * @brief evaluate the first derivatives of the basis functions
@@ -50,7 +50,7 @@
          *                [size = [nbasis : i][ndim : j]] 
          */
         virtual
-        void evalGradBasis(const T *xi, T **dBidxj) = 0;
+        void evalGradBasis(const T *xi, T **dBidxj) const = 0;
 
         /**
          * @brief evaluate the hessian of the basis functions in the reference domain
@@ -60,7 +60,7 @@
          * @param [out] the hessian [size = ndim * ndim]
          */
         virtual
-        void evalHessBasis(const T*a, int ibasis, T Hessian[ndim][ndim]) {
+        void evalHessBasis(const T*a, int ibasis, T Hessian[ndim][ndim]) const {
             throw std::logic_error("Not Overriden");
         };
 
@@ -71,7 +71,7 @@
          * @return false if the basis is not orthonormal
          */
         virtual
-        bool isOrthonormal() = 0;
+        bool isOrthonormal() const = 0;
 
         /**
          * @brief Tell wether this basis is a Nodal basis or not
@@ -82,7 +82,7 @@
          * @return true if this is a nodal basis
          */
         virtual
-        bool isNodal() { return false; }
+        bool isNodal() const { return false; }
 
         /**
          * @brief Get the Polynomial Order for this basis function
@@ -90,6 +90,6 @@
          * @return int the polynomial order
          */
         virtual
-        inline int getPolynomialOrder() = 0;
+        inline int getPolynomialOrder() const = 0;
     };
  }
