@@ -7,6 +7,7 @@
 
 #pragma once
 #include <vector>
+#include <iceicle/fe_function/nodal_fe_function.hpp>
 #include <Numtool/point.hpp>
 #include <Numtool/matrixT.hpp>
 
@@ -51,7 +52,7 @@ namespace ELEMENT{
          * @param [out] pt_phys the point in the physical domain
          */
         virtual 
-        void transform(std::vector<Point> &node_coords, const Point &pt_ref, Point &pt_phys) const = 0;
+        void transform(FE::NodalFEFunction<T, ndim> &node_coords, const Point &pt_ref, Point &pt_phys) const = 0;
 
         /**
          * @brief get the Jacobian matrix of the transformation
@@ -62,7 +63,7 @@ namespace ELEMENT{
          */
         virtual
         void Jacobian(
-            std::vector<Point> &node_coords,
+            FE::NodalFEFunction<T, ndim> &node_coords,
             const Point &xi,
             T J[ndim][ndim]
         ) const = 0;
@@ -77,7 +78,7 @@ namespace ELEMENT{
          */
         virtual
         void Hessian(
-            std::vector<Point> &node_coords,
+            FE::NodalFEFunction<T, ndim> &node_coords,
             const Point &xi,
             T hess[ndim][ndim][ndim]
         ) const = 0;

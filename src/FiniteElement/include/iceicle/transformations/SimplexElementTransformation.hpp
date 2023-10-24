@@ -2,6 +2,7 @@
 
 #include <Numtool/integer_utils.hpp>
 #include <Numtool/point.hpp>
+#include <iceicle/fe_function/nodal_fe_function.hpp>
 #include <vector>
 #include <span>
 #include <string>
@@ -23,6 +24,7 @@ namespace ELEMENT::TRANSFORMATIONS {
 
         // === Aliases ===
         using Point = MATH::GEOMETRY::Point<T, ndim>;
+        using PointView = MATH::GEOMETRY::PointView<T, ndim>;
 
         // === Constants ===
         static constexpr int nbary = ndim + 1; // the number of barycentric coordinates needed to describe a point
@@ -538,7 +540,7 @@ namespace ELEMENT::TRANSFORMATIONS {
          * @param [out] x the position in the physical domain
          */
         void transform(
-                std::vector<Point> &node_coords,
+                FE::NodalFEFunction<T, ndim> &node_coords,
                 const IDX *node_indices,
                 const Point &xi, Point &x
         ) const {
@@ -561,7 +563,7 @@ namespace ELEMENT::TRANSFORMATIONS {
          * @param [out] the jacobian matrix
          */
         void Jacobian(
-            std::vector<Point> &node_coords,
+            FE::NodalFEFunction<T, ndim> &node_coords,
             const IDX *node_indices,
             const Point &xi,
             T J[ndim][ndim]
@@ -574,7 +576,7 @@ namespace ELEMENT::TRANSFORMATIONS {
 
             for(int inode = 0; inode < nnode; ++inode){
                 IDX global_inode = node_indices[inode];
-                const Point &node = node_coords[global_inode];
+                PointView node{node_coords[global_inode]};
                 for(int idim = 0; idim < ndim; ++idim) { // idim corresponds to x
                     for(int jdim = 0; jdim < ndim; ++jdim) { // jdim corresponds to \xi
                         J[idim][jdim] += dshp(xi, inode, jdim) * node[idim];
@@ -593,7 +595,7 @@ namespace ELEMENT::TRANSFORMATIONS {
          * @param [out] the Hessian in tensor form indexed [k][i][j] as described above
          */
         void Hessian(
-            std::vector<Point> &node_coords,
+            FE::NodalFEFunction<T, ndim> &node_coords,
             const IDX *node_indices,
             const Point &xi,
             T hess[ndim][ndim][ndim]
@@ -606,7 +608,7 @@ namespace ELEMENT::TRANSFORMATIONS {
 
             for(int inode = 0; inode < nnode; ++inode){
                 IDX global_inode = node_indices[inode];
-                const Point &node = node_coords[global_inode];
+                PointView node{node_coords[global_inode]};
                 for(int kdim = 0; kdim < ndim; ++kdim) { // k corresponds to xi
                     for(int idim = 0; idim < ndim; ++idim) {
                         for(int jdim = idim; jdim < ndim; ++jdim) { // fill symmetric part later

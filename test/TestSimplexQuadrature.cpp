@@ -61,7 +61,7 @@ TEST(test_simplex_quadrature, test_grundmann_moller_triangle){
     };
     // should be integrated exactly by an integration rule of order 2
    
-    std::vector<Point2D> nodes = {
+    FE::NodalFEFunction<double, 2> nodes = {
         { 2.0, 0.0 },
         { 2.0, 2.0},
         { 0.0, 0.0 }
@@ -100,7 +100,7 @@ TEST(test_simplex_quadrature, test_grundmann_moller_triangle){
 
     ASSERT_NEAR(integral, 32.0 / 15.0, 1e-13);
 
-    std::vector<Point2D> nodes2 = {
+    FE::NodalFEFunction<double, 2> nodes2 = {
         { 1.0, 0.0 },
         { 1.0, 3.0},
         { 0.0, 0.0 }

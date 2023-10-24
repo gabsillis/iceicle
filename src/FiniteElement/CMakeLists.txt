@@ -5,6 +5,9 @@ target_link_libraries(iceicle_fe PUBLIC nt_tensor)
 target_link_libraries(iceicle_fe PUBLIC nt_tmp)
 target_link_libraries(iceicle_fe PUBLIC nt_geometry)
 target_link_libraries(iceicle_fe PUBLIC ${MPI_C_LIBRARIES})
+target_link_libraries(iceicle_fe PUBLIC ${MFEM_LIBRARIES})
+target_include_directories(iceicle_fe PUBLIC ${MFEM_INCLUDE_DIRS})
+message("MFEM include dirs: ${MFEM_INCLUDE_DIRS}")
 target_include_directories(iceicle_fe PUBLIC ${MPI_INCLUDE_PATH})
 target_include_directories(iceicle_fe PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>

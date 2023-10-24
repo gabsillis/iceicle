@@ -10,6 +10,8 @@
 #include <memory>
 #include <ostream>
 #include <string>
+#include "mfem.hpp"
+#include <iceicle/fe_function/fe_function.hpp>
 namespace MESH {
 
     /**
@@ -35,7 +37,7 @@ namespace MESH {
         // ===========================
 
         /// The node coordinates
-        std::vector< MATH::GEOMETRY::Point<T, ndim> > nodes;
+        FE::NodalFEFunction<T, ndim> nodes;
 
         /// A list of unique pointers of geometric elements
         std::vector<std::unique_ptr<Element>> elements;
@@ -54,6 +56,24 @@ namespace MESH {
         std::vector<std::unique_ptr<Face>> faces;
 
         inline IDX nelem() { return elements.size(); }
+
+        // ===============
+        // = Constructor =
+        // ===============
+
+        /** @brief construct an empty mesh */
+        AbstractMesh() 
+        : nodes{}, elements{}, interiorFaceStart(0), interiorFaceEnd(0), 
+          bdyFaceStart(0), bdyFaceEnd(0), faces{} {}
+        
+        AbstractMesh(int nnode) 
+        : nodes{nnode}, elements{}, interiorFaceStart(0), interiorFaceEnd(0), 
+          bdyFaceStart(0), bdyFaceEnd(0), faces{} {}
+
+        AbstractMesh(mfem::ParMesh &mfem_mesh);
+
+        /** @brief construct a mesh from file (currently supports gmsh) */
+        AbstractMesh(std::string_view filepath);
 
         // ================
         // = Diagonostics =

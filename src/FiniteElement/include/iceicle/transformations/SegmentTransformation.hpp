@@ -7,6 +7,7 @@
 #pragma once
 #include <Numtool/integer_utils.hpp>
 #include <Numtool/point.hpp>
+#include <iceicle/fe_function/nodal_fe_function.hpp>
 #include <vector>
 
 namespace ELEMENT::TRANSFORMATIONS {
@@ -37,16 +38,6 @@ namespace ELEMENT::TRANSFORMATIONS {
         constexpr int nnodes() const { return 2; }
 
         /**
-         * @brief precompute any necessary quantitites
-         * @param [in] node_coords the coordinates of all the nodes
-         * @param [in] node_indices the indices in node_coords that pretain to this element
-         */
-        void precompute(
-            std::vector<Point> &node_coords,
-            const IDX *node_indices
-        ){ jacobian_ = std::abs(node_coords[node_indices[1]][0] - node_coords[node_indices[0]][0]) / 2.0; }
-
-        /**
          * @brief transform from the reference domain to the physcial domain
          * T(s): s -> x
          * @param [in] node_coords the coordinates of all the nodes
@@ -55,7 +46,7 @@ namespace ELEMENT::TRANSFORMATIONS {
          * @param [out] x the position in the physical domain
          */
         void transform(
-            std::vector<Point> &node_coords,
+            FE::NodalFEFunction<T, ndim> &node_coords,
             const IDX *node_indices,
             const Point &xi, Point &x
         ) const {
@@ -74,7 +65,7 @@ namespace ELEMENT::TRANSFORMATIONS {
          * @param [out] the jacobian matrix
          */
         void Jacobian(
-            std::vector<Point> &node_coords,
+            FE::NodalFEFunction<T, ndim> &node_coords,
             const IDX *node_indices,
             const Point &xi,
             T J[ndim][ndim]
@@ -92,7 +83,7 @@ namespace ELEMENT::TRANSFORMATIONS {
          * @param [out] the Hessian in tensor form indexed [k][i][j] as described above
          */
         void Hessian(
-            std::vector<Point> &node_coords,
+            FE::NodalFEFunction<T, ndim> &node_coords,
             const IDX *node_indices,
             const Point &xi,
             T hess[ndim][ndim][ndim]

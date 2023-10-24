@@ -35,13 +35,13 @@ namespace ELEMENT {
 
         const IDX *nodes() const override { return _nodes; }
 
-        void transform(std::vector<Point> &node_coords, const Point &pt_ref, Point &pt_phys)
+        void transform(FE::NodalFEFunction<T, ndim> &node_coords, const Point &pt_ref, Point &pt_phys)
         const override {
             return transformation.transform(node_coords, _nodes, pt_ref, pt_phys);
         }
 
         void Jacobian(
-            std::vector< Point > &node_coords,
+            FE::NodalFEFunction< T, ndim > &node_coords,
             const Point &xi,
             T J[ndim][ndim]
         ) const override {
@@ -49,7 +49,7 @@ namespace ELEMENT {
         }
 
         void Hessian(
-            std::vector<Point> &node_coords,
+            FE::NodalFEFunction<T, ndim> &node_coords,
             const Point &xi,
             T hess[ndim][ndim][ndim]
         ) const override {

@@ -100,7 +100,7 @@ namespace ELEMENT {
          * @brief precompute any stored quantities
          * @param node_list the global node list which geo_el has indices into
          */
-        void precompute(std::vector<Point> &node_list){}
+        void precompute(FE::NodalFEFunction<T, ndim> &node_list){}
 
         // =============================
         // = Basis Function Operations =
@@ -190,7 +190,7 @@ namespace ELEMENT {
          */
         void evalPhysGradBasis(
             const Point &xi,
-            std::vector<Point> &node_list,
+            FE::NodalFEFunction<T, ndim> &node_list,
             T **dBidxj
         ) const {
             //  fill with zero
@@ -239,7 +239,7 @@ namespace ELEMENT {
          */
         void evalPhysGradBasisQP(
             int quadrature_pt_idx,
-            std::vector<Point> &node_list,
+            FE::NodalFEFunction<T, ndim> &node_list,
             T **dBidxj
         ) const {
             return evalPhysGradBasis(quadrule[quadrature_pt_idx].abscisse, node_list, dBidxj);
@@ -266,7 +266,7 @@ namespace ELEMENT {
          * @param [in] pt_ref the point in the refernce domain
          * @param [out] pt_phys the point in the physical domain
          */
-        inline void transform(std::vector<Point> &node_coords, const Point &pt_ref, Point &pt_phys) const {
+        inline void transform(FE::NodalFEFunction<T, ndim> &node_coords, const Point &pt_ref, Point &pt_phys) const {
             return geo_el->transform(node_coords, pt_ref,  pt_phys);
         }
     };

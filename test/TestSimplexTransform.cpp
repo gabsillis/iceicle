@@ -57,12 +57,12 @@ TEST(test_simplex_transform, test_jacobian){
     const Point3D *reference_nodes = trans.reference_nodes();
     
     // make a curved triangley boi with vortex
-    std::vector<Point3D> points{};
+    FE::NodalFEFunction<double, 3> points{trans.nnodes()};
     std::vector<int> node_numbers{};
     for(int inode = 0; inode < trans.nnodes(); ++inode){
         Point3D pt = trans.reference_nodes()[inode];
         pt = point_transform(pt);
-        points.push_back(pt);
+        points[inode] = pt;
         node_numbers.push_back(inode);
     }
 

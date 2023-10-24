@@ -31,7 +31,7 @@ namespace SOLVERS {
          * @param el the element to make the solver for
          * @param node_coords the global node coordinates array
          */
-        ElementLinearSolver(const ELEMENT::FiniteElement<T, IDX, ndim> &el, std::vector< Point > &node_coords) 
+        ElementLinearSolver(const ELEMENT::FiniteElement<T, IDX, ndim> &el, FE::NodalFEFunction<T, ndim> &node_coords) 
         : mass(el.nbasis(), el.nbasis()), pi{} {
             // calculate and decompose the mass matrix
             mass = 0.0; // fill with zeros

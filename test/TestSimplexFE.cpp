@@ -56,11 +56,12 @@ TEST(test_simplex_4d_linear, project_nl_func){
     SimplexGeoElement<double, int, 4, 1> simplex1{};
 
     using Point = MATH::GEOMETRY::Point<double, 4>;
-    std::vector< Point > node_coords{};
+    FE::NodalFEFunction<double, 4> node_coords{};
+    node_coords.resize(simplex1.transformation.nnodes());
     
     for(int i = 0; i < simplex1.transformation.nnodes(); ++i){
         Point ptcopy = simplex1.transformation.reference_nodes()[i];
-        node_coords.push_back(ptcopy);
+        node_coords[i] = ptcopy;
         simplex1.setNode(i, i);
     }
 
@@ -155,11 +156,11 @@ TEST(test_simplex_4d_quadratic, project_nl_func){
     SimplexGeoElement<double, int, 4, 2> simplex1{};
 
     using Point = MATH::GEOMETRY::Point<double, 4>;
-    std::vector< Point > node_coords{};
+    FE::NodalFEFunction<double, 4> node_coords{simplex1.transformation.nnodes()};
     
     for(int i = 0; i < simplex1.transformation.nnodes(); ++i){
-        Point ptcopy = simplex1.transformation.reference_nodes()[i];
-        node_coords.push_back(ptcopy);
+        simplex1.transformation.reference_nodes()[i];
+        node_coords[i] = simplex1.transformation.reference_nodes()[i];
         simplex1.setNode(i, i);
     }
 

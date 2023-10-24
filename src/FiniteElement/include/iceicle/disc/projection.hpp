@@ -44,7 +44,7 @@ namespace DISC {
          */
         void domainIntegral(
             const ELEMENT::FiniteElement<T, IDX, ndim> &el,
-            std::vector< Point > &node_coords,
+            FE::NodalFEFunction<T, ndim> &node_coords,
             FE::ElementData<T, neq> &res
         ) {
             for(int ig = 0; ig < el.nQP(); ++ig){ // loop over the quadrature points
