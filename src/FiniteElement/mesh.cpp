@@ -12,6 +12,7 @@
 #include <fstream>
 #include <iostream>
 #include <exception>
+#include "mpi.h"
 
 namespace MESH {
     
@@ -19,6 +20,19 @@ namespace MESH {
     using IDX = BUILD_CONFIG::IDX;
 
 
+    template<>
+    AbstractMesh<T, IDX, 2>::AbstractMesh(mfem::Mesh &mfem_mesh)
+    : nodes{mfem_mesh.GetNV()} {
+        int myid;
+        MPI_Comm_rank(MPI_COMM_WORLD, &myid);
+        // only read on the host cpu
+        if(myid == 1){
+            
+            // copy the nodes in
+            for(int inode = 
+            
+        }
+}
 
     template<>
     AbstractMesh<T, IDX, 2>::AbstractMesh(std::string_view filepath)
