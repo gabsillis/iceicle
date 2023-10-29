@@ -70,7 +70,7 @@ namespace MESH {
         : nodes{nnode}, elements{}, interiorFaceStart(0), interiorFaceEnd(0), 
           bdyFaceStart(0), bdyFaceEnd(0), faces{} {}
 
-        AbstractMesh(mfem::Mesh &mfem_mesh);
+        AbstractMesh(mfem::FiniteElementSpace &mfem_mesh);
 
         /** @brief construct a mesh from file (currently supports gmsh) */
         AbstractMesh(std::string_view filepath);

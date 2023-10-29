@@ -2,6 +2,7 @@
 
 #include <Numtool/integer_utils.hpp>
 #include <Numtool/point.hpp>
+#include <algorithm>
 #include <iceicle/fe_function/nodal_fe_function.hpp>
 #include <vector>
 #include <span>
@@ -653,6 +654,48 @@ namespace ELEMENT::TRANSFORMATIONS {
         }
     };
 
+    template<typename T, typename IDX, int ndim>
+    class SimplexTraceReferenceTransformation {
+        static constexpr int trace_ndim = ndim - 1;
+        static constexpr int nvert = ndim;
+
+         using TracePoint = MATH::GEOMETRY::PointView<T, trace_ndim>;
+         /**
+          * @brief transform from the reference trace space
+          *  to the right reference trace space
+          *
+          *  The reference trace space oriented with the left element space is 
+          *  defined to be the same orientation as the general reference trace space
+          *  so only the right element orientation needs to be considered
+          *
+          * @param [in] verticesL the array of global node indices of the vertices in order for the left element
+          * @param [in] verticesR the array of global node indices of the vertices in order for the right element
+          * @param [in] s the position in the reference trace space
+          * @param [out] the posotion in the local reference trace space for the right element
+          */
+         void transform(
+            IDX verticesL[nvert],
+            IDX verticesR[nvert],
+            const TracePoint &s,
+            const TracePoint &sR
+        ) {
+            // use the property of the barycentric coordinates of triangles
+            // that we can copy the barycentric coordinates for matching nodes to get the oriented barycentric coords
+            T baryL[nvert];
+            T barylast = 1.0;
+            for(int idim = 0; idim < ndim; ++idim){
+                barylast -= (baryL[idim] = s[idim]);
+            }
+            baryL[nvert - 1] = barylast;
+
+            for(int ivertR = 0; ivertR < ndim; ++ivertR){ // only need the first ndim matches
+                for(int ivertL = 0; ivertL < nvert; ++ivertL) {
+                    // copy over the barycentric coordinate if the global node indices match
+                    if(verticesL[ivertL] == verticesR[ivertR]) s[ivertR] = baryL[ivertL];
+                }
+            }
+         }
+    };
 
     /**
      * @brief transformation from the reference trace space

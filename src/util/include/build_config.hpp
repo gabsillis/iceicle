@@ -8,7 +8,7 @@
  * @copyright Copyright (c) 2022
  * 
  */
-
+#pragma once
 namespace BUILD_CONFIG {
     #ifdef T_QUAD_PRECISION
     using T = long double;
