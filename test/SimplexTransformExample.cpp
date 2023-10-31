@@ -117,7 +117,8 @@ void example2(){
 /** @brief show the transformation on a curved trace */
 void example3(){
     SimplexElementTransformation<double, int, 2, 2> trans{};
-    SimplexTraceTransformation<double, int, 2, 2> trace_trans{};
+    SimplexTraceOrientTransformation<double, int, 2> orient_trans{};
+    SimplexTraceTransformation<double, int, 2> trace_trans{};
     FE::NodalFEFunction<double, 2> nodes = {
         {0.0, 0.0}, // 0
         {1.0, 0.0}, // 1
@@ -145,8 +146,20 @@ void example3(){
     double ds = 0.1;
     for(int ipoin = 0; ipoin < 11; ++ipoin){
         MATH::GEOMETRY::Point<double, 1> s = {ipoin * ds};
+        MATH::GEOMETRY::Point<double, 1> sR{};
+        // get the orientation transformed face reference coordinate
+        int facevertL[trace_trans.nvert_tr];
+        int facevertR[trace_trans.nvert_tr];
+        trace_trans.getTraceVertices(traceNrL, idxs1.data(), facevertL);
+        trace_trans.getTraceVertices(traceNrR, idxs2.data(), facevertR);
+        orient_trans.transform(facevertL, facevertR, s, sR);
         Point2D xiL, xiR;
-        trace_trans.transform(idxs1.data(), idxs2.data(), traceNrL, traceNrR, s, xiL, xiR);
+
+        // transform from face reference coordinate to element reference coordinate
+        trace_trans.transform(idxs1.data(), traceNrL, s , xiL);
+        trace_trans.transform(idxs2.data(), traceNrR, sR, xiR);
+
+        // transform from reference element to physical coordinate
         Point2D xptL, xptR;
         trans.transform(nodes, idxs1.data(), xiL, xptL);
         trans.transform(nodes, idxs2.data(), xiR, xptR);
@@ -234,7 +247,8 @@ void example4(){
 
 void example5(){
     SimplexElementTransformation<double, int, 3, 2> trans{};
-    SimplexTraceTransformation<double, int, 3, 2> trace_trans{};
+    SimplexTraceOrientTransformation<double, int, 3> orient_trans{};
+    SimplexTraceTransformation<double, int, 3> trace_trans{};
     FE::NodalFEFunction<double, 3> nodes = {
         {0.0, 0.0, 0.0}, // 0
         {1.0, 0.0, 0.0}, // 1
@@ -273,8 +287,18 @@ void example5(){
     for(int ipoin = 0; ipoin < trace_domain.nnodes(); ++ipoin)
     if(ipoin != 28) { // eliminate a center node to make sure it works
         MATH::GEOMETRY::Point<double, 2> s = trace_domain.reference_nodes()[ipoin];
+        // get the orientation transformed face reference coordinate
+        MATH::GEOMETRY::Point<double, 2> sR{};
+        int facevertL[trace_trans.nvert_tr];
+        int facevertR[trace_trans.nvert_tr];
+        trace_trans.getTraceVertices(traceNrL, idxs1.data(), facevertL);
+        trace_trans.getTraceVertices(traceNrR, idxs2.data(), facevertR);
+        orient_trans.transform(facevertL, facevertR, s, sR);
+
+        // transform from reference trace to reference element spaces
         Point3D xiL, xiR;
-        trace_trans.transform(idxs1.data(), idxs2.data(), traceNrL, traceNrR, s, xiL, xiR);
+        trace_trans.transform(idxs1.data(), traceNrL, s, xiL);
+        trace_trans.transform(idxs2.data(), traceNrR, sR, xiR);
         Point3D xptL, xptR;
         trans.transform(nodes, idxs1.data(), xiL, xptL);
         trans.transform(nodes, idxs2.data(), xiR, xptR);
