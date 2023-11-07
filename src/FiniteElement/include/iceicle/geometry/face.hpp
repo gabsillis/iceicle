@@ -64,7 +64,7 @@ namespace ELEMENT {
            bctype(bctype), bcflag(bcflag)
          {}
 
-        ~Face() = default;
+        virtual ~Face() = default;
 
          /**
          * @brief Perform geometry precomputation

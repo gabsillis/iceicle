@@ -14,6 +14,8 @@ namespace FE {
 
         T &operator[](int j){return _ptr[j];}
 
+        const T &operator[](int j) const {return _ptr[j];}
+
         /** @brief set the data to the values in a point */
         NodeData<T, ndim> &operator=(const MATH::GEOMETRY::Point<T, ndim> &pt){
             std::copy_n((const T *) pt, ndim, _ptr);
@@ -99,6 +101,9 @@ namespace FE {
 
         /** @brief get the data for the ith node */
         NodeData<T, ndim> operator[](int inode){ return NodeData<T, ndim>{_data + inode * ndim}; }
+
+        /** @brief get the data for the ith node */
+        const NodeData<T, ndim> operator[](int inode) const { return NodeData<T, ndim>{_data + inode * ndim}; }
 
         /** @brief resize and copy over the data up to the min of new and old capacity
          * @param new_nnodes the new number of nodes */

@@ -222,7 +222,11 @@ namespace ELEMENT::TRANSFORMATIONS {
          * @return T the shape function P_m(xi)
          */
         inline T shapefcn_1d(int m, T xi) const {
-            if(m == 0) return (T) 1.0; // TODO: check if branchless cmov is used
+            if(m == 0) {
+                T ret;
+                ret = 1.0; // friendlier to AD 
+                return ret; // TODO: check if branchless cmov is used
+            }
             T prod = (Pn * xi); // case i = 1
             for(int i = 2; i <= m; ++i){
                 prod *= (Pn * xi - i + 1) / i;
@@ -461,8 +465,6 @@ namespace ELEMENT::TRANSFORMATIONS {
         /// The reference domain coordinates of each reference node
         Point xi_poin[nnode];
 
- //       std::vector<std::vector<int>> face_inodes; /// the local node indices of the points of each face in order
-
         /// provides connectivity to local inode for face endpoints
         int face_endpoints[nfac][ndim];
 
@@ -511,7 +513,10 @@ namespace ELEMENT::TRANSFORMATIONS {
                 }
 
                 for(int idim = 0; idim < ndim; ++idim){
-                    T xi_idim = ((T) ijk_poin[inode][idim]) / Pn;
+                    // Make conversion friendlier for AD 
+                    T poin_real;
+                    poin_real = ijk_poin[inode][idim];
+                    T xi_idim = (poin_real) / Pn;
                     xi_poin[inode][idim] = xi_idim;
                 }
             }

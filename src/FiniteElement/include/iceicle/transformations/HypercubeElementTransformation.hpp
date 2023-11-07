@@ -1,4 +1,5 @@
 #pragma once
+#include <Numtool/constexpr_math.hpp>
 #include <Numtool/integer_utils.hpp>
 #include <Numtool/polydefs/LagrangePoly.hpp>
 #include <Numtool/tmp_flow_control.hpp>
@@ -32,28 +33,29 @@ private:
   static constexpr int nnode = MATH::power_T<Pn + 1, ndim>::value;
 
 public:
-  /// Basis function indices by dimension for each node 
-  static constexpr std::array<std::array<int, ndim>, nnode> ijk_poin = [](){
+  /// Basis function indices by dimension for each node
+  static constexpr std::array<std::array<int, ndim>, nnode> ijk_poin = []() {
     std::array<std::array<int, ndim>, nnode> ret{};
 
-    NUMTOOL::TMP::constexpr_for_range<0, ndim>( [&ret]<int idim>(){
+    NUMTOOL::TMP::constexpr_for_range<0, ndim>([&ret]<int idim>() {
       // number of times to repeat the loop over basis functions
       const int nrepeat = MATH::power_T<Pn + 1, idim>::value;
       // the size that one loop through the basis function indices gives
       const int blocksize = MATH::power_T<Pn + 1, ndim - idim>::value;
-      for(int irep = 0; irep < nrepeat; ++irep){
-        NUMTOOL::TMP::constexpr_for_range<0, Pn+1>([irep, &ret]<int ibasis>(){
-          const int nfill = std::pow(Pn + 1, ndim - idim - 1);
+      for (int irep = 0; irep < nrepeat; ++irep) {
+        NUMTOOL::TMP::constexpr_for_range<0, Pn + 1>(
+            [irep, &ret]<int ibasis>() {
+              const int nfill = NUMTOOL::TMP::pow(Pn + 1, ndim - idim - 1);
 
-          // offset for multiplying by this ibasis
-          const int start_offset = ibasis * nfill;
+              // offset for multiplying by this ibasis
+              const int start_offset = ibasis * nfill;
 
-          // multiply the next nfill by the current basis function
-          for (int ifill = 0; ifill < nfill; ++ifill) {
-            const int offset = irep * blocksize + start_offset;
-            ret[offset + ifill][idim] = ibasis;
-          }
-        });
+              // multiply the next nfill by the current basis function
+              for (int ifill = 0; ifill < nfill; ++ifill) {
+                const int offset = irep * blocksize + start_offset;
+                ret[offset + ifill][idim] = ibasis;
+              }
+            });
       }
     });
 
@@ -61,16 +63,45 @@ public:
   }();
 
   /// Nodes in the reference domain
-  static constexpr std::array<T, (Pn + 1) *ndim> reference_nodes = [] {
+  static inline std::array<Point, nnode> xi_poin = [] {
     // Generate the vertices
+    std::array<Point, nnode> ret{};
+
+    NUMTOOL::TMP::constexpr_for_range<0, ndim>([&ret]<int idim>() {
+      // number of times to repeat the loop over basis functions
+      const int nrepeat = MATH::power_T<Pn + 1, idim>::value;
+      // the size that one loop through the basis function indices gives
+      const int blocksize = MATH::power_T<Pn + 1, ndim - idim>::value;
+      for (int irep = 0; irep < nrepeat; ++irep) {
+        NUMTOOL::TMP::constexpr_for_range<0, Pn + 1>(
+            [irep, &ret]<int ibasis>() {
+              const T dx = 2.0 / (Pn);
+
+              const int nfill = NUMTOOL::TMP::pow(Pn + 1, ndim - idim - 1);
+
+              // offset for multiplying by this ibasis
+              const int start_offset = ibasis * nfill;
+
+              // multiply the next nfill by the current basis function
+              for (int ifill = 0; ifill < nfill; ++ifill) {
+                const int offset = irep * blocksize + start_offset;
+                ret[offset + ifill][idim] = -1.0 + dx * ibasis;
+              }
+            });
+      }
+    });
+
+    return ret;
+
   }();
+
 
   /**
    * @brief fill the array with shape functions at the given point
    * @param [in] xi the point in the reference domain to evaluate the basis at
    * @param [out] Bi the shape function evaluations
    */
-  void fill_shp(const Point &xi, std::array<T, nnode> &Bi) {
+  void fill_shp(const Point &xi, std::array<T, nnode> &Bi) const {
     NUMTOOL::TMP::constexpr_for_range<0, Pn + 1>(
         [&Bi]<int ibasis>(T xi_dim) {
           static constexpr int nfill = MATH::power_T<Pn + 1, ndim - 1>::value;
@@ -106,6 +137,75 @@ public:
     }
   }
 
+  void fill_deriv2(const Point &xi, T dBidxj[nnode][ndim]) const {
+    std::fill_n(*dBidxj, nnode * ndim, 1.0);
+    for(int inode = 0; inode < nnode; ++inode){
+      for(int idim = 0; idim < ndim; ++idim){
+        for(int jdim = 0; jdim < ndim; ++jdim){
+          if(idim == jdim){
+            dBidxj[inode][jdim] *= POLYNOMIAL::dlagrange1d<T, Pn>(ijk_poin[inode][idim], xi[idim]);
+          } else {
+            dBidxj[inode][jdim] *= POLYNOMIAL::lagrange1d<T, Pn>(ijk_poin[inode][idim], xi[idim]);
+          }
+        }
+      }
+    }
+  }
+
+  void fill_deriv(const Point &xi, T dBidxj[nnode][ndim]) const {
+
+      // fencepost the loop at idim = 0
+      NUMTOOL::TMP::constexpr_for_range<0, Pn + 1>(
+        [&dBidxj]<int ibasis>(const Point &xi) {
+          static constexpr int nfill = MATH::power_T<Pn + 1, ndim - 1>::value;
+          T Bi_idim = POLYNOMIAL::lagrange1d<T, Pn, ibasis>(xi[0]);
+          T dBi_idim = POLYNOMIAL::dlagrange1d<T, Pn, ibasis>(xi[0]);
+          for(int ifill = 0; ifill < nfill; ++ifill){
+              dBidxj[nfill * ibasis + ifill][0] = dBi_idim;
+              for(int jdim = 1; jdim < ndim; ++jdim){
+                  dBidxj[nfill * ibasis + ifill][jdim] = Bi_idim;
+              }
+          }
+        },
+        xi[0]);
+      
+      NUMTOOL::TMP::constexpr_for_range<1, ndim>(
+          [&dBidxj]<int idim>(const Point &xi){
+              // number of times to repeat the loop over basis functions
+              const int nrepeat = std::pow(Pn + 1, idim);
+              // the size that one loop through the basis function indices gives 
+              const int blocksize = std::pow(Pn + 1, ndim - idim);
+
+              for(int irep = 0; irep < nrepeat; ++irep) {
+
+                  NUMTOOL::TMP::constexpr_for_range<0, Pn + 1>(
+                      [&, irep]<int ibasis>(const Point &xi) {
+                          T dBi_idim = POLYNOMIAL::dlagrange1d<T, Pn, ibasis>(xi[idim]);
+                          const int nfill = std::pow(Pn + 1, ndim - idim - 1);
+
+                          // offset for multiplying by this ibasis
+                          const int start_offset = ibasis * nfill;
+
+                          // multiply the next nfill by the current basis function
+                          for (int ifill = 0; ifill < nfill; ++ifill) {
+                              const int offset = irep * blocksize + start_offset;
+                              NUMTOOL::TMP::constexpr_for_range<0, ndim>([&]<int jdim>(){
+                                  if constexpr(jdim == idim){
+                                      dBidxj[offset + ifill][jdim] *= dBi_idim;
+                                  } else {
+                                      dBidxj[offset + ifill][jdim] *= POLYNOMIAL::lagrange1d<T, Pn, ibasis>(xi[idim]);
+                                  }
+                              });
+                          }
+                      },
+                      xi
+                  );
+              }
+          },
+          xi
+      );
+  }
+
   /**
    * @brief transform from the reference domain to the physcial domain
    * T(s): s -> x
@@ -116,7 +216,7 @@ public:
    * @param [out] x the position in the physical domain
    */
   void transform(const FE::NodalFEFunction<T, ndim> &node_coords,
-                 const IDX *node_indices, const Point &xi, Point &x) {
+                 const IDX *node_indices, const Point &xi, Point &x) const {
     // clear output array
     std::fill_n(&(x[0]), ndim, 0.0);
 
@@ -133,18 +233,59 @@ public:
     }
   }
 
-  /** @brief get the number of nodes that define the transformation */
-  constexpr int n_nodes() {
-    return nnode;
+  /**
+    * @brief get the Jacobian matrix of the transformation
+    * J = \frac{\partial T(s)}{\partial s} = \frac{\partial x}[\partial \xi}
+    * @param [in] node_coords the coordinates of all the nodes
+    * @param [in] node_indices the indices in node_coords that pretain to this element in order
+    * @param [in] xi the position in the reference domain at which to calculate the Jacobian
+    * @param [out] the jacobian matrix
+    */
+  void Jacobian(
+      FE::NodalFEFunction<T, ndim> &node_coords,
+      const IDX *node_indices,
+      const Point &xi,
+      T J[ndim][ndim]
+  ) const {
+      // Get a 1D pointer representation of the matrix head
+      T *Jptr = J[0];
+
+      // fill with zeros
+      std::fill_n(Jptr, ndim * ndim, 0.0);
+
+      // compute Jacobian per basis function
+      T dBidxj[nnode][ndim];
+      fill_deriv2(xi, dBidxj);
+
+      for(int inode = 0; inode < nnode; ++inode){
+          IDX global_inode = node_indices[inode];
+          PointView node{node_coords[global_inode]};
+          for(int idim = 0; idim < ndim; ++idim){
+              for(int jdim = 0; jdim < ndim; ++jdim){
+                  // add contribution to jacobian from this basis function
+                  J[idim][jdim] += dBidxj[inode][jdim] * node[idim];
+              }
+          }
+      }
   }
 
-  /** @brief print the 1d lagrange basis function indices for each dimension for each node */
-  std::string print_ijk_poin(){
+  /** @brief get the number of nodes that define the transformation */
+  constexpr int n_nodes() { return nnode; }
+
+  /**
+    * @brief get a pointer to the array of Lagrange points in the reference domain
+    * @return the Lagrange points in the reference domain
+    */
+  const Point *reference_nodes() const { return xi_poin.data(); }
+
+  /** @brief print the 1d lagrange basis function indices for each dimension for
+   * each node */
+  std::string print_ijk_poin() {
     using namespace std;
     std::ostringstream ijk_string;
-    for(int inode = 0; inode < nnode; ++inode){
+    for (int inode = 0; inode < nnode; ++inode) {
       ijk_string << "[";
-      for(int idim = 0; idim < ndim; ++idim){
+      for (int idim = 0; idim < ndim; ++idim) {
         ijk_string << " " << ijk_poin[inode][idim];
       }
       ijk_string << " ]\n";

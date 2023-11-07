@@ -82,5 +82,11 @@ namespace ELEMENT{
             const Point &xi,
             T hess[ndim][ndim][ndim]
         ) const = 0;
+
+        /**
+         * @brief virtual destructor
+         */
+        virtual
+        ~GeometricElement() = default;
     };
 }
