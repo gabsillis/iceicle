@@ -9,6 +9,9 @@
  * 
  */
 #pragma once
+#include "Numtool/polydefs/LagrangePoly.hpp"
+#include "iceicle/transformations/HypercubeElementTransformation.hpp"
+#include <algorithm>
 #include <iceicle/basis/basis.hpp>
 #include <iceicle/transformations/SimplexElementTransformation.hpp>
 
@@ -64,5 +67,52 @@ namespace BASIS {
         bool isNodal() const override { return true; }
 
         inline int getPolynomialOrder() const override { return Pn; }
+    };
+
+
+    template<typename T, typename IDX, int ndim, int Pn>
+    class HypercubeLagrangeBasis final: public Basis<T, ndim> {
+        static inline ELEMENT::TRANSFORMATIONS::HypercubeElementTransformation<T, IDX, ndim, Pn> transform{};
+
+        using Point = MATH::GEOMETRY::Point<T, ndim>;
+        public:
+
+        // ==============
+        // = Basis Impl =
+        // ==============
+
+        int nbasis() const override { return transform.n_nodes(); }
+
+        void evalBasis(const T*xi, T *Bi) const override {
+            Point xipt{};
+            std::copy_n(xi, ndim, xipt.data());
+            transform.fill_shp(xipt, Bi);
+        }
+
+        void evalGradBasis(const T *xi, T **dBidxj) const override {
+            Point xipt{};
+            std::copy_n(xi, ndim, xipt.data());
+            transform.fill_deriv(xipt, dBidxj);
+        }
+        
+        void evalHessBasis(const T *xi, int ibasis, T Hessian[ndim][ndim]) const override {
+        std::fill_n(Hessian[0], ndim * ndim, 1.0);
+            for(int ideriv = 0; ideriv < ndim; ++ideriv){
+                for(int jderiv = ideriv; jderiv < ndim; ++jderiv){
+                    for(int idim = 0; idim < ndim; ++idim){
+                        if(ideriv == jderiv){
+                            Hessian[ideriv][jderiv] *= POLYNOMIAL::dNlagrange1d<T, Pn>(
+                                    transform.ijk_poin[ibasis][idim], 2, xi[ideriv]);
+                        } else {
+                            Hessian[ideriv][jderiv] *= 
+                                POLYNOMIAL::dlagrange1d<T, Pn>(
+                                        transform.ijk_poin[ibasis][idim], xi[ideriv])
+                                * POLYNOMIAL::dlagrange1d<T, Pn>(
+                                        transform.ijk_poin[ibasis][idim], xi[jderiv]);
+                        }
+                    }
+                }
+            }
+        }
     };
 }

@@ -3,7 +3,7 @@
  * @brief Quadrature on simplical elements
  * Using Grundmann Moller formuila
  */
-
+#pragma once
 #include <iceicle/quadrature/QuadratureRule.hpp>
 #include <Numtool/integer_utils.hpp>
 

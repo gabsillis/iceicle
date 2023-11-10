@@ -1,3 +1,4 @@
+#include "Numtool/matrix/dense_matrix.hpp"
 #include "Numtool/polydefs/LagrangePoly.hpp"
 #include "iceicle/fe_function/nodal_fe_function.hpp"
 #include <iceicle/transformations/HypercubeElementTransformation.hpp>
@@ -94,7 +95,7 @@ TEST(test_hypercube_transform, test_fill_shp){
   constexpr int nnode1 = trans1.n_nodes();
   std::array<double, nnode1> shp;
   MATH::GEOMETRY::Point<double, 4> xi = {0.3, 0.2, 0.1, 0.4};
-  trans1.fill_shp(xi, shp);
+  trans1.fill_shp(xi, shp.data());
   for(int inode = 0; inode < nnode1; ++inode){
     ASSERT_NEAR(
         (POLYNOMIAL::lagrange1d<double, Pn>(trans1.ijk_poin[inode][0], xi[0]) 
@@ -216,8 +217,8 @@ TEST( test_hypercube_transform, test_fill_deriv ){
   auto dlagrange0 = [](double s){ return -0.5; };
   auto dlagrange1 = [](double s){ return 0.5; };
 
-  double dBidxj[4][2];
-  double dBidxj_2[4][2];
+  MATH::MATRIX::DenseMatrixSetWidth<double, 2> dBidxj(4);
+  MATH::MATRIX::DenseMatrixSetWidth<double, 2> dBidxj_2(4);
   MATH::GEOMETRY::Point<double, 2> xi = {0.3, -0.3};
   trans.fill_deriv(xi, dBidxj);
   trans.fill_deriv(xi, dBidxj_2);

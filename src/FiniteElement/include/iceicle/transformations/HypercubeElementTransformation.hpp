@@ -3,6 +3,7 @@
 #include <Numtool/integer_utils.hpp>
 #include <Numtool/polydefs/LagrangePoly.hpp>
 #include <Numtool/tmp_flow_control.hpp>
+#include <Numtool/matrix/dense_matrix.hpp>
 #include <array>
 #include <iceicle/fe_function/nodal_fe_function.hpp>
 
@@ -101,12 +102,12 @@ public:
    * @param [in] xi the point in the reference domain to evaluate the basis at
    * @param [out] Bi the shape function evaluations
    */
-  void fill_shp(const Point &xi, std::array<T, nnode> &Bi) const {
+  void fill_shp(const Point &xi, T *Bi) const {
     NUMTOOL::TMP::constexpr_for_range<0, Pn + 1>(
         [&Bi]<int ibasis>(T xi_dim) {
           static constexpr int nfill = MATH::power_T<Pn + 1, ndim - 1>::value;
           T Bi_idim = POLYNOMIAL::lagrange1d<T, Pn, ibasis>(xi_dim);
-          std::fill_n(Bi.begin() + nfill * ibasis, nfill, Bi_idim);
+          std::fill_n(Bi + nfill * ibasis, nfill, Bi_idim);
         },
         xi[0]);
 
@@ -132,12 +133,12 @@ public:
                 Bi[start_offset + ifill] *= Bi_idim;
               }
             },
-            idim, xi_dim, Bi.begin() + irep * blocksize);
+            idim, xi_dim, Bi + irep * blocksize);
       }
     }
   }
 
-  void fill_deriv2(const Point &xi, T dBidxj[nnode][ndim]) const {
+  void fill_deriv_alt(const Point &xi, T dBidxj[nnode][ndim]) const {
     std::fill_n(*dBidxj, nnode * ndim, 1.0);
     for(int inode = 0; inode < nnode; ++inode){
       for(int idim = 0; idim < ndim; ++idim){
@@ -152,7 +153,7 @@ public:
     }
   }
 
-  void fill_deriv(const Point &xi, T dBidxj[nnode][ndim]) const {
+  void fill_deriv(const Point &xi, T **dBidxj) const {
 
       // fencepost the loop at idim = 0
       NUMTOOL::TMP::constexpr_for_range<0, Pn + 1>(
@@ -222,7 +223,7 @@ public:
 
     // Calculate all of the nodal basis functions at xi
     std::array<T, nnode> Bi;
-    fill_shp(xi, Bi);
+    fill_shp(xi, Bi.data());
 
     // multiply node coordinates by basis function evaluations
     for (int inode = 0; inode < nnode; ++inode) {
@@ -254,8 +255,8 @@ public:
       std::fill_n(Jptr, ndim * ndim, 0.0);
 
       // compute Jacobian per basis function
-      T dBidxj[nnode][ndim];
-      fill_deriv2(xi, dBidxj);
+      MATH::MATRIX::DenseMatrixSetWidth<T, ndim> dBidxj(nnode);
+      fill_deriv(xi, dBidxj);
 
       for(int inode = 0; inode < nnode; ++inode){
           IDX global_inode = node_indices[inode];
