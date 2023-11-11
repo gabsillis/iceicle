@@ -16,10 +16,10 @@
 namespace QUADRATURE {
 
     template<typename T, typename IDX, int ndim, int npoin1d>
-    class HypercubeGaussLegendre final : public QuadratureRule<T, IDX, ndim>, TraceQuadratureRule<T, IDX, ndim> {
+    class HypercubeGaussLegendre final : public QuadratureRule<T, IDX, ndim> {
 
         // the total number of quadrature points
-        static constexpr int num_poin = MATH::power_T<npoin1d, ndim>();
+        static constexpr int num_poin = MATH::power_T<npoin1d, ndim>::value;
 
         // ==================
         // = Working Arrays =

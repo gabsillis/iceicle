@@ -23,7 +23,7 @@ namespace QUADRATURE {
      *      can integrate polynomials of order 2 * order + 1
      */
     template<typename T, typename IDX, int ndim, int order>
-        class GrundmannMollerSimplexQuadrature final: public QuadratureRule<T, IDX, ndim>, TraceQuadratureRule<T, IDX, ndim>{
+        class GrundmannMollerSimplexQuadrature final: public QuadratureRule<T, IDX, ndim> {
             
             /// d is the polynomial degree of the integration formula
             static constexpr int d = 2 * order + 1;

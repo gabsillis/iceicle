@@ -19,7 +19,7 @@ namespace QUADRATURE {
      * @brief 
      */
     template<typename T, typename IDX, int npoin>
-    class GaussLegendreQuadrature final : public QuadratureRule<double, int, 1>, TraceQuadratureRule<double, int, 1> {
+    class GaussLegendreQuadrature final : public QuadratureRule<double, int, 1> {
         
         /// d is the maximum polynomial degree of the integration formula
         static constexpr int d = 2 * npoin + 1;

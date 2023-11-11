@@ -35,7 +35,7 @@ namespace ELEMENT {
         // = GeometricElement =
         // =  Implementation  =
         // ====================
-        constexpr int n_nodes() const override { return transformation.nnodes(); }
+        constexpr int n_nodes() const override { return transformation.n_nodes(); }
 
         const IDX *nodes() const override { return _nodes; }
 

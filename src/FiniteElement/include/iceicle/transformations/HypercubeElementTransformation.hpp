@@ -153,6 +153,11 @@ public:
     }
   }
 
+  /**
+   * @brief fill the given 2d array with the derivatives of each basis function 
+   * @param [in] xi the point in the reference domain to evaluate the derivative at 
+   * @param [out] dBidxj the derivatives of the basis functions 
+   */
   void fill_deriv(const Point &xi, T **dBidxj) const {
 
       // fencepost the loop at idim = 0
@@ -205,6 +210,39 @@ public:
           },
           xi
       );
+  }
+
+  /**
+   * @brief evaluate the second derivatives of the given basis function 
+   * @param [in] xi the point in the reference domain to evaluate at 
+   * @param [in] ibasis the index of the basis function 
+   * @param [out] Hessian the hessian of the basis function 
+   */
+  void dshp2(const T *xi, int ibasis, T Hessian[ndim][ndim]) const {
+      std::fill_n(Hessian[0], ndim * ndim, 1.0);
+      for(int ideriv = 0; ideriv < ndim; ++ideriv){
+          for(int jderiv = ideriv; jderiv < ndim; ++jderiv){
+              for(int idim = 0; idim < ndim; ++idim){
+                  if(ideriv == jderiv){
+                      Hessian[ideriv][jderiv] *= POLYNOMIAL::dNlagrange1d<T, Pn>(
+                              ijk_poin[ibasis][idim], 2, xi[ideriv]);
+                  } else {
+                      Hessian[ideriv][jderiv] *= 
+                          POLYNOMIAL::dlagrange1d<T, Pn>(
+                                  ijk_poin[ibasis][idim], xi[ideriv])
+                          * POLYNOMIAL::dlagrange1d<T, Pn>(
+                                  ijk_poin[ibasis][idim], xi[jderiv]);
+                  }
+              }
+          }
+      }
+
+      // copy symmetric part 
+      for(int ideriv = 0; ideriv < ndim; ++ideriv){
+          for(int jderiv = 0; jderiv < ideriv; ++jderiv){
+              Hessian[ideriv][jderiv] = Hessian[jderiv][ideriv];
+          }
+      }
   }
 
   /**
@@ -268,6 +306,54 @@ public:
               }
           }
       }
+  }
+
+
+  /**
+    * @brief get the Hessian of the transformation
+    * H_{kij} = \frac{\partial T(s)_k}{\partial s_i \partial s_j} 
+    *         = \frac{\partial x_k}{\partial \xi_i \partial \xi_j}
+    * @param [in] node_coords the coordinates of all the nodes
+    * @param [in] node_indices the indices in node_coords that pretain to this element in order
+    * @param [in] xi the position in the reference domain at which to calculate the hessian
+    * @param [out] the Hessian in tensor form indexed [k][i][j] as described above
+    */
+  void Hessian(
+      FE::NodalFEFunction<T, ndim> &node_coords,
+      const IDX *node_indices,
+      const Point &xi,
+      T hess[ndim][ndim][ndim]
+  ) const {
+    // Get a 1D pointer representation
+    T *Hptr = hess[0][0];
+
+    // fill with zeros
+    std::fill_n(Hptr, ndim * ndim * ndim, 0.0);
+
+    for(int inode = 0; inode < nnode; ++inode){
+      // get view to the node coordinates from the node coordinate array
+      IDX global_inode = node_indices[inode];
+      PointView node{node_coords[global_inode]};
+
+      for(int kdim = 0; kdim < ndim; ++kdim){ // k corresponds to xi 
+        T node_hessian[ndim][ndim];
+        dshp2(xi, inode, node_hessian);
+        for(int idim = 0; idim < ndim; ++idim){
+          for(int jdim = idim; jdim < ndim; ++jdim){
+            hess[kdim][idim][jdim] += node_hessian[idim][jdim] * node[kdim];
+          }
+        }
+      }
+    }
+
+    // finish filling symmetric part
+    for(int kdim = 0; kdim < ndim; ++kdim){
+      for(int idim = 0; idim < ndim; ++idim){
+        for(int jdim = 0; jdim < idim; ++jdim){
+          hess[kdim][idim][jdim] = hess[kdim][jdim][idim];
+        }
+      }
+    }
   }
 
   /** @brief get the number of nodes that define the transformation */

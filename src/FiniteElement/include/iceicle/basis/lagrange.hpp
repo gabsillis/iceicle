@@ -96,23 +96,13 @@ namespace BASIS {
         }
         
         void evalHessBasis(const T *xi, int ibasis, T Hessian[ndim][ndim]) const override {
-        std::fill_n(Hessian[0], ndim * ndim, 1.0);
-            for(int ideriv = 0; ideriv < ndim; ++ideriv){
-                for(int jderiv = ideriv; jderiv < ndim; ++jderiv){
-                    for(int idim = 0; idim < ndim; ++idim){
-                        if(ideriv == jderiv){
-                            Hessian[ideriv][jderiv] *= POLYNOMIAL::dNlagrange1d<T, Pn>(
-                                    transform.ijk_poin[ibasis][idim], 2, xi[ideriv]);
-                        } else {
-                            Hessian[ideriv][jderiv] *= 
-                                POLYNOMIAL::dlagrange1d<T, Pn>(
-                                        transform.ijk_poin[ibasis][idim], xi[ideriv])
-                                * POLYNOMIAL::dlagrange1d<T, Pn>(
-                                        transform.ijk_poin[ibasis][idim], xi[jderiv]);
-                        }
-                    }
-                }
-            }
+            transform.dshp2(xi, ibasis, Hessian);
         }
+
+        bool isOrthonormal() const override { return false; }
+
+        bool isNodal() const override { return true; }
+
+        inline int getPolynomialOrder() const override { return Pn; }
     };
 }
