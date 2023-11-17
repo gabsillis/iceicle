@@ -37,7 +37,12 @@ namespace ELEMENT {
             bool positiveNormal,
             BOUNDARY_CONDITIONS bctype = INTERIOR,
             int bcflag = 0
-        ) : Face<T, IDX, 1>(elemL, elemR, faceNrL, faceNrR, 0, 0, bctype, bcflag),
+        ) : Face<T, IDX, 1>(
+                elemL, elemR,
+                faceNrL * FACE_INFO_MOD, 
+                faceNrR * FACE_INFO_MOD,
+                bctype, bcflag
+            ),
             node(node)
         {
            if(positiveNormal) normal = 1.0;

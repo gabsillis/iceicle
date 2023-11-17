@@ -150,9 +150,10 @@ void example3(){
         // get the orientation transformed face reference coordinate
         int facevertL[trace_trans.nvert_tr];
         int facevertR[trace_trans.nvert_tr];
-        trace_trans.getTraceVertices(traceNrL, idxs1.data(), facevertL);
-        trace_trans.getTraceVertices(traceNrR, idxs2.data(), facevertR);
-        orient_trans.transform(facevertL, facevertR, s, sR);
+        trans.getTraceVertices(traceNrL, idxs1.data(), facevertL);
+        trans.getTraceVertices(traceNrR, idxs2.data(), facevertR);
+        int orientR = orient_trans.getOrientation(facevertL, facevertR);
+        orient_trans.transform(orientR, s, sR);
         Point2D xiL, xiR;
 
         // transform from face reference coordinate to element reference coordinate
@@ -291,9 +292,10 @@ void example5(){
         MATH::GEOMETRY::Point<double, 2> sR{};
         int facevertL[trace_trans.nvert_tr];
         int facevertR[trace_trans.nvert_tr];
-        trace_trans.getTraceVertices(traceNrL, idxs1.data(), facevertL);
-        trace_trans.getTraceVertices(traceNrR, idxs2.data(), facevertR);
-        orient_trans.transform(facevertL, facevertR, s, sR);
+        trans.getTraceVertices(traceNrL, idxs1.data(), facevertL);
+        trans.getTraceVertices(traceNrR, idxs2.data(), facevertR);
+        int orientR = orient_trans.getOrientation(facevertL, facevertR);
+        orient_trans.transform(orientR, s, sR);
 
         // transform from reference trace to reference element spaces
         Point3D xiL, xiR;
@@ -324,5 +326,13 @@ void example5(){
 }
 
 int main(int argc, char *argv[]){
-    example5();
+    if(argc > 1){
+        if(argv[1][0] == '1') example1();
+        if(argv[1][0] == '2') example2();
+        if(argv[1][0] == '3') example3();
+        if(argv[1][0] == '4') example4();
+        if(argv[1][0] == '5') example5();
+    } else {
+        example5();
+    }
 }

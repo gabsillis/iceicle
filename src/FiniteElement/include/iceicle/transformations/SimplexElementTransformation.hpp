@@ -32,6 +32,10 @@ namespace ELEMENT::TRANSFORMATIONS {
         static constexpr int nnode = MATH::binomial<Pn + ndim, ndim>(); // the number of nodes
         /// The number of faces
         static constexpr int nfac = ndim + 1;
+        /// the number of vertices (endpoints)
+        static constexpr int nvert_el = ndim + 1;
+        /// the number of vertices on a face (endpoints)
+        static constexpr int nvert_tr = ndim;
 
         // =================
         // = Helper funcs  =
@@ -317,7 +321,6 @@ namespace ELEMENT::TRANSFORMATIONS {
         
         /** @brief calculate the 1d shape function second derivative
          *         using the product rule
-         *  WARNING: does not handle the case where m is 0 or 1
          *  @param m the shape function index
          *  @param xi the function argument
          *  @return T the shape function second derivative
@@ -636,6 +639,27 @@ namespace ELEMENT::TRANSFORMATIONS {
         }
 
         /**
+         * @brief get global node indices for a trace in order 
+         * given the element global node indices 
+         * @param [in] trace number the number that identifies the face 
+         *        (barycentric coordinate that = 0)
+         * @param [in] vertices_el the element global node indices of the 
+         *             vertices in order 
+         *             NOTE: this will be the first nvert_el indices 
+         *             in the global node array for simplices 
+         *
+         * @param [out] vertices_tr the global node indices of the vertices on the face 
+         */
+        void getTraceVertices(int traceNr, const IDX vertices_el[nvert_el], IDX vertices_fac[nvert_tr]) const {
+            for(int ivert = 0; ivert < traceNr; ++ivert){
+                vertices_fac[ivert] = vertices_el[ivert];
+            }
+            for(int ivert = traceNr + 1; ivert < nvert_el; ++ivert){
+                vertices_fac[ivert - 1] = vertices_el[ivert];
+            }
+        }
+
+        /**
          * @brief get a pointer to the array of Lagrange points in the reference domain
          * @return the Lagrange points in the reference domain
          */
@@ -672,8 +696,62 @@ namespace ELEMENT::TRANSFORMATIONS {
         static constexpr int trace_ndim = ndim - 1;
         static constexpr int nvert_tr = ndim;
 
+        std::vector<std::vector<IDX>> vertex_permutations;
+
         using TracePointView = MATH::GEOMETRY::PointView<T, trace_ndim>;
         public:
+
+        static constexpr int norient = MATH::factorial<nvert_tr>(); // number of permutations
+        
+        SimplexTraceOrientTransformation(){
+            std::vector<IDX> first_perm{};
+            for(int i = 0; i < nvert_tr; ++i) first_perm.push_back(i);
+
+            vertex_permutations.push_back(first_perm);
+            vertex_permutations.push_back(first_perm);
+            int iperm = 1;
+            while(std::next_permutation(vertex_permutations[iperm].begin(), vertex_permutations[iperm].end())){
+                // make a copy of this permutation to get the next one
+                vertex_permutations.push_back(vertex_permutations[iperm]);
+                ++iperm;
+            }
+        }
+
+        /** 
+         * @brief get the orientation of the right element given 
+         * the vertices for the left and right element 
+         * NOTE: the orientation for the left element is always 0 
+         *
+         * @param verticesL the node indices for the left element 
+         * @param verticesR the node indices for the right element 
+         * @return the orientation for the right element or -1 if the nodes don't match
+         */
+        int getOrientation(
+            IDX verticesL[nvert_tr],
+            IDX verticesR[nvert_tr]
+        ) const {
+            // TODO: exploit lexographic structure of permutations for efficiency
+
+            // loop through all the orientation permutations
+            for(int i = 0; i < norient; ++i){
+
+                bool match = true;
+                // loop over all the nodes (to check for issues)
+                for(int j = 0; j < nvert_tr; ++j){
+                    if(verticesR[vertex_permutations[i][j]] != verticesL[j]){
+                        match = false;
+                        continue;
+                    }
+                }
+
+                // if all the nodes match this permutation is the right one 
+                // and defines the orientation
+                if(match) return i;
+            }
+
+            return -1;
+        }
+
         /**
          * @brief transform from the reference trace space
          *  to the right reference trace space
@@ -682,17 +760,15 @@ namespace ELEMENT::TRANSFORMATIONS {
          *  defined to be the same orientation as the general reference trace space
          *  so only the right element orientation needs to be considered
          *
-         * @param [in] verticesL the array of global node indices of the vertices of the left element face
-         * @param [in] verticesR the array of global node indices of the vertices of the right element face
+         * @param [in] orientationR the orientation of the right element
          * @param [in] s the position in the reference trace space
          * @param [out] the posotion in the local reference trace space for the right element
          */
         void transform(
-            IDX verticesL[nvert_tr],
-            IDX verticesR[nvert_tr],
+            int orientationR,
             const TracePointView &s,
             TracePointView sR
-        ) {
+        ) const {
             // use the property of the barycentric coordinates of triangles
             // that we can copy the barycentric coordinates for matching nodes to get the oriented barycentric coords
             T baryL[nvert_tr];
@@ -702,12 +778,8 @@ namespace ELEMENT::TRANSFORMATIONS {
                 baryL[nvert_tr - 1] -= s[idim];
             }
 
-            for(int ivertL = 0; ivertL < nvert_tr; ++ivertL) {
-                for(int ivertR = 0; ivertR < trace_ndim; ++ivertR){ // only need the first ndim matches
-                    // copy over the barycentric coordinate if the global node indices match
-                    if(verticesL[ivertL] == verticesR[ivertR]) sR[ivertR] = baryL[ivertL];
-                    continue; // move on to the next right element vertex
-                }
+            for(int idim = 0; idim < trace_ndim; ++idim){
+                sR[idim] = baryL[vertex_permutations[orientationR][idim]];
             }
          }
     };
@@ -734,14 +806,6 @@ namespace ELEMENT::TRANSFORMATIONS {
         using TracePoint = MATH::GEOMETRY::PointView<T, trace_ndim>;
 
         public:
-        void getTraceVertices(int traceNr, const IDX vertices_el[nvert_el], IDX vertices_fac[nvert_tr]) const {
-            for(int ivert = 0; ivert < traceNr; ++ivert){
-                vertices_fac[ivert] = vertices_el[ivert];
-            }
-            for(int ivert = traceNr + 1; ivert < nvert_el; ++ivert){
-                vertices_fac[ivert - 1] = vertices_el[ivert];
-            }
-        }
 
         /**
          * @brief transform from the trace space reference domain 
@@ -749,6 +813,7 @@ namespace ELEMENT::TRANSFORMATIONS {
          *
          * WARNING: This assumes the vertices are the first ndim+1 nodes
          * This is the current ordering used in SimplexElementTransformation
+         *
          * @param [in] node_indices the global node indices for the element
          * @param [in] faceNr the trace number
          * (for simplices: the position of the barycentric coordinate that is 0 for all points on the face)

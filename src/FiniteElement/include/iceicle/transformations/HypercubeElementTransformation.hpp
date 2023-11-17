@@ -5,6 +5,7 @@
 #include <Numtool/tmp_flow_control.hpp>
 #include <Numtool/matrix/dense_matrix.hpp>
 #include <array>
+#include <cmath>
 #include <iceicle/fe_function/nodal_fe_function.hpp>
 
 #include <algorithm>
@@ -65,7 +66,6 @@ public:
 
   /// Nodes in the reference domain
   static inline std::array<Point, nnode> xi_poin = [] {
-    // Generate the vertices
     std::array<Point, nnode> ret{};
 
     NUMTOOL::TMP::constexpr_for_range<0, ndim>([&ret]<int idim>() {
@@ -378,6 +378,159 @@ public:
       ijk_string << " ]\n";
     }
     return ijk_string.str();
+  }
+};
+
+
+/**
+  * @brief transformation from the global reference trace space to the 
+  *        reference trace space of the right element
+  *        (the left element trace is defined to be equivalent to the global orientation)
+  * @tparam T the floating point type
+  * @tparam IDX the indexing type for large lists
+  * @tparam ndim the number of dimensions (for the element)
+  */
+template<typename T, typename IDX, int ndim>
+class HypercubeTraceOrientTransformation {
+  /// number of dimensions for the trace space 
+  static constexpr int trace_ndim = ndim - 1;
+  /// number of vertices in a face
+  static constexpr int nvert_tr = MATH::power_T<2, ndim>::value;
+
+  /// upper bound (not inclusive) of the sign codes
+  static constexpr int sign_code_bound = MATH::power_T<2, trace_ndim>::value;
+ 
+  using TracePointView = MATH::GEOMETRY::PointView<T, trace_ndim>;
+
+  private:
+
+  template<int idim> inline int idim_mask(){ return (1 << idim); }
+
+  /**
+   * @brief copy the sign at the specified dimension 
+   * @param [in] idim the dimension index (the bit index into sign_code)
+   * @param [in] mag the magnitude to apply the sign to 
+   * @param [in] sign code a set of bits
+   *             (if sign_code at bit idim == 0 then that dimension is positive)
+   *             (if sign_code at bit idim == 1 then that dimension is negative)
+   */
+  inline constexpr int copysign_idim(int idim, int mag, int sign_code){
+
+    int is_negative = sign_code & (1 << idim);
+    // TODO: remove branch
+    return (is_negative) ? std::copysign(mag, -1) : std::copysign(mag, 1);
+  }
+
+  std::vector<std::vector<int>> axis_permutations;
+
+
+  public:
+
+  HypercubeTraceOrientTransformation(){
+    std::vector<int> first_perm{};
+    for(int i = 0; i < trace_ndim; ++i) first_perm.push_back(i);
+
+    axis_permutations.push_back(first_perm);
+    axis_permutations.push_back(first_perm);
+    int iperm = 1;
+    while(std::next_permutation(axis_permutations[iperm].begin(), axis_permutations[iperm].end())){
+        // make a copy of this permutation to get the next one
+        axis_permutations.push_back(axis_permutations[iperm]);
+        ++iperm;
+    }
+  }
+  
+  /** 
+    * @brief get the orientation of the right element given 
+    * the vertices for the left and right element 
+    * 
+    * NOTE: the vertices are in the same order as they get generated
+    *       in the element transformataion
+    * NOTE: the orientation for the left element is always 0 
+    * NOTE: the permutation index can be found by integer division by sign_code_bound
+    * NOTE: the sign code is the modulus with sign_code_bound
+    *
+    * @param verticesL the node indices for the left element 
+    * @param verticesR the node indices for the right element 
+    * @return the orientation for the right element or -1 if the nodes don't match
+    */
+  int getOrientation(
+      IDX verticesL[nvert_tr],
+      IDX verticesR[nvert_tr]
+  ) const {
+    // binary represinting sign of each dimension 
+    // \in [0, 2^trace_ndim)
+    int sign_code = 0;
+    // the direction in the left element that each axis corresponds to 
+    std::vector<int> left_directions(trace_ndim);
+
+    // loop over the axes for the right element 
+    int gidx0 = verticesR[0]; // always start from origin
+    NUMTOOL::TMP::constexpr_for_range<0, trace_ndim>([&]<int idim> {
+
+      int gidx1 = verticesR[MATH::power_T<2, idim>::value];
+
+      // find the local indices on verticesL that have the same global indices 
+      int lidx0 = -1, lidx1 = -1; 
+
+      for(int ivert = 0; ivert < nvert_tr; ++ivert){
+        if(verticesL[ivert] == gidx0) lidx0 = ivert;
+        else if(verticesL[ivert] == gidx1) lidx1 = ivert;
+
+        // short circuit if both found 
+        if(lidx0 >= 0 && lidx1 >= 0) break;
+      }
+
+      // check if not found 
+      if(lidx0 < 0 || lidx1 < 0) return -1;
+
+      // set the sign code if flipped 
+      // (positive direction always has increasing indices)
+      if(lidx1 < lidx0) sign_code |= idim_mask<idim>();
+
+      // get the dimensional index 
+      // through indexing tomfoolery
+      left_directions[idim] = trace_ndim - MATH::log2(std::abs(lidx1 - lidx0)) - 1;
+    });
+
+    // get the permutation index in the axis directions
+    // with a binary search
+    auto lower = std::lower_bound(axis_permutations.begin(), axis_permutations.end(), left_directions);
+    int iperm = std::distance(axis_permutations.begin(), lower);
+
+    // generate an orientation from the sign code and left directions 
+    return iperm * sign_code_bound + sign_code;
+  }
+
+  
+  /**
+    * @brief transform from the reference trace space
+    *  to the right reference trace space
+    *
+    *  The reference trace space oriented with the left element space is 
+    *  defined to be the same orientation as the general reference trace space
+    *  so only the right element orientation needs to be considered
+    *
+    * @param [in] orientationR the orientation of the right element
+    * @param [in] s the position in the reference trace space
+    * @param [out] the posotion in the local reference trace space for the right element
+    */
+  void transform(
+      int orientationR,
+      const TracePointView &s,
+      TracePointView sR
+  ) const {
+
+    int iperm = orientationR / sign_code_bound;
+    int sign_code = orientationR % sign_code_bound;
+
+    for(int idim = 0; idim < trace_ndim; ++idim){
+      sR[idim] = copysign_idim(
+          idim, 
+          s[axis_permutations[iperm][idim]],
+          sign_code
+      );
+    }
   }
 };
 
