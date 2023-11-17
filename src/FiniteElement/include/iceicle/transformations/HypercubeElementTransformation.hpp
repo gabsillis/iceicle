@@ -1,4 +1,5 @@
 #pragma once
+#include "Numtool/point.hpp"
 #include <Numtool/constexpr_math.hpp>
 #include <Numtool/integer_utils.hpp>
 #include <Numtool/polydefs/LagrangePoly.hpp>
@@ -450,8 +451,8 @@ class HypercubeTraceOrientTransformation {
     * NOTE: the permutation index can be found by integer division by sign_code_bound
     * NOTE: the sign code is the modulus with sign_code_bound
     *
-    * @param verticesL the node indices for the left element 
-    * @param verticesR the node indices for the right element 
+    * @param verticesL the vertices for the left element (not all nodes)
+    * @param verticesR the vertices for the right element 
     * @return the orientation for the right element or -1 if the nodes don't match
     */
   int getOrientation(
@@ -531,6 +532,47 @@ class HypercubeTraceOrientTransformation {
           sign_code
       );
     }
+  }
+};
+
+/**
+ * @brief transform from the trace space reference domain to the 
+ * reference element domain 
+ *
+ * @param [in] node_indices the global node indices for the element 
+ * @param [in] faceNr the trace number 
+ * @param [in] s the location in the reference trace domain 
+ * @param [out] xi the position in the reference element domain 
+ */
+template<typename T, typename IDX, int ndim>
+class HypercubeTraceTransformation {
+
+  static constexpr int trace_ndim = ndim - 1;
+  using TracePointView = MATH::GEOMETRY::PointView<T, trace_ndim>;
+  using ElPointView = MATH::GEOMETRY::PointView<T, ndim>;
+  public: 
+
+  void transform(
+    IDX *node_indices,
+    int traceNr,
+    const TracePointView &s,
+    ElPointView xi
+  ) const {
+
+    int trace_coord = traceNr % ndim;
+    // the first ndim traces have -1.0 at that coordinate 
+    // the next ndim traces have 1.0 at that coordinate 
+    if(traceNr / ndim == 0) {
+      xi[trace_coord] = -1;
+    } else {
+      xi[trace_coord] = 1.0;
+    }
+
+    // copy over the other coordinates
+    for(int idim = 0; idim < trace_coord; ++idim)
+      { xi[idim] = s[idim]; }
+    for(int idim = trace_coord + 1; idim < ndim; ++idim )
+      { xi[idim] = s[idim - 1]; }
   }
 };
 
