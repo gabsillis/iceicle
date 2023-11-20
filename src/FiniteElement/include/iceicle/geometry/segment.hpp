@@ -36,12 +36,11 @@ namespace ELEMENT {
         void transform(FE::NodalFEFunction<T, ndim> &node_coords, const Point &pt_ref, Point &pt_phys) const  override {
             return transformation.transform(node_coords, node_idxs, pt_ref, pt_phys);        
         }
-        void Jacobian(
+        NUMTOOL::TENSOR::FIXED_SIZE::Tensor<T, ndim, ndim> Jacobian(
             FE::NodalFEFunction<T, ndim> &node_coords,
-            const Point &xi,
-            T J[ndim][ndim]
+            const Point &xi
         ) const override 
-        { transformation.Jacobian(node_coords, node_idxs, xi, J); }
+        { return transformation.Jacobian(node_coords, node_idxs, xi); }
 
 
         void Hessian(

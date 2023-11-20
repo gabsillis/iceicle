@@ -1,3 +1,4 @@
+#include "Numtool/fixed_size_tensor.hpp"
 #include "Numtool/matrixT.hpp"
 #include "gtest/gtest.h"
 #include <cmath>
@@ -76,7 +77,6 @@ TEST(test_simplex_quadrature, test_grundmann_moller_triangle){
     QuadratureRule<double, int, 2> &quadrule = simplexquadrule;
     ASSERT_EQ(quadrule.npoints(), 10);
 
-    double J[2][2]; // storage for jacobian matrix
     double integral = 0;
     for(int igauss = 0; igauss < quadrule.npoints(); ++igauss){
         const QuadraturePoint<double, 2> &quadpt = quadrule[igauss];
@@ -92,8 +92,8 @@ TEST(test_simplex_quadrature, test_grundmann_moller_triangle){
         trans_lin.transform(nodes, node_idxs.data(), refpt, xpt);
 //        std::cout << "xpt: (" << xpt[0] << ", " << xpt[1] << ")" << std::endl;
 
-        trans_lin.Jacobian(nodes, node_idxs.data(), refpt, J);
-        double detJ = MATH::MATRIX_T::determinant<2>(*J);
+        auto J = trans_lin.Jacobian(nodes, node_idxs.data(), refpt);
+        double detJ = NUMTOOL::TENSOR::FIXED_SIZE::determinant(J);
         integral += testfcn(xpt) * quadpt.weight * detJ;
  //       std::cout << "f: " << testfcn(xpt) << " | total: " << integral << std::endl;
     }
@@ -111,8 +111,8 @@ TEST(test_simplex_quadrature, test_grundmann_moller_triangle){
         const Point2D &refpt = quadrule[igauss].abscisse;
         Point2D xpt;
         trans_lin.transform(nodes2, node_idxs.data(), refpt, xpt);
-        trans_lin.Jacobian(nodes2, node_idxs.data(), refpt, J);
-        double detJ = MATH::MATRIX_T::determinant<2>(*J);
+        auto J = trans_lin.Jacobian(nodes2, node_idxs.data(), refpt);
+        double detJ = NUMTOOL::TENSOR::FIXED_SIZE::determinant(J);
 
         integral += testfcn2(xpt) * quadrule[igauss].weight * detJ;
     }

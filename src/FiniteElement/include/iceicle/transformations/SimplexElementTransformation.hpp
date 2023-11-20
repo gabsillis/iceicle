@@ -1,6 +1,7 @@
 #pragma once
 
 #include <Numtool/integer_utils.hpp>
+#include <Numtool/fixed_size_tensor.hpp>
 #include <Numtool/point.hpp>
 #include <algorithm>
 #include <iceicle/fe_function/nodal_fe_function.hpp>
@@ -569,19 +570,16 @@ namespace ELEMENT::TRANSFORMATIONS {
          * @param [in] node_coords the coordinates of all the nodes
          * @param [in] node_indices the indices in node_coords that pretain to this element in order
          * @param [in] xi the position in the reference domain at which to calculate the Jacobian
-         * @param [out] the jacobian matrix
+         * @return the Jacobian matrix
          */
-        void Jacobian(
+        NUMTOOL::TENSOR::FIXED_SIZE::Tensor<T, ndim, ndim> Jacobian(
             FE::NodalFEFunction<T, ndim> &node_coords,
             const IDX *node_indices,
-            const Point &xi,
-            T J[ndim][ndim]
+            const Point &xi
         ) const {
+            using namespace NUMTOOL::TENSOR::FIXED_SIZE;
             // Get a 1D pointer representation of the matrix head
-            T *Jptr = J[0];
-
-            // fill with zeros
-            std::fill_n(Jptr, ndim * ndim, 0.0);
+            Tensor<T, ndim, ndim> J = {0};
 
             for(int inode = 0; inode < nnode; ++inode){
                 IDX global_inode = node_indices[inode];
@@ -592,6 +590,7 @@ namespace ELEMENT::TRANSFORMATIONS {
                     }
                 }
             }
+            return J;
         }
 
         /**

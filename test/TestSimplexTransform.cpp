@@ -75,8 +75,7 @@ TEST(test_simplex_transform, test_jacobian){
         const Point3D test_pt = dense_trans.reference_nodes()[inode];
 
         feenableexcept(FE_ALL_EXCEPT & ~ FE_INEXACT);
-        double J[3][3];
-        trans.Jacobian(points, node_numbers.data(), test_pt, J);
+        auto J = trans.Jacobian(points, node_numbers.data(), test_pt);
         fedisableexcept(FE_ALL_EXCEPT & ~ FE_INEXACT);
 
         for(int idim = 0; idim < 3; ++idim){

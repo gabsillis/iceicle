@@ -4,8 +4,10 @@
  * @brief geometric face definition
  */
 #pragma once
+#include "iceicle/fe_function/nodal_fe_function.hpp"
 #include <Numtool/point.hpp>
 #include <Numtool/MathUtils.hpp>
+#include <Numtool/fixed_size_tensor.hpp>
 #include <vector>
 #include <string>
 
@@ -53,6 +55,9 @@ namespace ELEMENT {
     class Face{
         
         using Point = MATH::GEOMETRY::Point<T, ndim>;
+        using FacePoint = MATH::GEOMETRY::Point<T, ndim - 1>;
+        using JacobianType = NUMTOOL::TENSOR::FIXED_SIZE::Tensor<T, ndim, ndim - 1>;
+        using MetricTensorType = NUMTOOL::TENSOR::FIXED_SIZE::Tensor<T, ndim - 1, ndim - 1>;
         public:
 
 
@@ -79,22 +84,6 @@ namespace ELEMENT {
 
         virtual ~Face() = default;
 
-        /**
-         * @brief Get the area weighted normal at the given point s in the reference domain
-         * always points from the left cell into the right cell
-         * note: for boundary faces this means the normal always points
-         *       out of the computational domain
-         * 
-         * @param [in] nodeCoords the node coordinates
-         * @param [in] s the point in the face reference domain [ndim - 1]
-         * @param [out] n The normal [ndim]
-         */
-        virtual
-        void getNormal(
-            std::vector< Point > &nodeCoords,
-            const MATH::GEOMETRY::Point<T, ndim - 1> &s,
-            T *n
-        ) = 0;
 
         /**
          * @brief Get the area of the face
@@ -102,27 +91,7 @@ namespace ELEMENT {
          * @return T the area of the face
          */
         virtual
-        T getArea() = 0;
-
-        /**
-         * @brief Get the Unit Normal at the given point s
-         * 
-         * @param [in] nodeCoords the node coordinates
-         * @param [in] s the point in the face reference domain
-         * @param [out] result the result of the vector multiplication getnormal(s) / getArea();
-         */
-        virtual
-        void getUnitNormal(
-            std::vector< Point > &nodeCoords,
-            const MATH::GEOMETRY::Point<T, ndim - 1> &s,
-            T *result
-        ){
-            // naive implementation
-            T aream = 1.0 / getArea();
-            T normal[ndim];
-            getNormal(nodeCoords, s, normal);
-            for(int idim = 0; idim < ndim; ++idim) result[idim] = aream * normal[idim];
-        }
+        T getArea() const = 0;
 
         /**
          * @brief convert reference domain coordinates to physical coordinates
@@ -132,20 +101,52 @@ namespace ELEMENT {
          * @param [out] the physical coordinates size = ndim
          */
         virtual
-        void convertRefToAct(
-            std::vector< Point > &nodeCoords,
-            const MATH::GEOMETRY::Point<T, ndim - 1> &s,
+        void transform(
+            FE::NodalFEFunction<T,ndim> &nodeCoords,
+            const FacePoint &s,
             T *result
-        ) = 0;
-
+        ) const = 0;
 
         /**
-         * @brief get the centroid of the face
-         * @return const GOEMETRY::Point<T, ndim> & the center point of the face
+         * @brief get the Jacobian matrix of the transformation
+         * J = \frac{\partial T(s)}{\partial s} = \frac{\partial x}{\partial s}
+         *
+         * TODO: check this should always result in outward normals for 
+         * the left element 
+         *
+         * @param [in] node_coords the coordinates of all the nodes 
+         * @param [in] s the point in the global face reference domain 
+         * @return the Jacobian matrix 
          */
-        virtual
-        const Point &getCentroid() = 0;
+        virtual 
+        JacobianType Jacobian(
+            FE::NodalFEFunction<T, ndim> &node_coords,
+            const FacePoint &s
+        ) const = 0;
 
+        /**
+         * @brief get the Riemannian metric tensor for the surface map 
+         * @param [in] node_coords the coordinates of all the nodes 
+         * @param [in] s the point in the global face reference domain 
+         * @return the Riemannian metric tensor
+         */
+        virtual 
+        MetricTensorType RiemannianMetric(
+            FE::NodalFEFunction<T, ndim> &nodeCoords,
+            const FacePoint &s
+        ) const {
+            MetricTensorType g = {0};
+            JacobianType J = Jacobian(nodeCoords, s);
+            for(int k = 0; k < ndim - 1; ++k){
+                for(int l = 0; l < ndim - 1; ++l){
+                    for(int i = 0; i < ndim; ++i){
+                        g[k][l] += J[i][k] * J[i][l];
+                    }
+                }
+            }
+            return g;
+        }
+        
         /**
          * @brief Square root of the Riemann metric determinant
          * of the face at the given point
@@ -155,16 +156,19 @@ namespace ELEMENT {
          */
         virtual
         T rootRiemannMetric(
-            std::vector< Point > &nodeCoords,
-            const MATH::GEOMETRY::Point<T, ndim - 1> &s
-        ) = 0;
+            FE::NodalFEFunction<T, ndim> &nodeCoords,
+            const FacePoint &s
+        ) const {
+           MetricTensorType g = RiemannianMetric(nodeCoords, s); 
+           return std::sqrt(NUMTOOL::TENSOR::FIXED_SIZE::determinant(g));
+        }
 
         /**
          * @brief the the number of nodes for this element
          * @return the number of nodes
          */
         virtual 
-        int n_nodes() = 0;
+        int n_nodes() const = 0;
 
         /**
          * @brief get a pointer to the array of node indices

@@ -109,8 +109,7 @@ namespace MESH {
                 }
                 out << "}\n";
                 out << "ElemL: " << fac.elemL << " | ElemR: " << fac.elemR << "\n"; 
-                out << "FaceNrL: " << fac.faceNrL << " | FaceNrR: " << fac.faceNrR << "\n";
-                out << "orientL: " << fac.orientationL << " | orientR: " << fac.orientationR << "\n";
+                out << "FaceNrL: " << fac.face_infoL / ELEMENT::FACE_INFO_MOD << " | FaceNrR: " << fac.face_infoR / ELEMENT::FACE_INFO_MOD << "\n";
                 out << "-------------------------\n";
            }
         }
