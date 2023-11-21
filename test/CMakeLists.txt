@@ -3,6 +3,7 @@ target_link_libraries(simplex_trans_ex PUBLIC matplot)
 target_link_libraries(simplex_trans_ex PUBLIC iceicle_fe) 
 
 add_executable(test_felib 
+    TestHypercubeFace.cpp
     TestQuadrature1d.cpp
     TestHypercubeTransform.cpp
     TestSimplexTransform.cpp

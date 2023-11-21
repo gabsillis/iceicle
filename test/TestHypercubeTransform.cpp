@@ -135,7 +135,20 @@ TEST( test_hypercube_transform, test_ref_coordinates ){
   ASSERT_DOUBLE_EQ( 0.0, xi1[5][1]);
   ASSERT_DOUBLE_EQ( 1.0, xi1[5][2]);
 
-  // TODO: check all
+
+
+  HypercubeElementTransformation<double, int, 3, 4> trans2{};
+  constexpr int nnode2 = trans2.n_nodes();
+  std::array<double, nnode2> shp;
+
+  for(int inode = 0; inode < nnode2; ++inode){
+    trans2.fill_shp(trans2.reference_nodes()[inode], shp.data());
+    for(int jnode = 0; jnode < nnode2; ++jnode){
+      if(inode == jnode) ASSERT_DOUBLE_EQ(1.0, shp[jnode]);
+      else ASSERT_DOUBLE_EQ(0.0, shp[jnode]);
+    }
+
+  }
 }
 
 TEST( test_hypercube_transform, test_transform ){
@@ -309,3 +322,93 @@ TEST( test_hypercube_transform, test_jacobian ){
   });
 }
 
+
+TEST(test_hypercube_transform, test_get_element_vert){
+
+  HypercubeElementTransformation<double, int, 3, 2> trans{};
+
+  int gnodes[trans.n_nodes()];
+  for(int i = 0; i < trans.n_nodes(); ++i) gnodes[i] = i;
+
+  int gvert[trans.n_vert()];
+
+  trans.get_element_vert(gnodes, gvert);
+
+  ASSERT_EQ(gvert[0], 0);
+  ASSERT_EQ(gvert[1], 2);
+  ASSERT_EQ(gvert[2], 6);
+  ASSERT_EQ(gvert[3], 8);
+  ASSERT_EQ(gvert[4], 18);
+  ASSERT_EQ(gvert[5], 20);
+  ASSERT_EQ(gvert[6], 24);
+  ASSERT_EQ(gvert[7], 26);
+}
+
+TEST(test_hypercube_transform, test_get_face_vert){
+
+  HypercubeElementTransformation<double, int, 3, 2> trans{};
+
+  int gnodes[trans.n_nodes()];
+  for(int i = 0; i < trans.n_nodes(); ++i) gnodes[i] = i;
+
+  int facevert[trans.n_facevert(0)];
+
+  trans.get_face_vert(0, gnodes, facevert);
+  ASSERT_EQ(facevert[0], 0);
+  ASSERT_EQ(facevert[1], 2);
+  ASSERT_EQ(facevert[2], 6);
+  ASSERT_EQ(facevert[3], 8);
+
+  trans.get_face_vert(1, gnodes, facevert);
+  ASSERT_EQ(facevert[0], 0);
+  ASSERT_EQ(facevert[1], 2);
+  ASSERT_EQ(facevert[2], 18);
+  ASSERT_EQ(facevert[3], 20);
+
+  trans.get_face_vert(2, gnodes, facevert);
+  ASSERT_EQ(facevert[0], 0);
+  ASSERT_EQ(facevert[1], 6);
+  ASSERT_EQ(facevert[2], 18);
+  ASSERT_EQ(facevert[3], 24);
+
+  trans.get_face_vert(3, gnodes, facevert);
+  ASSERT_EQ(facevert[0], 18);
+  ASSERT_EQ(facevert[1], 20);
+  ASSERT_EQ(facevert[2], 24);
+  ASSERT_EQ(facevert[3], 26);
+
+  trans.get_face_vert(4, gnodes, facevert);
+  ASSERT_EQ(facevert[0], 6);
+  ASSERT_EQ(facevert[1], 8);
+  ASSERT_EQ(facevert[2], 24);
+  ASSERT_EQ(facevert[3], 26);
+
+  trans.get_face_vert(5, gnodes, facevert);
+  ASSERT_EQ(facevert[0], 2);
+  ASSERT_EQ(facevert[1], 8);
+  ASSERT_EQ(facevert[2], 20);
+  ASSERT_EQ(facevert[3], 26);
+}
+
+
+TEST(test_hypercube_transform, test_get_face_number){
+
+  HypercubeElementTransformation<double, int, 3, 2> trans{};
+
+  int gnodes[trans.n_nodes()];
+  for(int i = 0; i < trans.n_nodes(); ++i) gnodes[i] = i;
+
+  int facevert0[trans.n_facevert(0)] = {0, 2, 6, 8};
+  int facevert1[trans.n_facevert(1)] = {0, 2, 18, 20};
+  int facevert2[trans.n_facevert(2)] = {0, 6, 18, 24};
+  int facevert3[trans.n_facevert(3)] = {18, 20, 24, 26};
+  int facevert4[trans.n_facevert(4)] = {6, 26, 24, 8};
+  int facevert5[trans.n_facevert(5)] = {26, 2, 8, 20};
+
+  ASSERT_EQ(0, trans.get_face_nr(gnodes, facevert0));
+  ASSERT_EQ(1, trans.get_face_nr(gnodes, facevert1));
+  ASSERT_EQ(2, trans.get_face_nr(gnodes, facevert2));
+  ASSERT_EQ(3, trans.get_face_nr(gnodes, facevert3));
+  ASSERT_EQ(4, trans.get_face_nr(gnodes, facevert4));
+  ASSERT_EQ(5, trans.get_face_nr(gnodes, facevert5));
+}

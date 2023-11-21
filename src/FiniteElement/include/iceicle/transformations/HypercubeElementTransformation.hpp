@@ -18,6 +18,10 @@ namespace ELEMENT::TRANSFORMATIONS {
  * @brief Transformations from the [-1, 1] hypercube
  * to an arbitrary order hypercube element
  *
+ * NOTE: Convention: 
+ * Nodes - refers to all points that define the geometry (includes inner lagrange nodes)
+ * Vertices - refers to endpoints
+ *
  * @tparam T the floating point type
  * @tparam IDX the index type for large lists
  * @tparam ndim the number of dimensions
@@ -32,8 +36,17 @@ private:
 
   // === Constants ===
   static constexpr int nfac = 2 * ndim;
-  static constexpr int nfacept = MATH::power_T<2, ndim - 1>::value;
   static constexpr int nnode = MATH::power_T<Pn + 1, ndim>::value;
+  static constexpr int nvert = MATH::power_T<2, ndim>::value;
+  static constexpr int nfacevert = MATH::power_T<2, ndim - 1>::value;
+
+  int convert_indices_helper(int ijk[ndim]){
+    int ret = 0;
+    for(int idim = 0; idim < ndim; ++idim){
+      ret += ijk[idim] * std::pow(Pn + 1, ndim - idim - 1);
+    }
+    return ret;
+  }
 
 public:
   /// Basis function indices by dimension for each node
@@ -358,13 +371,115 @@ public:
   }
 
   /** @brief get the number of nodes that define the transformation */
-  constexpr int n_nodes() { return nnode; }
+  constexpr int n_nodes() const { return nnode; }
+
+  /** @brief the number of element vertices */
+  constexpr int n_vert() const { return nvert; }
+
+  /** @brief the number of vertices on the given face */
+  constexpr int n_facevert(int faceNr) { return nfacevert;} 
 
   /**
     * @brief get a pointer to the array of Lagrange points in the reference domain
     * @return the Lagrange points in the reference domain
     */
   const Point *reference_nodes() const { return xi_poin.data(); }
+
+  /**
+   * @brief get the global vertex array from the global node indices 
+   * @param [in] nodes_el the global indices of the element nodes 
+   * @param [out] vert_el the global indices of the element vertices 
+   */
+  void get_element_vert(const IDX nodes_el[nnode], IDX vert_el[nvert]){
+    int ivert = 0;
+
+    std::function<void(int, int, int)> getvertex = [&](int istart1, int istart2, int idim)-> void {
+      if(idim == 2){
+        vert_el[ivert++] = nodes_el[istart1];
+        vert_el[ivert++] = nodes_el[istart1 + Pn];
+
+        vert_el[ivert++] = nodes_el[istart2];
+        vert_el[ivert++] = nodes_el[istart2 + Pn];
+      } else {
+        const int block = std::pow(Pn + 1, ndim - idim - 1);
+        getvertex(istart1, istart1 + Pn * block, idim + 1);
+        getvertex(istart2, istart2 + Pn * block, idim + 1);
+
+      }
+    };
+    getvertex(0, Pn * std::pow(Pn + 1, ndim - 1), 0);
+  }
+
+  /**
+   * @brief get the global vertex array corresponding to the given vace number 
+   * @param [in] faceNr the face number 
+   * @param [in] nodes_el the global element node array 
+   * @param [out] vert_fac the global face vertex array 
+   */
+  void get_face_vert(
+    int faceNr,
+    const IDX nodes_el[nnode],
+    IDX vert_fac[nfacevert]
+  ){
+    int face_coord = faceNr % ndim;
+
+    bool is_negative_xi = (faceNr / ndim == 0);
+   
+    auto next_ijk = [&](int ijk[ndim]){
+      for(int idim = ndim - 1; idim >= 0; --idim) if(idim != face_coord)
+      {
+        if(ijk[idim] == 0){
+          ijk[idim] = Pn;
+          break; // don't have to continue to next dimension
+        } else {
+          ijk[idim] = 0;
+          // carry over to next dimension (don't break)
+        }
+      }
+    };
+
+    int ijk[ndim] = {0};
+    ijk[face_coord] = (is_negative_xi) ? 0 : Pn;
+    vert_fac[0] = convert_indices_helper(ijk);
+    for(int i = 1; i < nfacevert; ++i){
+      next_ijk(ijk);
+      vert_fac[i] = convert_indices_helper(ijk);
+    }
+  }
+
+  /**
+   * @brief get the face number from the global indices of element and face vertices 
+   * @param [in] nodes_el the element node indices
+   * @param [in] vert_jfac the face vertices to find the face number for
+   * NOTE: vertices, not nodes 
+   *
+   * @return the face number or -1 if not found
+   */
+  int get_face_nr(const IDX nodes_el[nnode], const IDX *vert_jfac){
+   
+    for(int ifac = 0; ifac < nfac; ++ifac){
+      bool all_found = true; // assume true until mismatch
+      for(int ivert = 0; ivert < nfacevert; ++ivert){
+        IDX vert_ifac[nfacevert];
+        get_face_vert(ifac, nodes_el, vert_ifac);
+        bool found = false;
+        // try to find ivert
+        for(int jvert = 0; jvert < nfacevert; ++jvert){
+          if(vert_ifac[ivert] == vert_jfac[jvert]){
+            found = true;
+          }
+        }
+
+        if(!found){
+          all_found = false;
+          continue;
+        }
+      }
+
+      if(all_found) return ifac;
+    }
+
+  }
 
   /** @brief print the 1d lagrange basis function indices for each dimension for
    * each node */
