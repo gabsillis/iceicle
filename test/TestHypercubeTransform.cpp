@@ -230,8 +230,8 @@ TEST( test_hypercube_transform, test_fill_deriv ){
   auto dlagrange0 = [](double s){ return -0.5; };
   auto dlagrange1 = [](double s){ return 0.5; };
 
-  MATH::MATRIX::DenseMatrixSetWidth<double, 2> dBidxj(4);
-  MATH::MATRIX::DenseMatrixSetWidth<double, 2> dBidxj_2(4);
+  NUMTOOL::TENSOR::FIXED_SIZE::Tensor<double, 4, 2> dBidxj;
+  NUMTOOL::TENSOR::FIXED_SIZE::Tensor<double, 4, 2> dBidxj_2;
   MATH::GEOMETRY::Point<double, 2> xi = {0.3, -0.3};
   trans.fill_deriv(xi, dBidxj);
   trans.fill_deriv(xi, dBidxj_2);
@@ -288,9 +288,8 @@ TEST( test_hypercube_transform, test_jacobian ){
           MATH::GEOMETRY::Point<double, ndim> testpt;
           for(int idim = 0; idim < ndim; ++idim) testpt[idim] = domain_dist(engine);
 
-          double Jtrans[ndim][ndim];
           double Jfd[ndim][ndim];
-          trans1.Jacobian(node_coords, node_indices, testpt, Jtrans);
+          auto Jtrans = trans1.Jacobian(node_coords, node_indices, testpt);
 
           MATH::GEOMETRY::Point<double, ndim> unpeturb_transform;
           trans1.transform(node_coords, node_indices, testpt, unpeturb_transform);

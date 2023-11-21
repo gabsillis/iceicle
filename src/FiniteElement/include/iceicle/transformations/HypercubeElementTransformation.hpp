@@ -5,6 +5,7 @@
 #include <Numtool/polydefs/LagrangePoly.hpp>
 #include <Numtool/tmp_flow_control.hpp>
 #include <Numtool/matrix/dense_matrix.hpp>
+#include <Numtool/fixed_size_tensor.hpp>
 #include <array>
 #include <cmath>
 #include <iceicle/fe_function/nodal_fe_function.hpp>
@@ -172,7 +173,7 @@ public:
    * @param [in] xi the point in the reference domain to evaluate the derivative at 
    * @param [out] dBidxj the derivatives of the basis functions 
    */
-  void fill_deriv(const Point &xi, T **dBidxj) const {
+  void fill_deriv(const Point &xi, NUMTOOL::TENSOR::FIXED_SIZE::Tensor<T, nnode, ndim> &dBidxj) const {
 
       // fencepost the loop at idim = 0
       NUMTOOL::TMP::constexpr_for_range<0, Pn + 1>(
@@ -292,22 +293,20 @@ public:
     * @param [in] node_coords the coordinates of all the nodes
     * @param [in] node_indices the indices in node_coords that pretain to this element in order
     * @param [in] xi the position in the reference domain at which to calculate the Jacobian
-    * @param [out] the jacobian matrix
+    * @return the Jacobian matrix
     */
-  void Jacobian(
+  NUMTOOL::TENSOR::FIXED_SIZE::Tensor<T, ndim, ndim> Jacobian(
       FE::NodalFEFunction<T, ndim> &node_coords,
       const IDX *node_indices,
-      const Point &xi,
-      T J[ndim][ndim]
+      const Point &xi
   ) const {
+      using namespace NUMTOOL::TENSOR::FIXED_SIZE;
       // Get a 1D pointer representation of the matrix head
-      T *Jptr = J[0];
-
-      // fill with zeros
-      std::fill_n(Jptr, ndim * ndim, 0.0);
+      Tensor<T, ndim, ndim> J;
+      J = 0;
 
       // compute Jacobian per basis function
-      MATH::MATRIX::DenseMatrixSetWidth<T, ndim> dBidxj(nnode);
+      Tensor<T, nnode, ndim> dBidxj;
       fill_deriv(xi, dBidxj);
 
       for(int inode = 0; inode < nnode; ++inode){
@@ -320,6 +319,8 @@ public:
               }
           }
       }
+
+      return J;
   }
 
 
@@ -479,6 +480,7 @@ public:
       if(all_found) return ifac;
     }
 
+    return -1;
   }
 
   /** @brief print the 1d lagrange basis function indices for each dimension for
@@ -688,6 +690,38 @@ class HypercubeTraceTransformation {
       { xi[idim] = s[idim]; }
     for(int idim = trace_coord + 1; idim < ndim; ++idim )
       { xi[idim] = s[idim - 1]; }
+  }
+
+  /**
+   * @brief Given the Jacobian dx dxi 
+   * get the Jacobian dx ds 
+   * @param node_indices the global node index array 
+   * @param traceNr the face number 
+   * @param s the point in the reference trace space 
+   * @param elJacobian dx dxi 
+   * @return dx ds Jacobian 
+   */
+  NUMTOOL::TENSOR::FIXED_SIZE::Tensor<T, ndim, trace_ndim> Jacobian(
+      IDX *node_indices,
+      int traceNr,
+      const TracePointView &s,
+      const NUMTOOL::TENSOR::FIXED_SIZE::Tensor<T, ndim, ndim> &elJacobian
+  ) const {
+    // TODO: column major storage would make permutations quicker
+
+    NUMTOOL::TENSOR::FIXED_SIZE::Tensor<T, ndim, trace_ndim> J;
+
+    // basically apply the transformation to the jacobian columns
+    int trace_coord = traceNr % ndim;
+    for(int jdim = 0; jdim < trace_coord; ++jdim){
+      for(int idim = 0; idim < ndim; ++idim)
+        { J[idim][jdim] = elJacobian[idim][jdim]; }
+    }
+
+    for(int jdim = trace_coord + 1; jdim < ndim; ++jdim){
+      for(int idim = 0; idim < ndim; ++idim)
+        { J[idim][jdim - 1] = elJacobian[idim][jdim]; }
+    }
   }
 };
 
