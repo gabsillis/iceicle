@@ -679,7 +679,8 @@ class HypercubeTraceTransformation {
     int trace_coord = traceNr % ndim;
     // the first ndim traces have -1.0 at that coordinate 
     // the next ndim traces have 1.0 at that coordinate 
-    if(traceNr / ndim == 0) {
+    bool is_negative_xi = traceNr / ndim == 0;
+    if(is_negative_xi) {
       xi[trace_coord] = -1;
     } else {
       xi[trace_coord] = 1.0;
@@ -690,6 +691,14 @@ class HypercubeTraceTransformation {
       { xi[idim] = s[idim]; }
     for(int idim = trace_coord + 1; idim < ndim; ++idim )
       { xi[idim] = s[idim - 1]; }
+
+    // if this is a negative xi face, flip the first nonzero coordinate 
+    // to ensure outward facing normals 
+    int flip_coord = (trace_coord == 0) ? 1 : 0;
+    // safegaurd for ndim = 1 
+    if constexpr(ndim > 1){
+      xi[flip_coord] = -xi[flip_coord];
+    }
   }
 
   /**
@@ -710,6 +719,7 @@ class HypercubeTraceTransformation {
     // TODO: column major storage would make permutations quicker
 
     NUMTOOL::TENSOR::FIXED_SIZE::Tensor<T, ndim, trace_ndim> J;
+    J = 0;
 
     // basically apply the transformation to the jacobian columns
     int trace_coord = traceNr % ndim;
@@ -722,6 +732,16 @@ class HypercubeTraceTransformation {
       for(int idim = 0; idim < ndim; ++idim)
         { J[idim][jdim - 1] = elJacobian[idim][jdim]; }
     }
+
+    // if this is a negative xi face, flip the first nonzero coordinate 
+    // to ensure outward facing normals
+    int flip_coord = (trace_coord == 0) ? 1 : 0;
+    // safegaurd for ndim = 1 
+    if constexpr(ndim > 1){
+      for(int idim = 0; idim < ndim; ++idim)
+        { J[idim][flip_coord] = -J[idim][flip_coord]; }
+    }
+    return J;
   }
 };
 

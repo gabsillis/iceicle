@@ -1,3 +1,4 @@
+#include "Numtool/fixed_size_tensor.hpp"
 #include "Numtool/matrix/dense_matrix.hpp"
 #include "Numtool/polydefs/LagrangePoly.hpp"
 #include "iceicle/fe_function/nodal_fe_function.hpp"
@@ -7,6 +8,74 @@
 #include <limits>
 
 using namespace ELEMENT::TRANSFORMATIONS;
+
+TEST(test_hypercube_trace_transform, test_jacobian){
+
+  std::random_device rdev{};
+  std::default_random_engine engine{rdev()};
+  std::uniform_real_distribution<double> peturb_dist{-0.2, 0.2};
+  std::uniform_real_distribution<double> domain_dist{-1.0, 1.0};
+
+  { // unpeturbed cube normals
+    
+    using TracePoint = MATH::GEOMETRY::Point<double, 2>;
+    using ElPoint = MATH::GEOMETRY::Point<double, 3>;
+    // Generate a cube
+    static constexpr int ndim = 3;
+    HypercubeElementTransformation<double, int, ndim, 1> trans_cube{};
+
+    FE::NodalFEFunction<double, 3> coord{trans_cube.n_nodes()};
+
+    // unpeturbed coordinates 
+    for(int inode = 0; inode < trans_cube.n_nodes(); ++inode){
+      for(int idim = 0; idim < ndim; ++idim){
+        coord[inode][idim] = trans_cube.reference_nodes()[inode][idim];
+      }
+    }
+
+    // global node index array
+    int gnodes[trans_cube.n_nodes()];
+    for(int i = 0; i < trans_cube.n_nodes(); ++i) gnodes[i] = i;
+
+    // ensure the normals are correct for each face number 
+    HypercubeTraceTransformation<double, int, 3> trans_face{};
+
+    for(int facenr = 0; facenr < 6; ++facenr){
+      TracePoint s = {domain_dist(engine), domain_dist(engine)};
+      ElPoint xi;
+      trans_face.transform(gnodes, facenr, s, xi);
+
+      // Get the element jacobian 
+      auto Jel = trans_cube.Jacobian(coord, gnodes, xi);
+      auto Jtrace = trans_face.Jacobian(gnodes, facenr, s, Jel);
+
+      double normal[ndim];
+      NUMTOOL::TENSOR::FIXED_SIZE::CalcOrtho(Jtrace, normal);
+
+      int trace_coord = facenr % ndim;
+      if(facenr / ndim == 0){
+        // -1 side: normal should be -1 in direction trace_coord
+        // NOTE: this isn't 4 because the area of the reference face is 4
+        // if you want surface area from normal you need to include quadrature rule
+        // or reference domain area information
+        for(int idim = 0; idim < ndim; ++idim){
+          if(idim == trace_coord)
+            { ASSERT_DOUBLE_EQ(-1.0, normal[idim]); }
+          else 
+            { ASSERT_NEAR(0.0, normal[idim], 1e-16); }
+        }
+      } else {
+        // 1 side: normal should be 1 at trace_coord
+        for(int idim = 0; idim < ndim; ++idim){
+          if(idim == trace_coord)
+            { ASSERT_DOUBLE_EQ(1.0, normal[idim]); }
+          else 
+            { ASSERT_NEAR(0.0, normal[idim], 1e-16); }
+        }
+      }
+    }
+  }
+}
 
 TEST(test_hypercube_transform, test_ijk_poin){
   HypercubeElementTransformation<double, int, 1, 4> trans1{};
