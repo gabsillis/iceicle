@@ -677,14 +677,9 @@ class HypercubeTraceTransformation {
   ) const {
 
     int trace_coord = traceNr % ndim;
-    // the first ndim traces have -1.0 at that coordinate 
-    // the next ndim traces have 1.0 at that coordinate 
-    bool is_negative_xi = traceNr / ndim == 0;
-    if(is_negative_xi) {
-      xi[trace_coord] = -1;
-    } else {
-      xi[trace_coord] = 1.0;
-    }
+    // true if this face is on the negative xi side for trace_coord
+    bool is_negative_xi = traceNr / ndim  == 0;
+    xi[trace_coord] = is_negative_xi ? -1.0 : 1.0;
 
     // copy over the other coordinates
     for(int idim = 0; idim < trace_coord; ++idim)
@@ -692,12 +687,23 @@ class HypercubeTraceTransformation {
     for(int idim = trace_coord + 1; idim < ndim; ++idim )
       { xi[idim] = s[idim - 1]; }
 
-    // if this is a negative xi face, flip the first nonzero coordinate 
-    // to ensure outward facing normals 
-    int flip_coord = (trace_coord == 0) ? 1 : 0;
-    // safegaurd for ndim = 1 
+    // correct sign with levi_civita
+    // if negative xi, flip by negative levi_civita 
     if constexpr(ndim > 1){
-      xi[flip_coord] = -xi[flip_coord];
+      std::size_t lc_indices[ndim];
+      lc_indices[0] = trace_coord;
+      for(int idim = 0; idim < trace_ndim; ++idim){
+        if(idim < trace_coord){
+          lc_indices[idim + 1] = idim;
+        } else {
+          lc_indices[idim + 1] = idim + 1;
+        }
+      }
+
+      T lc = NUMTOOL::TENSOR::FIXED_SIZE::levi_civita<T, ndim>.list_index(lc_indices);
+      if(is_negative_xi) lc = -lc;
+      if(trace_coord == 0) xi[1] *= lc;
+      else xi[0] *= lc;
     }
   }
 
@@ -723,6 +729,7 @@ class HypercubeTraceTransformation {
 
     // basically apply the transformation to the jacobian columns
     int trace_coord = traceNr % ndim;
+    bool is_negative_xi = traceNr / ndim  == 0;
     for(int jdim = 0; jdim < trace_coord; ++jdim){
       for(int idim = 0; idim < ndim; ++idim)
         { J[idim][jdim] = elJacobian[idim][jdim]; }
@@ -733,13 +740,26 @@ class HypercubeTraceTransformation {
         { J[idim][jdim - 1] = elJacobian[idim][jdim]; }
     }
 
-    // if this is a negative xi face, flip the first nonzero coordinate 
-    // to ensure outward facing normals
-    int flip_coord = (trace_coord == 0) ? 1 : 0;
-    // safegaurd for ndim = 1 
+    // correct sign with levi_civita
+    // if negative xi, flip by negative levi_civita 
     if constexpr(ndim > 1){
-      for(int idim = 0; idim < ndim; ++idim)
-        { J[idim][flip_coord] = -J[idim][flip_coord]; }
+      std::size_t lc_indices[ndim];
+      lc_indices[0] = trace_coord;
+      for(int idim = 0; idim < trace_ndim; ++idim){
+        if(idim < trace_coord){
+          lc_indices[idim + 1] = idim;
+        } else {
+          lc_indices[idim + 1] = idim + 1;
+        }
+      }
+
+      T lc = NUMTOOL::TENSOR::FIXED_SIZE::levi_civita<T, ndim>.list_index(lc_indices);
+      if(is_negative_xi) lc = -lc;
+      for(int idim = 0; idim < ndim; ++idim){
+      // NOTE: this matches up to the first coord 
+      // corrected in transformation because it is already sliced out
+        J[idim][0] *= lc; 
+      }
     }
     return J;
   }

@@ -49,8 +49,7 @@ TEST(test_hypercube_trace_transform, test_jacobian){
       auto Jel = trans_cube.Jacobian(coord, gnodes, xi);
       auto Jtrace = trans_face.Jacobian(gnodes, facenr, s, Jel);
 
-      double normal[ndim];
-      NUMTOOL::TENSOR::FIXED_SIZE::CalcOrtho(Jtrace, normal);
+      auto normal = NUMTOOL::TENSOR::FIXED_SIZE::calc_ortho(Jtrace);
 
       int trace_coord = facenr % ndim;
       if(facenr / ndim == 0){
@@ -72,6 +71,66 @@ TEST(test_hypercube_trace_transform, test_jacobian){
           else 
             { ASSERT_NEAR(0.0, normal[idim], 1e-16); }
         }
+      }
+    }
+  }
+
+  { // petrubed cube normals
+
+    static constexpr int ndim = 3;
+    static constexpr int Pn = 3;
+    using TracePoint = MATH::GEOMETRY::Point<double, ndim - 1>;
+    using ElPoint = MATH::GEOMETRY::Point<double, ndim>;
+    // Generate a cube
+    HypercubeElementTransformation<double, int, ndim, Pn> trans_cube{};
+
+    FE::NodalFEFunction<double, ndim> coord{trans_cube.n_nodes()};
+
+    // peturbed coordinates 
+    for(int inode = 0; inode < trans_cube.n_nodes(); ++inode){
+      for(int idim = 0; idim < ndim; ++idim){
+        coord[inode][idim] = trans_cube.reference_nodes()[inode][idim] + peturb_dist(engine);
+      }
+    }
+
+    // global node index array
+    int gnodes[trans_cube.n_nodes()];
+    for(int i = 0; i < trans_cube.n_nodes(); ++i) gnodes[i] = i;
+
+    // ensure the normals are correct for each face number 
+    HypercubeTraceTransformation<double, int, ndim> trans_face{};
+
+    for(int facenr = 0; facenr < 2 * ndim; ++facenr){
+      TracePoint s = {domain_dist(engine), domain_dist(engine)};
+      ElPoint xi;
+      trans_face.transform(gnodes, facenr, s, xi);
+
+      // Get the element jacobian 
+      auto Jel = trans_cube.Jacobian(coord, gnodes, xi);
+      auto Jtrace = trans_face.Jacobian(gnodes, facenr, s, Jel);
+
+      // finite difference
+      static double epsilon = 1e-8;
+
+      ElPoint unpeturb_transform{};
+      trans_cube.transform(coord, gnodes, xi, unpeturb_transform);
+
+      for(int is = 0; is < ndim - 1; ++is){
+        double tmp = s[is];
+        s[is] += epsilon;
+        ElPoint xi_2;
+        trans_face.transform(gnodes, facenr, s, xi_2);
+
+        ElPoint peturb_transform{};
+        trans_cube.transform(coord, gnodes, xi_2, peturb_transform);
+
+        double scaled_tol = 1e-6 * (std::pow(10, 0.4 * (Pn - 1)));
+        for(int ix = 0; ix < ndim; ++ix){
+          double Jfdterm = (peturb_transform[ix] - unpeturb_transform[ix]) / epsilon;
+          ASSERT_NEAR(Jfdterm, Jtrace[ix][is], scaled_tol);
+        }
+
+        s[is] = tmp;
       }
     }
   }

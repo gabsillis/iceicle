@@ -135,7 +135,13 @@ namespace ELEMENT {
             FE::NodalFEFunction<T, ndim> &nodeCoords,
             const FacePoint &s
         ) const {
-            MetricTensorType g = {0};
+            MetricTensorType g;
+            if constexpr (ndim == 1) {
+                g[0][0] = 1.0;
+                return g;
+            }
+
+            g = 0.0;
             JacobianType J = Jacobian(nodeCoords, s);
             for(int k = 0; k < ndim - 1; ++k){
                 for(int l = 0; l < ndim - 1; ++l){
