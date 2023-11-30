@@ -18,6 +18,7 @@ namespace ELEMENT {
         // namespace aliases
         using Point = MATH::GEOMETRY::Point<T, ndim>;
         using PointView = MATH::GEOMETRY::PointView<T, ndim>;
+        using JacobianType = NUMTOOL::TENSOR::FIXED_SIZE::Tensor<T, ndim, ndim>;
 
         public:
         static inline TRANSFORMATIONS::HypercubeElementTransformation<T, IDX, ndim, Pn> transformation{};
@@ -44,12 +45,11 @@ namespace ELEMENT {
             return transformation.transform(node_coords, _nodes, pt_ref, pt_phys);
         }
 
-        void Jacobian(
+        JacobianType Jacobian(
             FE::NodalFEFunction< T, ndim > &node_coords,
-            const Point &xi,
-            T J[ndim][ndim]
+            const Point &xi
         ) const override {
-            return transformation.Jacobian(node_coords, _nodes, xi, J);
+            return transformation.Jacobian(node_coords, _nodes, xi);
         }
 
         void Hessian(

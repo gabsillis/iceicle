@@ -799,10 +799,51 @@ namespace ELEMENT::TRANSFORMATIONS {
         static constexpr int trace_ndim = ndim - 1;
         static constexpr int nvert_el = ndim + 1;
         static constexpr int nvert_tr = ndim;
+        static constexpr int ntrace = nvert_el;
 
         private:
         using ElPointView = MATH::GEOMETRY::PointView<T, ndim>;
         using TracePoint = MATH::GEOMETRY::PointView<T, trace_ndim>;
+        using FaceNodeTensorType = NUMTOOL::TENSOR::FIXED_SIZE::Tensor<long, ntrace, nvert_tr + 1>;
+
+        // the face node incides that preserve ccw orientation
+        // WARNING: not correct
+        inline static FaceNodeTensorType face_node_orders = 
+            [](){
+                FaceNodeTensorType ret{};
+                for(int iface = 0; iface < ntrace; ++iface){
+                    ret[iface][nvert_tr] = iface; // last index is the face number 
+                   
+                    // fill with nodes of that face in 
+                    // lexographic order 
+                    for(int j = 0; j < iface; ++j)
+                        { ret[iface][j] = j; }
+                    for(int j = iface; j < nvert_tr; ++j)
+                        { ret[iface][j] = j + 1; }
+
+                    // check parity of the entire list
+                    int n_negative = 0;
+                    for(int i = 0; i < nvert_tr + 1; ++i) {
+                        for(int j = 0; j < i; ++j){
+                            // multiply signs of difference (in effect)
+                            // convert to long for negative
+                            if(( (long) ret[iface][i] - (long) ret[iface][j]) < 0) {
+                                n_negative++;
+                            }
+                        }
+                    }
+
+                    // if negative parity, swap the last two nodes 
+                    // (last in this case doesn't include the face number)
+                    if(n_negative % 2 != 0){
+                        std::swap(ret[iface][nvert_tr - 1], ret[iface][nvert_tr - 2]);
+                        // also keep track of this by negating face number sign 
+                        ret[iface][nvert_tr] = -ret[iface][nvert_tr];
+                    }
+                }
+
+                return ret;
+            }();
 
         public:
 
@@ -836,11 +877,37 @@ namespace ELEMENT::TRANSFORMATIONS {
             // set the barycentric coordinate to 0
             // unless this is out of bounds (the modular index will just get overwritten)
             xi[traceNr % ndim] = 0;
-            // copy over the barycentric coordinates, skipping faceNr
             for(int idim = 0; idim < traceNr; ++idim)
                 { xi[idim] = sbary[idim]; }
             for(int idim = traceNr + 1; idim < ndim; ++idim)
                 { xi[idim] = sbary[idim - 1]; }
+
+            if constexpr(ndim > 1) {
+                std::size_t lc_indices[ndim];
+                lc_indices[0] = traceNr;
+                for(int idim = 0; idim < trace_ndim; ++idim){
+                    if(idim < traceNr){
+                    lc_indices[idim + 1] = idim;
+                    } else {
+                    lc_indices[idim + 1] = idim + 1;
+                    }
+                }
+
+                T lc = NUMTOOL::TENSOR::FIXED_SIZE::levi_civita<T, ndim>.list_index(lc_indices);
+                // for every face number except the last 
+                // the normal vector is in the negative coordinate direction 
+                // of that face number 
+                if(traceNr < ndim){
+                    // correct the sign with negative levi_civita 
+                    if(traceNr == 0) xi[1] *= -lc;
+                    else xi[0] *= -lc;
+                } else  {
+                    // correct to positive with levi_civita
+                    // correct the sign with negative levi_civita 
+                    if(traceNr == 0) xi[1] *= lc;
+                    else xi[0] *= lc;
+                }
+            }
         }
         
     };

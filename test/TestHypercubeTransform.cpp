@@ -1,6 +1,7 @@
 #include "Numtool/fixed_size_tensor.hpp"
 #include "Numtool/matrix/dense_matrix.hpp"
 #include "Numtool/polydefs/LagrangePoly.hpp"
+#include <Numtool/tmp_flow_control.hpp>
 #include "iceicle/fe_function/nodal_fe_function.hpp"
 #include <iceicle/transformations/HypercubeElementTransformation.hpp>
 #include "gtest/gtest.h"
@@ -8,6 +9,43 @@
 #include <limits>
 
 using namespace ELEMENT::TRANSFORMATIONS;
+
+TEST(test_hypercube_orient_transform, test_transform){
+
+  std::random_device rdev{};
+  std::default_random_engine engine{rdev()};
+  std::uniform_real_distribution<double> peturb_dist{-0.2, 0.2};
+  std::uniform_real_distribution<double> domain_dist{0.0, 1.0};
+
+  NUMTOOL::TMP::constexpr_for_range<2, 5>([&]<int ndim>{
+      NUMTOOL::TMP::constexpr_for_range<1, 3>([&]<int Pn>{
+      using TracePoint = MATH::GEOMETRY::Point<double, ndim - 1>;
+      using ElPoint = MATH::GEOMETRY::Point<double, ndim>;
+
+      HypercubeElementTransformation<double, int, ndim, Pn> domain_trans{};
+      HypercubeTraceTransformation<double, int, ndim> trace_trans{};
+      HypercubeTraceOrientTransformation<double, int, ndim> orient_trans{};
+
+      FE::NodalFEFunction<double, ndim> coord{domain_trans.n_nodes()};
+
+      // peturb the coordinates 
+      for(int inode = 0; inode < domain_trans.n_nodes(); ++inode){
+        for(int idim = 0; idim < ndim; ++idim){
+          coord[inode][idim] = domain_trans.reference_nodes()[inode][idim] + peturb_dist(engine);
+        }
+      }
+
+      // global node index array
+      int gnodes[domain_trans.n_nodes()];
+      for(int i = 0; i < domain_trans.n_nodes(); ++i) gnodes[i] = i;
+
+      for(int iface = 0; iface < 2 * ndim; ++iface){
+
+      }
+    
+    });
+  });
+}
 
 TEST(test_hypercube_trace_transform, test_jacobian){
 

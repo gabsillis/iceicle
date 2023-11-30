@@ -41,6 +41,7 @@ private:
   static constexpr int nvert = MATH::power_T<2, ndim>::value;
   static constexpr int nfacevert = MATH::power_T<2, ndim - 1>::value;
 
+public:
   int convert_indices_helper(int ijk[ndim]){
     int ret = 0;
     for(int idim = 0; idim < ndim; ++idim){
@@ -49,7 +50,6 @@ private:
     return ret;
   }
 
-public:
   /// Basis function indices by dimension for each node
   static constexpr std::array<std::array<int, ndim>, nnode> ijk_poin = []() {
     std::array<std::array<int, ndim>, nnode> ret{};

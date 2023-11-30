@@ -2,6 +2,7 @@
 #pragma once
 #include <initializer_list>
 #include <vector>
+#include <random>
 #include <stdexcept>
 #include <Numtool/point.hpp>
 #include <algorithm>
@@ -34,7 +35,7 @@ namespace FE {
     template<typename T, int ndim>
     class NodalFEFunction{
         private:
-        int _ndof;
+            std::size_t _ndof;
         T *_data;
         public:
 
@@ -42,7 +43,7 @@ namespace FE {
         NodalFEFunction() : _ndof(0), _data(nullptr) {}
 
         /** @brief construct uninitialized nodal fe function with nnodes*/
-        NodalFEFunction(int nnode)
+        NodalFEFunction(std::size_t nnode)
         : _ndof(nnode * ndim), _data(new T[_ndof]) {}
 
         /** @brief construct from a 2d initializer list */
@@ -100,20 +101,35 @@ namespace FE {
         }
 
         /** @brief get the data for the ith node */
-        NodeData<T, ndim> operator[](int inode){ return NodeData<T, ndim>{_data + inode * ndim}; }
+        NodeData<T, ndim> operator[](std::size_t inode){ return NodeData<T, ndim>{_data + inode * ndim}; }
 
         /** @brief get the data for the ith node */
-        const NodeData<T, ndim> operator[](int inode) const { return NodeData<T, ndim>{_data + inode * ndim}; }
+        const NodeData<T, ndim> operator[](std::size_t inode) const { return NodeData<T, ndim>{_data + inode * ndim}; }
+
+        /** @brief get the number of nodes */
+        std::size_t n_nodes() const { return _ndof / ndim; }
 
         /** @brief resize and copy over the data up to the min of new and old capacity
          * @param new_nnodes the new number of nodes */
-        void resize(int new_nnodes){
-            int new_ndof = ndim * new_nnodes;
+        void resize(std::size_t new_nnodes){
+            std::size_t new_ndof = ndim * new_nnodes;
             T *newdata = new T[new_ndof];
             std::copy_n(_data, std::min(_ndof, new_ndof), newdata);
             if(_data != nullptr) delete[] _data;
             _ndof = new_ndof;
             _data = newdata;
+        }
+
+        void random_perturb(T min_peturb, T max_peturb){
+            using namespace std;
+
+            random_device rdev{};
+            default_random_engine engine{rdev()};
+            uniform_real_distribution<T> dist{min_peturb, max_peturb};
+
+            for(int idof = 0; idof < _ndof; ++idof){
+                _data[idof] += dist(engine);
+            }
         }
     };
 }

@@ -57,6 +57,17 @@ if(ICEICLE_USE_TPL)
   endif()
 endif()
 
+# OPENGL VISUALIZATION
+option(ICEICLE_USE_OPENGL "Enables OpenGL visualization" ON)
+if(ICEICLE_USE_OPENGL)
+  find_package(OpenGL REQUIRED)
+  find_package(GLEW REQUIRED)
+  find_package(glfw3 REQUIRED)
+
+  # copy shaders
+  file(COPY ${CMAKE_SOURCE_DIR}/shaders DESTINATION ${CMAKE_RUNTIME_OUTPUT_DIRECTORY})
+endif()
+
 # Include subdirectories
 add_subdirectory(numericaltoolbox)
 add_subdirectory(src)

@@ -13,5 +13,12 @@ target_include_directories(iceicle_fe PUBLIC ${MPI_INCLUDE_PATH})
 target_include_directories(iceicle_fe PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
+
+if(ICEICLE_USE_OPENGL)
+    target_link_libraries(iceicle_fe PUBLIC OpenGL::OpenGL)
+    target_link_libraries(iceicle_fe PUBLIC OpenGL::GLU)
+    target_link_libraries(iceicle_fe PUBLIC GLEW::glew)
+    target_link_libraries(iceicle_fe PUBLIC glfw)
+endif()
 target_compile_features(iceicle_fe PUBLIC cxx_std_20)
 
