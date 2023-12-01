@@ -10,7 +10,6 @@
 #include <memory>
 #include <ostream>
 #include <string>
-#include "mfem.hpp"
 #include <iceicle/fe_function/nodal_fe_function.hpp>
 namespace MESH {
 
@@ -70,7 +69,8 @@ namespace MESH {
         : nodes{nnode}, elements{}, interiorFaceStart(0), interiorFaceEnd(0), 
           bdyFaceStart(0), bdyFaceEnd(0), faces{} {}
 
-        AbstractMesh(mfem::FiniteElementSpace &mfem_mesh);
+//        TODO: Do this in a separate file so we can build without mfem 
+//        AbstractMesh(mfem::FiniteElementSpace &mfem_mesh);
 
         /** @brief construct a mesh from file (currently supports gmsh) */
         AbstractMesh(std::string_view filepath);

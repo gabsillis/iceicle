@@ -8,6 +8,10 @@
 #include <GLFW/glfw3.h>
 #include <glm/glm.hpp>
 
+#include "imgui.h"
+#include "imgui_impl_glfw.h"
+#include "imgui_impl_opengl3.h"
+
 #include <iostream>
 #include <random>
 
@@ -15,9 +19,10 @@ using namespace glm;
 using namespace std;
 using namespace ELEMENT;
 using namespace ELEMENT::TRANSFORMATIONS;
+using namespace ICEICLE_GL;
 
 struct Example {
-    virtual void draw_in_loop(GLFWwindow *window) = 0;
+    virtual void draw_in_loop() = 0;
 
     virtual ~Example() = default;
 };
@@ -26,6 +31,7 @@ struct Example0 : public Example {
     GLuint VertexArrayID;
     GLuint vertexbuffer;
     GLuint programID; // id for shader 
+    GLuint fbo;
 
     // An array of 3 vectors which represents 3 vertices
     inline static const GLfloat g_vertex_buffer_data[] = {
@@ -54,7 +60,7 @@ struct Example0 : public Example {
         );
     }
 
-    void draw_in_loop(GLFWwindow *window) override {
+    void draw_in_loop() override {
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         // Use our shader
         glUseProgram(programID);
@@ -176,7 +182,7 @@ struct DrawQuads : public Example {
 
     }
 
-    void draw_in_loop(GLFWwindow *window) override {
+    void draw_in_loop() override {
         // Clear the screen
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
@@ -220,72 +226,161 @@ struct DrawQuads : public Example {
     }
 };
 
-int main(int argc, char **argv){
-    // Initialise GLFW
-    glewExperimental = true; // Needed for core profile
-    if( !glfwInit() )
-    {
-        fprintf( stderr, "Failed to initialize GLFW\n" );
-        return -1;
-    }
+static void glfw_error_callback(int error, const char* description)
+{
+    fprintf(stderr, "GLFW Error %d: %s\n", error, description);
+}
 
-    glfwWindowHint(GLFW_SAMPLES, 4); // 4x antialiasing
+int main(int argc, char**argv){
+    glfwSetErrorCallback(glfw_error_callback);
+    glewExperimental = true;
+    if (!glfwInit())
+        return 1;
+
+
+    // ===========================
+    // = OpenGL 3.3 window hints =
+    // ===========================
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3); // We want OpenGL 3.3
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
     glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE); // To make MacOS happy; should not be needed
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE); // We don't want the old OpenGL 
 
-    // Open a window and create its OpenGL context
+    // ========================
+    // = Create OpenGL window =
+    // ========================
     GLFWwindow* window; // (In the accompanying source code, this variable is global for simplicity)
     window = glfwCreateWindow( 1024, 768, "Element Visualizer", NULL, NULL);
-    if( window == NULL ){
-        fprintf( stderr, "Failed to open GLFW window. If you have an Intel GPU, they are not 3.3 compatible. Try the 2.1 version of the tutorials.\n" );
-        glfwTerminate();
-        return -1;
-    }
-    glfwMakeContextCurrent(window); // Initialize GLEW
-    glewExperimental=true; // Needed in core profile
+
+    if(window == nullptr) return 1;
+    glfwMakeContextCurrent(window);
+    glfwSwapInterval(1); // Enable vsync
+
     if (glewInit() != GLEW_OK) {
         fprintf(stderr, "Failed to initialize GLEW\n");
         return -1;
     }
+    // =======================
+    // = Setup Imgui Context =
+    // =======================
+    IMGUI_CHECKVERSION();
+    ImGui::CreateContext();
+    ImGuiIO& io = ImGui::GetIO(); (void)io;
+    io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;     // Enable Keyboard Controls
+    io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;      // Enable Gamepad Controls
+    
+    // ===============
+    // = Setup Style =
+    // ===============
+    ImGui::StyleColorsDark();
 
-    // Ensure we can capture the escape key being pressed below
-    glfwSetInputMode(window, GLFW_STICKY_KEYS, GL_TRUE);
+    // ===========================
+    // = Setup Renderer backends =
+    // ===========================
+    ImGui_ImplGlfw_InitForOpenGL(window, true);
+    ImGui_ImplOpenGL3_Init("#version 330 core");
 
-    // Get the example we want to run 
-    int examplenr = 0;
-    if(argc > 1){
-        examplenr = atoi(argv[1]);
-    }
-    Example *ex;
-    switch(examplenr){
-        case 0:
-            ex = new Example0{};
-            break;
-        case 1:
-            int nquads = 1;
-            if(argc > 2) nquads = atoi(argv[2]);
-            ex = new DrawQuads<3>(nquads);
-            break;
-    }
+    // =========
+    // = State =
+    // =========
+    ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
+    bool show_another_window = false;
+    Example0 ex0{};
 
-    do{
-        // Clear the screen. It's not mentioned before Tutorial 02, but it can cause flickering, so it's there nonetheless.
-        glClear( GL_COLOR_BUFFER_BIT );
+    // ================
+    // = FrameBuffers =
+    // ================
+    FrameBuffer fbo1(800, 600);
 
-        // execute the draw loop
-        ex->draw_in_loop(window);
-
-        // Swap buffers
-        glfwSwapBuffers(window);
+    while(!glfwWindowShouldClose(window)){
+        // Poll and handle events (inputs, window resize, etc.)
+        // You can read the io.WantCaptureMouse, io.WantCaptureKeyboard flags to tell if dear imgui wants to use your inputs.
+        // - When io.WantCaptureMouse is true, do not dispatch mouse input data to your main application, or clear/overwrite your copy of the mouse data.
+        // - When io.WantCaptureKeyboard is true, do not dispatch keyboard input data to your main application, or clear/overwrite your copy of the keyboard data.
+        // Generally you may always pass all inputs to dear imgui, and hide them from your application based on those two flags.
         glfwPollEvents();
 
-    } // Check if the ESC key was pressed or the window was closed
-    while( glfwGetKey(window, GLFW_KEY_ESCAPE ) != GLFW_PRESS &&
-        glfwWindowShouldClose(window) == 0 );
+        // Start the Dear ImGui frame
+        ImGui_ImplOpenGL3_NewFrame();
+        ImGui_ImplGlfw_NewFrame();
+        ImGui::NewFrame();
 
-    // cleanup
-    delete ex;
+        { // simple window 
+            static float f = 0.0f;
+            static int counter = 0;
 
+            ImGui::Begin("Hello, world!");                          // Create a window called "Hello, world!" and append into it.
+
+            ImGui::Text("This is some useful text.");               // Display some text (you can use a format strings too)
+            ImGui::Checkbox("Another Window", &show_another_window);
+
+            ImGui::SliderFloat("float", &f, 0.0f, 1.0f);            // Edit 1 float using a slider from 0.0f to 1.0f
+            ImGui::ColorEdit3("clear color", (float*)&clear_color); // Edit 3 floats representing a color
+
+            if (ImGui::Button("Button"))                            // Buttons return true when clicked (most widgets return true when edited/activated)
+                counter++;
+            ImGui::SameLine();
+            ImGui::Text("counter = %d", counter);
+
+            ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / io.Framerate, io.Framerate);
+            ImGui::End();
+        }
+        // 3. Show another simple window.
+        if (show_another_window)
+        {
+            ImGui::Begin("Another Window", &show_another_window);   // Pass a pointer to our bool variable (the window will have a closing button that will clear the bool when clicked)
+            ImGui::Text("Hello from another window!");
+            if (ImGui::Button("Close Me"))
+                show_another_window = false;
+            ImGui::End();
+        }
+
+        // Draw our triangle 
+        {
+            ImGui::Begin("Triangle!");
+            ImGui::BeginChild("Render");
+            ImVec2 wSize = ImGui::GetContentRegionAvail();
+            ImVec2 wpos = ImGui::GetWindowPos();
+
+            // resize viewport and framebuffer 
+            // TODO: use a callback
+            GLfloat aspect_ratio = 1.0;
+            ICEICLE_GL::set_viewport_maintain_aspect_ratio(
+                    wSize.x, wSize.y, aspect_ratio);
+            fbo1.rescale_frame_buffer(wSize.x, wSize.y);
+
+            // bind the framebuffer and draw
+            fbo1.bind();
+            ex0.draw_in_loop();
+            fbo1.unbind();
+
+            ImGui::Image((ImTextureID) fbo1.texture, wSize, 
+                    ImVec2(0, 1), ImVec2(1, 0));
+            ImGui::EndChild();
+            ImGui::End();
+        }
+
+        // Rendering
+        ImGui::Render();
+        int display_w, display_h;
+        glfwGetFramebufferSize(window, &display_w, &display_h);
+        glViewport(0, 0, display_w, display_h);
+        glClearColor(clear_color.x * clear_color.w, clear_color.y * clear_color.w, clear_color.z * clear_color.w, clear_color.w);
+        glClear(GL_COLOR_BUFFER_BIT);
+        ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+
+        glfwSwapBuffers(window);
+    }
+
+    // ===========
+    // = Cleanup =
+    // ===========
+    ImGui_ImplOpenGL3_Shutdown();
+    ImGui_ImplGlfw_Shutdown();
+    ImGui::DestroyContext();
+
+    glfwDestroyWindow(window);
+    glfwTerminate();
+
+    return 0;
 }
