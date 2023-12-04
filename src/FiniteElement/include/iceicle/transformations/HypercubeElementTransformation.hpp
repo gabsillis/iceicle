@@ -118,10 +118,71 @@ public:
    * @param [out] Bi the shape function evaluations
    */
   void fill_shp(const Point &xi, T *Bi) const {
+    using namespace NUMTOOL::TENSOR::FIXED_SIZE;
+
+    // compile-time precompute the evenly spaced interpolation points
+    static constexpr Tensor<T, Pn + 1> xi_nodes = []{
+      Tensor<T, Pn + 1> ret = {};
+      if constexpr (Pn == 0) {
+        // finite volume should recover cell center
+        // for consistency
+        ret[0] = 0.0; 
+      } else {
+        T dx = 2.0 / Pn;
+        ret[0] = -1.0;
+        for(int j = 1; j < Pn + 1; ++j){
+          // better for numerics than j * dx
+          ret[j] = ret[j - 1] + dx;
+        }
+      }
+      return ret;
+    }();
+
+    // compile-time precompute the lagrange polynomial denominators
+    static constexpr Tensor<T, Pn + 1> wj = [&]{
+      Tensor<T, Pn + 1> ret;
+      for(int j = 0; j < Pn + 1; ++j){
+        ret[j] = 1.0;
+        for(int k = 0; k < Pn + 1; ++k) if(k != j) {
+          ret[j] *= (xi_nodes[j] - xi_nodes[k]);
+        }
+        // invert (this is a denominator)
+        // NOTE: Berrut, Trefethen have an optimal way to compute this 
+        // but we don't because its computed at compile time
+        ret[j] = 1.0 / ret[j];
+      }
+      return ret;
+    }();
+
+    // run-time precompute the product of differences with the input 
+    // for each coordinate
+    Tensor<T, ndim> lprod;
+    std::fill_n(lprod.data(), ndim, 1.0);
+    for(int j = 0; j < Pn + 1; ++j){
+      for(int idim = 0; idim < ndim; ++idim){
+        lprod[idim] *= (xi[idim] - xi_nodes[j]);
+      }
+    }
+
+    // run-time precompute the lagrange polynomial evaluations 
+    // for each coordinate
+    Tensor<T, ndim, Pn + 1> lagrange_evals{};
+    for(int idim = 0; idim < ndim; ++idim){
+      for(int j = 0; j < Pn + 1; ++j){
+        // avoid catasrophic cancellation when exactly the same 
+        // otherwise catastrophic cancellation is avoided with division later 
+        if(xi[idim] == xi_nodes[j]){
+          lagrange_evals[idim][j] = 1.0;
+        } else {
+          lagrange_evals[idim][j] = wj[j] * lprod[idim] / (xi[idim] - xi_nodes[j]);
+        }
+      }
+    }
+
     NUMTOOL::TMP::constexpr_for_range<0, Pn + 1>(
-        [&Bi]<int ibasis>(T xi_dim) {
+        [&]<int ibasis>(T xi_dim) {
           static constexpr int nfill = MATH::power_T<Pn + 1, ndim - 1>::value;
-          T Bi_idim = POLYNOMIAL::lagrange1d<T, Pn, ibasis>(xi_dim);
+          T Bi_idim = lagrange_evals[0][ibasis];
           std::fill_n(Bi + nfill * ibasis, nfill, Bi_idim);
         },
         xi[0]);
@@ -135,9 +196,9 @@ public:
       const int blocksize = std::pow(Pn + 1, ndim - idim);
       for (int irep = 0; irep < nrepeat; ++irep) {
         NUMTOOL::TMP::constexpr_for_range<0, Pn + 1>(
-            []<int ibasis>(int idim, T xi_dim, T *Bi) {
+            [&]<int ibasis>(int idim, T xi_dim, T *Bi) {
               // evaluate the 1d basis function at the idimth coordinate
-              T Bi_idim = POLYNOMIAL::lagrange1d<T, Pn, ibasis>(xi_dim);
+              T Bi_idim = lagrange_evals[idim][ibasis];
               const int nfill = std::pow(Pn + 1, ndim - idim - 1);
 
               // offset for multiplying by this ibasis
