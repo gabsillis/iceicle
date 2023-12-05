@@ -14,7 +14,7 @@ namespace ELEMENT {
 
         public:
         inline static TRANSFORMATIONS::HypercubeTraceOrientTransformation<T, IDX, ndim> orient_trans{};
-        inline static TRANSFORMATIONS::HypercubeTraceTransformation<T, IDX, ndim> trans{};
+        inline static TRANSFORMATIONS::HypercubeTraceTransformation<T, IDX, ndim, Pn> trans{};
 
         HypercubeFace(
             IDX elemL, IDX elemR, 

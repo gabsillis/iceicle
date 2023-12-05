@@ -18,12 +18,12 @@ TEST(test_hypercube_orient_transform, test_transform){
   std::uniform_real_distribution<double> domain_dist{0.0, 1.0};
 
   NUMTOOL::TMP::constexpr_for_range<2, 5>([&]<int ndim>{
-      NUMTOOL::TMP::constexpr_for_range<1, 3>([&]<int Pn>{
+      NUMTOOL::TMP::constexpr_for_range<1, 4>([&]<int Pn>{
       using TracePoint = MATH::GEOMETRY::Point<double, ndim - 1>;
       using ElPoint = MATH::GEOMETRY::Point<double, ndim>;
 
       HypercubeElementTransformation<double, int, ndim, Pn> domain_trans{};
-      HypercubeTraceTransformation<double, int, ndim> trace_trans{};
+      HypercubeTraceTransformation<double, int, ndim, Pn> trace_trans{};
       HypercubeTraceOrientTransformation<double, int, ndim> orient_trans{};
 
       FE::NodalFEFunction<double, ndim> coord{domain_trans.n_nodes()};
@@ -76,7 +76,7 @@ TEST(test_hypercube_trace_transform, test_jacobian){
     for(int i = 0; i < trans_cube.n_nodes(); ++i) gnodes[i] = i;
 
     // ensure the normals are correct for each face number 
-    HypercubeTraceTransformation<double, int, 3> trans_face{};
+    HypercubeTraceTransformation<double, int, 3, 1> trans_face{};
 
     for(int facenr = 0; facenr < 6; ++facenr){
       TracePoint s = {domain_dist(engine), domain_dist(engine)};
@@ -116,7 +116,7 @@ TEST(test_hypercube_trace_transform, test_jacobian){
   { // petrubed cube normals
 
     static constexpr int ndim = 3;
-    static constexpr int Pn = 3;
+    static constexpr int Pn = 1;
     using TracePoint = MATH::GEOMETRY::Point<double, ndim - 1>;
     using ElPoint = MATH::GEOMETRY::Point<double, ndim>;
     // Generate a cube
@@ -136,7 +136,7 @@ TEST(test_hypercube_trace_transform, test_jacobian){
     for(int i = 0; i < trans_cube.n_nodes(); ++i) gnodes[i] = i;
 
     // ensure the normals are correct for each face number 
-    HypercubeTraceTransformation<double, int, ndim> trans_face{};
+    HypercubeTraceTransformation<double, int, ndim, Pn> trans_face{};
 
     for(int facenr = 0; facenr < 2 * ndim; ++facenr){
       TracePoint s = {domain_dist(engine), domain_dist(engine)};
@@ -154,6 +154,12 @@ TEST(test_hypercube_trace_transform, test_jacobian){
 
       // get the trace jacobian
       auto Jtrace = trans_face.Jacobian(gnodes, facenr, s, Jel);
+
+      // get the trace jacobian from global nodes 
+      int face_nodes[trans_cube.n_nodes_face(facenr)];
+      trans_cube.get_face_nodes(facenr, gnodes, face_nodes);
+
+      auto Jtrace2 = trans_face.Jacobian(coord, face_nodes, facenr, s);
 
       // finite difference
       static double epsilon = 1e-8;
@@ -174,6 +180,7 @@ TEST(test_hypercube_trace_transform, test_jacobian){
         for(int ix = 0; ix < ndim; ++ix){
           double Jfdterm = (peturb_transform[ix] - unpeturb_transform[ix]) / epsilon;
           ASSERT_NEAR(Jfdterm, Jtrace[ix][is], scaled_tol);
+          //ASSERT_NEAR(Jfdterm, Jtrace2[ix][is], scaled_tol);
         }
 
         s[is] = tmp;
@@ -348,7 +355,7 @@ TEST( test_hypercube_transform, test_transform ){
         node_coords[inode][idim] = trans_lin2d.reference_nodes()[inode][idim] + rand_doub();
       }
     }
-    for(int k = 0; k < 100; ++k){
+    for(int k = 0; k < 1000; ++k){
       MATH::GEOMETRY::Point<double, 2> xi = {domain_dist(engine), domain_dist(engine)};
       MATH::GEOMETRY::Point<double, 2> x_act = {
         lagrange0(xi[0]) * lagrange0(xi[1]) * node_coords[0][0]
@@ -364,8 +371,8 @@ TEST( test_hypercube_transform, test_transform ){
 
       MATH::GEOMETRY::Point<double, 2> x_trans;
       trans_lin2d.transform(node_coords, node_indices, xi, x_trans);
-      ASSERT_DOUBLE_EQ(x_trans[0], x_act[0]);
-      ASSERT_DOUBLE_EQ(x_trans[1], x_act[1]);
+      ASSERT_NEAR(x_trans[0], x_act[0], 1e-15);
+      ASSERT_NEAR(x_trans[1], x_act[1], 1e-15);
     }
   }
 

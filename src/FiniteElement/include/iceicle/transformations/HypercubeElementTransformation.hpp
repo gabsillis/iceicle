@@ -15,6 +15,10 @@
 #include <string>
 
 namespace ELEMENT::TRANSFORMATIONS {
+// forward declaration for friend 
+template<typename T, typename IDX, int ndim, int Pn>
+class HypercubeTraceTransformation;
+
 /**
  * @brief Transformations from the [-1, 1] hypercube
  * to an arbitrary order hypercube element
@@ -40,6 +44,18 @@ private:
   static constexpr int nnode = MATH::power_T<Pn + 1, ndim>::value;
   static constexpr int nvert = MATH::power_T<2, ndim>::value;
   static constexpr int nfacevert = MATH::power_T<2, ndim - 1>::value;
+  static constexpr int nfacenode = MATH::power_T<Pn + 1, ndim -1>::value;
+  static constexpr NUMTOOL::TENSOR::FIXED_SIZE::Tensor<int, ndim> strides = []{
+    NUMTOOL::TENSOR::FIXED_SIZE::Tensor<int, ndim> ret{};
+    NUMTOOL::TMP::constexpr_for_range<0, ndim>([&]<int i>{
+      ret[i] = MATH::power_T<Pn + 1, ndim - i - 1>::value;
+    });
+    return ret;
+  }();
+
+  // ==== Friends ===
+  // this is the domain for a face in d+1 dimensions
+  friend class HypercubeTraceTransformation<T, IDX, ndim + 1, Pn>;
 
 public:
   int convert_indices_helper(int ijk[ndim]){
@@ -582,8 +598,121 @@ public:
     getvertex(0, Pn * std::pow(Pn + 1, ndim - 1), 0);
   }
 
+  // ==================
+  // = Face Utilities =
+  // ==================
+  private:
+  static constexpr int n_trace = 2 * ndim;
+  static constexpr int trace_ndim = ndim - 1;
   /**
-   * @brief get the global vertex array corresponding to the given vace number 
+   * @brief sometimes the sign of the trace coordinate 
+   * needs to be flipped to ensure positive normals 
+   * The convention taken is the flip the sign of the first trace dimension 
+   * this stores that sign 
+   */
+  inline static NUMTOOL::TENSOR::FIXED_SIZE::Tensor<T, n_trace> first_dim_sign = []{
+    NUMTOOL::TENSOR::FIXED_SIZE::Tensor<T, n_trace> ret{};
+
+    for(int itrace = 0; itrace < n_trace; ++itrace){
+      if constexpr (ndim == 1){
+        // 0 dimensional faces would lead to indexing issues
+        // set to 1 and break
+        ret[itrace] = 1.0;
+        break;
+      }
+
+      int trace_coord = itrace % ndim;
+      // true if this is a negative face
+      bool is_negative_xi = itrace / ndim == 0;
+
+      // build the indices for the levi_civita tensor 
+      // first the trace coord (normal direction)
+      // then the unit basis vector indices in lexicographic order
+      std::size_t lc_indices[ndim];
+      lc_indices[0] = trace_coord;
+      for(int idim = 0; idim < trace_coord; ++idim)
+        { lc_indices[idim + 1] = idim; }
+      for(int idim = trace_coord; idim < trace_ndim; ++idim )
+        { lc_indices[idim + 1] = idim + 1; }
+
+      // get the levi_civita tensor, then chose sign based on normal direction 
+      T lc = NUMTOOL::TENSOR::FIXED_SIZE::levi_civita<T, ndim>.list_index(lc_indices);
+      if(is_negative_xi) lc = -lc;
+
+      ret[itrace] = lc;
+    }
+
+    return ret;
+  }();
+
+  public:
+
+  /** @brief get the number of nodes on a given face */
+  int n_nodes_face(int faceNr){ return nfacenode; }
+
+  /**
+   * @brief get the global node indices of the nodes in a given face 
+   * in order such that a ndim-1 dimensional element transformation 
+   * matches the TraceTransformation 
+   *
+   * NOTE: This is done by taking the sign flip for the first trace coordinate 
+   * and determining an anchor vertex that would make the ndim-1 element 
+   * transformation remain internal
+   */
+  void get_face_nodes(
+      int faceNr,
+      const IDX nodes_el[nnode],
+      IDX face_nodes[nfacenode]
+  ) const {
+    int trace_coord = faceNr % ndim;
+    // true if this is a negative face
+    bool is_negative_xi = faceNr / ndim == 0;
+
+    // the first dimension of the trace
+    int trace_first_dim = (trace_coord == 0) ? 1 : 0;
+    
+    // the node that corresponds to the origin of the TraceTransformation
+    IDX anchor_vertex = (first_dim_sign[faceNr] < 0) ? (Pn) * strides[trace_first_dim]: 0;
+
+    IDX face_node_idx = 0;
+   
+    // function to fill the nodes recursively
+    std::function<void(int, int)> fill_nodes = [&](
+        int el_node_idx, int idim
+    ) {
+      int last_dim = (trace_coord == ndim - 1) ? ndim - 2 : ndim - 1;
+      if(idim == last_dim){
+        for(int j = 0; j < Pn + 1; ++j){
+          // base case: assign the global node
+          int lidx = el_node_idx + j * strides[last_dim];
+          face_nodes[face_node_idx++] = nodes_el[lidx];
+        }
+      } else {
+        if(idim == trace_coord) {
+          // pass through 
+          fill_nodes(el_node_idx, idim + 1);
+        } else {
+          for(int j = 0; j < Pn + 1; ++j){
+            // move by the stride and recurse
+            fill_nodes(el_node_idx + j * strides[idim], idim + 1);
+          }
+        }
+      }
+    };
+
+    // handle the first dimension seperately because of possible direction difference
+    int idim = trace_first_dim;
+    for(int j = 0; j < Pn + 1; ++j){
+      // travel in the direction of the first_dim_sign
+      int jstride = j * strides[trace_first_dim] * first_dim_sign[faceNr];
+      fill_nodes(anchor_vertex + jstride, trace_first_dim + 1);
+    }
+  }
+
+  /**
+   * @brief get the global vertex array corresponding to the given face number 
+   * WARNING: this does not take orientation into account
+   *
    * @param [in] faceNr the face number 
    * @param [in] nodes_el the global element node array 
    * @param [out] vert_fac the global face vertex array 
@@ -823,23 +952,66 @@ class HypercubeTraceOrientTransformation {
   }
 };
 
-/**
- * @brief transform from the trace space reference domain to the 
- * reference element domain 
- *
- * @param [in] node_indices the global node indices for the element 
- * @param [in] faceNr the trace number 
- * @param [in] s the location in the reference trace domain 
- * @param [out] xi the position in the reference element domain 
- */
-template<typename T, typename IDX, int ndim>
+template<typename T, typename IDX, int ndim, int Pn>
 class HypercubeTraceTransformation {
 
-  static constexpr int trace_ndim = ndim - 1;
+  static constexpr int trace_ndim = (ndim - 1 < 0) ? 0 : ndim - 1;
+  static constexpr int n_trace = ndim * 2;
   using TracePointView = MATH::GEOMETRY::PointView<T, trace_ndim>;
   using ElPointView = MATH::GEOMETRY::PointView<T, ndim>;
+
+  inline static HypercubeElementTransformation<T, IDX, trace_ndim, Pn> trace_domain_trans{};
+
+  /**
+   * @brief sometimes the sign of the trace coordinate 
+   * needs to be flipped to ensure positive normals 
+   * The convention taken is the flip the sign of the first trace dimension 
+   * this stores that sign 
+   */
+  NUMTOOL::TENSOR::FIXED_SIZE::Tensor<T, n_trace> first_dim_sign;
+
   public: 
 
+  HypercubeTraceTransformation(){
+    for(int itrace = 0; itrace < n_trace; ++itrace){
+      if constexpr (ndim == 1){
+        // 0 dimensional faces would lead to indexing issues
+        // set to 1 and break
+        first_dim_sign[itrace] = 1.0;
+        break;
+      }
+
+      int trace_coord = itrace % ndim;
+      // true if this is a negative face
+      bool is_negative_xi = itrace / ndim == 0;
+
+      // build the indices for the levi_civita tensor 
+      // first the trace coord (normal direction)
+      // then the unit basis vector indices in lexicographic order
+      std::size_t lc_indices[ndim];
+      lc_indices[0] = trace_coord;
+      for(int idim = 0; idim < trace_coord; ++idim)
+        { lc_indices[idim + 1] = idim; }
+      for(int idim = trace_coord; idim < trace_ndim; ++idim )
+        { lc_indices[idim + 1] = idim + 1; }
+
+      // get the levi_civita tensor, then chose sign based on normal direction 
+      T lc = NUMTOOL::TENSOR::FIXED_SIZE::levi_civita<T, ndim>.list_index(lc_indices);
+      if(is_negative_xi) lc = -lc;
+
+      first_dim_sign[itrace] = lc;
+    }
+  }
+
+  /**
+   * @brief transform from the trace space reference domain to the 
+   * reference element domain 
+   *
+   * @param [in] node_indices the global node indices for the element 
+   * @param [in] faceNr the trace number 
+   * @param [in] s the location in the reference trace domain 
+   * @param [out] xi the position in the reference element domain 
+   */
   void transform(
     IDX *node_indices,
     int traceNr,
@@ -858,24 +1030,48 @@ class HypercubeTraceTransformation {
     for(int idim = trace_coord + 1; idim < ndim; ++idim )
       { xi[idim] = s[idim - 1]; }
 
-    // correct sign with levi_civita
-    // if negative xi, flip by negative levi_civita 
-    if constexpr(ndim > 1){
-      std::size_t lc_indices[ndim];
-      lc_indices[0] = trace_coord;
-      for(int idim = 0; idim < trace_ndim; ++idim){
-        if(idim < trace_coord){
-          lc_indices[idim + 1] = idim;
-        } else {
-          lc_indices[idim + 1] = idim + 1;
-        }
-      }
+    // correct sign to ensure outward normal 
+    if(trace_coord == 0) xi[1] *= first_dim_sign[traceNr];
+    else xi[0] *= first_dim_sign[traceNr];
+  }
 
-      T lc = NUMTOOL::TENSOR::FIXED_SIZE::levi_civita<T, ndim>.list_index(lc_indices);
-      if(is_negative_xi) lc = -lc;
-      if(trace_coord == 0) xi[1] *= lc;
-      else xi[0] *= lc;
+  /**
+   * @brief get the Jacobian dx ds 
+   * @param coord the global node coordinates 
+   * @param face_node_indices the global node indices of the nodes on the face 
+   * in order so that the orientation matches the transform function 
+   * @param traceNr the face number 
+   * @param s the point in the reference trace space 
+   */
+  NUMTOOL::TENSOR::FIXED_SIZE::Tensor<T, ndim, trace_ndim> Jacobian(
+      FE::NodalFEFunction<T, ndim> &coord,
+      IDX *face_node_indices,
+      int traceNr,
+      const MATH::GEOMETRY::Point<T, trace_ndim> &s
+  ) const {
+    using namespace NUMTOOL::TENSOR::FIXED_SIZE;
+
+    // initialize the jacobian
+    Tensor<T, ndim, trace_ndim> J;
+    J = 0;
+
+    // Get the gradient per basis function
+    Tensor<T, trace_domain_trans.nnode, trace_ndim> dBidxj;
+    trace_domain_trans.fill_deriv(s, dBidxj);
+
+    // add contributions from each node 
+    for(int inode = 0; inode < trace_domain_trans.nnode; ++inode){
+        IDX global_inode = face_node_indices[inode];
+        ElPointView node{coord[global_inode]};
+        for(int idim = 0; idim < ndim; ++idim){
+            for(int jdim = 0; jdim < trace_ndim; ++jdim){
+                // add contribution to jacobian from this basis function
+                J[idim][jdim] += dBidxj[inode][jdim] * node[idim];
+            }
+        }
     }
+
+    return J;
   }
 
   /**
