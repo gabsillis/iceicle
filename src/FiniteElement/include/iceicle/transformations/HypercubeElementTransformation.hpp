@@ -111,16 +111,14 @@ public:
 
   }();
 
-
   /**
-   * @brief fill the array with shape functions at the given point
-   * @param [in] xi the point in the reference domain to evaluate the basis at
-   * @param [out] Bi the shape function evaluations
+   * @brief Interpolation of a uniform set of Pn + 1 points from -1 to 1 
    */
-  void fill_shp(const Point &xi, T *Bi) const {
-    using namespace NUMTOOL::TENSOR::FIXED_SIZE;
+  struct UniformLagrangeInterpolation {
+    template<typename T1, std::size_t... sizes>
+    using Tensor = NUMTOOL::TENSOR::FIXED_SIZE::Tensor<T1, sizes...>;
 
-    // compile-time precompute the evenly spaced interpolation points
+    /// compile-time precompute the evenly spaced interpolation points
     static constexpr Tensor<T, Pn + 1> xi_nodes = []{
       Tensor<T, Pn + 1> ret = {};
       if constexpr (Pn == 0) {
@@ -138,8 +136,9 @@ public:
       return ret;
     }();
 
-    // compile-time precompute the lagrange polynomial denominators
-    static constexpr Tensor<T, Pn + 1> wj = [&]{
+    /// compile-time precompute the lagrange polynomial denominators
+    /// the barycentric weights
+    static constexpr Tensor<T, Pn + 1> wj = []{
       Tensor<T, Pn + 1> ret;
       for(int j = 0; j < Pn + 1; ++j){
         ret[j] = 1.0;
@@ -154,31 +153,133 @@ public:
       return ret;
     }();
 
-    // run-time precompute the product of differences with the input 
-    // for each coordinate
-    Tensor<T, ndim> lprod;
-    std::fill_n(lprod.data(), ndim, 1.0);
-    for(int j = 0; j < Pn + 1; ++j){
-      for(int idim = 0; idim < ndim; ++idim){
-        lprod[idim] *= (xi[idim] - xi_nodes[j]);
+    /**
+     * @brief Evaluate every interpolating polynomial at the given point 
+     * @param xi the point to evaluate at 
+     * @return an array of all the evaluations
+     */
+    Tensor<T, Pn + 1> eval_all(T xi) const {
+      Tensor<T, Pn + 1> Nj{};
+
+      // finite volume case
+      if constexpr (Pn == 0){
+        Nj[0] = 1.0;
+      }
+
+      // run-time precompute the product of differences
+      T lskip = 1; // this is the product skipping the node closest to xi
+      int k; // this will be used to determine which node to skip
+      for(k = 0; k < Pn; ++k){
+        // make sure k+1 isn't the closest node to xi
+        if( xi >= (xi_nodes[k] + xi_nodes[k+1])/2 ){
+          lskip *= (xi - xi_nodes[k]);
+        } else {
+          break; // k is the closest node to xi
+        }
+      }
+      for(int i = k + 1; i < Pn + 1; ++i){
+        lskip *= (xi - xi_nodes[i]);
+      }
+      T lprod = lskip * (xi - xi_nodes[k]);
+
+      // calculate Nj 
+      int j;
+      for(j = 0; j < k; ++j){
+        Nj[j] = lprod * wj[j] / (xi - xi_nodes[j]);
+      }
+      Nj[k] = lskip * wj[k];
+      for(++j; j < Pn + 1; ++j){
+        Nj[j] = lprod * wj[j] / (xi - xi_nodes[j]);
+      }
+
+      return Nj;
+    }
+
+    /**
+     * @brief Get the value and derivative of 
+     * every interpolating polynomial at the given point 
+     * @param xi the point to evaluate at 
+     * @return an array of all the evaluations
+     */
+    void deriv_all(
+        T xi,
+        Tensor<T, Pn+1> &Nj,
+        Tensor<T, Pn+1> &dNj
+      ) const {
+
+      // finite volume case
+      if constexpr (Pn == 0){
+        Nj[0] = 1.0;
+        dNj[0] = 0.0;
+      }
+
+      // run-time precompute the product of differences
+      T lskip = 1; // this is the product skipping the node closest to xi
+      int k; // this will be used to determine which node to skip
+      for(k = 0; k < Pn; ++k){
+        // make sure k+1 isn't the closest node to xi
+        if( xi >= (xi_nodes[k] + xi_nodes[k+1])/2 ){
+          lskip *= (xi - xi_nodes[k]);
+        } else {
+          break; // k is the closest node to xi
+        }
+      }
+      for(int i = k + 1; i < Pn + 1; ++i){
+        lskip *= (xi - xi_nodes[i]);
+      }
+      T lprod = lskip * (xi - xi_nodes[k]);
+
+      // calculate the sum of inverse differences
+      // neglecting the skipped node
+      // And calculate Nj in the same loops
+      T s = 0.0;
+      int j;
+      for(j = 0; j < k; ++j){
+        T inv_diff = 1.0 / (xi - xi_nodes[j]);
+        s += inv_diff;
+        Nj[j] = lprod * inv_diff * wj[j];
+      }
+      Nj[k] = lskip * wj[k];
+      for(++j; j < Pn + 1; ++j){
+        T inv_diff = 1.0 / (xi - xi_nodes[j]);
+        s += inv_diff;
+        Nj[j] = lprod * inv_diff * wj[j];
+      }
+
+      // run-time precompute the derivative of the l-product 
+      T lprime = lprod * s + lskip;
+
+      // evaluate the derivatives
+      for(j = 0; j < k; ++j){
+        // quotient rule
+        dNj[j] = (lprime * wj[j] - Nj[j]) / (xi - xi_nodes[j]);
+      }
+      dNj[k] = s * Nj[k];
+      for(++j; j < Pn + 1; ++j){
+        // quotient rule
+        dNj[j] = (lprime * wj[j] - Nj[j]) / (xi - xi_nodes[j]);
       }
     }
+  };
+
+  UniformLagrangeInterpolation interpolation_1d{};
+
+  /**
+   * @brief fill the array with shape functions at the given point
+   * @param [in] xi the point in the reference domain to evaluate the basis at
+   * @param [out] Bi the shape function evaluations
+   */
+  inline void fill_shp(const Point &xi, T *Bi) const {
+    using namespace NUMTOOL::TENSOR::FIXED_SIZE;
 
     // run-time precompute the lagrange polynomial evaluations 
     // for each coordinate
     Tensor<T, ndim, Pn + 1> lagrange_evals{};
     for(int idim = 0; idim < ndim; ++idim){
-      for(int j = 0; j < Pn + 1; ++j){
-        // avoid catasrophic cancellation when exactly the same 
-        // otherwise catastrophic cancellation is avoided with division later 
-        if(xi[idim] == xi_nodes[j]){
-          lagrange_evals[idim][j] = 1.0;
-        } else {
-          lagrange_evals[idim][j] = wj[j] * lprod[idim] / (xi[idim] - xi_nodes[j]);
-        }
-      }
+      lagrange_evals[idim] = interpolation_1d.eval_all(xi[idim]);
     }
 
+    // for the first dimension (fencepost)
     NUMTOOL::TMP::constexpr_for_range<0, Pn + 1>(
         [&]<int ibasis>(T xi_dim) {
           static constexpr int nfill = MATH::power_T<Pn + 1, ndim - 1>::value;
@@ -235,57 +336,66 @@ public:
    * @param [out] dBidxj the derivatives of the basis functions 
    */
   void fill_deriv(const Point &xi, NUMTOOL::TENSOR::FIXED_SIZE::Tensor<T, nnode, ndim> &dBidxj) const {
+    using namespace NUMTOOL::TENSOR::FIXED_SIZE;
 
-      // fencepost the loop at idim = 0
-      NUMTOOL::TMP::constexpr_for_range<0, Pn + 1>(
-        [&dBidxj]<int ibasis>(const Point &xi) {
-          static constexpr int nfill = MATH::power_T<Pn + 1, ndim - 1>::value;
-          T Bi_idim = POLYNOMIAL::lagrange1d<T, Pn, ibasis>(xi[0]);
-          T dBi_idim = POLYNOMIAL::dlagrange1d<T, Pn, ibasis>(xi[0]);
-          for(int ifill = 0; ifill < nfill; ++ifill){
-              dBidxj[nfill * ibasis + ifill][0] = dBi_idim;
-              for(int jdim = 1; jdim < ndim; ++jdim){
-                  dBidxj[nfill * ibasis + ifill][jdim] = Bi_idim;
-              }
-          }
+    // run-time precompute the lagrange polynomial evaluations 
+    // and derivatives for each coordinate
+    Tensor<T, ndim, Pn + 1> lagrange_evals{};
+    Tensor<T, ndim, Pn + 1> lagrange_derivs{};
+    for(int idim = 0; idim < ndim; ++idim){
+      interpolation_1d.deriv_all(
+          xi[idim], lagrange_evals[idim], lagrange_derivs[idim]);
+    }
+    // fencepost the loop at idim = 0
+    NUMTOOL::TMP::constexpr_for_range<0, Pn + 1>(
+      [&]<int ibasis>(const Point &xi) {
+        static constexpr int nfill = MATH::power_T<Pn + 1, ndim - 1>::value;
+        T Bi_idim = lagrange_evals[0][ibasis];
+        T dBi_idim = lagrange_derivs[0][ibasis];
+        for(int ifill = 0; ifill < nfill; ++ifill){
+            dBidxj[nfill * ibasis + ifill][0] = dBi_idim;
+            for(int jdim = 1; jdim < ndim; ++jdim){
+                dBidxj[nfill * ibasis + ifill][jdim] = Bi_idim;
+            }
+        }
+      },
+      xi[0]);
+    
+    NUMTOOL::TMP::constexpr_for_range<1, ndim>(
+        [&]<int idim>(const Point &xi){
+            // number of times to repeat the loop over basis functions
+            const int nrepeat = std::pow(Pn + 1, idim);
+            // the size that one loop through the basis function indices gives 
+            const int blocksize = std::pow(Pn + 1, ndim - idim);
+
+            for(int irep = 0; irep < nrepeat; ++irep) {
+
+                NUMTOOL::TMP::constexpr_for_range<0, Pn + 1>(
+                    [&, irep]<int ibasis>(const Point &xi) {
+                        T dBi_idim = lagrange_derivs[idim][ibasis];
+                        const int nfill = std::pow(Pn + 1, ndim - idim - 1);
+
+                        // offset for multiplying by this ibasis
+                        const int start_offset = ibasis * nfill;
+
+                        // multiply the next nfill by the current basis function
+                        for (int ifill = 0; ifill < nfill; ++ifill) {
+                            const int offset = irep * blocksize + start_offset;
+                            NUMTOOL::TMP::constexpr_for_range<0, ndim>([&]<int jdim>(){
+                                if constexpr(jdim == idim){
+                                    dBidxj[offset + ifill][jdim] *= dBi_idim;
+                                } else {
+                                    dBidxj[offset + ifill][jdim] *= lagrange_evals[idim][ibasis];
+                                }
+                            });
+                        }
+                    },
+                    xi
+                );
+            }
         },
-        xi[0]);
-      
-      NUMTOOL::TMP::constexpr_for_range<1, ndim>(
-          [&dBidxj]<int idim>(const Point &xi){
-              // number of times to repeat the loop over basis functions
-              const int nrepeat = std::pow(Pn + 1, idim);
-              // the size that one loop through the basis function indices gives 
-              const int blocksize = std::pow(Pn + 1, ndim - idim);
-
-              for(int irep = 0; irep < nrepeat; ++irep) {
-
-                  NUMTOOL::TMP::constexpr_for_range<0, Pn + 1>(
-                      [&, irep]<int ibasis>(const Point &xi) {
-                          T dBi_idim = POLYNOMIAL::dlagrange1d<T, Pn, ibasis>(xi[idim]);
-                          const int nfill = std::pow(Pn + 1, ndim - idim - 1);
-
-                          // offset for multiplying by this ibasis
-                          const int start_offset = ibasis * nfill;
-
-                          // multiply the next nfill by the current basis function
-                          for (int ifill = 0; ifill < nfill; ++ifill) {
-                              const int offset = irep * blocksize + start_offset;
-                              NUMTOOL::TMP::constexpr_for_range<0, ndim>([&]<int jdim>(){
-                                  if constexpr(jdim == idim){
-                                      dBidxj[offset + ifill][jdim] *= dBi_idim;
-                                  } else {
-                                      dBidxj[offset + ifill][jdim] *= POLYNOMIAL::lagrange1d<T, Pn, ibasis>(xi[idim]);
-                                  }
-                              });
-                          }
-                      },
-                      xi
-                  );
-              }
-          },
-          xi
-      );
+        xi
+    );
   }
 
   /**

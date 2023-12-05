@@ -99,7 +99,7 @@ TEST(test_hypercube_trace_transform, test_jacobian){
           if(idim == trace_coord)
             { ASSERT_DOUBLE_EQ(-1.0, normal[idim]); }
           else 
-            { ASSERT_NEAR(0.0, normal[idim], 1e-16); }
+            { ASSERT_NEAR(0.0, normal[idim], 1e-15); }
         }
       } else {
         // 1 side: normal should be 1 at trace_coord
@@ -107,7 +107,7 @@ TEST(test_hypercube_trace_transform, test_jacobian){
           if(idim == trace_coord)
             { ASSERT_DOUBLE_EQ(1.0, normal[idim]); }
           else 
-            { ASSERT_NEAR(0.0, normal[idim], 1e-16); }
+            { ASSERT_NEAR(0.0, normal[idim], 1e-15); }
         }
       }
     }
@@ -145,6 +145,14 @@ TEST(test_hypercube_trace_transform, test_jacobian){
 
       // Get the element jacobian 
       auto Jel = trans_cube.Jacobian(coord, gnodes, xi);
+      // make sure everything in the element jacobian is not nan 
+      for(int i = 0; i < ndim; ++i){
+        for(int j = 0; j < ndim; ++j){
+          ASSERT_EQ(Jel[i][j], Jel[i][j]);
+        }
+      }
+
+      // get the trace jacobian
       auto Jtrace = trans_face.Jacobian(gnodes, facenr, s, Jel);
 
       // finite difference
