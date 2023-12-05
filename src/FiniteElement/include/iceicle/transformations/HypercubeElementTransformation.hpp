@@ -58,7 +58,7 @@ public:
       // number of times to repeat the loop over basis functions
       const int nrepeat = MATH::power_T<Pn + 1, idim>::value;
       // the size that one loop through the basis function indices gives
-      const int blocksize = MATH::power_T<Pn + 1, ndim - idim>::value;
+      const int cyclesize = MATH::power_T<Pn + 1, ndim - idim>::value;
       for (int irep = 0; irep < nrepeat; ++irep) {
         NUMTOOL::TMP::constexpr_for_range<0, Pn + 1>(
             [irep, &ret]<int ibasis>() {
@@ -69,7 +69,7 @@ public:
 
               // multiply the next nfill by the current basis function
               for (int ifill = 0; ifill < nfill; ++ifill) {
-                const int offset = irep * blocksize + start_offset;
+                const int offset = irep * cyclesize + start_offset;
                 ret[offset + ifill][idim] = ibasis;
               }
             });
@@ -87,7 +87,7 @@ public:
       // number of times to repeat the loop over basis functions
       const int nrepeat = MATH::power_T<Pn + 1, idim>::value;
       // the size that one loop through the basis function indices gives
-      const int blocksize = MATH::power_T<Pn + 1, ndim - idim>::value;
+      const int cyclesize = MATH::power_T<Pn + 1, ndim - idim>::value;
       for (int irep = 0; irep < nrepeat; ++irep) {
         NUMTOOL::TMP::constexpr_for_range<0, Pn + 1>(
             [irep, &ret]<int ibasis>() {
@@ -100,7 +100,7 @@ public:
 
               // multiply the next nfill by the current basis function
               for (int ifill = 0; ifill < nfill; ++ifill) {
-                const int offset = irep * blocksize + start_offset;
+                const int offset = irep * cyclesize + start_offset;
                 ret[offset + ifill][idim] = -1.0 + dx * ibasis;
               }
             });
@@ -294,7 +294,7 @@ public:
       // number of times to repeat the loop over basis functions
       int nrepeat = std::pow(Pn + 1, idim);
       // the size that one loop through the basis function indices gives
-      const int blocksize = std::pow(Pn + 1, ndim - idim);
+      const int cyclesize = std::pow(Pn + 1, ndim - idim);
       for (int irep = 0; irep < nrepeat; ++irep) {
         NUMTOOL::TMP::constexpr_for_range<0, Pn + 1>(
             [&]<int ibasis>(int idim, T xi_dim, T *Bi) {
@@ -310,7 +310,7 @@ public:
                 Bi[start_offset + ifill] *= Bi_idim;
               }
             },
-            idim, xi_dim, Bi + irep * blocksize);
+            idim, xi_dim, Bi + irep * cyclesize);
       }
     }
   }
@@ -366,7 +366,7 @@ public:
             // number of times to repeat the loop over basis functions
             const int nrepeat = std::pow(Pn + 1, idim);
             // the size that one loop through the basis function indices gives 
-            const int blocksize = std::pow(Pn + 1, ndim - idim);
+            const int cyclesize = std::pow(Pn + 1, ndim - idim);
 
             for(int irep = 0; irep < nrepeat; ++irep) {
 
@@ -380,7 +380,7 @@ public:
 
                         // multiply the next nfill by the current basis function
                         for (int ifill = 0; ifill < nfill; ++ifill) {
-                            const int offset = irep * blocksize + start_offset;
+                            const int offset = irep * cyclesize + start_offset;
                             NUMTOOL::TMP::constexpr_for_range<0, ndim>([&]<int jdim>(){
                                 if constexpr(jdim == idim){
                                     dBidxj[offset + ifill][jdim] *= dBi_idim;
