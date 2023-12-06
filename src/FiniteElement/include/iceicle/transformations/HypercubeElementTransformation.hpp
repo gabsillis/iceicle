@@ -711,7 +711,12 @@ public:
 
   /**
    * @brief get the global vertex array corresponding to the given face number 
-   * WARNING: this does not take orientation into account
+   * in order such that a ndim-1 dimensional element transformation 
+   * matches the TraceTransformation 
+   *
+   * NOTE: This is done by taking the sign flip for the first trace coordinate 
+   * and determining an anchor vertex that would make the ndim-1 element 
+   * transformation remain internal
    *
    * @param [in] faceNr the face number 
    * @param [in] nodes_el the global element node array 
@@ -725,21 +730,39 @@ public:
     int face_coord = faceNr % ndim;
 
     bool is_negative_xi = (faceNr / ndim == 0);
+
+    // the first dimension of the trace
+    int trace_first_dim = (face_coord == 0) ? 1 : 0;
    
     auto next_ijk = [&](int ijk[ndim]){
       for(int idim = ndim - 1; idim >= 0; --idim) if(idim != face_coord)
       {
-        if(ijk[idim] == 0){
-          ijk[idim] = Pn;
-          break; // don't have to continue to next dimension
+        if(idim == trace_first_dim && first_dim_sign[faceNr] < 0){
+          // reversed order 
+          if(ijk[idim] == Pn){
+            ijk[idim] = 0;
+            break; // don't have to continue to next dimension
+          } else {
+            ijk[idim] = Pn;
+          }
         } else {
-          ijk[idim] = 0;
-          // carry over to next dimension (don't break)
+          // normal order
+          if(ijk[idim] == 0){
+            ijk[idim] = Pn;
+            break; // don't have to continue to next dimension
+          } else {
+            ijk[idim] = 0;
+            // carry over to next dimension (don't break)
+          }
         }
       }
     };
 
     int ijk[ndim] = {0};
+    if(first_dim_sign[faceNr] < 0){
+      // anchor point needs to be at Pn 
+      ijk[trace_first_dim] = Pn;
+    }
     ijk[face_coord] = (is_negative_xi) ? 0 : Pn;
     vert_fac[0] = convert_indices_helper(ijk);
     for(int i = 1; i < nfacevert; ++i){

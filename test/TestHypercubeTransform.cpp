@@ -534,10 +534,10 @@ TEST(test_hypercube_transform, test_get_face_vert){
   int facevert[trans.n_facevert(0)];
 
   trans.get_face_vert(0, gnodes, facevert);
-  ASSERT_EQ(facevert[0], 0);
-  ASSERT_EQ(facevert[1], 2);
-  ASSERT_EQ(facevert[2], 6);
-  ASSERT_EQ(facevert[3], 8);
+  ASSERT_EQ(facevert[0], 6);
+  ASSERT_EQ(facevert[1], 8);
+  ASSERT_EQ(facevert[2], 0);
+  ASSERT_EQ(facevert[3], 2);
 
   trans.get_face_vert(1, gnodes, facevert);
   ASSERT_EQ(facevert[0], 0);
@@ -546,10 +546,10 @@ TEST(test_hypercube_transform, test_get_face_vert){
   ASSERT_EQ(facevert[3], 20);
 
   trans.get_face_vert(2, gnodes, facevert);
-  ASSERT_EQ(facevert[0], 0);
-  ASSERT_EQ(facevert[1], 6);
-  ASSERT_EQ(facevert[2], 18);
-  ASSERT_EQ(facevert[3], 24);
+  ASSERT_EQ(facevert[0], 18);
+  ASSERT_EQ(facevert[1], 24);
+  ASSERT_EQ(facevert[2], 0);
+  ASSERT_EQ(facevert[3], 6);
 
   trans.get_face_vert(3, gnodes, facevert);
   ASSERT_EQ(facevert[0], 18);
@@ -558,10 +558,10 @@ TEST(test_hypercube_transform, test_get_face_vert){
   ASSERT_EQ(facevert[3], 26);
 
   trans.get_face_vert(4, gnodes, facevert);
-  ASSERT_EQ(facevert[0], 6);
-  ASSERT_EQ(facevert[1], 8);
-  ASSERT_EQ(facevert[2], 24);
-  ASSERT_EQ(facevert[3], 26);
+  ASSERT_EQ(facevert[0], 24);
+  ASSERT_EQ(facevert[1], 26);
+  ASSERT_EQ(facevert[2], 6);
+  ASSERT_EQ(facevert[3], 8);
 
   trans.get_face_vert(5, gnodes, facevert);
   ASSERT_EQ(facevert[0], 2);
