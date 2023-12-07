@@ -2,6 +2,7 @@
 #include "Numtool/matrix/dense_matrix.hpp"
 #include "Numtool/polydefs/LagrangePoly.hpp"
 #include <Numtool/tmp_flow_control.hpp>
+#include <Numtool/matrixT.hpp>
 #include "iceicle/fe_function/nodal_fe_function.hpp"
 #include <iceicle/transformations/HypercubeElementTransformation.hpp>
 #include "gtest/gtest.h"
@@ -12,38 +13,181 @@ using namespace ELEMENT::TRANSFORMATIONS;
 
 TEST(test_hypercube_orient_transform, test_transform){
 
+  using namespace NUMTOOL::TENSOR::FIXED_SIZE;
+  using namespace MATH::MATRIX_T;
+
   std::random_device rdev{};
   std::default_random_engine engine{rdev()};
   std::uniform_real_distribution<double> peturb_dist{-0.2, 0.2};
   std::uniform_real_distribution<double> domain_dist{0.0, 1.0};
+  std::uniform_real_distribution<double> size_dist{0.8, 1.2};
 
-  NUMTOOL::TMP::constexpr_for_range<2, 5>([&]<int ndim>{
-      NUMTOOL::TMP::constexpr_for_range<1, 4>([&]<int Pn>{
-      using TracePoint = MATH::GEOMETRY::Point<double, ndim - 1>;
-      using ElPoint = MATH::GEOMETRY::Point<double, ndim>;
+  static constexpr int ndim = 3;
+  NUMTOOL::TMP::constexpr_for_range<1, 2>([&]<int Pn>{
+    using TracePoint = MATH::GEOMETRY::Point<double, ndim - 1>;
+    using ElPoint = MATH::GEOMETRY::Point<double, ndim>;
 
-      HypercubeElementTransformation<double, int, ndim, Pn> domain_trans{};
-      HypercubeTraceTransformation<double, int, ndim, Pn> trace_trans{};
-      HypercubeTraceOrientTransformation<double, int, ndim> orient_trans{};
+    HypercubeElementTransformation<double, int, ndim, Pn> domain_trans{};
+    HypercubeTraceTransformation<double, int, ndim, Pn> trace_trans{};
+    HypercubeTraceOrientTransformation<double, int, ndim> orient_trans{};
 
-      FE::NodalFEFunction<double, ndim> coord{domain_trans.n_nodes()};
+    // Generate a random x-direction vector
+    // Tensor<double, ndim> xdir = {size_dist(engine), size_dist(engine), size_dist(engine)};
+    Tensor<double, ndim> xdir = {-0.8, 0.8, 0.8};
 
-      // peturb the coordinates 
-      for(int inode = 0; inode < domain_trans.n_nodes(); ++inode){
-        for(int idim = 0; idim < ndim; ++idim){
-          coord[inode][idim] = domain_trans.reference_nodes()[inode][idim] + peturb_dist(engine);
+    // Generate the tangent vectors 
+    Tensor<double, ndim, ndim - 1> orthomat1 = {{ 
+      {xdir[0], size_dist(engine)},
+      {xdir[1], size_dist(engine)},
+      {xdir[2], size_dist(engine)}
+    }};
+    Tensor<double, ndim> ydir = calc_ortho(orthomat1);
+
+    Tensor<double, ndim, ndim - 1> orthomat2 = {{
+      {xdir[0], ydir[0]},
+      {xdir[1], ydir[1]},
+      {xdir[2], ydir[2]}
+    }};
+    Tensor<double, ndim> zdir = calc_ortho(orthomat2);
+
+    // Get the attached face and information 
+    int attached_face = 2;
+    int face_coord = attached_face % ndim;
+    bool is_negative_xi = (attached_face / ndim == 0);
+
+    // global node total
+    std::size_t n_nodes_total = 2 * domain_trans.n_nodes();
+    // we doubly generate the nodes at the face to make it easy
+      //      - domain_trans.n_nodes_face(attached_face);
+
+    // Generate the first element nodes
+    FE::NodalFEFunction<double, ndim> coord{n_nodes_total};
+    
+    for(int inode = 0; inode < domain_trans.n_nodes(); ++inode){
+      coord[inode][0] = dotprod<double, ndim>(xdir.data(), domain_trans.reference_nodes()[inode]); 
+      coord[inode][1] = dotprod<double, ndim>(ydir.data(), domain_trans.reference_nodes()[inode]); 
+      coord[inode][2] = dotprod<double, ndim>(zdir.data(), domain_trans.reference_nodes()[inode]); 
+    }
+
+    // global node indices on the first element
+    int nodes_el1[domain_trans.n_nodes()];
+    for(int i = 0; i < domain_trans.n_nodes(); ++i) nodes_el1[i] = i;
+
+    // Generate the second element nodes 
+    // Generate the extra nodes for the face 
+    // (we'll replace this later when we fuse the elements)
+
+    // generation directions
+    Tensor<double, ndim> xdir2 = xdir;
+    Tensor<double, ndim> ydir2 = ydir;
+    Tensor<double, ndim> zdir2 = zdir;
+    if(is_negative_xi){ // flip the face direction if facing negative
+      switch(face_coord){
+        case 0:
+          for(int i = 0; i < ndim; ++i) xdir2[i] = -xdir2[i];
+          break;
+        case 1:
+          for(int i = 0; i < ndim; ++i) ydir2[i] = -ydir2[i];
+          break;
+        case 2:
+          for(int i = 0; i < ndim; ++i) zdir2[i] = -zdir2[i];
+          break;
+      }
+    }
+
+    double dx = 2.0 / (Pn);
+    int inode = domain_trans.n_nodes();
+    for(int i = 0; i < Pn + 1; ++i){
+      for(int j = 0; j < Pn + 1; ++j){
+        for(int k = 0; k < Pn + 1; ++k){
+          double xi[3] = {dx * i, dx * j, dx * k};
+          coord[inode][0] = dotprod<double, ndim>(xdir.data(), xi);
+          coord[inode][1] = dotprod<double, ndim>(ydir.data(), xi);
+          coord[inode][2] = dotprod<double, ndim>(zdir.data(), xi);
+          // offset at the attached face
+          coord[inode][face_coord] += (is_negative_xi) ? -1.0 : 1.0;
+          inode++;
         }
       }
+    }
 
-      // global node index array
-      int gnodes[domain_trans.n_nodes()];
-      for(int i = 0; i < domain_trans.n_nodes(); ++i) gnodes[i] = i;
+    // global node indices on the first element
+    int nodes_el2[domain_trans.n_nodes()];
+    for(int i = 0; i < domain_trans.n_nodes(); ++i) nodes_el2[i] = domain_trans.n_nodes() + i;
 
-      for(int iface = 0; iface < 2 * ndim; ++iface){
+    // replace the face nodes to fuse the elements
+    std::vector<int> i_set;
+    std::vector<int> j_set;
+    std::vector<int> k_set;
+    if(face_coord == 0) i_set.push_back((is_negative_xi) ? 0 : Pn);
+    else for(int i = 0; i < Pn + 1; ++i) i_set.push_back(i);
 
+    if(face_coord == 1) j_set.push_back((is_negative_xi) ? 0 : Pn);
+    else for(int i = 0; i < Pn + 1; ++i) j_set.push_back(i);
+  
+    if(face_coord == 2) k_set.push_back((is_negative_xi) ? 0 : Pn);
+    else for(int i = 0; i < Pn + 1; ++i) k_set.push_back(i);
+
+    for(int i : i_set){
+      for(int j : j_set){
+        for(int k : k_set){
+          int ijk_l[3] = {i, j, k};
+          int ijk_r[3] = {i, j, k};
+          // other side for the right element (element 2)
+          ijk_r[face_coord] = Pn - ijk_r[face_coord];
+          nodes_el2[domain_trans.convert_indices_helper(ijk_r)] =
+            nodes_el1[domain_trans.convert_indices_helper(ijk_l)];
+        }
       }
-    
-    });
+    }
+
+    // make sure the correct faces are attached 
+    int face_vert_l[4];
+    domain_trans.get_face_vert(attached_face, nodes_el1, face_vert_l);
+    int attached_face_r = (attached_face < ndim) 
+      ? attached_face + ndim : attached_face - ndim;
+    ASSERT_EQ(domain_trans.get_face_nr(nodes_el2, face_vert_l), attached_face_r);
+
+    for(int iorient = 0; iorient < 4; ++iorient){
+      { // Ensure the transformation gives the same physical point L and R
+        // get the face numbers
+        int face_nr_l = attached_face;
+        int face_vert_l[4];
+        domain_trans.get_face_vert(face_nr_l, nodes_el1, face_vert_l);
+        int face_nr_r = domain_trans.get_face_nr(nodes_el2, face_vert_l);
+
+        // get the orientation on the right 
+        int face_vert_r[4];
+        domain_trans.get_face_vert(face_nr_r, nodes_el2, face_vert_r);
+        int orientation_r = orient_trans.getOrientation(face_vert_l, face_vert_r);
+
+        // Generate a random point in the trace reference domain 
+        TracePoint s_l = {domain_dist(engine), domain_dist(engine)};
+
+        // Get the physical point for the left element
+        ElPoint xi_l, x_l;
+        trace_trans.transform(nodes_el1, face_nr_l, s_l, xi_l);
+        domain_trans.transform(coord, nodes_el1, xi_l, x_l);
+        std::cout << "xL: [ " << x_l[0] << " " << x_l[1] 
+          << " " << x_l[2] << " ]" << std::endl;
+
+        // Get the physical point for the right element
+        TracePoint s_r;
+        ElPoint xi_r, x_r;
+        orient_trans.transform(orientation_r, s_l, s_r);
+        trace_trans.transform(nodes_el2, face_nr_r, s_r, xi_r);
+        domain_trans.transform(coord, nodes_el2, xi_r, x_r);
+        std::cout << "xR: [ " << x_r[0] << " " << x_r[1] 
+          << " " << x_r[2] << " ]" << std::endl;
+
+        // Assert that they give the same point 
+        for(int idim = 0; idim < ndim; ++idim){
+          ASSERT_NEAR(x_l[idim], x_r[idim], 1e-14);
+        }
+
+        // finally, rotate about the face coordinate 
+      }
+    }
   });
 }
 

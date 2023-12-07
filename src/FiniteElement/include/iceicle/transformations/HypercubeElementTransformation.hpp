@@ -12,6 +12,7 @@
 
 #include <algorithm>
 #include <sstream>
+#include <stdexcept>
 #include <string>
 
 namespace ELEMENT::TRANSFORMATIONS {
@@ -573,6 +574,10 @@ public:
     */
   const Point *reference_nodes() const { return xi_poin.data(); }
 
+  // ===================
+  // = Domai Utilities =
+  // ===================
+
   /**
    * @brief get the global vertex array from the global node indices 
    * @param [in] nodes_el the global indices of the element nodes 
@@ -596,6 +601,72 @@ public:
       }
     };
     getvertex(0, Pn * std::pow(Pn + 1, ndim - 1), 0);
+  }
+
+  /** @brief rotates the node indices 
+   * 90 degrees ccw about the x axis 
+   * WARNING: only defined for 3D 
+   */
+  void rotate_x(IDX gnodes[nnode]){
+    if constexpr (ndim != 3) throw std::logic_error("only implemented for 3D right now.");
+
+    IDX gnodes_old[nnode];
+    std::copy_n(gnodes, nnode, gnodes_old);
+
+    for(int i = 0; i < Pn + 1; ++i){
+      for(int j = 0; j < Pn + 1; ++j){
+        for(int k =0; k < Pn + 1; ++k){
+          int ijk_old[ndim] = {i, j, k};
+          int ijk_new[ndim] = {i, Pn - k, j};
+          gnodes[convert_indices_helper(ijk_new)] = 
+            gnodes_old[convert_indices_helper(ijk_old)];
+        }
+      }
+    }
+  }
+
+  /** @brief rotates the node indices 
+   * 90 degrees ccw about the y axis 
+   * WARNING: only defined for 3D 
+   */
+  void rotate_y(IDX gnodes[nnode]){
+    if constexpr (ndim != 3) throw std::logic_error("only implemented for 3D right now.");
+
+    IDX gnodes_old[nnode];
+    std::copy_n(gnodes, nnode, gnodes_old);
+
+    for(int i = 0; i < Pn + 1; ++i){
+      for(int j = 0; j < Pn + 1; ++j){
+        for(int k = 0; k < Pn + 1; ++k){
+          int ijk_old[ndim] = {i, j, k};
+          int ijk_new[ndim] = {k, j, Pn - i};
+          gnodes[convert_indices_helper(ijk_new)] = 
+            gnodes_old[convert_indices_helper(ijk_old)];
+        }
+      }
+    }
+  }
+
+  /** @brief rotates the node indices 
+   * 90 degrees ccw about the z axis 
+   * WARNING: only defined for 3D 
+   */
+  void rotate_z(IDX gnodes[nnode]){
+    if constexpr (ndim != 3) throw std::logic_error("only implemented for 3D right now.");
+
+    IDX gnodes_old[nnode];
+    std::copy_n(gnodes, nnode, gnodes_old);
+
+    for(int i = 0; i < Pn + 1; ++i){
+      for(int j = 0; j < Pn + 1; ++j){
+        for(int k =0; k < Pn + 1; ++k){
+          int ijk_old[ndim] = {i, j, k};
+          int ijk_new[ndim] = {Pn - j, i, k};
+          gnodes[convert_indices_helper(ijk_new)] = 
+            gnodes_old[convert_indices_helper(ijk_old)];
+        }
+      }
+    }
   }
 
   // ==================
@@ -764,10 +835,10 @@ public:
       ijk[trace_first_dim] = Pn;
     }
     ijk[face_coord] = (is_negative_xi) ? 0 : Pn;
-    vert_fac[0] = convert_indices_helper(ijk);
+    vert_fac[0] = nodes_el[convert_indices_helper(ijk)];
     for(int i = 1; i < nfacevert; ++i){
       next_ijk(ijk);
-      vert_fac[i] = convert_indices_helper(ijk);
+      vert_fac[i] = nodes_el[convert_indices_helper(ijk)];
     }
   }
 
@@ -783,20 +854,21 @@ public:
    
     for(int ifac = 0; ifac < nfac; ++ifac){
       bool all_found = true; // assume true until mismatch
+      IDX vert_ifac[nfacevert];
+      get_face_vert(ifac, nodes_el, vert_ifac);
       for(int ivert = 0; ivert < nfacevert; ++ivert){
-        IDX vert_ifac[nfacevert];
-        get_face_vert(ifac, nodes_el, vert_ifac);
         bool found = false;
         // try to find ivert
         for(int jvert = 0; jvert < nfacevert; ++jvert){
           if(vert_ifac[ivert] == vert_jfac[jvert]){
             found = true;
+            break;
           }
         }
 
         if(!found){
           all_found = false;
-          continue;
+          break;
         }
       }
 
@@ -845,7 +917,7 @@ class HypercubeTraceOrientTransformation {
 
   private:
 
-  template<int idim> inline int idim_mask(){ return (1 << idim); }
+  template<int idim> inline int idim_mask() const { return (1 << idim); }
 
   /**
    * @brief copy the sign at the specified dimension 
@@ -855,7 +927,7 @@ class HypercubeTraceOrientTransformation {
    *             (if sign_code at bit idim == 0 then that dimension is positive)
    *             (if sign_code at bit idim == 1 then that dimension is negative)
    */
-  inline constexpr int copysign_idim(int idim, int mag, int sign_code){
+  inline constexpr int copysign_idim(int idim, int mag, int sign_code) const {
 
     int is_negative = sign_code & (1 << idim);
     // TODO: remove branch
@@ -907,6 +979,7 @@ class HypercubeTraceOrientTransformation {
 
     // loop over the axes for the right element 
     int gidx0 = verticesR[0]; // always start from origin
+    int errcode = 0;
     NUMTOOL::TMP::constexpr_for_range<0, trace_ndim>([&]<int idim> {
 
       int gidx1 = verticesR[MATH::power_T<2, idim>::value];
@@ -923,7 +996,10 @@ class HypercubeTraceOrientTransformation {
       }
 
       // check if not found 
-      if(lidx0 < 0 || lidx1 < 0) return -1;
+      if(lidx0 < 0 || lidx1 < 0) {
+        errcode = -1;
+        return;
+      }
 
       // set the sign code if flipped 
       // (positive direction always has increasing indices)
@@ -933,6 +1009,8 @@ class HypercubeTraceOrientTransformation {
       // through indexing tomfoolery
       left_directions[idim] = trace_ndim - MATH::log2(std::abs(lidx1 - lidx0)) - 1;
     });
+
+    if(errcode != 0) return errcode;
 
     // get the permutation index in the axis directions
     // with a binary search
