@@ -927,7 +927,7 @@ class HypercubeTraceOrientTransformation {
    *             (if sign_code at bit idim == 0 then that dimension is positive)
    *             (if sign_code at bit idim == 1 then that dimension is negative)
    */
-  inline constexpr int copysign_idim(int idim, int mag, int sign_code) const {
+  inline constexpr T copysign_idim(int idim, T mag, int sign_code) const {
 
     int is_negative = sign_code & (1 << idim);
     // TODO: remove branch
@@ -982,7 +982,9 @@ class HypercubeTraceOrientTransformation {
     int errcode = 0;
     NUMTOOL::TMP::constexpr_for_range<0, trace_ndim>([&]<int idim> {
 
-      int gidx1 = verticesR[MATH::power_T<2, idim>::value];
+      // NOTE: trace_ndim - idim - 1 accounts for the fact that ordering is highest
+      // dimension first
+      int gidx1 = verticesR[MATH::power_T<2, trace_ndim - idim - 1>::value];
 
       // find the local indices on verticesL that have the same global indices 
       int lidx0 = -1, lidx1 = -1; 

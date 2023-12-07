@@ -185,7 +185,18 @@ TEST(test_hypercube_orient_transform, test_transform){
           ASSERT_NEAR(x_l[idim], x_r[idim], 1e-14);
         }
 
-        // finally, rotate about the face coordinate 
+        // finally, rotate el_r about the face coordinate to get the next orientation  
+        switch(face_coord){
+          case 0:
+            domain_trans.rotate_x(nodes_el2);
+            break;
+          case 1:
+            domain_trans.rotate_y(nodes_el2);
+            break;
+          case 2:
+            domain_trans.rotate_z(nodes_el2);
+            break;
+        }
       }
     }
   });
