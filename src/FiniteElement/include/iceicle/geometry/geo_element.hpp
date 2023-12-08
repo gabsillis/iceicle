@@ -13,6 +13,9 @@
 #include <Numtool/fixed_size_tensor.hpp>
 
 namespace ELEMENT{
+
+    // the maximum dynamic element order that is generated
+    static constexpr int MAX_DYNAMIC_ORDER = 10;
     
     /**
      * @brief A Geometric element

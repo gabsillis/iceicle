@@ -31,7 +31,7 @@ namespace MESH {
         nodes[0][0] = xstart;
         T x_i = xstart + dx;
         for(IDX i = 0; i < nelem; ++i) {
-            elements.push_back(std::make_unique<Segment<T, IDX>>(i, i + 1));
+            elements.push_back(new Segment<T, IDX>(i, i + 1));
             nodes[i][0] = x_i;
             x_i += dx;
         }
@@ -43,7 +43,7 @@ namespace MESH {
             IDX elemL = ifac;
             IDX elemR = ifac + 1;
             IDX facenode = ifac;
-            faces.push_back(std::make_unique<PointFace<T, IDX>>(
+            faces.push_back(new PointFace<T, IDX>(
                 elemL, elemR, 
                 faceNrL, faceNrR,
                 facenode, true
@@ -60,7 +60,7 @@ namespace MESH {
             IDX elemL = nelem - 1;
             IDX elemR = 0;
             IDX facenode = 0; // note this could be considered first or last node
-            faces.push_back(std::make_unique<PointFace<T, IDX>>(
+            faces.push_back(new PointFace<T, IDX>(
                 elemL, elemR,
                 faceNrL, faceNrR,
                 facenode, true, ELEMENT::PERIODIC
@@ -72,7 +72,7 @@ namespace MESH {
             int faceNrL = 0; // this face is to the left of elemL
             int faceNrR = 1;
             IDX facenode = 0;
-            faces.push_back(std::make_unique<PointFace<T, IDX>>(
+            faces.push_back(new PointFace<T, IDX>(
                 elemL, elemR, faceNrL, faceNrR,
                 facenode, false, bcleft, bcflagR
             ));
@@ -82,7 +82,7 @@ namespace MESH {
             faceNrL = 1; // this face is to the right of elemL
             faceNrR = 1;
             facenode = nelem;
-            faces.push_back(std::make_unique<PointFace<T, IDX>>(
+            faces.push_back(new PointFace<T, IDX>(
                 elemL, elemR, faceNrL, faceNrR,
                 facenode, true, bcright, bcflagR
             ));
@@ -132,7 +132,7 @@ namespace MESH {
         nodes[0][0] = xstart;
         T x_i = xstart + dx;
         for(IDX i = 0; i < nelem; ++i) {
-            elements.push_back(std::make_unique<Segment<T, IDX>>(i, i + 1));
+            elements.push_back(new Segment<T, IDX>(i, i + 1));
             nodes[i][0] = x_i;
             x_i += dx;
         }
@@ -144,7 +144,7 @@ namespace MESH {
             IDX elemL = ifac;
             IDX elemR = ifac + 1;
             IDX facenode = ifac;
-            faces.push_back(std::make_unique<PointFace<T, IDX>>(
+            faces.push_back(new PointFace<T, IDX>(
                 elemL, elemR, 
                 faceNrL, faceNrR,
                 facenode, true
@@ -161,7 +161,7 @@ namespace MESH {
             IDX elemL = nelem - 1;
             IDX elemR = 0;
             IDX facenode = 0; // note this could be considered first or last node
-            faces.push_back(std::make_unique<PointFace<T, IDX>>(
+            faces.push_back(new PointFace<T, IDX>(
                 elemL, elemR,
                 faceNrL, faceNrR,
                 facenode, true, ELEMENT::PERIODIC
@@ -173,7 +173,7 @@ namespace MESH {
             int faceNrL = 0; // this face is to the left of elemL
             int faceNrR = 1;
             IDX facenode = 0;
-            faces.push_back(std::make_unique<PointFace<T, IDX>>(
+            faces.push_back(new PointFace<T, IDX>(
                 elemL, elemR, faceNrL, faceNrR,
                 facenode, false, bcleft, bcflagR
             ));
@@ -183,7 +183,7 @@ namespace MESH {
             faceNrL = 1; // this face is to the right of elemL
             faceNrR = 1;
             facenode = nelem;
-            faces.push_back(std::make_unique<PointFace<T, IDX>>(
+            faces.push_back(new PointFace<T, IDX>(
                 elemL, elemR, faceNrL, faceNrR,
                 facenode, true, bcright, bcflagR
             ));

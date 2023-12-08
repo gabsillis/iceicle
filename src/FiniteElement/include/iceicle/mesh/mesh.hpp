@@ -7,6 +7,7 @@
 #pragma once
 #include <iceicle/geometry/face.hpp>
 #include <iceicle/geometry/geo_element.hpp>
+#include <iceicle/geometry/hypercube_element.hpp>
 #include <memory>
 #include <ostream>
 #include <string>
@@ -38,8 +39,13 @@ namespace MESH {
         /// The node coordinates
         FE::NodalFEFunction<T, ndim> nodes;
 
-        /// A list of unique pointers of geometric elements
-        std::vector<std::unique_ptr<Element>> elements;
+        /// A list of pointers to geometric elements
+        /// These are owned by the mesh and destroyed when the mesh is destroyed
+        std::vector<Element *> elements;
+
+        /// All faces (internal and boundary) 
+        /// interior faces must be a contiguous set
+        std::vector<Face *> faces;
 
         /// index of the start of interior faces (interior faces must be consecutive)
         IDX interiorFaceStart;
@@ -49,10 +55,6 @@ namespace MESH {
         IDX bdyFaceStart;
         /// index of one past the end of the boundary faces
         IDX bdyFaceEnd;
-        
-        /// All faces (internal and boundary) 
-        /// interior faces must be a contiguous set
-        std::vector<std::unique_ptr<Face>> faces;
 
         inline IDX nelem() { return elements.size(); }
 
@@ -65,9 +67,109 @@ namespace MESH {
         : nodes{}, elements{}, interiorFaceStart(0), interiorFaceEnd(0), 
           bdyFaceStart(0), bdyFaceEnd(0), faces{} {}
         
-        AbstractMesh(int nnode) 
-        : nodes{nnode}, elements{}, interiorFaceStart(0), interiorFaceEnd(0), 
-          bdyFaceStart(0), bdyFaceEnd(0), faces{} {}
+        AbstractMesh(std::size_t nnode) 
+        : nodes{nnode}, elements{}, faces{}, interiorFaceStart(0), interiorFaceEnd(0), 
+          bdyFaceStart(0), bdyFaceEnd(0) {}
+
+        /**
+         * @brief generate a uniform mesh of n-dimensional hypercubes
+         * aligned with the axis
+         * @param xmin the [-1, -1, ..., -1] corner of the domain
+         * @param xmax the [1, 1, ..., 1] corner of the domain
+         * @param directional nelem, the number of elements in each coordinate direction
+         * @param order the polynomial order of the hypercubes
+         * @param bctypes the boundary conditions for each face of the whole domain,
+         *                following the hypercube numbering convention
+         *                defaults to periodic
+         * @param bcflags the boundary condition flags for each face of the whole domain,
+         *                same layout
+         */
+        AbstractMesh(
+            T xmin[ndim], 
+            T xmax[ndim],
+            IDX directional_nelem[ndim],
+            int order = 1,
+            ELEMENT::BOUNDARY_CONDITIONS bctypes[2 * ndim] = {ELEMENT::BOUNDARY_CONDITIONS::PERIODIC},
+            int bcflags[2 * ndim] = {0}
+        ) : nodes{}, elements{}, faces{} {
+
+            // determine the number of nodes to generate
+            int nnodes = 1;
+            int nelem = 1;
+            int nnode_dir[ndim];
+            T dx[ndim];
+            for(int idim = 0; idim < ndim; ++idim) {
+                nnode_dir[idim] = directional_nelem[idim] * (order) + 1;
+                nnodes *= nnode_dir;
+                nelem *= directional_nelem[idim];
+                dx[idim] = (xmax[idim] - xmin[idim]) / directional_nelem[idim];
+            }
+            nodes.resize(nnodes);
+
+            // Generate the nodes 
+            int ijk[ndim] = {0};
+            for(int inode = 0; inode < nnodes; ++inode){
+                // increment
+                ++ijk[0];
+                for(int idim = 0; idim < ndim; ++idim){
+                    if(ijk[idim] == nnode_dir[idim]){
+                        ijk[idim] = 0;
+                        ++ijk[idim + 1];
+                    } else {
+                        // short circuit
+                        break;
+                    }
+                }
+
+                // calculate the coordinates 
+                for(int idim = 0; idim < ndim; ++idim){
+                    nodes[inode][idim] = xmin[idim] + ijk[idim] * dx[idim];
+                }
+            }
+
+           // ENTERING ORDER TEMPLATED SECTION
+           // here we find the compile time function to call based on the order input 
+            NUMTOOL::TMP::constexpr_for_range<1, ELEMENT::MAX_DYNAMIC_ORDER + 1>([&]<int Pn>{
+                using namespace ELEMENT;
+                if(order == Pn){
+
+                    // form all the elements 
+                    for(int idim = 0; idim < ndim; ++idim) ijk[idim] = 0;
+                    for(int ielem = 0; ielem < nelem; ++ielem){
+                        // increment
+                        ++ijk[0];
+                        for(int idim = 0; idim < ndim; ++idim){
+                            if(ijk[idim] == directional_nelem[idim]){
+                                ijk[idim] = 0;
+                                ++ijk[idim + 1];
+                            } else {
+                                // short circuit
+                                break;
+                            }
+                        }
+
+                        // create the element 
+                        HypercubeElement<T, IDX, ndim, Pn> *el = new HypercubeElement<T, IDX, ndim, Pn>();
+
+                        // get the nodes 
+                        auto &trans = el->transformation;
+                        for(int inode = 0; inode < trans.n_nodes(); ++inode){
+                            int iglobal = 0;
+                            for(int idim = 0; idim < ndim; ++idim){
+                                iglobal += ijk[idim] * order + trans.ijk_poin(inode)[idim];
+                            }
+                            el->setNode(inode, iglobal);
+                        }
+
+                        // assign it 
+                        elements[ielem] = el;
+                    }
+
+                    // form all the faces
+                }
+            });
+            // EXITING ORDER TEMPLATED SECTION
+        } 
 
 //        TODO: Do this in a separate file so we can build without mfem 
 //        AbstractMesh(mfem::FiniteElementSpace &mfem_mesh);
@@ -112,6 +214,16 @@ namespace MESH {
                 out << "FaceNrL: " << fac.face_infoL / ELEMENT::FACE_INFO_MOD << " | FaceNrR: " << fac.face_infoR / ELEMENT::FACE_INFO_MOD << "\n";
                 out << "-------------------------\n";
            }
+        }
+
+        ~AbstractMesh(){
+            for(Element *el_ptr : elements){
+                delete el_ptr;
+            }
+
+            for(Face *fac_ptr : faces){
+                delete fac_ptr;
+            }
         }
     };
 }

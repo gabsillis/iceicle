@@ -71,7 +71,7 @@ namespace ELEMENT {
 
         virtual
         T rootRiemannMetric(
-            FE::NodalFEFunction<T, ndim> &nodeCoords,
+            NUMTOOL::TENSOR::FIXED_SIZE::Tensor<T, ndim, ndim - 1> &J,
             const FacePoint &s
         ) const override { return 1.0; }
 

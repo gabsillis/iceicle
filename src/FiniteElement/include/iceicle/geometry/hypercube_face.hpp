@@ -16,6 +16,16 @@ namespace ELEMENT {
         inline static TRANSFORMATIONS::HypercubeTraceOrientTransformation<T, IDX, ndim> orient_trans{};
         inline static TRANSFORMATIONS::HypercubeTraceTransformation<T, IDX, ndim, Pn> trans{};
 
+        /**
+         * @brief create a hypercube face 
+         * @param elemL the left element 
+         * @param elemR the right element 
+         * @param faceNrL the face number for the left element 
+         * @param faceNrR the face number for the right element
+         * @param orientR the orientation of the right face 
+         * @param bctype the boundary condition type 
+         * @param bcflag the integer flag to define additional information for the boundary condition 
+         */
         HypercubeFace(
             IDX elemL, IDX elemR, 
             int faceNrL, int faceNrR,

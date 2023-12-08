@@ -91,7 +91,10 @@ namespace ELEMENT {
          * @return T the area of the face
          */
         virtual
-        T getArea() const = 0;
+        T getArea() const {
+            // TODO: get rid of this, I hate this pattern
+            throw std::logic_error("not implemented.");
+        };
 
         /**
          * @brief convert reference domain coordinates to physical coordinates
@@ -126,13 +129,13 @@ namespace ELEMENT {
 
         /**
          * @brief get the Riemannian metric tensor for the surface map 
-         * @param [in] node_coords the coordinates of all the nodes 
+         * @param [in] jac the jacobian as calculated by Jacobian()
          * @param [in] s the point in the global face reference domain 
          * @return the Riemannian metric tensor
          */
         virtual 
         MetricTensorType RiemannianMetric(
-            FE::NodalFEFunction<T, ndim> &nodeCoords,
+            JacobianType &jac,
             const FacePoint &s
         ) const {
             MetricTensorType g;
@@ -142,11 +145,10 @@ namespace ELEMENT {
             }
 
             g = 0.0;
-            JacobianType J = Jacobian(nodeCoords, s);
             for(int k = 0; k < ndim - 1; ++k){
                 for(int l = 0; l < ndim - 1; ++l){
                     for(int i = 0; i < ndim; ++i){
-                        g[k][l] += J[i][k] * J[i][l];
+                        g[k][l] += jac[i][k] * jac[i][l];
                     }
                 }
             }
@@ -156,16 +158,17 @@ namespace ELEMENT {
         /**
          * @brief Square root of the Riemann metric determinant
          * of the face at the given point
-         * 
+         *
+         * @param jac the jacobian as calculated by Jacobian()
          * @param s the point in the face reference domain
          * @return T the square root of the riemann metric
          */
         virtual
         T rootRiemannMetric(
-            FE::NodalFEFunction<T, ndim> &nodeCoords,
+            JacobianType &jac,
             const FacePoint &s
         ) const {
-           MetricTensorType g = RiemannianMetric(nodeCoords, s); 
+           MetricTensorType g = RiemannianMetric(jac, s); 
            return std::sqrt(NUMTOOL::TENSOR::FIXED_SIZE::determinant(g));
         }
 
