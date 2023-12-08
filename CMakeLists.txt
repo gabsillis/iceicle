@@ -42,11 +42,42 @@ set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin/obj)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 add_custom_target(OUTPUTDIR ALL COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/output)
 
+# THIRD PARTY LIBRARIES
+set(ICEICLE_TPL_DIR "${CMAKE_SOURCE_DIR}/../iceicle_tpl")
+set(MFEM_BUILD_DIR "${ICEICLE_TPL_DIR}/mfem/build")
+option(ICEICLE_USE_TPL "Enables third party libraries" OFF)
+if(ICEICLE_USE_TPL)
+  add_definitions(-DICEICLE_HAS_MFEM)
+  message("Searching for mfem in: ${MFEM_BUILD_DIR}")
+  if(MFEM_BUILD_DIR)
+      # searches for MFEMConfig.cmake in the given path
+      find_package(mfem REQUIRED NAMES MFEM HINTS ${MFEM_BUILD_DIR} NO_DEFAULT_PATH)
+  else()
+      message("Searching for mfem using normal find_package")
+      find_package(mfem REQUIRED NAMES MFEM)
+  endif()
+endif()
+
+include(FetchContent)
+
+# OPENGL VISUALIZATION
+option(ICEICLE_USE_OPENGL "Enables OpenGL visualization" ON)
+if(ICEICLE_USE_OPENGL)
+  find_package(OpenGL REQUIRED)
+  find_package(GLEW REQUIRED)
+  find_package(glfw3 REQUIRED)
+
+  # imgui
+  set(imgui_SOURCE_DIR "${CMAKE_SOURCE_DIR}/imgui")
+
+  # copy shaders
+  file(COPY ${CMAKE_SOURCE_DIR}/shaders DESTINATION ${CMAKE_RUNTIME_OUTPUT_DIRECTORY})
+endif()
+
 # Include subdirectories
 add_subdirectory(numericaltoolbox)
 add_subdirectory(src)
 
-include(FetchContent)
 # matplotlib-cpp integration
 option(ENABLE_MATPLOTLIB_CPP "Enables matplotlib-cpp" ON)
 if(ENABLE_MATPLOTLIB_CPP)
@@ -62,6 +93,7 @@ if(ENABLE_MATPLOTLIB_CPP)
       add_subdirectory(${matplotplusplus_SOURCE_DIR} ${matplotplusplus_BINARY_DIR} EXCLUDE_FROM_ALL)
   endif()
 endif()
+
 
 #TESTING
 option(ENABLE_TESTING_ICEICLE "Enables testing and downlod gtest for ICEicle" ON)

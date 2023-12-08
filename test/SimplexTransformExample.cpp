@@ -1,4 +1,5 @@
 #include <iceicle/transformations/SimplexElementTransformation.hpp>
+#include <iceicle/fe_function/nodal_fe_function.hpp>
 #include <fstream>
 #include <matplot/matplot.h>
 #include <iostream>
@@ -79,12 +80,12 @@ void example2(){
     cin.get();
 
     // make a curved triangley boi with vortex
-    std::vector<Point2D> points{};
+    FE::NodalFEFunction<double, 2> points{trans.nnodes()};
     std::vector<int> node_numbers{};
     for(int inode = 0; inode < trans.nnodes(); ++inode){
         Point2D pt = trans.reference_nodes()[inode];
         pt = vortex_transform(pt);
-        points.push_back(pt);
+        points[inode] = pt;
         node_numbers.push_back(inode);
     }
 
@@ -116,8 +117,9 @@ void example2(){
 /** @brief show the transformation on a curved trace */
 void example3(){
     SimplexElementTransformation<double, int, 2, 2> trans{};
-    SimplexTraceTransformation<double, int, 2, 2> trace_trans{};
-    std::vector<Point2D> nodes = {
+    SimplexTraceOrientTransformation<double, int, 2> orient_trans{};
+    SimplexTraceTransformation<double, int, 2> trace_trans{};
+    FE::NodalFEFunction<double, 2> nodes = {
         {0.0, 0.0}, // 0
         {1.0, 0.0}, // 1
         {2.0, 0.0}, // 2
@@ -144,8 +146,21 @@ void example3(){
     double ds = 0.1;
     for(int ipoin = 0; ipoin < 11; ++ipoin){
         MATH::GEOMETRY::Point<double, 1> s = {ipoin * ds};
+        MATH::GEOMETRY::Point<double, 1> sR{};
+        // get the orientation transformed face reference coordinate
+        int facevertL[trace_trans.nvert_tr];
+        int facevertR[trace_trans.nvert_tr];
+        trans.getTraceVertices(traceNrL, idxs1.data(), facevertL);
+        trans.getTraceVertices(traceNrR, idxs2.data(), facevertR);
+        int orientR = orient_trans.getOrientation(facevertL, facevertR);
+        orient_trans.transform(orientR, s, sR);
         Point2D xiL, xiR;
-        trace_trans.transform(idxs1.data(), idxs2.data(), traceNrL, traceNrR, s, xiL, xiR);
+
+        // transform from face reference coordinate to element reference coordinate
+        trace_trans.transform(idxs1.data(), traceNrL, s , xiL);
+        trace_trans.transform(idxs2.data(), traceNrR, sR, xiR);
+
+        // transform from reference element to physical coordinate
         Point2D xptL, xptR;
         trans.transform(nodes, idxs1.data(), xiL, xptL);
         trans.transform(nodes, idxs2.data(), xiR, xptR);
@@ -192,12 +207,12 @@ void example4(){
     cin.get();
 
     // make a curved triangley boi with vortex
-    std::vector<Point3D> points{};
+    FE::NodalFEFunction<double, 3> points{};
     std::vector<int> node_numbers{};
     for(int inode = 0; inode < trans.nnodes(); ++inode){
         Point3D pt = trans.reference_nodes()[inode];
         pt = vortex_transform(pt);
-        points.push_back(pt);
+        points[inode] = pt;
         node_numbers.push_back(inode);
     }
 
@@ -233,8 +248,9 @@ void example4(){
 
 void example5(){
     SimplexElementTransformation<double, int, 3, 2> trans{};
-    SimplexTraceTransformation<double, int, 3, 2> trace_trans{};
-    std::vector<Point3D> nodes = {
+    SimplexTraceOrientTransformation<double, int, 3> orient_trans{};
+    SimplexTraceTransformation<double, int, 3> trace_trans{};
+    FE::NodalFEFunction<double, 3> nodes = {
         {0.0, 0.0, 0.0}, // 0
         {1.0, 0.0, 0.0}, // 1
         {1.0, 1.0, 0.0}, // 2
@@ -272,8 +288,19 @@ void example5(){
     for(int ipoin = 0; ipoin < trace_domain.nnodes(); ++ipoin)
     if(ipoin != 28) { // eliminate a center node to make sure it works
         MATH::GEOMETRY::Point<double, 2> s = trace_domain.reference_nodes()[ipoin];
+        // get the orientation transformed face reference coordinate
+        MATH::GEOMETRY::Point<double, 2> sR{};
+        int facevertL[trace_trans.nvert_tr];
+        int facevertR[trace_trans.nvert_tr];
+        trans.getTraceVertices(traceNrL, idxs1.data(), facevertL);
+        trans.getTraceVertices(traceNrR, idxs2.data(), facevertR);
+        int orientR = orient_trans.getOrientation(facevertL, facevertR);
+        orient_trans.transform(orientR, s, sR);
+
+        // transform from reference trace to reference element spaces
         Point3D xiL, xiR;
-        trace_trans.transform(idxs1.data(), idxs2.data(), traceNrL, traceNrR, s, xiL, xiR);
+        trace_trans.transform(idxs1.data(), traceNrL, s, xiL);
+        trace_trans.transform(idxs2.data(), traceNrR, sR, xiR);
         Point3D xptL, xptR;
         trans.transform(nodes, idxs1.data(), xiL, xptL);
         trans.transform(nodes, idxs2.data(), xiR, xptR);
@@ -299,5 +326,13 @@ void example5(){
 }
 
 int main(int argc, char *argv[]){
-    example5();
+    if(argc > 1){
+        if(argv[1][0] == '1') example1();
+        if(argv[1][0] == '2') example2();
+        if(argv[1][0] == '3') example3();
+        if(argv[1][0] == '4') example4();
+        if(argv[1][0] == '5') example5();
+    } else {
+        example5();
+    }
 }

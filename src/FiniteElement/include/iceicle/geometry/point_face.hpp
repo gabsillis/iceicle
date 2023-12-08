@@ -13,6 +13,7 @@ namespace ELEMENT {
     class PointFace final : public Face<T, IDX, 1> {
         static constexpr int ndim = 1;
         using Point = MATH::GEOMETRY::Point<T, ndim>;
+        using FacePoint = MATH::GEOMETRY::Point<T, ndim - 1>;
 
         // === Index data ===
         /// the node corresponding to this face
@@ -23,8 +24,6 @@ namespace ELEMENT {
         T normal;
         /// the face area
         T area = 1.0;
-        /// the centroid in the physical domain
-        Point centroid;
 
         public:
         // === Constructors ===
@@ -37,53 +36,46 @@ namespace ELEMENT {
             bool positiveNormal,
             BOUNDARY_CONDITIONS bctype = INTERIOR,
             int bcflag = 0
-        ) : Face<T, IDX, 1>(elemL, elemR, faceNrL, faceNrR, 0, 0, bctype, bcflag),
+        ) : Face<T, IDX, 1>(
+                elemL, elemR,
+                faceNrL * FACE_INFO_MOD, 
+                faceNrR * FACE_INFO_MOD,
+                bctype, bcflag
+            ),
             node(node)
         {
            if(positiveNormal) normal = 1.0;
            else normal = -1.0;
         }
 
-        // === Overriden Face methods ===
-        void updateGeometry(std::vector< Point > &nodeCoords) override {
-            centroid = nodeCoords[node];
-        }
+        T getArea() const override { return area; }
 
-        inline void getNormal(
-            std::vector< Point > &nodeCoords,
-            const MATH::GEOMETRY::Point<T, ndim - 1> &s,
-            T *n
-        ) override {
-            n[0] = normal;
-        }
-
-        inline T getArea() override { return area; }
-
-        inline void getUnitNormal(std::vector< Point > &nodeCoords,
-            const MATH::GEOMETRY::Point<T, ndim - 1> &s,
-            T *n
-        ) override {
-            n[0] = normal;
-        }
-
-        void convertRefToAct(
-            std::vector< Point > &nodeCoords,
-            const MATH::GEOMETRY::Point<T, ndim - 1> &s,
+        void transform(
+            FE::NodalFEFunction<T,ndim> &nodeCoords,
+            const FacePoint &s,
             T *result
-        ) override {
+        ) const override {
             result[0] = nodeCoords[node][0];
         }
 
-        inline const Point &getCentroid() override { return centroid; }
 
-        T rootRiemannMetric(
-            std::vector<MATH::GEOMETRY::Point<T, ndim> > &nodeCoords,
-            const MATH::GEOMETRY::Point<T, ndim - 1> &s
-        ) override {
-            return 1.0;
+        NUMTOOL::TENSOR::FIXED_SIZE::Tensor<T, ndim, ndim-1> Jacobian(
+            FE::NodalFEFunction<T, ndim> &node_coords,
+            const FacePoint &s
+        ) const override {
+            NUMTOOL::TENSOR::FIXED_SIZE::Tensor<T, ndim, ndim-1> ret;
+            ret[0][0] = normal; // use extra space defined in the Tensor for zero size
+            return ret;
         }
 
-        int n_nodes() override { return 1; }
+
+        virtual
+        T rootRiemannMetric(
+            FE::NodalFEFunction<T, ndim> &nodeCoords,
+            const FacePoint &s
+        ) const override { return 1.0; }
+
+        int n_nodes() const override { return 1; }
 
         IDX *nodes() override { return &node; }
     };

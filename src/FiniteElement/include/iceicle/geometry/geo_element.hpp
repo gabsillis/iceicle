@@ -7,8 +7,10 @@
 
 #pragma once
 #include <vector>
+#include <iceicle/fe_function/nodal_fe_function.hpp>
 #include <Numtool/point.hpp>
 #include <Numtool/matrixT.hpp>
+#include <Numtool/fixed_size_tensor.hpp>
 
 namespace ELEMENT{
     
@@ -51,20 +53,23 @@ namespace ELEMENT{
          * @param [out] pt_phys the point in the physical domain
          */
         virtual 
-        void transform(std::vector<Point> &node_coords, const Point &pt_ref, Point &pt_phys) const = 0;
+        void transform(
+            FE::NodalFEFunction<T, ndim> &node_coords,
+            const Point &pt_ref,
+            Point &pt_phys
+        ) const = 0;
 
         /**
          * @brief get the Jacobian matrix of the transformation
          * J = \frac{\partial T(s)}{\partial s} = \frac{\partial x}[\partial \xi}
          * @param [in] node_coords the coordinates of all the nodes
          * @param [in] xi the position in the reference domain at which to calculate the Jacobian
-         * @param [out] the jacobian matrix
+         * @return the Jacobian matrix
          */
         virtual
-        void Jacobian(
-            std::vector<Point> &node_coords,
-            const Point &xi,
-            T J[ndim][ndim]
+        NUMTOOL::TENSOR::FIXED_SIZE::Tensor<T, ndim, ndim> Jacobian(
+            FE::NodalFEFunction<T, ndim> &node_coords,
+            const Point &xi
         ) const = 0;
 
         /**
@@ -77,9 +82,15 @@ namespace ELEMENT{
          */
         virtual
         void Hessian(
-            std::vector<Point> &node_coords,
+            FE::NodalFEFunction<T, ndim> &node_coords,
             const Point &xi,
             T hess[ndim][ndim][ndim]
         ) const = 0;
+
+        /**
+         * @brief virtual destructor
+         */
+        virtual
+        ~GeometricElement() = default;
     };
 }

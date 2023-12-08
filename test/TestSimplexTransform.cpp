@@ -57,12 +57,12 @@ TEST(test_simplex_transform, test_jacobian){
     const Point3D *reference_nodes = trans.reference_nodes();
     
     // make a curved triangley boi with vortex
-    std::vector<Point3D> points{};
+    FE::NodalFEFunction<double, 3> points{trans.nnodes()};
     std::vector<int> node_numbers{};
     for(int inode = 0; inode < trans.nnodes(); ++inode){
         Point3D pt = trans.reference_nodes()[inode];
         pt = point_transform(pt);
-        points.push_back(pt);
+        points[inode] = pt;
         node_numbers.push_back(inode);
     }
 
@@ -75,8 +75,7 @@ TEST(test_simplex_transform, test_jacobian){
         const Point3D test_pt = dense_trans.reference_nodes()[inode];
 
         feenableexcept(FE_ALL_EXCEPT & ~ FE_INEXACT);
-        double J[3][3];
-        trans.Jacobian(points, node_numbers.data(), test_pt, J);
+        auto J = trans.Jacobian(points, node_numbers.data(), test_pt);
         fedisableexcept(FE_ALL_EXCEPT & ~ FE_INEXACT);
 
         for(int idim = 0; idim < 3; ++idim){

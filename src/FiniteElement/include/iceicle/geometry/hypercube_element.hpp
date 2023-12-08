@@ -1,37 +1,42 @@
 /**
- * @file simplex_element.hpp
- * @brief GeometricElement implementation for simplices
+ * @file hypercube_element.hpp
+ * @brief GeometricElement implementation for hypercubes 
  * @author Gianni Absillis (gabsill@ncsu.edu)
  */
+
 #pragma once
+#include "Numtool/point.hpp"
 #include <iceicle/geometry/geo_element.hpp>
-#include <iceicle/transformations/SimplexElementTransformation.hpp>
+#include <iceicle/transformations/HypercubeElementTransformation.hpp>
 
 namespace ELEMENT {
-    
+
     template<typename T, typename IDX, int ndim, int Pn>
-    class SimplexGeoElement final : public GeometricElement<T, IDX, ndim> {
+    class HypercubeElement final : public GeometricElement<T, IDX, ndim> {
+
         private:
         // namespace aliases
         using Point = MATH::GEOMETRY::Point<T, ndim>;
+        using PointView = MATH::GEOMETRY::PointView<T, ndim>;
+        using JacobianType = NUMTOOL::TENSOR::FIXED_SIZE::Tensor<T, ndim, ndim>;
 
         public:
-        /// @brief the transformation that properly converts to the reference domain for this element (must be inline to init)
-        static inline TRANSFORMATIONS::SimplexElementTransformation<T, IDX, ndim, Pn> transformation{};
+        static inline TRANSFORMATIONS::HypercubeElementTransformation<T, IDX, ndim, Pn> transformation{};
+
 
         private:
         // ================
         // = Private Data =
         // =   Members    =
         // ================
-        IDX _nodes[transformation.nnodes()];
+        IDX _nodes[transformation.n_nodes()];
 
         public:
         // ====================
         // = GeometricElement =
         // =  Implementation  =
         // ====================
-        constexpr int n_nodes() const override { return transformation.nnodes(); }
+        constexpr int n_nodes() const override { return transformation.n_nodes(); }
 
         const IDX *nodes() const override { return _nodes; }
 
@@ -40,7 +45,7 @@ namespace ELEMENT {
             return transformation.transform(node_coords, _nodes, pt_ref, pt_phys);
         }
 
-        NUMTOOL::TENSOR::FIXED_SIZE::Tensor<T, ndim, ndim> Jacobian(
+        JacobianType Jacobian(
             FE::NodalFEFunction< T, ndim > &node_coords,
             const Point &xi
         ) const override {

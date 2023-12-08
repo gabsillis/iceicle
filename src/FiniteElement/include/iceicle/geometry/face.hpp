@@ -4,8 +4,10 @@
  * @brief geometric face definition
  */
 #pragma once
+#include "iceicle/fe_function/nodal_fe_function.hpp"
 #include <Numtool/point.hpp>
 #include <Numtool/MathUtils.hpp>
+#include <Numtool/fixed_size_tensor.hpp>
 #include <vector>
 #include <string>
 
@@ -28,13 +30,22 @@ namespace ELEMENT {
         INTERIOR // default condition that does nothing
     };
 
+    /// face_info / this gives the face number 
+    /// face_info % this gives the orientation
+    static constexpr unsigned int FACE_INFO_MOD = 512;
+
      /**
      * @brief An interface between two geometric elements
      * 
      * If this face bounday face
      * - real element is elemL
      * - ghost element is elemR
-     * - ghost element is IDX -1 unless explicitly generated
+     *
+     * face_info: 
+     * the face_info integers hold the local face number and orientation
+     * that is used for transformations
+     * The face number is face info / face_info_mod
+     * The face orientation is face_info % face_info_mod
      *
      * @tparam T the floating point type
      * @tparam IDX the index type for large lists
@@ -44,53 +55,35 @@ namespace ELEMENT {
     class Face{
         
         using Point = MATH::GEOMETRY::Point<T, ndim>;
+        using FacePoint = MATH::GEOMETRY::Point<T, ndim - 1>;
+        using JacobianType = NUMTOOL::TENSOR::FIXED_SIZE::Tensor<T, ndim, ndim - 1>;
+        using MetricTensorType = NUMTOOL::TENSOR::FIXED_SIZE::Tensor<T, ndim - 1, ndim - 1>;
         public:
+
 
         IDX elemL; /// the element on the left side of this face
         // If This face is a boundary face, then the real cell is the Left cell
         // The ghost cell is the right cell
         IDX elemR; /// the element on the right side of this face
-        int faceNrL; /// the face number for the left element
-        int faceNrR; /// the face number for the right element
-        int orientationL; /// the orientation of this face wrt to the left element
-        int orientationR; /// the orientation of this face wrt to te right element
+
+        /// Face info for the left element
+        unsigned int face_infoL;
+        /// Face info for the right element 
+        unsigned int face_infoR;
         BOUNDARY_CONDITIONS bctype; /// the boundary condition type
         int bcflag; /// an integer flag to attach to the boundary condition
 
         explicit
-        Face(IDX elemL, IDX elemR, int faceNrL, int faceNrR, int orientationL, int orientationR, BOUNDARY_CONDITIONS bctype = INTERIOR, int bcflag = 0)
-         : elemL(elemL), elemR(elemR), faceNrL(faceNrL), faceNrR(faceNrR),
-           orientationL(orientationL), orientationR(orientationR),
-           bctype(bctype), bcflag(bcflag)
-         {}
+        Face(
+            IDX elemL, IDX elemR, unsigned int face_infoL, unsigned int face_infoR,
+            BOUNDARY_CONDITIONS bctype = INTERIOR, int bcflag = 0
+        ) : elemL(elemL), elemR(elemR),
+            face_infoL(face_infoL), face_infoR(face_infoR),
+            bctype(bctype), bcflag(bcflag)
+        {}
 
-        ~Face() = default;
+        virtual ~Face() = default;
 
-         /**
-         * @brief Perform geometry precomputation
-         * calculates normals, etc.
-         * 
-         * @param nodeCoords the node coordinate array
-         */
-        virtual
-        void updateGeometry(std::vector< MATH::GEOMETRY::Point<T, ndim> > &nodeCoords) = 0;
-
-        /**
-         * @brief Get the area weighted normal at the given point s in the reference domain
-         * always points from the left cell into the right cell
-         * note: for boundary faces this means the normal always points
-         *       out of the computational domain
-         * 
-         * @param [in] nodeCoords the node coordinates
-         * @param [in] s the point in the face reference domain [ndim - 1]
-         * @param [out] n The normal [ndim]
-         */
-        virtual
-        void getNormal(
-            std::vector< Point > &nodeCoords,
-            const MATH::GEOMETRY::Point<T, ndim - 1> &s,
-            T *n
-        ) = 0;
 
         /**
          * @brief Get the area of the face
@@ -98,27 +91,7 @@ namespace ELEMENT {
          * @return T the area of the face
          */
         virtual
-        T getArea() = 0;
-
-        /**
-         * @brief Get the Unit Normal at the given point s
-         * 
-         * @param [in] nodeCoords the node coordinates
-         * @param [in] s the point in the face reference domain
-         * @param [out] result the result of the vector multiplication getnormal(s) / getArea();
-         */
-        virtual
-        void getUnitNormal(
-            std::vector< Point > &nodeCoords,
-            const MATH::GEOMETRY::Point<T, ndim - 1> &s,
-            T *result
-        ){
-            // naive implementation
-            T aream = 1.0 / getArea();
-            T normal[ndim];
-            getNormal(nodeCoords, s, normal);
-            for(int idim = 0; idim < ndim; ++idim) result[idim] = aream * normal[idim];
-        }
+        T getArea() const = 0;
 
         /**
          * @brief convert reference domain coordinates to physical coordinates
@@ -128,22 +101,60 @@ namespace ELEMENT {
          * @param [out] the physical coordinates size = ndim
          */
         virtual
-        void convertRefToAct(
-            std::vector< Point > &nodeCoords,
-            const MATH::GEOMETRY::Point<T, ndim - 1> &s,
+        void transform(
+            FE::NodalFEFunction<T,ndim> &nodeCoords,
+            const FacePoint &s,
             T *result
-        ) = 0;
-
+        ) const = 0;
 
         /**
-         * @brief get the centroid of the face
-         * @return const GOEMETRY::Point<T, ndim> & the center point of the face
+         * @brief get the Jacobian matrix of the transformation
+         * J = \frac{\partial T(s)}{\partial s} = \frac{\partial x}{\partial s}
+         *
+         * TODO: check this should always result in outward normals for 
+         * the left element 
+         *
+         * @param [in] node_coords the coordinates of all the nodes 
+         * @param [in] s the point in the global face reference domain 
+         * @return the Jacobian matrix 
          */
-        virtual
-        const Point &getCentroid() = 0;
+        virtual 
+        JacobianType Jacobian(
+            FE::NodalFEFunction<T, ndim> &node_coords,
+            const FacePoint &s
+        ) const = 0;
 
         /**
-         * @brief Square root of the Riemann metric 
+         * @brief get the Riemannian metric tensor for the surface map 
+         * @param [in] node_coords the coordinates of all the nodes 
+         * @param [in] s the point in the global face reference domain 
+         * @return the Riemannian metric tensor
+         */
+        virtual 
+        MetricTensorType RiemannianMetric(
+            FE::NodalFEFunction<T, ndim> &nodeCoords,
+            const FacePoint &s
+        ) const {
+            MetricTensorType g;
+            if constexpr (ndim == 1) {
+                g[0][0] = 1.0;
+                return g;
+            }
+
+            g = 0.0;
+            JacobianType J = Jacobian(nodeCoords, s);
+            for(int k = 0; k < ndim - 1; ++k){
+                for(int l = 0; l < ndim - 1; ++l){
+                    for(int i = 0; i < ndim; ++i){
+                        g[k][l] += J[i][k] * J[i][l];
+                    }
+                }
+            }
+            return g;
+        }
+        
+        /**
+         * @brief Square root of the Riemann metric determinant
          * of the face at the given point
          * 
          * @param s the point in the face reference domain
@@ -151,16 +162,19 @@ namespace ELEMENT {
          */
         virtual
         T rootRiemannMetric(
-            std::vector< Point > &nodeCoords,
-            const MATH::GEOMETRY::Point<T, ndim - 1> &s
-        ) = 0;
+            FE::NodalFEFunction<T, ndim> &nodeCoords,
+            const FacePoint &s
+        ) const {
+           MetricTensorType g = RiemannianMetric(nodeCoords, s); 
+           return std::sqrt(NUMTOOL::TENSOR::FIXED_SIZE::determinant(g));
+        }
 
         /**
          * @brief the the number of nodes for this element
          * @return the number of nodes
          */
         virtual 
-        int n_nodes() = 0;
+        int n_nodes() const = 0;
 
         /**
          * @brief get a pointer to the array of node indices

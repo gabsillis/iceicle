@@ -5,7 +5,6 @@
 #include <iceicle/geometry/simplex_element.hpp> 
 #include <iceicle/basis/lagrange.hpp>
 #include <iceicle/quadrature/SimplexQuadrature.hpp>
-#include <iceicle/solvers/element_linear_solve.hpp>
 #include <Numtool/vector.hpp>
 #include "gtest/gtest.h" 
 #include <iomanip>
@@ -56,11 +55,12 @@ TEST(test_simplex_4d_linear, project_nl_func){
     SimplexGeoElement<double, int, 4, 1> simplex1{};
 
     using Point = MATH::GEOMETRY::Point<double, 4>;
-    std::vector< Point > node_coords{};
+    FE::NodalFEFunction<double, 4> node_coords{};
+    node_coords.resize(simplex1.transformation.nnodes());
     
     for(int i = 0; i < simplex1.transformation.nnodes(); ++i){
         Point ptcopy = simplex1.transformation.reference_nodes()[i];
-        node_coords.push_back(ptcopy);
+        node_coords[i] = ptcopy;
         simplex1.setNode(i, i);
     }
 
@@ -74,7 +74,7 @@ TEST(test_simplex_4d_linear, project_nl_func){
     auto testproject = [&]<int Pn>() {
         static constexpr int neq = 1;
         SimplexLagrangeBasis<double, int, 4, Pn> basis{};
-        QUADRATURE::GrundmannMollerSimplexQuadrature<double, int, 4, Pn> quadrule{};
+        QUADRATURE::GrundmannMollerSimplexQuadrature<double, int, 4, Pn+1> quadrule{};
         FEEvaluation<double, int, 4> evals(basis, quadrule);
         FiniteElement<double, int, 4> fe(&simplex1, basis, quadrule, evals, 0);
 
@@ -155,11 +155,10 @@ TEST(test_simplex_4d_quadratic, project_nl_func){
     SimplexGeoElement<double, int, 4, 2> simplex1{};
 
     using Point = MATH::GEOMETRY::Point<double, 4>;
-    std::vector< Point > node_coords{};
+    FE::NodalFEFunction<double, 4> node_coords{simplex1.transformation.nnodes()};
     
     for(int i = 0; i < simplex1.transformation.nnodes(); ++i){
-        Point ptcopy = simplex1.transformation.reference_nodes()[i];
-        node_coords.push_back(ptcopy);
+        node_coords[i] = simplex1.transformation.reference_nodes()[i];
         simplex1.setNode(i, i);
     }
 
@@ -179,7 +178,7 @@ TEST(test_simplex_4d_quadratic, project_nl_func){
     auto testproject = [&]<int Pn>() {
         static constexpr int neq = 1;
         SimplexLagrangeBasis<double, int, 4, Pn> basis{};
-        QUADRATURE::GrundmannMollerSimplexQuadrature<double, int, 4, Pn+1> quadrule{};
+        QUADRATURE::GrundmannMollerSimplexQuadrature<double, int, 4, 2*Pn> quadrule{};
         FEEvaluation<double, int, 4> evals(basis, quadrule);
         FiniteElement<double, int, 4> fe(&simplex1, basis, quadrule, evals, 0);
 

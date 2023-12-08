@@ -10,148 +10,55 @@
  */
 #pragma once
 #include <iceicle/quadrature/QuadratureRule.hpp>
+#include <iceicle/quadrature/quadrules_1d.hpp>
 #include <iceicle/geometry/point.hpp>
+#include <Numtool/integer_utils.hpp>
 namespace QUADRATURE {
 
-    /**
-     * @brief Gauss-Legendre Quadrature defined on the reference hypercube
-     * 
-     * @tparam T the floating point type
-     * @tparam IDX the index type
-     * @tparam ndim the number of dimensions
-     * @tparam npoin the number of quadrature point 
-     */
-    template<typename T, typename IDX, int ndim, int npoin> 
-    class HypercubeGaussLegendre final 
-    : public QuadratureRule<T, IDX, ndim>,
-      public TraceQuadratureRule<T, IDX, ndim> {
-        static_assert(ndim >= 0);
-        private:
-        static constexpr int MAX_DEFINED_NPOIN = 6;
-        static constexpr int MIN_DEFINED_NPOIN = 1;
-       
-        template<int x, int y>
-        static constexpr int power_T_safe(){
-            if constexpr(y < 0) return 1;
-            else if constexpr(y == 0) return 1;
-            else if constexpr(y == 1) return x;
-            else return power_T_safe<x, y-1>() * x;
-        }
+    template<typename T, typename IDX, int ndim, int npoin1d>
+    class HypercubeGaussLegendre final : public QuadratureRule<T, IDX, ndim> {
 
-        /* constexpr version for internal use */
-        static constexpr int npoin_ndim = MATH::power_T<npoin, ndim>::value; 
-        static constexpr int data_offset = MATH::consecutiveSum<MIN_DEFINED_NPOIN, npoin - 1>(); // offset for start for this order
-        
+        // the total number of quadrature points
+        static constexpr int num_poin = MATH::power_T<npoin1d, ndim>::value;
 
+        // ==================
+        // = Working Arrays =
+        // ==================
+        QuadraturePoint<T, ndim> qpoints[num_poin];
 
-        static constexpr T abscissae[MATH::consecutiveSum<MIN_DEFINED_NPOIN, MAX_DEFINED_NPOIN>()] = {
-            0,
-            -std::sqrt(3.0) / 3.0,
-             std::sqrt(3.0) / 3.0,
-            0,
-            -std::sqrt(15) / 5.0,
-             std::sqrt(15) / 5.0,
-            -std::sqrt(525 - 70 * std::sqrt(30)) / 35.0,
-             std::sqrt(525 - 70 * std::sqrt(30)) / 35.0,
-            -std::sqrt(525 + 70 * std::sqrt(30)) / 35.0,
-             std::sqrt(525 + 70 * std::sqrt(30)) / 35.0,
-            0,
-            -std::sqrt(245 - 14 * std::sqrt(70)) / 21.0,
-             std::sqrt(245 - 14 * std::sqrt(70)) / 21.0,
-            -std::sqrt(245 + 14 * std::sqrt(70)) / 21.0,
-             std::sqrt(245 + 14 * std::sqrt(70)) / 21.0,
-             0.6612093864662645,
-             -0.6612093864662645,
-             -0.2386191860831969,
-             0.2386191860831969,
-             -0.9324695142031521,
-             0.9324695142031521
-        };
+        public:
+        HypercubeGaussLegendre(){
+            GaussLegendreQuadrature<T, IDX, npoin1d> quadrule_1d{};
 
-        static constexpr T weights[MATH::consecutiveSum<MIN_DEFINED_NPOIN, MAX_DEFINED_NPOIN>()] = {
-            2,
-            1,
-            1,
-            8.0 / 9.0,
-            5.0 / 9.0,
-            5.0 / 9.0,
-            1 / 36.0 * (18 + std::sqrt(30)),
-            1 / 36.0 * (18 + std::sqrt(30)),
-            1 / 36.0 * (18 - std::sqrt(30)),
-            1 / 36.0 * (18 - std::sqrt(30)),
-            128.0 / 225.0,
-            (322 + 13 * std::sqrt(70)) / 900.0,
-            (322 + 13 * std::sqrt(70)) / 900.0,
-            (322 - 13 * std::sqrt(70)) / 900.0,
-            (322 - 13 * std::sqrt(70)) / 900.0,
-            0.3607615730481386,
-            0.3607615730481386,
-            0.4679139345726910,
-            0.4679139345726910,
-            0.1713244923791704,
-            0.1713244923791704
-        };
+            for(int idim = 0; idim < ndim; ++idim){
+                // number of times to repeat the loop over 1d point set
+                const int nrepeat = std::pow(npoin1d, idim);
+                // the size that one loop through the quadrature point set gives
+                const int blocksize = std::pow(npoin1d, ndim - idim);
+                for(int irep = 0; irep < nrepeat; ++irep){
+                    for(int ipoin = 0; ipoin < npoin1d; ++ipoin){
+                        const int nfill = std::pow(npoin1d, ndim - idim - 1);
 
-        GEOMETRY::Point<T, ndim> points_nd[npoin_ndim];
-        T weights_nd[npoin_ndim];
+                        // offset for this point 
+                        const int start_offset = ipoin * nfill;
 
-        template<int idim, int ndim_arg>
-        void dataFill(GEOMETRY::Point<T, ndim_arg> *points_nd, T *weights_nd){
-            static_assert(idim >= 0);
-            static_assert(ndim >= 0);
-            if constexpr (idim == 1 && npoin > 0){
-                for(int p = 0; p < npoin; p++){
-                    points_nd[p][idim - 1] = abscissae[p + data_offset];
-                    weights_nd[p] = weights[p + data_offset];
-                }
-            } else {
-                constexpr int npoin_idim = power_T_safe<npoin, idim>();
-                constexpr int npoin_idimm1 = power_T_safe<npoin, idim - 1>();
-                for(int p = 0; p < npoin; p++){
-                    // drill down
-                    dataFill<idim - 1>(points_nd + p * npoin_idimm1, weights_nd + p * npoin_idimm1);
-                    // fill all points
-                    for(int pfill = p * npoin_idimm1; pfill < (p + 1) * npoin_idimm1; pfill++){
-                        points_nd[pfill][idim - 1] = abscissae[p + data_offset];
-                        weights_nd[pfill] *= weights[p + data_offset];
+                        for(int ifill = 0; ifill < nfill; ++ifill) {
+                            const int offset = irep * blocksize + start_offset;
+                            qpoints[offset + ifill].abscisse[idim] = quadrule_1d[ipoin].abscisse[0];
+                            if(idim == 0){
+                                qpoints[offset + ifill].weight = quadrule_1d[ipoin].weight;
+                            } else {
+                                qpoints[offset + ifill].weight *= quadrule_1d[ipoin].weight;
+                            }
+                        }
                     }
                 }
             }
         }
 
-        public:
-        HypercubeGaussLegendre(){
-            dataFill<ndim, ndim>(points_nd, weights_nd);
-        }
+        int npoints() const override { return num_poin; }
 
-        inline int npoints() const override { return npoin_ndim; }
-
-        inline const GEOMETRY::Point<T, ndim> *quadraturePoints() const override { 
-            return points_nd;
-         }
-
-        inline const T *quadratureWeights() const override {
-            if constexpr (ndim == 1) {
-                return weights + data_offset;
-            } else {
-                return weights_nd;
-            }
-        }
-
-    };
-
-
-    template<typename T, typename IDX, int order> 
-    class HypercubeGaussLegendre<T, IDX, 0, order> final 
-    : public QuadratureRule<T, IDX, 0>,
-      public TraceQuadratureRule<T, IDX, 0> {
-        GEOMETRY::Point<T, 0> quadpoint;
-        static constexpr T quadweight = {1.0};
-        int npoints() const override{ return 1; }
-
-        const GEOMETRY::Point<T, 0> *quadraturePoints() const override {return &quadpoint;}
-
-        const T *quadratureWeights() const override{return &quadweight;}
+        const QuadraturePoint<T, ndim> &getPoint(int ipoint) const override { return qpoints[ipoint]; }
     };
  
 }

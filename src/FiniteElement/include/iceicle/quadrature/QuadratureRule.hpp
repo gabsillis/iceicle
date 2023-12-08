@@ -65,33 +65,4 @@ namespace QUADRATURE {
         inline
         const QuadraturePoint<T, ndim> &operator[](int ipoint) const { return getPoint(ipoint); };
     };
-
-    /**
-     * @brief Quadrature rule for the trace space
-     * 
-     * @tparam T the floating point type
-     * @tparam TS_ndim number of dimensions in the trace space (ndim - 1)
-     */
-    template<typename T, typename IDX, int TS_ndim>
-    class TraceQuadratureRule {
-        public:
-        /**
-         * @brief The number of quadrature points for this trace space
-         * 
-         * @return int the number of quadrature points
-         */
-        virtual int npoints() const = 0;
-        /**
-         * @brief get the ipointh QuadraturePoint which is a struct that
-         * contains the quadrature abscisse and the quadrature weight
-         * @param ipoint the point index
-         * @return the QuadraturePoint
-         */
-        virtual
-        const QuadraturePoint<T, TS_ndim> &getPoint(int ipoint) const  = 0;
-
-        /** @brief get the quadrature point at that index (see getPoint) */
-        inline
-        const QuadraturePoint<T, TS_ndim> &operator[](int ipoint) const { return getPoint(ipoint); };
-    };
 }

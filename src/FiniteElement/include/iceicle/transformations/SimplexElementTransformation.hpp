@@ -1,7 +1,10 @@
 #pragma once
 
 #include <Numtool/integer_utils.hpp>
+#include <Numtool/fixed_size_tensor.hpp>
 #include <Numtool/point.hpp>
+#include <algorithm>
+#include <iceicle/fe_function/nodal_fe_function.hpp>
 #include <vector>
 #include <span>
 #include <string>
@@ -23,12 +26,17 @@ namespace ELEMENT::TRANSFORMATIONS {
 
         // === Aliases ===
         using Point = MATH::GEOMETRY::Point<T, ndim>;
+        using PointView = MATH::GEOMETRY::PointView<T, ndim>;
 
         // === Constants ===
         static constexpr int nbary = ndim + 1; // the number of barycentric coordinates needed to describe a point
         static constexpr int nnode = MATH::binomial<Pn + ndim, ndim>(); // the number of nodes
         /// The number of faces
         static constexpr int nfac = ndim + 1;
+        /// the number of vertices (endpoints)
+        static constexpr int nvert_el = ndim + 1;
+        /// the number of vertices on a face (endpoints)
+        static constexpr int nvert_tr = ndim;
 
         // =================
         // = Helper funcs  =
@@ -219,7 +227,11 @@ namespace ELEMENT::TRANSFORMATIONS {
          * @return T the shape function P_m(xi)
          */
         inline T shapefcn_1d(int m, T xi) const {
-            if(m == 0) return (T) 1.0; // TODO: check if branchless cmov is used
+            if(m == 0) {
+                T ret;
+                ret = 1.0; // friendlier to AD 
+                return ret; // TODO: check if branchless cmov is used
+            }
             T prod = (Pn * xi); // case i = 1
             for(int i = 2; i <= m; ++i){
                 prod *= (Pn * xi - i + 1) / i;
@@ -310,7 +322,6 @@ namespace ELEMENT::TRANSFORMATIONS {
         
         /** @brief calculate the 1d shape function second derivative
          *         using the product rule
-         *  WARNING: does not handle the case where m is 0 or 1
          *  @param m the shape function index
          *  @param xi the function argument
          *  @return T the shape function second derivative
@@ -458,8 +469,6 @@ namespace ELEMENT::TRANSFORMATIONS {
         /// The reference domain coordinates of each reference node
         Point xi_poin[nnode];
 
- //       std::vector<std::vector<int>> face_inodes; /// the local node indices of the points of each face in order
-
         /// provides connectivity to local inode for face endpoints
         int face_endpoints[nfac][ndim];
 
@@ -508,7 +517,10 @@ namespace ELEMENT::TRANSFORMATIONS {
                 }
 
                 for(int idim = 0; idim < ndim; ++idim){
-                    T xi_idim = ((T) ijk_poin[inode][idim]) / Pn;
+                    // Make conversion friendlier for AD 
+                    T poin_real;
+                    poin_real = ijk_poin[inode][idim];
+                    T xi_idim = (poin_real) / Pn;
                     xi_poin[inode][idim] = xi_idim;
                 }
             }
@@ -538,7 +550,7 @@ namespace ELEMENT::TRANSFORMATIONS {
          * @param [out] x the position in the physical domain
          */
         void transform(
-                std::vector<Point> &node_coords,
+                FE::NodalFEFunction<T, ndim> &node_coords,
                 const IDX *node_indices,
                 const Point &xi, Point &x
         ) const {
@@ -558,29 +570,27 @@ namespace ELEMENT::TRANSFORMATIONS {
          * @param [in] node_coords the coordinates of all the nodes
          * @param [in] node_indices the indices in node_coords that pretain to this element in order
          * @param [in] xi the position in the reference domain at which to calculate the Jacobian
-         * @param [out] the jacobian matrix
+         * @return the Jacobian matrix
          */
-        void Jacobian(
-            std::vector<Point> &node_coords,
+        NUMTOOL::TENSOR::FIXED_SIZE::Tensor<T, ndim, ndim> Jacobian(
+            FE::NodalFEFunction<T, ndim> &node_coords,
             const IDX *node_indices,
-            const Point &xi,
-            T J[ndim][ndim]
+            const Point &xi
         ) const {
+            using namespace NUMTOOL::TENSOR::FIXED_SIZE;
             // Get a 1D pointer representation of the matrix head
-            T *Jptr = J[0];
-
-            // fill with zeros
-            std::fill_n(Jptr, ndim * ndim, 0.0);
+            Tensor<T, ndim, ndim> J = {0};
 
             for(int inode = 0; inode < nnode; ++inode){
                 IDX global_inode = node_indices[inode];
-                const Point &node = node_coords[global_inode];
+                PointView node{node_coords[global_inode]};
                 for(int idim = 0; idim < ndim; ++idim) { // idim corresponds to x
                     for(int jdim = 0; jdim < ndim; ++jdim) { // jdim corresponds to \xi
                         J[idim][jdim] += dshp(xi, inode, jdim) * node[idim];
                     }
                 }
             }
+            return J;
         }
 
         /**
@@ -593,7 +603,7 @@ namespace ELEMENT::TRANSFORMATIONS {
          * @param [out] the Hessian in tensor form indexed [k][i][j] as described above
          */
         void Hessian(
-            std::vector<Point> &node_coords,
+            FE::NodalFEFunction<T, ndim> &node_coords,
             const IDX *node_indices,
             const Point &xi,
             T hess[ndim][ndim][ndim]
@@ -606,7 +616,7 @@ namespace ELEMENT::TRANSFORMATIONS {
 
             for(int inode = 0; inode < nnode; ++inode){
                 IDX global_inode = node_indices[inode];
-                const Point &node = node_coords[global_inode];
+                PointView node{node_coords[global_inode]};
                 for(int kdim = 0; kdim < ndim; ++kdim) { // k corresponds to xi
                     for(int idim = 0; idim < ndim; ++idim) {
                         for(int jdim = idim; jdim < ndim; ++jdim) { // fill symmetric part later
@@ -624,6 +634,27 @@ namespace ELEMENT::TRANSFORMATIONS {
                         hess[kdim][idim][jdim] = hess[kdim][jdim][idim];
                     }
                 }
+            }
+        }
+
+        /**
+         * @brief get global node indices for a trace in order 
+         * given the element global node indices 
+         * @param [in] trace number the number that identifies the face 
+         *        (barycentric coordinate that = 0)
+         * @param [in] vertices_el the element global node indices of the 
+         *             vertices in order 
+         *             NOTE: this will be the first nvert_el indices 
+         *             in the global node array for simplices 
+         *
+         * @param [out] vertices_tr the global node indices of the vertices on the face 
+         */
+        void getTraceVertices(int traceNr, const IDX vertices_el[nvert_el], IDX vertices_fac[nvert_tr]) const {
+            for(int ivert = 0; ivert < traceNr; ++ivert){
+                vertices_fac[ivert] = vertices_el[ivert];
+            }
+            for(int ivert = traceNr + 1; ivert < nvert_el; ++ivert){
+                vertices_fac[ivert - 1] = vertices_el[ivert];
             }
         }
 
@@ -651,6 +682,106 @@ namespace ELEMENT::TRANSFORMATIONS {
         }
     };
 
+    /**
+     * @brief transformation from the global reference trace space to the 
+     *        reference trace space of the right element
+     *        (the left element trace is defined to be equivalent to the global orientation)
+     * @tparam T the floating point type
+     * @tparam IDX the indexing type for large lists
+     * @tparam ndim the number of dimensions (for the element)
+     */
+    template<typename T, typename IDX, int ndim>
+    class SimplexTraceOrientTransformation {
+        static constexpr int trace_ndim = ndim - 1;
+        static constexpr int nvert_tr = ndim;
+
+        std::vector<std::vector<IDX>> vertex_permutations;
+
+        using TracePointView = MATH::GEOMETRY::PointView<T, trace_ndim>;
+        public:
+
+        static constexpr int norient = MATH::factorial<nvert_tr>(); // number of permutations
+        
+        SimplexTraceOrientTransformation(){
+            std::vector<IDX> first_perm{};
+            for(int i = 0; i < nvert_tr; ++i) first_perm.push_back(i);
+
+            vertex_permutations.push_back(first_perm);
+            vertex_permutations.push_back(first_perm);
+            int iperm = 1;
+            while(std::next_permutation(vertex_permutations[iperm].begin(), vertex_permutations[iperm].end())){
+                // make a copy of this permutation to get the next one
+                vertex_permutations.push_back(vertex_permutations[iperm]);
+                ++iperm;
+            }
+        }
+
+        /** 
+         * @brief get the orientation of the right element given 
+         * the vertices for the left and right element 
+         * NOTE: the orientation for the left element is always 0 
+         *
+         * @param verticesL the node indices for the left element 
+         * @param verticesR the node indices for the right element 
+         * @return the orientation for the right element or -1 if the nodes don't match
+         */
+        int getOrientation(
+            IDX verticesL[nvert_tr],
+            IDX verticesR[nvert_tr]
+        ) const {
+            // TODO: exploit lexographic structure of permutations for efficiency
+
+            // loop through all the orientation permutations
+            for(int i = 0; i < norient; ++i){
+
+                bool match = true;
+                // loop over all the nodes (to check for issues)
+                for(int j = 0; j < nvert_tr; ++j){
+                    if(verticesR[vertex_permutations[i][j]] != verticesL[j]){
+                        match = false;
+                        continue;
+                    }
+                }
+
+                // if all the nodes match this permutation is the right one 
+                // and defines the orientation
+                if(match) return i;
+            }
+
+            return -1;
+        }
+
+        /**
+         * @brief transform from the reference trace space
+         *  to the right reference trace space
+         *
+         *  The reference trace space oriented with the left element space is 
+         *  defined to be the same orientation as the general reference trace space
+         *  so only the right element orientation needs to be considered
+         *
+         * @param [in] orientationR the orientation of the right element
+         * @param [in] s the position in the reference trace space
+         * @param [out] the posotion in the local reference trace space for the right element
+         */
+        void transform(
+            int orientationR,
+            const TracePointView &s,
+            TracePointView sR
+        ) const {
+            // use the property of the barycentric coordinates of triangles
+            // that we can copy the barycentric coordinates for matching nodes to get the oriented barycentric coords
+            T baryL[nvert_tr];
+            baryL[nvert_tr - 1] = 1.0;
+            for(int idim = 0; idim < trace_ndim; ++idim){
+                baryL[idim] = s[idim];
+                baryL[nvert_tr - 1] -= s[idim];
+            }
+
+            for(int idim = 0; idim < trace_ndim; ++idim){
+                sR[idim] = baryL[vertex_permutations[orientationR][idim]];
+            }
+         }
+    };
 
     /**
      * @brief transformation from the reference trace space
@@ -660,15 +791,60 @@ namespace ELEMENT::TRANSFORMATIONS {
      * @tparam T the floating point type
      * @tparam IDX the indexing type for large lists
      * @tparam ndim the number of dimensions (for the element space)
-     * @tparam Pn the polynomial order of the elements
      */
-    template<typename T, typename IDX, int ndim, int Pn>
+    template<typename T, typename IDX, int ndim>
     class SimplexTraceTransformation {
-        private:
-        static constexpr int trace_ndim = ndim - 1;
-        using ElPoint = MATH::GEOMETRY::Point<T, ndim>;
-        using TracePoint = MATH::GEOMETRY::Point<T, trace_ndim>;
         
+        public:
+        static constexpr int trace_ndim = ndim - 1;
+        static constexpr int nvert_el = ndim + 1;
+        static constexpr int nvert_tr = ndim;
+        static constexpr int ntrace = nvert_el;
+
+        private:
+        using ElPointView = MATH::GEOMETRY::PointView<T, ndim>;
+        using TracePoint = MATH::GEOMETRY::PointView<T, trace_ndim>;
+        using FaceNodeTensorType = NUMTOOL::TENSOR::FIXED_SIZE::Tensor<long, ntrace, nvert_tr + 1>;
+
+        // the face node incides that preserve ccw orientation
+        // WARNING: not correct
+        inline static FaceNodeTensorType face_node_orders = 
+            [](){
+                FaceNodeTensorType ret{};
+                for(int iface = 0; iface < ntrace; ++iface){
+                    ret[iface][nvert_tr] = iface; // last index is the face number 
+                   
+                    // fill with nodes of that face in 
+                    // lexographic order 
+                    for(int j = 0; j < iface; ++j)
+                        { ret[iface][j] = j; }
+                    for(int j = iface; j < nvert_tr; ++j)
+                        { ret[iface][j] = j + 1; }
+
+                    // check parity of the entire list
+                    int n_negative = 0;
+                    for(int i = 0; i < nvert_tr + 1; ++i) {
+                        for(int j = 0; j < i; ++j){
+                            // multiply signs of difference (in effect)
+                            // convert to long for negative
+                            if(( (long) ret[iface][i] - (long) ret[iface][j]) < 0) {
+                                n_negative++;
+                            }
+                        }
+                    }
+
+                    // if negative parity, swap the last two nodes 
+                    // (last in this case doesn't include the face number)
+                    if(n_negative % 2 != 0){
+                        std::swap(ret[iface][nvert_tr - 1], ret[iface][nvert_tr - 2]);
+                        // also keep track of this by negating face number sign 
+                        ret[iface][nvert_tr] = -ret[iface][nvert_tr];
+                    }
+                }
+
+                return ret;
+            }();
+
         public:
 
         /**
@@ -677,21 +853,18 @@ namespace ELEMENT::TRANSFORMATIONS {
          *
          * WARNING: This assumes the vertices are the first ndim+1 nodes
          * This is the current ordering used in SimplexElementTransformation
-         * @param [in] node_indicesL the global node indices for the left element
-         * @param [in] node_indicesR the global node indices for the right element
-         * @param [in] faceNrL the left trace number 
-         * (the position of the barycentric coordinate that is 0 for all points on the face)
-         * @param [in] faceNrR the right trace number (see faceNrL)
+         *
+         * @param [in] node_indices the global node indices for the element
+         * @param [in] faceNr the trace number
+         * (for simplices: the position of the barycentric coordinate that is 0 for all points on the face)
          * @param [in] s the location in the trace reference domain
-         * @param [out] xiL the position in the left reference domain
-         * @param [out] xiR the position in the right reference domain
+         * @param [out] xi the position in the reference element domain
          */
         void transform(
-                IDX *node_indicesL,
-                IDX *node_indicesR,
-                int traceNrL, int traceNrR,
+                IDX *node_indices,
+                int traceNr,
                 const TracePoint &s,
-                ElPoint &xiL, ElPoint &xiR
+                ElPointView xi
         ) const {
             // Generate the barycentric coordinates for the TracePoint
             T sbary[trace_ndim + 1];
@@ -701,29 +874,38 @@ namespace ELEMENT::TRANSFORMATIONS {
                 sbary[trace_ndim] -= s[idim];
             }
 
-            // Left element
             // set the barycentric coordinate to 0
             // unless this is out of bounds (the modular index will just get overwritten)
-            xiL[traceNrL % ndim] = 0;
-            // copy over the barycentric coordinates, skipping faceNr
-            for(int idim = 0; idim < traceNrL; ++idim)
-                { xiL[idim] = sbary[idim]; }
-            for(int idim = traceNrL + 1; idim < ndim; ++idim)
-                { xiL[idim] = sbary[idim - 1]; }
+            xi[traceNr % ndim] = 0;
+            for(int idim = 0; idim < traceNr; ++idim)
+                { xi[idim] = sbary[idim]; }
+            for(int idim = traceNr + 1; idim < ndim; ++idim)
+                { xi[idim] = sbary[idim - 1]; }
 
-            // Right element
-            // set the barycentric coordinate to 0
-            // unless this is out of bounds (the modular index will just get overwritten)
-            xiR[traceNrR % ndim] = 0;
-            static constexpr int nvert = ndim + 1;
-            // find the vertex indices where the global node index is the same
-            // O(n^2) but probably better than nlogn algorithms because of small size
-            for(int ivert = 0; ivert < nvert - 1; ++ivert){ // don't need last bary coord
-                for(int jvert = 0; jvert < nvert; ++jvert){
-                    if(node_indicesR[ivert] == node_indicesL[jvert]){
-                        xiR[ivert] = xiL[jvert]; // copy the matching barycentric coordinate
-                        continue; // move on to the next right element vertex
+            if constexpr(ndim > 1) {
+                std::size_t lc_indices[ndim];
+                lc_indices[0] = traceNr;
+                for(int idim = 0; idim < trace_ndim; ++idim){
+                    if(idim < traceNr){
+                    lc_indices[idim + 1] = idim;
+                    } else {
+                    lc_indices[idim + 1] = idim + 1;
                     }
+                }
+
+                T lc = NUMTOOL::TENSOR::FIXED_SIZE::levi_civita<T, ndim>.list_index(lc_indices);
+                // for every face number except the last 
+                // the normal vector is in the negative coordinate direction 
+                // of that face number 
+                if(traceNr < ndim){
+                    // correct the sign with negative levi_civita 
+                    if(traceNr == 0) xi[1] *= -lc;
+                    else xi[0] *= -lc;
+                } else  {
+                    // correct to positive with levi_civita
+                    // correct the sign with negative levi_civita 
+                    if(traceNr == 0) xi[1] *= lc;
+                    else xi[0] *= lc;
                 }
             }
         }

@@ -21,18 +21,18 @@ namespace MESH {
         ELEMENT::BOUNDARY_CONDITIONS bcright,
         int bcflagL,
         int bcflagR
-    ) {
+    ) : AbstractMesh<T, IDX, 1>(nelem + 1) {
         // namespaces used and type aliases
         using namespace ELEMENT;
         using Point = MATH::GEOMETRY::Point<T, 1>;
         static constexpr int ndim = 1;
 
         // Generate the nodes and elements
-        nodes.emplace_back(xstart);
+        nodes[0][0] = xstart;
         T x_i = xstart + dx;
         for(IDX i = 0; i < nelem; ++i) {
             elements.push_back(std::make_unique<Segment<T, IDX>>(i, i + 1));
-            nodes.emplace_back(x_i);
+            nodes[i][0] = x_i;
             x_i += dx;
         }
 
@@ -129,11 +129,11 @@ namespace MESH {
         static constexpr int ndim = 1;
 
         // Generate the nodes and elements
-        nodes.emplace_back(xstart);
+        nodes[0][0] = xstart;
         T x_i = xstart + dx;
         for(IDX i = 0; i < nelem; ++i) {
             elements.push_back(std::make_unique<Segment<T, IDX>>(i, i + 1));
-            nodes.emplace_back(x_i);
+            nodes[i][0] = x_i;
             x_i += dx;
         }
 

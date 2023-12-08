@@ -6,7 +6,11 @@
  */
 
 #pragma once
-#include <iceicle/element/finite_element.hpp>
+#include <initializer_list>
+#include <vector>
+#include <stdexcept>
+#include <Numtool/point.hpp>
+#include <algorithm>
 
 namespace FE {
     
