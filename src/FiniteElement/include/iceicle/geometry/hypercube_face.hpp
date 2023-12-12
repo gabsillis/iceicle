@@ -11,10 +11,29 @@
 namespace ELEMENT {
     template<typename T, typename IDX, int ndim, int Pn>
     class HypercubeFace final : public Face<T, IDX, ndim> {
+        template<int size>
+        using IndexArrayType = NUMTOOL::TENSOR::FIXED_SIZE::Tensor<IDX, size>;
 
         public:
         inline static TRANSFORMATIONS::HypercubeTraceOrientTransformation<T, IDX, ndim> orient_trans{};
         inline static TRANSFORMATIONS::HypercubeTraceTransformation<T, IDX, ndim, Pn> trans{};
+
+        /// The global node coordinates
+        IndexArrayType<trans.n_nodes> nodes;
+
+        HypercubeFace(
+            IDX elemL, 
+            IDX elemR,
+            IndexArrayType<trans.n_nodes> &nodes,
+            int faceNrL, int faceNrR,
+            int orientR,
+            BOUNDARY_CONDITIONS bctype,
+            int bcflag
+        ) : Face<T, IDX, ndim>(elemL, elemR,
+            faceNrL * FACE_INFO_MOD,
+            faceNrR * FACE_INFO_MOD + orientR,
+            bctype, bcflag), nodes(nodes) {}
+
 
         /**
          * @brief create a hypercube face 

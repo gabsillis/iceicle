@@ -1075,6 +1075,8 @@ class HypercubeTraceTransformation {
 
   public: 
 
+  static constexpr int n_nodes = trace_domain_trans.n_nodes();
+
   HypercubeTraceTransformation(){
     for(int itrace = 0; itrace < n_trace; ++itrace){
       if constexpr (ndim == 1){

@@ -5,6 +5,7 @@
  * @date 2023-06-27
  */
 #pragma once
+#include "iceicle/geometry/hypercube_face.hpp"
 #include <iceicle/geometry/face.hpp>
 #include <iceicle/geometry/geo_element.hpp>
 #include <iceicle/geometry/hypercube_element.hpp>
@@ -92,22 +93,25 @@ namespace MESH {
             ELEMENT::BOUNDARY_CONDITIONS bctypes[2 * ndim] = {ELEMENT::BOUNDARY_CONDITIONS::PERIODIC},
             int bcflags[2 * ndim] = {0}
         ) : nodes{}, elements{}, faces{} {
+            using namespace NUMTOOL::TENSOR::FIXED_SIZE;
 
             // determine the number of nodes to generate
             int nnodes = 1;
             int nelem = 1;
-            int nnode_dir[ndim];
+            IDX nnode_dir[ndim];
+            IDX directional_prod[ndim] = {1};
             T dx[ndim];
             for(int idim = 0; idim < ndim; ++idim) {
                 nnode_dir[idim] = directional_nelem[idim] * (order) + 1;
                 nnodes *= nnode_dir;
                 nelem *= directional_nelem[idim];
+                for(int jdim = idim; jdim < ndim; ++jdim) directional_prod[jdim] *= directional_nelem[idim];
                 dx[idim] = (xmax[idim] - xmin[idim]) / directional_nelem[idim];
             }
             nodes.resize(nnodes);
 
             // Generate the nodes 
-            int ijk[ndim] = {0};
+            IDX ijk[ndim] = {0};
             for(int inode = 0; inode < nnodes; ++inode){
                 // increment
                 ++ijk[0];
@@ -127,10 +131,14 @@ namespace MESH {
                 }
             }
 
+            elements.resize(nelem);
+
            // ENTERING ORDER TEMPLATED SECTION
            // here we find the compile time function to call based on the order input 
             NUMTOOL::TMP::constexpr_for_range<1, ELEMENT::MAX_DYNAMIC_ORDER + 1>([&]<int Pn>{
                 using namespace ELEMENT;
+                using FaceType = HypercubeFace<T, IDX, ndim, Pn>;
+                using ElementType = HypercubeElement<T, IDX, ndim, Pn>;
                 if(order == Pn){
 
                     // form all the elements 
@@ -149,12 +157,12 @@ namespace MESH {
                         }
 
                         // create the element 
-                        HypercubeElement<T, IDX, ndim, Pn> *el = new HypercubeElement<T, IDX, ndim, Pn>();
+                        ElementType *el = new ElementType(); 
 
                         // get the nodes 
                         auto &trans = el->transformation;
-                        for(int inode = 0; inode < trans.n_nodes(); ++inode){
-                            int iglobal = 0;
+                        for(IDX inode = 0; inode < trans.n_nodes(); ++inode){
+                            IDX iglobal = 0;
                             for(int idim = 0; idim < ndim; ++idim){
                                 iglobal += ijk[idim] * order + trans.ijk_poin(inode)[idim];
                             }
@@ -165,7 +173,81 @@ namespace MESH {
                         elements[ielem] = el;
                     }
 
-                    // form all the faces
+                    // form all the interior faces
+                    // first calculate the total number
+                    interiorFaceStart = 0;
+                    interiorFaceEnd = 1;
+                    IDX niface_1direction = 1;
+                    IDX nface_total = 1;
+                    for(int idim = 0; idim < ndim; ++idim) {
+                        interiorFaceEnd *= ndim * (directional_nelem[idim] - 1);
+                        niface_1direction *= directional_nelem[idim] - 1;
+                        nface_total *= ndim * (directional_nelem[idim] + 1);
+                    }
+                    for(int idim = 0; idim < ndim; ++idim) ijk[idim] = 0;
+
+                    faces.reserve(nface_total);
+
+                    // loop over all the interior faces
+                    for(IDX ifac = 0; ifac < niface_1direction; ++ifac){
+                        // increment
+                        ++ijk[0];
+                        for(int idim = 0; idim < ndim; ++idim){
+                            if(ijk[idim] == directional_nelem[idim] - 1){
+                                ijk[idim] = 0;
+                                ++ijk[idim + 1];
+                            } else {
+                                // short circuit
+                                break;
+                            }
+                        }
+
+                        // ijk represents the left element
+                        // loop over three face directions
+                        for(int idim = 0; idim < ndim; ++idim){
+                            IDX ijk_r;
+                            std::copy_n(ijk, ndim, ijk_r);
+                            ijk_r[idim]++; // increment in the face direction
+
+                            // get the element number from the ordinates
+                            IDX iel = 0;
+                            IDX ier = 0;
+                            for(int jdim = 0; jdim < ndim; ++jdim){
+                                iel += ijk[jdim] * directional_prod[jdim];
+                                ier += ijk_r[jdim] * directional_prod[jdim];
+                            }
+
+                            // get the face numbers
+                            int face_nr_l = ndim + idim; // positive side
+                            int face_nr_r = idim;
+
+                            Tensor<IDX, FaceType::trans.n_nodes> face_nodes;
+                            auto &transl = elements[iel]->transformation;
+                            auto &transr = elements[ier]->transformation;
+                            transl.get_face_nodes(
+                                face_nr_l,
+                                elements[iel]->nodes(),
+                                face_nodes.data()
+                            );
+
+                            // get the orientations
+                            static constexpr int nfacevert = MATH::power_T<2, ndim>::value;
+                            IDX vert_l[nfacevert];
+                            IDX vert_r[nfacevert];
+                            transl.get_face_vert(face_nr_l, elements[iel]->nodes(), vert_l);
+                            transr.get_face_vert(face_nr_r, elements[ier]->nodes(), vert_r);
+                            int orientationr = FaceType::orient_trans.getOrientation(vert_l, vert_r);
+
+                            faces.push_back(new FaceType(
+                                iel, ier, face_nodes, face_nr_l, face_nr_r,
+                                orientationr, BOUNDARY_CONDITIONS::INTERIOR, 0));
+
+                        }
+
+                        
+
+                    }
+                    
                 }
             });
             // EXITING ORDER TEMPLATED SECTION
