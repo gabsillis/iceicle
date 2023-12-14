@@ -12,6 +12,7 @@
 #include <memory>
 #include <ostream>
 #include <string>
+#include <cassert>
 #include <iceicle/fe_function/nodal_fe_function.hpp>
 namespace MESH {
 
@@ -81,7 +82,8 @@ namespace MESH {
          * @param order the polynomial order of the hypercubes
          * @param bctypes the boundary conditions for each face of the whole domain,
          *                following the hypercube numbering convention
-         *                defaults to periodic
+         *                TODO: defaults to periodic
+         *
          * @param bcflags the boundary condition flags for each face of the whole domain,
          *                same layout
          */
@@ -90,8 +92,8 @@ namespace MESH {
             T xmax[ndim],
             IDX directional_nelem[ndim],
             int order = 1,
-            ELEMENT::BOUNDARY_CONDITIONS bctypes[2 * ndim] = {ELEMENT::BOUNDARY_CONDITIONS::PERIODIC},
-            int bcflags[2 * ndim] = {0}
+            ELEMENT::BOUNDARY_CONDITIONS bctypes[2 * ndim] = ELEMENT::BOUNDARY_CONDITIONS::PERIODIC, 
+            int bcflags[2 * ndim] = 0
         ) : nodes{}, elements{}, faces{} {
             using namespace NUMTOOL::TENSOR::FIXED_SIZE;
 
@@ -103,7 +105,7 @@ namespace MESH {
             T dx[ndim];
             for(int idim = 0; idim < ndim; ++idim) {
                 nnode_dir[idim] = directional_nelem[idim] * (order) + 1;
-                nnodes *= nnode_dir;
+                nnodes *= nnode_dir[idim];
                 nelem *= directional_nelem[idim];
                 for(int jdim = idim; jdim < ndim; ++jdim) directional_prod[jdim] *= directional_nelem[idim];
                 dx[idim] = (xmax[idim] - xmin[idim]) / directional_nelem[idim];
@@ -173,6 +175,10 @@ namespace MESH {
                         elements[ielem] = el;
                     }
 
+                    // ===========================
+                    // = Interior Face Formation =
+                    // ===========================
+                    //
                     // form all the interior faces
                     // first calculate the total number
                     interiorFaceStart = 0;
@@ -184,13 +190,16 @@ namespace MESH {
                         niface_1direction *= directional_nelem[idim] - 1;
                         nface_total *= ndim * (directional_nelem[idim] + 1);
                     }
+
+                    // reset the ordinates
                     for(int idim = 0; idim < ndim; ++idim) ijk[idim] = 0;
 
+                    // reserve space
                     faces.reserve(nface_total);
 
                     // loop over all the interior faces
                     for(IDX ifac = 0; ifac < niface_1direction; ++ifac){
-                        // increment
+                        // increment the oordinates
                         ++ijk[0];
                         for(int idim = 0; idim < ndim; ++idim){
                             if(ijk[idim] == directional_nelem[idim] - 1){
@@ -205,7 +214,7 @@ namespace MESH {
                         // ijk represents the left element
                         // loop over three face directions
                         for(int idim = 0; idim < ndim; ++idim){
-                            IDX ijk_r;
+                            IDX ijk_r[ndim];
                             std::copy_n(ijk, ndim, ijk_r);
                             ijk_r[idim]++; // increment in the face direction
 
@@ -222,8 +231,9 @@ namespace MESH {
                             int face_nr_r = idim;
 
                             Tensor<IDX, FaceType::trans.n_nodes> face_nodes;
-                            auto &transl = elements[iel]->transformation;
-                            auto &transr = elements[ier]->transformation;
+                            // TODO: Generalize
+                            auto &transl = ElementType::transformation;
+                            auto &transr = ElementType::transformation;
                             transl.get_face_nodes(
                                 face_nr_l,
                                 elements[iel]->nodes(),
@@ -244,10 +254,122 @@ namespace MESH {
 
                         }
 
+                        // record the number of interior faces
+                        if(interiorFaceEnd != faces.size()){
+                            throw std::logic_error("Incorrect number of interior faces.");
+                        } 
+
+                        // ===========================
+                        // = Boundary Face Formation =
+                        // ===========================
                         
+                        // loop over major axis directions
+                        for(int idim = 0; idim < ndim; ++idim){
+
+                            // get the number of faces on one boundary normal to idim
+                            IDX nbfac_dir = 1;
+                            for(int jdim = 0; jdim < ndim; ++jdim) if (jdim != idim) {
+                                nbfac_dir *= directional_nelem[jdim];
+                            }
+
+                            // reset the ordinates
+                            for(int jdim = 0; jdim < ndim; ++jdim) ijk[jdim] = 0;
+
+                            for(IDX ifac = 0; ifac < nbfac_dir; ++ifac){
+                                // increment the ordinates 
+                                int first_dir = (idim == 0) ? 1 : 0;
+                                ++ijk[first_dir];
+                                for(int jdim = 0; jdim < ndim; ++jdim){
+                                    if(jdim == idim){
+                                        // skip over the boundary normal direction
+                                    } else if(ijk[jdim] == directional_nelem[jdim] - 1){
+                                        ijk[jdim] = 0;
+                                        ++ijk[jdim + 1];
+                                    } else {
+                                        // short circuit
+                                        break;
+                                    }
+                                }
+
+                                // form the -1 face 
+                                // get the element number from the ordinates
+                                IDX iel = 0;
+                                for(int jdim = 0; jdim < ndim; ++jdim){
+                                    iel += ijk[jdim] * directional_prod[jdim];
+                                }
+
+                                // get the face numbers 
+                                int face_nr_l = idim; // this is the negative side 
+                                int face_nr_r = 0; // boundary
+
+                                // get the global face node indices
+                                Tensor<IDX, FaceType::trans.n_nodes> face_nodes;
+                                // TODO: Generalize: CRTP?
+                                auto &transl = ElementType::transformation;
+                                transl.get_face_nodes(
+                                    face_nr_l,
+                                    elements[iel]->nodes(),
+                                    face_nodes.data()
+                                );
+
+                                int orientationr = 0; // choose the simplest one for the boundary
+
+                                FaceType *faceA = new FaceType(
+                                    iel, -1, face_nodes, face_nr_l, face_nr_r,
+                                    orientationr, bctypes[idim], bcflags[idim]
+                                );
+
+                                // form the +1 face
+                                // set to the farthest element
+                                ijk[idim] = directional_nelem[idim] - 1; 
+                                iel = 0;
+                                for(int jdim = 0; jdim < ndim; ++jdim){
+                                    iel += ijk[jdim] * directional_prod[jdim];
+                                }
+
+                                // get the face numbers 
+                                face_nr_l = idim + ndim; // this is the positive side 
+                                face_nr_r = 0; // boundary
+
+                                // get the global face node indices
+                                // TODO: Generalize
+                                auto &transl2 = ElementType::transformation;
+                                transl2.get_face_nodes(
+                                    face_nr_l,
+                                    elements[iel]->nodes(),
+                                    face_nodes.data()
+                                );
+
+                                orientationr = 0; // choose the simplest one for the boundary
+                                                  
+                                FaceType *faceB = new FaceType(
+                                    iel, -1, face_nodes, face_nr_l, face_nr_r,
+                                    orientationr, bctypes[idim], bcflags[idim]
+                                );
+
+                                // Take care of periodic bc 
+                                if(bctypes[idim] == BOUNDARY_CONDITIONS::PERIODIC){
+                                    // get the global face indices 
+                                    IDX faceA_idx = faces.size();
+                                    IDX faceB_idx = faceA_idx + 1;
+
+                                    // assign the bcflag to be the periodic face index 
+                                    faceA->bcflag = faceB_idx;
+                                    faceB->bcflag = faceA_idx;
+                                }
+
+                                // add to the face list 
+                                faces.push_back(faceA);
+                                faces.push_back(faceB);
+
+                                // reset ordinate of this direction
+                                ijk[idim] = 0;
+                            }
+                        }
+                        bdyFaceStart = interiorFaceEnd;
+                        bdyFaceEnd = faces.size();
 
                     }
-                    
                 }
             });
             // EXITING ORDER TEMPLATED SECTION

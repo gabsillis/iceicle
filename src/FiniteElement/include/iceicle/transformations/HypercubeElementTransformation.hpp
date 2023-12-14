@@ -484,7 +484,7 @@ public:
     * @return the Jacobian matrix
     */
   NUMTOOL::TENSOR::FIXED_SIZE::Tensor<T, ndim, ndim> Jacobian(
-      FE::NodalFEFunction<T, ndim> &node_coords,
+      const FE::NodalFEFunction<T, ndim> &node_coords,
       const IDX *node_indices,
       const Point &xi
   ) const {
@@ -522,7 +522,7 @@ public:
     * @param [out] the Hessian in tensor form indexed [k][i][j] as described above
     */
   void Hessian(
-      FE::NodalFEFunction<T, ndim> &node_coords,
+      const FE::NodalFEFunction<T, ndim> &node_coords,
       const IDX *node_indices,
       const Point &xi,
       T hess[ndim][ndim][ndim]
