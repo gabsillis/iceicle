@@ -54,8 +54,22 @@ namespace ELEMENT {
             FE::NodalFEFunction<T,ndim> &nodeCoords,
             const FacePoint &s,
             T *result
-        ) const override {
+        ) const {
             result[0] = nodeCoords[node][0];
+        }
+
+        void transform_xiL(
+            const FacePoint &s,
+            T *result
+        ) const override {
+            result[0] = -1.0;
+        }
+
+        void transform_xiR(
+            const FacePoint &s,
+            T *result
+        ) const override {
+            result[0] = 1.0;
         }
 
 

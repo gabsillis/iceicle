@@ -166,7 +166,7 @@ namespace MESH {
                         for(IDX inode = 0; inode < trans.n_nodes(); ++inode){
                             IDX iglobal = 0;
                             for(int idim = 0; idim < ndim; ++idim){
-                                iglobal += ijk[idim] * order + trans.ijk_poin(inode)[idim];
+                                iglobal += ijk[idim] * order + trans.ijk_poin[inode][idim];
                             }
                             el->setNode(inode, iglobal);
                         }

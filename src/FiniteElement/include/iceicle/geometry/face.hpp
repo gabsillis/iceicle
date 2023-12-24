@@ -53,7 +53,9 @@ namespace ELEMENT {
      */
     template<typename T, typename IDX, int ndim>
     class Face{
-        
+       
+        protected:
+
         using Point = MATH::GEOMETRY::Point<T, ndim>;
         using FacePoint = MATH::GEOMETRY::Point<T, ndim - 1>;
         using JacobianType = NUMTOOL::TENSOR::FIXED_SIZE::Tensor<T, ndim, ndim - 1>;
@@ -97,15 +99,27 @@ namespace ELEMENT {
         };
 
         /**
-         * @brief convert reference domain coordinates to physical coordinates
+         * @brief convert reference domain coordinates to 
+         * the left element reference domain
          *
-         * @param [in] nodeCoords the node coordinates vector
          * @param [in] s the point in the face reference domain
          * @param [out] the physical coordinates size = ndim
          */
         virtual
-        void transform(
-            FE::NodalFEFunction<T,ndim> &nodeCoords,
+        void transform_xiL(
+            const FacePoint &s,
+            T *result
+        ) const = 0;
+
+        /**
+         * @brief convert reference domain coordinates to 
+         * the right element reference domain
+         *
+         * @param [in] s the point in the face reference domain
+         * @param [out] the physical coordinates size = ndim
+         */
+        virtual 
+        void transform_xiR(
             const FacePoint &s,
             T *result
         ) const = 0;

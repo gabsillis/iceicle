@@ -13,13 +13,16 @@ namespace ELEMENT {
     class HypercubeFace final : public Face<T, IDX, ndim> {
         template<int size>
         using IndexArrayType = NUMTOOL::TENSOR::FIXED_SIZE::Tensor<IDX, size>;
+        using FaceBase = Face<T, IDX, ndim>;
+        using FacePoint = FaceBase::FacePoint;
+        using JacobianType = FaceBase::JacobianType;
 
         public:
         inline static TRANSFORMATIONS::HypercubeTraceOrientTransformation<T, IDX, ndim> orient_trans{};
         inline static TRANSFORMATIONS::HypercubeTraceTransformation<T, IDX, ndim, Pn> trans{};
 
         /// The global node coordinates
-        IndexArrayType<trans.n_nodes> nodes;
+        IndexArrayType<trans.n_nodes> _nodes;
 
         HypercubeFace(
             IDX elemL, 
@@ -32,7 +35,7 @@ namespace ELEMENT {
         ) : Face<T, IDX, ndim>(elemL, elemR,
             faceNrL * FACE_INFO_MOD,
             faceNrR * FACE_INFO_MOD + orientR,
-            bctype, bcflag), nodes(nodes) {}
+            bctype, bcflag), _nodes(nodes) {}
 
 
         /**
@@ -57,6 +60,48 @@ namespace ELEMENT {
             bctype, bcflag)
         {}
 
+        void transform_xiL(
+            const FacePoint &s,
+            T *result
+        ) const override {
+            MATH::GEOMETRY::PointView<T, ndim> result_view{result};
+            trans.transform(
+                _nodes.data(),
+                this->face_infoL / ELEMENT::FACE_INFO_MOD,
+                s.data(), result_view);
+        }
+
+        void transform_xiR(
+            const FacePoint &s,
+            T *result
+        ) const override {
+            FacePoint sR;
+            orient_trans.transform(
+                this->face_infoR % ELEMENT::FACE_INFO_MOD,
+                s, sR);
+            MATH::GEOMETRY::PointView<T, ndim> result_view{result};
+            trans.transform(
+                _nodes.data(),
+                this->face_infoR / ELEMENT::FACE_INFO_MOD,
+                sR.data(), result_view);
+        }
+
+
+        JacobianType Jacobian(
+            FE::NodalFEFunction<T, ndim> &node_coords,
+            const FacePoint &s
+        ) const override {
+            return trans.Jacobian(
+                node_coords,
+                _nodes.data(),
+                this->face_infoL / ELEMENT::FACE_INFO_MOD,
+                s
+            );
+        }
+
+        int n_nodes() const override { return trans.n_nodes; }
+
+        IDX *nodes() override { return _nodes.data(); }
 
     };
 }

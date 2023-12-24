@@ -499,7 +499,7 @@ public:
 
       for(int inode = 0; inode < nnode; ++inode){
           IDX global_inode = node_indices[inode];
-          PointView node{node_coords[global_inode]};
+          const auto &node = node_coords[global_inode];
           for(int idim = 0; idim < ndim; ++idim){
               for(int jdim = 0; jdim < ndim; ++jdim){
                   // add contribution to jacobian from this basis function
@@ -536,7 +536,7 @@ public:
     for(int inode = 0; inode < nnode; ++inode){
       // get view to the node coordinates from the node coordinate array
       IDX global_inode = node_indices[inode];
-      PointView node{node_coords[global_inode]};
+      const auto & node = node_coords[global_inode];
 
       for(int kdim = 0; kdim < ndim; ++kdim){ // k corresponds to xi 
         T node_hessian[ndim][ndim];
@@ -1038,7 +1038,7 @@ class HypercubeTraceOrientTransformation {
     */
   void transform(
       int orientationR,
-      const TracePointView &s,
+      const T *s,
       TracePointView sR
   ) const {
 
@@ -1118,9 +1118,9 @@ class HypercubeTraceTransformation {
    * @param [out] xi the position in the reference element domain 
    */
   void transform(
-    IDX *node_indices,
+    const IDX *node_indices,
     int traceNr,
-    const TracePointView &s,
+    const T *s,
     ElPointView xi
   ) const {
 
@@ -1150,7 +1150,7 @@ class HypercubeTraceTransformation {
    */
   NUMTOOL::TENSOR::FIXED_SIZE::Tensor<T, ndim, trace_ndim> Jacobian(
       FE::NodalFEFunction<T, ndim> &coord,
-      IDX *face_node_indices,
+      const IDX *face_node_indices,
       int traceNr,
       const MATH::GEOMETRY::Point<T, trace_ndim> &s
   ) const {
