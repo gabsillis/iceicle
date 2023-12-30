@@ -752,7 +752,11 @@ public:
         int el_node_idx, int idim
     ) {
       int last_dim = (trace_coord == ndim - 1) ? ndim - 2 : ndim - 1;
-      if(idim == last_dim){
+      if(idim > last_dim){
+        // base case version for 2D and 1D becuase 
+        // recursion is unnecesary in this case 
+        face_nodes[face_node_idx] = el_node_idx;
+      } else if(idim == last_dim){
         for(int j = 0; j < Pn + 1; ++j){
           // base case: assign the global node
           int lidx = el_node_idx + j * strides[last_dim];
@@ -772,6 +776,7 @@ public:
     };
 
     // handle the first dimension seperately because of possible direction difference
+    // TODO: this might not work for 1D
     int idim = trace_first_dim;
     for(int j = 0; j < Pn + 1; ++j){
       // travel in the direction of the first_dim_sign
