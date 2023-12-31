@@ -1145,6 +1145,24 @@ class HypercubeTraceTransformation {
     else xi[0] *= first_dim_sign[traceNr];
   }
 
+  void transform_physical(
+      const IDX *node_indices,
+      int traceNr,
+      const MATH::GEOMETRY::Point<T, ndim - 1> &s,
+      FE::NodalFEFunction<T, ndim> &coord,
+      ElPointView x
+  ) const {
+    using namespace NUMTOOL::TENSOR::FIXED_SIZE;
+    Tensor<T, n_nodes> Bi{};
+    trace_domain_trans.fill_shp(s, Bi.data());
+    for(int inode = 0; inode < n_nodes; ++inode) {
+      for(int idim = 0; idim < ndim; ++idim) {
+        const auto &node = coord[node_indices[inode]];
+        x[idim] += Bi[inode] * node[idim];
+      }
+    }
+  }
+
   /**
    * @brief get the Jacobian dx ds 
    * @param coord the global node coordinates 

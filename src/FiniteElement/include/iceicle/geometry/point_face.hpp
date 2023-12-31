@@ -51,8 +51,8 @@ namespace ELEMENT {
         T getArea() const override { return area; }
 
         void transform(
-            FE::NodalFEFunction<T,ndim> &nodeCoords,
             const FacePoint &s,
+            FE::NodalFEFunction<T,ndim> &nodeCoords,
             T *result
         ) const {
             result[0] = nodeCoords[node][0];

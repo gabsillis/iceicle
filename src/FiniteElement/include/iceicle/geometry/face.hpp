@@ -99,6 +99,20 @@ namespace ELEMENT {
         };
 
         /**
+         * @brief transform from the reference domain coordinates 
+         * to the physical domain 
+         * @param [in] s the point in the face reference domain 
+         * @param [in] coord the node coordinates
+         * @param [out] result the position in the physical domain 
+         */
+        virtual 
+        void transform(
+            const FacePoint &s,
+            FE::NodalFEFunction<T, ndim> &coord, 
+            T *result
+        ) const = 0;
+
+        /**
          * @brief convert reference domain coordinates to 
          * the left element reference domain
          *

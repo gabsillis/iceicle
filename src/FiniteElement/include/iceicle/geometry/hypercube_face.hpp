@@ -7,6 +7,7 @@
 #include <iceicle/transformations/HypercubeElementTransformation.hpp>
 #include <iceicle/geometry/face.hpp>
 
+#include "iceicle/fe_function/nodal_fe_function.hpp"
 #include "iceicle/transformations/HypercubeElementTransformation.hpp"
 namespace ELEMENT {
     template<typename T, typename IDX, int ndim, int Pn>
@@ -59,6 +60,19 @@ namespace ELEMENT {
             faceNrR * FACE_INFO_MOD + orientR,
             bctype, bcflag)
         {}
+
+        void transform(
+            const FacePoint &s,
+            FE::NodalFEFunction<T, ndim> &coord,
+            T *result
+        ) const override {
+            MATH::GEOMETRY::PointView<T, ndim> result_view{result};
+            trans.transform_physical(
+                _nodes.data(),
+                this->face_infoL / ELEMENT::FACE_INFO_MOD,
+                s, coord, result_view
+            );
+        }
 
         void transform_xiL(
             const FacePoint &s,

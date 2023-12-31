@@ -1,5 +1,6 @@
 #pragma once 
 #include <iceicle/fe_function/nodal_fe_function.hpp>
+#include <iceicle/geometry/face.hpp>
 #include <vector>
 #include <GL/glew.h>
 #include <glm/glm.hpp>
@@ -97,6 +98,60 @@ namespace ICEICLE_GL{
         int width_diff = width2 - width;
         int height_diff = height2 - height;
         glViewport(-width_diff / 2, -height_diff / 2, width2, height2);
+    }
+
+    /**
+     * @brief draw a 2D face into the current frame 
+     * TODO: split into a load phase to load a large array of all the faces and send to device 
+     * then a draw phase 
+     *
+     * @param facptr the pointer to the face object
+     * @param coord the node coordinates
+     * @param nsegment the number of segments to split this into (default = 10)
+     */
+    template<typename T, typename IDX>
+    inline void draw_face_2d(
+        ELEMENT::Face<T, IDX, 2> *facptr,
+        FE::NodalFEFunction<T, 2> &coord,
+        int nsegment=10 
+    ){
+        // generate the gl arrays
+        GLuint vertex_array_id;
+        glGenVertexArrays(1, &vertex_array_id);
+        glBindVertexArray(vertex_array_id);
+
+        // generate the points
+        glm::vec3 *pts_host = new glm::vec3[nsegment + 1];
+        double dx = 2.0 / nsegment;
+        for(int ipt = 0; ipt < nsegment + 1; ++ipt){
+            MATH::GEOMETRY::Point<T, 1> s = {dx * ipt};
+            MATH::GEOMETRY::Point<T, 2> x;
+            facptr->transform(s, coord, x);
+            pts_host[ipt] = {static_cast<GLfloat>(x[0]), static_cast<GLfloat>(x[1]), 0.0};
+        }
+
+        // send to device
+        GLuint vertex_buffer;
+        glGenBuffers(1, &vertex_buffer);
+        glBindBuffer(GL_ARRAY_BUFFER, vertex_buffer);
+        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, (GLvoid*)0);
+        glBufferData(
+            GL_ARRAY_BUFFER,
+            (nsegment + 1) * sizeof(glm::vec3),
+            &pts_host[0],
+            GL_STATIC_DRAW
+        );
+
+        // draw the lines 
+        glDrawArrays(GL_LINE_STRIP, 0, nsegment+1);
+
+        //cleanup
+        delete[] pts_host;
+        glDeleteBuffers(1, &vertex_buffer);
+        glEnableVertexAttribArray(0);
+        glBindVertexArray(0);
+        glBindBuffer(GL_ARRAY_BUFFER, 0);
+
     }
 
 }
