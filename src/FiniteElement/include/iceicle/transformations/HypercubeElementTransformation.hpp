@@ -59,7 +59,7 @@ private:
   friend class HypercubeTraceTransformation<T, IDX, ndim + 1, Pn>;
 
 public:
-  int convert_indices_helper(int ijk[ndim]){
+  int convert_indices_helper(int ijk[ndim]) const {
     int ret = 0;
     for(int idim = 0; idim < ndim; ++idim){
       ret += ijk[idim] * std::pow(Pn + 1, ndim - idim - 1);
@@ -746,43 +746,43 @@ public:
     IDX anchor_vertex = (first_dim_sign[faceNr] < 0) ? (Pn) * strides[trace_first_dim]: 0;
 
     IDX face_node_idx = 0;
-   
-    // function to fill the nodes recursively
-    std::function<void(int, int)> fill_nodes = [&](
-        int el_node_idx, int idim
-    ) {
-      int last_dim = (trace_coord == ndim - 1) ? ndim - 2 : ndim - 1;
-      if(idim > last_dim){
-        // base case version for 2D and 1D becuase 
-        // recursion is unnecesary in this case 
-        face_nodes[face_node_idx] = el_node_idx;
-      } else if(idim == last_dim){
-        for(int j = 0; j < Pn + 1; ++j){
-          // base case: assign the global node
-          int lidx = el_node_idx + j * strides[last_dim];
-          face_nodes[face_node_idx++] = nodes_el[lidx];
-        }
-      } else {
-        if(idim == trace_coord) {
-          // pass through 
-          fill_nodes(el_node_idx, idim + 1);
+
+    auto next_ijk = [&](int ijk[ndim]){
+      for(int idim = ndim - 1; idim >= 0; --idim) if(idim != trace_coord) {
+        if(idim == trace_first_dim && first_dim_sign[faceNr] < 0){
+          // reversed order
+          if(ijk[idim] == 0){
+            ijk[idim] = Pn;
+          } else {
+            ijk[idim]--;
+            return true;
+          }
         } else {
-          for(int j = 0; j < Pn + 1; ++j){
-            // move by the stride and recurse
-            fill_nodes(el_node_idx + j * strides[idim], idim + 1);
+          
+          if(ijk[idim] == Pn){
+            ijk[idim] = 0;
+          } else {
+            ijk[idim]++;
+            return true;
           }
         }
       }
+      return false;
     };
 
-    // handle the first dimension seperately because of possible direction difference
-    // TODO: this might not work for 1D
-    int idim = trace_first_dim;
-    for(int j = 0; j < Pn + 1; ++j){
-      // travel in the direction of the first_dim_sign
-      int jstride = j * strides[trace_first_dim] * first_dim_sign[faceNr];
-      fill_nodes(anchor_vertex + jstride, trace_first_dim + 1);
+    int ijk[ndim] = {0};
+    if(first_dim_sign[faceNr] < 0){
+      // anchor point needs to be at Pn 
+      ijk[trace_first_dim] = Pn;
     }
+    // move to the correct face between positive and negative side 
+    ijk[trace_coord] = (is_negative_xi) ? 0 : Pn;
+
+    int inode = 0;
+    do {
+      face_nodes[inode] = nodes_el[convert_indices_helper(ijk)];
+      inode++;
+    } while(next_ijk(ijk));
   }
 
   /**

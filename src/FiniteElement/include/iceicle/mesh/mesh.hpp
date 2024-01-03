@@ -101,20 +101,42 @@ namespace MESH {
             int nnodes = 1;
             int nelem = 1;
             IDX nnode_dir[ndim];
-            IDX directional_prod[ndim] = {1};
+            IDX stride[ndim];
+            IDX stride_nodes[ndim];
             T dx[ndim];
             for(int idim = 0; idim < ndim; ++idim) {
+                stride_nodes[idim] = 1;
+                stride[idim] = 1;
                 nnode_dir[idim] = directional_nelem[idim] * (order) + 1;
                 nnodes *= nnode_dir[idim];
                 nelem *= directional_nelem[idim];
-                for(int jdim = idim; jdim < ndim; ++jdim) directional_prod[jdim] *= directional_nelem[idim];
                 dx[idim] = (xmax[idim] - xmin[idim]) / directional_nelem[idim];
+            }
+
+            for(int idim = 0; idim < ndim; ++idim){
+                for(int jdim = 0; jdim < idim; ++jdim){
+                    stride[idim] *= directional_nelem[jdim];
+                    stride_nodes[idim] *= nnode_dir[jdim];
+                }
             }
             nodes.resize(nnodes);
 
             // Generate the nodes 
             IDX ijk[ndim] = {0};
             for(int inode = 0; inode < nnodes; ++inode){
+                // calculate the coordinates 
+                for(int idim = 0; idim < ndim; ++idim){
+                    nodes[inode][idim] = xmin[idim] + ijk[idim] * dx[idim];
+                }
+#ifndef NDEBUG
+                // print out the node 
+                std::cout << "node " << inode << ": [ ";
+                for(int idim = 0; idim < ndim; ++idim){
+                    std::cout << nodes[inode][idim] << " ";
+                }
+                std::cout << "]" << std::endl;
+#endif
+
                 // increment
                 ++ijk[0];
                 for(int idim = 0; idim < ndim; ++idim){
@@ -125,11 +147,6 @@ namespace MESH {
                         // short circuit
                         break;
                     }
-                }
-
-                // calculate the coordinates 
-                for(int idim = 0; idim < ndim; ++idim){
-                    nodes[inode][idim] = xmin[idim] + ijk[idim] * dx[idim];
                 }
             }
 
@@ -146,6 +163,35 @@ namespace MESH {
                     // form all the elements 
                     for(int idim = 0; idim < ndim; ++idim) ijk[idim] = 0;
                     for(int ielem = 0; ielem < nelem; ++ielem){
+                        // create the element 
+                        ElementType *el = new ElementType(); 
+
+                        // get the nodes 
+                        auto &trans = el->transformation;
+                        for(IDX inode = 0; inode < trans.n_nodes(); ++inode){
+                            IDX iglobal = 0;
+                            IDX ijk_gnode[ndim];
+                            for(int idim = 0; idim < ndim; ++idim){
+                                ijk_gnode[idim] = ijk[idim] * order + trans.ijk_poin[inode][idim];
+                            }
+
+                            for(int idim = 0; idim < ndim; ++idim){
+                                iglobal += ijk_gnode[idim] * stride_nodes[idim];
+                            }
+                            el->setNode(inode, iglobal);
+                        }
+
+#ifndef NDEBUG 
+                        std::cout << "Element " << ielem << ": [ ";
+                        for(int inode = 0; inode < trans.n_nodes(); ++inode){
+                            std::cout << el->nodes()[inode] << " ";
+                        }
+                        std::cout << "]" << std::endl;
+#endif
+
+                        // assign it 
+                        elements[ielem] = el;
+
                         // increment
                         ++ijk[0];
                         for(int idim = 0; idim < ndim; ++idim){
@@ -157,78 +203,62 @@ namespace MESH {
                                 break;
                             }
                         }
-
-                        // create the element 
-                        ElementType *el = new ElementType(); 
-
-                        // get the nodes 
-                        auto &trans = el->transformation;
-                        for(IDX inode = 0; inode < trans.n_nodes(); ++inode){
-                            IDX iglobal = 0;
-                            for(int idim = 0; idim < ndim; ++idim){
-                                iglobal += ijk[idim] * order + trans.ijk_poin[inode][idim];
-                            }
-                            el->setNode(inode, iglobal);
-                        }
-
-                        // assign it 
-                        elements[ielem] = el;
                     }
 
                     // ===========================
                     // = Interior Face Formation =
                     // ===========================
-                    //
-                    // form all the interior faces
-                    // first calculate the total number
-                    interiorFaceStart = 0;
-                    interiorFaceEnd = 1;
-                    IDX niface_1direction = 1;
-                    IDX nface_total = 1;
-                    for(int idim = 0; idim < ndim; ++idim) {
-                        niface_1direction *= directional_nelem[idim] - 1;
-                    }
-                    interiorFaceEnd = niface_1direction * ndim;
-                    nface_total = niface_1direction * ndim;
+                    
+                    // loop over each direction 
+                    for(int idir = 0; idir < ndim; ++idir){
 
-                    // reset the ordinates
-                    for(int idim = 0; idim < ndim; ++idim) ijk[idim] = 0;
+                        // oordinates of the left element
+                        int ijk[ndim] = {0};
 
-                    // reserve space
-                    faces.reserve(nface_total);
-
-                    // loop over all the interior faces
-                    for(IDX ifac = 0; ifac < niface_1direction; ++ifac){
-                        // increment the oordinates
-                        ++ijk[0];
-                        for(int idim = 0; idim < ndim; ++idim){
-                            if(ijk[idim] == directional_nelem[idim] - 1){
-                                ijk[idim] = 0;
-                                ++ijk[idim + 1];
-                            } else {
-                                // short circuit
-                                break;
+                        //function to increment the ijk of the left element 
+                        auto next_ijk = [&](int ijk[ndim]) -> bool {
+                            for(int idim = 0; idim < ndim; ++idim){
+                                if(idim == idir){
+                                    // we have n-1 left elements in the given direction, n otherwise
+                                    if(ijk[idim] >= directional_nelem[idim] - 2){
+                                        // go on to the next oordinate
+                                        ijk[idim] = 0; 
+                                    } else {
+                                        ijk[idim]++;
+                                        return true; // increment complete
+                                    }
+                                } else {
+                                    // n elements in the given direction
+                                    if(ijk[idim] >= directional_nelem[idim] - 1){
+                                        // go on to the next oordinate
+                                        ijk[idim] = 0; 
+                                    } else {
+                                        ijk[idim]++;
+                                        return true; // increment complete
+                                    }
+                                }
                             }
-                        }
+                            return false;
+                        };
 
-                        // ijk represents the left element
-                        // loop over three face directions
-                        for(int idim = 0; idim < ndim; ++idim){
+                        // do loop safegaurded against empty faces in that direction
+                        if(directional_nelem[idir] > 1) do {
+                            // make the face 
                             IDX ijk_r[ndim];
                             std::copy_n(ijk, ndim, ijk_r);
-                            ijk_r[idim]++; // increment in the face direction
+                            ijk_r[idir]++; // increment in the face direction
 
                             // get the element number from the ordinates
                             IDX iel = 0;
                             IDX ier = 0;
                             for(int jdim = 0; jdim < ndim; ++jdim){
-                                iel += ijk[jdim] * directional_prod[jdim];
-                                ier += ijk_r[jdim] * directional_prod[jdim];
+                                iel += ijk[jdim] * stride[jdim];
+                                ier += ijk_r[jdim] * stride[jdim];
                             }
 
                             // get the face numbers
-                            int face_nr_l = ndim + idim; // positive side
-                            int face_nr_r = idim;
+                            int face_nr_l = ndim + idir; // positive side
+                            int face_nr_r = idir;
 
                             Tensor<IDX, FaceType::trans.n_nodes> face_nodes;
                             // TODO: Generalize
@@ -252,14 +282,11 @@ namespace MESH {
                                 iel, ier, face_nodes, face_nr_l, face_nr_r,
                                 orientationr, BOUNDARY_CONDITIONS::INTERIOR, 0));
 
-                        }
+                        } while (next_ijk(ijk));
+                    }
 
-                    } // end interior face creation loop
-
-                    // record the number of interior faces
-                    if(interiorFaceEnd != faces.size()){
-                        throw std::logic_error("Incorrect number of interior faces.");
-                    } 
+                    interiorFaceStart = 0;
+                    interiorFaceEnd = faces.size();
 
                     // ===========================
                     // = Boundary Face Formation =
@@ -278,26 +305,12 @@ namespace MESH {
                         for(int jdim = 0; jdim < ndim; ++jdim) ijk[jdim] = 0;
 
                         for(IDX ifac = 0; ifac < nbfac_dir; ++ifac){
-                            // increment the ordinates 
-                            int first_dir = (idim == 0) ? 1 : 0;
-                            ++ijk[first_dir];
-                            for(int jdim = 0; jdim < ndim; ++jdim){
-                                if(jdim == idim){
-                                    // skip over the boundary normal direction
-                                } else if(ijk[jdim] == directional_nelem[jdim] - 1){
-                                    ijk[jdim] = 0;
-                                    ++ijk[jdim + 1];
-                                } else {
-                                    // short circuit
-                                    break;
-                                }
-                            }
 
                             // form the -1 face 
                             // get the element number from the ordinates
                             IDX iel = 0;
                             for(int jdim = 0; jdim < ndim; ++jdim){
-                                iel += ijk[jdim] * directional_prod[jdim];
+                                iel += ijk[jdim] * stride[jdim];
                             }
 
                             // get the face numbers 
@@ -321,12 +334,21 @@ namespace MESH {
                                 orientationr, bctypes[idim], bcflags[idim]
                             );
 
+#ifndef NDEBUG
+                            std::cout << "Boundary Face A |" << " iel: " << iel << " ier: " << -1
+                                << " | #: " << face_nr_l << " | orient: " << orientationr << " | nodes [ ";
+                            for(int i = 0; i < FaceType::trans.n_nodes; ++i){
+                                std::cout << face_nodes[i] << " ";
+                            }
+                            std::cout << "]" << std::endl;
+#endif // !DEBUG
+
                             // form the +1 face
                             // set to the farthest element
                             ijk[idim] = directional_nelem[idim] - 1; 
                             iel = 0;
                             for(int jdim = 0; jdim < ndim; ++jdim){
-                                iel += ijk[jdim] * directional_prod[jdim];
+                                iel += ijk[jdim] * stride[jdim];
                             }
 
                             // get the face numbers 
@@ -348,6 +370,14 @@ namespace MESH {
                                 iel, -1, face_nodes, face_nr_l, face_nr_r,
                                 orientationr, bctypes[idim], bcflags[idim]
                             );
+#ifndef NDEBUG
+                            std::cout << "Boundary Face B |" << " iel: " << iel << " ier: " << -1
+                                << " #: " << face_nr_l << " | orient: " << orientationr << " | nodes [ ";
+                            for(int i = 0; i < FaceType::trans.n_nodes; ++i){
+                                std::cout << face_nodes[i] << " ";
+                            }
+                            std::cout << "]" << std::endl;
+#endif // !DEBUG
 
                             // Take care of periodic bc 
                             if(bctypes[idim] == BOUNDARY_CONDITIONS::PERIODIC){
@@ -366,6 +396,21 @@ namespace MESH {
 
                             // reset ordinate of this direction
                             ijk[idim] = 0;
+
+                            // increment the ordinates 
+                            int first_dir = (idim == 0) ? 1 : 0;
+                            ++ijk[first_dir];
+                            for(int jdim = first_dir; jdim < ndim; ++jdim){
+                                if(jdim == idim){
+                                    // skip over the boundary normal direction
+                                } else if(ijk[jdim] == directional_nelem[jdim]){
+                                    ijk[jdim] = 0;
+                                    ++ijk[jdim + 1];
+                                } else {
+                                    // short circuit
+                                    break;
+                                }
+                            }
                         }
                     }
                     bdyFaceStart = interiorFaceEnd;

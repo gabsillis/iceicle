@@ -138,7 +138,7 @@ struct DrawQuads : public Example {
 
         // decompose each quad into triangles 
         for(auto &quad : quads){
-            triangle_decompose_quad(quad, coords, Pn * 10, vertex_indices, vertices);
+            triangle_decompose_quad(quad, coords, 10 * Pn, vertex_indices, vertices);
         }
 
         for(int i = 0; i < nquads * Pn * Pn * 2; ++i){
@@ -286,6 +286,7 @@ int main(int argc, char**argv){
     ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
     bool show_another_window = false;
     Example0 ex0{};
+    DrawQuads<2> draw_quads{1};
 
     // ================
     // = FrameBuffers =
@@ -351,7 +352,7 @@ int main(int argc, char**argv){
 
             // bind the framebuffer and draw
             fbo1.bind();
-            ex0.draw_in_loop();
+            draw_quads.draw_in_loop();
             fbo1.unbind();
 
             ImGui::Image((ImTextureID) fbo1.texture, wSize, 

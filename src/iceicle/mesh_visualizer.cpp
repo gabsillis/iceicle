@@ -80,7 +80,7 @@ int main(int argc, char**argv){
     // = State =
     // =========
     ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
-    int nx = 10, ny = 10;
+    int nx = 1, ny = 1;
     float xmin = -1, ymin = -1;
     float xmax = 1, ymax = 1;
     bool number_elements;
@@ -88,6 +88,11 @@ int main(int argc, char**argv){
     bool draw_normals;
 
     MESH::AbstractMesh<double, int, 2> *mesh = nullptr;
+
+    // ======================
+    // = Setup Face Drawing =
+    // ======================
+    ICEICLE_GL::FaceDrawer2D<double, int> face_drawer{};
 
     // ================
     // = FrameBuffers =
@@ -150,6 +155,22 @@ int main(int argc, char**argv){
                     1, bctypes, bcflags
                 );
 
+                face_drawer.clear_faces();
+
+                BoundingBox mesh_bounds = ICEICLE_GL::get_mesh_bounds(*mesh);
+
+                BoundingBox scaled_bounds = {{-0.8, -0.8, -0.8}, {0.8, 0.8, 0.8}};
+                for(int iface = mesh->interiorFaceStart; iface < mesh->interiorFaceEnd; ++iface){
+                    face_drawer.add_face(mesh->faces[iface], mesh->nodes, mesh_bounds, scaled_bounds);
+                }
+
+                for(int iface = mesh->bdyFaceStart; iface < mesh->bdyFaceEnd; ++iface){
+                    face_drawer.add_face(mesh->faces[iface], mesh->nodes, mesh_bounds, scaled_bounds);
+                }
+
+                // update the buffers
+                face_drawer.update();
+
             } // Buttons return true when clicked (most widgets return true when edited/activated)
             ImGui::SameLine();
             ImGui::Text("counter = %d", counter);
@@ -178,6 +199,7 @@ int main(int argc, char**argv){
             // bind the framebuffer and draw
             fbo1.bind();
             // TODO: draw stuffs
+            if(mesh) face_drawer.draw_faces();
             fbo1.unbind();
 
             ImGui::Image((ImTextureID) fbo1.texture, wSize, 

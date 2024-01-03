@@ -11,6 +11,47 @@
 
 using namespace ELEMENT::TRANSFORMATIONS;
 
+TEST(test_hypercube_transform, test_get_face_nodes){
+  { // Linear 2D element
+    HypercubeElementTransformation<double, int, 2, 1> trans2dp1{};
+    int nodes_el[4] = {0, 3, 1, 4};
+    int nodes_fac[2];
+    int vert_fac[2];
+
+    trans2dp1.get_face_nodes(0, nodes_el, nodes_fac);
+    ASSERT_EQ(nodes_fac[0], 3);
+    ASSERT_EQ(nodes_fac[1], 0);
+
+    trans2dp1.get_face_nodes(1, nodes_el, nodes_fac);
+    ASSERT_EQ(nodes_fac[0], 0);
+    ASSERT_EQ(nodes_fac[1], 1);
+
+    trans2dp1.get_face_nodes(2, nodes_el, nodes_fac);
+    ASSERT_EQ(nodes_fac[0], 1);
+    ASSERT_EQ(nodes_fac[1], 4);
+
+    trans2dp1.get_face_nodes(3, nodes_el, nodes_fac);
+    ASSERT_EQ(nodes_fac[0], 4);
+    ASSERT_EQ(nodes_fac[1], 3);
+
+    trans2dp1.get_face_vert(0, nodes_el, vert_fac);
+    ASSERT_EQ(vert_fac[0], 3);
+    ASSERT_EQ(vert_fac[1], 0);
+
+    trans2dp1.get_face_vert(1, nodes_el, vert_fac);
+    ASSERT_EQ(vert_fac[0], 0);
+    ASSERT_EQ(vert_fac[1], 1);
+
+    trans2dp1.get_face_vert(2, nodes_el, vert_fac);
+    ASSERT_EQ(vert_fac[0], 1);
+    ASSERT_EQ(vert_fac[1], 4);
+
+    trans2dp1.get_face_vert(3, nodes_el, vert_fac);
+    ASSERT_EQ(vert_fac[0], 4);
+    ASSERT_EQ(vert_fac[1], 3);
+  }
+}
+
 TEST(test_hypercube_orient_transform, test_transform){
 
   using namespace NUMTOOL::TENSOR::FIXED_SIZE;

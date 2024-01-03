@@ -15,7 +15,7 @@
 namespace ELEMENT{
 
     // the maximum dynamic element order that is generated
-    static constexpr int MAX_DYNAMIC_ORDER = 10;
+    static constexpr int MAX_DYNAMIC_ORDER = 5;
     
     /**
      * @brief A Geometric element
