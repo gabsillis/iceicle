@@ -1,6 +1,7 @@
 #include <iceicle/mesh/mesh.hpp>
 
 #include <iceicle/fe_function/opengl_fe_function_utils.hpp>
+#include <iceicle/opengl_drawer.hpp>
 #include <iceicle/load_shaders.hpp>
 
 #include <GL/glew.h>
@@ -93,6 +94,9 @@ int main(int argc, char**argv){
     // = Setup Face Drawing =
     // ======================
     ICEICLE_GL::FaceDrawer2D<double, int> face_drawer{};
+    ICEICLE_GL::ShapeDrawer<Arrow> normal_drawer{};
+    ICEICLE_GL::Arrow arrow1 = {.anchor = {-0.5, -0.5, 0}, .vec = {1.0, 1.0, 0.0}};
+    normal_drawer.add_shape(arrow1);
 
     // ================
     // = FrameBuffers =
@@ -182,9 +186,9 @@ int main(int argc, char**argv){
             ImGui::End();
         }
 
-        // Draw our triangle 
+        // Draw our Mesh
         {
-            ImGui::Begin("Triangle!");
+            ImGui::Begin("Mesh View");
             ImGui::BeginChild("Render");
             ImVec2 wSize = ImGui::GetContentRegionAvail();
             ImVec2 wpos = ImGui::GetWindowPos();
@@ -199,7 +203,10 @@ int main(int argc, char**argv){
             // bind the framebuffer and draw
             fbo1.bind();
             // TODO: draw stuffs
+            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+            normal_drawer.draw();
             if(mesh) face_drawer.draw_faces();
+
             fbo1.unbind();
 
             ImGui::Image((ImTextureID) fbo1.texture, wSize, 
