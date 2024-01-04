@@ -86,7 +86,7 @@ namespace ICEICLE_GL {
 
 
 	const char *tri_vert_shader = 
-#include "../../shaders/triangle2d.vert"
+#include "../../shaders/bounding_box_scale.vert"
 	;
 	const char *tri_frag_shader = 
 #include "../../shaders/triangle2d.frag"

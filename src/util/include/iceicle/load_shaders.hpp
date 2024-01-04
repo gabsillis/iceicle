@@ -1,5 +1,6 @@
 #pragma once
 #include <GL/glew.h>
+#include <glm/glm.hpp>
 #include <string>
 #include <iostream>
 GLuint LoadShaders(const char * vertex_file_path,const char * fragment_file_path);
@@ -41,6 +42,74 @@ namespace ICEICLE_GL{
         Shader(const Shader &other) = delete;
 
         Shader& operator=(const Shader &other) = delete;
+
+        /** from https://github.com/michaelg29/glmathviz */ 
+        /*
+            set uniform variables
+        */
+
+        /** 
+         * @brief set a boolean uniform variable (a shader constant)
+         * @param name the name of the variable
+         * @param value the value to set 
+         */
+        void setBool(const std::string& name, bool value) {
+            glUniform1i(glGetUniformLocation(id, name.c_str()), (int)value);
+        }
+
+        /** 
+         * @brief set a integer uniform variable (a shader constant)
+         * @param name the name of the variable
+         * @param value the value to set 
+         */
+        void setInt(const std::string& name, int value) {
+            glUniform1i(glGetUniformLocation(id, name.c_str()), value);
+        }
+
+        /** 
+         * @brief set a float uniform variable (a shader constant)
+         * @param name the name of the variable
+         * @param value the value to set 
+         */
+        void setFloat(const std::string& name, float value) {
+            glUniform1f(glGetUniformLocation(id, name.c_str()), value);
+        }
+
+        /** 
+         * @brief set a vec3 uniform variable (a shader constant)
+         * @param name the name of the variable
+         * @param value the value to set 
+         */
+        void set3Float(const std::string& name, float v1, float v2, float v3) {
+            glUniform3f(glGetUniformLocation(id, name.c_str()), v1, v2, v3);
+        }
+
+        /** 
+         * @brief set a vec3 uniform variable (a shader constant)
+         * @param name the name of the variable
+         * @param value the value to set 
+         */
+        void set3Float(const std::string& name, glm::vec3 v) {
+            glUniform3f(glGetUniformLocation(id, name.c_str()), v.x, v.y, v.z);
+        }
+
+        /** 
+         * @brief set a vec4 uniform variable (a shader constant)
+         * @param name the name of the variable
+         * @param value the value to set 
+         */
+        void set4Float(const std::string& name, float v1, float v2, float v3, float v4) {
+            glUniform4f(glGetUniformLocation(id, name.c_str()), v1, v2, v3, v4);
+        }
+
+        /** 
+         * @brief set a vec4 uniform variable (a shader constant)
+         * @param name the name of the variable
+         * @param value the value to set 
+         */
+        void set4Float(const std::string& name, glm::vec4 v) {
+            glUniform4f(glGetUniformLocation(id, name.c_str()), v.x, v.y, v.z, v.w);
+        }
 
         private:
 

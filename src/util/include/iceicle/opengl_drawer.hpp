@@ -86,9 +86,8 @@ namespace ICEICLE_GL {
     template<class ShapeType>
     class ShapeDrawer {
         ArrayObject vao;
-        Shader shader;
 
-        std::vector<ShapeType> draw_list;
+        std::vector<ShapeType> draw_list; /// list of things to draw
         std::vector<GLuint> vertex_attributes; /// list of vertex attributes to enable
 
         private:
@@ -100,6 +99,9 @@ namespace ICEICLE_GL {
         void buffer_data();
 
         public:
+
+        /// The shader that is used to draw the shapes
+        Shader shader;
 
         /** 
          * @brief initialize the VAO and shader
