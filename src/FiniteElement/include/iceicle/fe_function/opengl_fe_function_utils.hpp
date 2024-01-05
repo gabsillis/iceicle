@@ -3,6 +3,7 @@
 #include <iceicle/load_shaders.hpp>
 #include <iceicle/geometry/face.hpp>
 #include <iceicle/mesh/mesh.hpp>
+#include <iceicle/opengl_drawer.hpp>
 #include <vector>
 #include <GL/glew.h>
 #include <glm/glm.hpp>
@@ -159,6 +160,21 @@ namespace ICEICLE_GL{
         }
 
         return box;
+    }
+
+    template<typename T, typename IDX>
+    Curve create_curve(ELEMENT::Face<T, IDX, 2> *facptr, FE::NodalFEFunction<T, 2> &coord, int nsegment=4){
+        Curve out;
+
+        double dx = 2.0 / nsegment;
+        for(int ipt = 0; ipt < nsegment + 1; ++ipt){
+            MATH::GEOMETRY::Point<T, 1> s = {dx * ipt - 1.0};
+            MATH::GEOMETRY::Point<T, 2> x;
+            facptr->transform(s, coord, x.data());
+            out.pts.emplace_back(static_cast<GLfloat>(x[0]), static_cast<GLfloat>(x[1]), 0.0);
+        }
+
+        return out;
     }
 
     template<typename T, typename IDX>

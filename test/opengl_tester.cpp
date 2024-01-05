@@ -67,20 +67,30 @@ int main(int argc, char** argv){
         .pt3 = {xmin, ymax, 0.0}
     };
 
-    ShapeDrawer<Triangle> triangle_drawer;
-    triangle_drawer.shader.load();
-    triangle_drawer.shader.set3Float("xmin", xmin, ymin, 0.0);
-    triangle_drawer.shader.set3Float("xmax", xmax, ymax, 0.0);
-    triangle_drawer.add_shape(tri1);
-    triangle_drawer.add_shape(tri2);
-    triangle_drawer.update();
+//    ShapeDrawer<Triangle> triangle_drawer;
+//    triangle_drawer.shader.load();
+//    triangle_drawer.shader.set3Float("xmin", xmin, ymin, 0.0);
+//    triangle_drawer.shader.set3Float("xmax", xmax, ymax, 0.0);
+//    triangle_drawer.add_shape(tri1);
+//    triangle_drawer.add_shape(tri2);
+//    triangle_drawer.update();
+
+    BufferedShapeDrawer<Curve> curve_drawer;
+    Curve c1 = {{{0.0, 0.0, 0.0}, {0.0, 1.0, 0.0}, {1.0, 2.0, 0.0}}};
+    curve_drawer.shader.load();
+    curve_drawer.shader.set3Float("xmin", xmin, ymin, 0.0);
+    curve_drawer.shader.set3Float("xmax", xmax, ymax, 0.0);
+    curve_drawer.add_shape(c1);
+    curve_drawer.update();
+
 
     while(!glfwWindowShouldClose(window))
     {
         glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT);
 
-        triangle_drawer.draw();
+        curve_drawer.draw();
+//        triangle_drawer.draw();
         glfwPollEvents();    
         glfwSwapBuffers(window);
     }

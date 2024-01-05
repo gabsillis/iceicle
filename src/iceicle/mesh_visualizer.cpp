@@ -93,10 +93,7 @@ int main(int argc, char**argv){
     // ======================
     // = Setup Face Drawing =
     // ======================
-    ICEICLE_GL::FaceDrawer2D<double, int> face_drawer{};
-    ICEICLE_GL::ShapeDrawer<Arrow> normal_drawer{};
-    ICEICLE_GL::Arrow arrow1 = {.anchor = {-0.5, -0.5, 0}, .vec = {1.0, 1.0, 0.0}};
-    normal_drawer.add_shape(arrow1);
+    ICEICLE_GL::BufferedShapeDrawer<Curve> face_drawer{};
 
     // ================
     // = FrameBuffers =
@@ -159,17 +156,21 @@ int main(int argc, char**argv){
                     1, bctypes, bcflags
                 );
 
-                face_drawer.clear_faces();
+                face_drawer.clear();
 
+                // get the bounding box and apply to the vertex shaders
                 BoundingBox mesh_bounds = ICEICLE_GL::get_mesh_bounds(*mesh);
+                face_drawer.shader.load();
+                face_drawer.shader.set3Float("xmin", mesh_bounds.xmin);
+                face_drawer.shader.set3Float("xmax", mesh_bounds.xmax);
 
-                BoundingBox scaled_bounds = {{-0.8, -0.8, -0.8}, {0.8, 0.8, 0.8}};
+
                 for(int iface = mesh->interiorFaceStart; iface < mesh->interiorFaceEnd; ++iface){
-                    face_drawer.add_face(mesh->faces[iface], mesh->nodes, mesh_bounds, scaled_bounds);
+                    face_drawer.add_shape(create_curve(mesh->faces[iface], mesh->nodes));
                 }
 
                 for(int iface = mesh->bdyFaceStart; iface < mesh->bdyFaceEnd; ++iface){
-                    face_drawer.add_face(mesh->faces[iface], mesh->nodes, mesh_bounds, scaled_bounds);
+                    face_drawer.add_shape(create_curve(mesh->faces[iface], mesh->nodes));
                 }
 
                 // update the buffers
@@ -204,8 +205,8 @@ int main(int argc, char**argv){
             fbo1.bind();
             // TODO: draw stuffs
             glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-            normal_drawer.draw();
-            if(mesh) face_drawer.draw_faces();
+            //normal_drawer.draw();
+            if(mesh) face_drawer.draw();
 
             fbo1.unbind();
 

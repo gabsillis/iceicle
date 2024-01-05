@@ -69,9 +69,6 @@ namespace ICEICLE_GL {
     };
     static_assert(sizeof(ArrowGenerated) == 9 * sizeof(glm::vec3));
 
-    struct Curve final : public Shape {
-        std::vector<glm::vec3> pts;
-    };
 
     struct Triangle : public Shape {
         glm::vec3 pt1;
@@ -151,6 +148,110 @@ namespace ICEICLE_GL {
             // disable the vetex attributes
             for(GLuint attr_id: vertex_attributes) glDisableVertexAttribArray(attr_id);
         }
+    };
+
+    // ===================
+    // = Buffered Shapes =
+    // ===================
+
+    struct Curve final {
+        std::vector<glm::vec3> pts;
+    };
+
+    /** @brief a custom buffer for each shape */
+    template<class ShapeType>
+    struct ShapeDataBuffer{
+        void add_shape(const ShapeType shp){}
+
+        void clear(){}
+    };
+
+    template<>
+    struct ShapeDataBuffer<Curve> {
+        std::vector<glm::vec3> pts;
+        std::vector<std::size_t> iterators;
+
+        ShapeDataBuffer() : pts{}, iterators{0} {}
+
+        // TODO: use triangles to make thickness
+        void add_shape(const Curve &shp){
+            // add all the points
+            pts.insert(pts.end(), shp.pts.begin(), shp.pts.end());
+
+            // update the iterator 
+            iterators.push_back(pts.size());
+        }
+
+        void clear(){
+            pts.clear();
+            iterators.clear();
+            iterators.push_back(0);
+        }
+    };
+
+    /**
+     * @brief draw shapes onto the current frame 
+     * for shapes with complex or dynamic data that must be buffered 
+     */
+    template<class ShapeType>
+    class BufferedShapeDrawer{
+
+        ArrayObject vao;
+        ShapeDataBuffer<ShapeType> host_buffer;
+        std::vector<GLuint> vertex_attributes; /// list of vertex attributes to enable
+
+        /** buffer data to the device */ 
+        void buffer_data();
+
+        /** the draw command that draws out the buffered data */ 
+        void draw_arrays(); 
+
+        public:
+        Shader shader; /// the shader used when drawing
+      
+        /** @brief Constructor
+         *
+         * Must create a shader 
+         * Must create the vao 
+         * list all the vertex attribute indices used
+         * Generate any buffers needed
+         */
+        BufferedShapeDrawer();
+
+        /** add a shape to draw */ 
+        void add_shape(const ShapeType &shp) { host_buffer.add_shape(shp); }
+
+        /** clear the data on the host (empty it out) */
+        void clear(){ host_buffer.clear(); }
+
+
+        /** update Device to prepare for a call to draw() */ 
+        void update(){
+            vao.bind();
+            buffer_data();
+        }
+
+        /**
+         * @brief draw all the shapes
+         * WARNING: prerequisite: update()
+         */
+        void draw(){
+            // load the shader program
+            shader.load();
+
+            // bind the vertex array 
+            vao.bind();
+
+            // enable the vertex attributes
+            for(GLuint attr_id: vertex_attributes) glEnableVertexAttribArray(attr_id);
+
+            // draw 
+            draw_arrays();
+
+            // disable the vetex attributes
+            for(GLuint attr_id: vertex_attributes) glDisableVertexAttribArray(attr_id);
+        }
+        
     };
 
 }
