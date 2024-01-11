@@ -40,7 +40,7 @@ namespace ICEICLE_GL {
         // The ratio of the length of the shaft to vec
         static constexpr float SHAFT_LENGTH_MUL = 0.85;
 
-        ArrowGenerated(glm::vec3 &anchor, glm::vec3 &arrow){
+        ArrowGenerated(const glm::vec3 &anchor, const glm::vec3 &arrow){
             glm::vec3 normal = {-arrow[1], arrow[0], 0.0};
 
             glm::vec3 shaft_horiz = normal;

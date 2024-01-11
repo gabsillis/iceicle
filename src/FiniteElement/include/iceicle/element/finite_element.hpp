@@ -68,13 +68,13 @@ namespace ELEMENT {
         const GeometricElement<T, IDX, ndim> *geo_el;
 
         /** @brief the basis functions */
-        const BASIS::Basis<T, ndim> &basis; 
+        const BASIS::Basis<T, ndim> *basis;
 
         /** @brief the quadraature rule */
-        const QUADRATURE::QuadratureRule<T, IDX, ndim> &quadrule;
+        const QUADRATURE::QuadratureRule<T, IDX, ndim> *quadrule;
 
         /** @brief precomputed evaluations of the basis functions at the quadrature points */
-        const FEEvaluation<T, IDX, ndim> &qp_evals;
+        const FEEvaluation<T, IDX, ndim> *qp_evals;
 
         /** @brief the element index in the mesh */
         const IDX elidx;
@@ -89,9 +89,9 @@ namespace ELEMENT {
          */
         FiniteElement(
             GeometricElement<T, IDX, ndim> *geo_el_arg,
-            BASIS::Basis<T, ndim> &basis_arg,
-            QUADRATURE::QuadratureRule<T, IDX, ndim> &quadrule_arg,
-            FEEvaluation<T, IDX, ndim> &qp_evals,
+            BASIS::Basis<T, ndim> *basis_arg,
+            QUADRATURE::QuadratureRule<T, IDX, ndim> *quadrule_arg,
+            FEEvaluation<T, IDX, ndim> *qp_evals,
             IDX elidx_arg
         ) : geo_el(geo_el_arg), basis(basis_arg),
             quadrule(quadrule_arg), qp_evals(qp_evals), elidx(elidx_arg) {}
@@ -107,7 +107,7 @@ namespace ELEMENT {
         // =============================
 
         /* @brief get the number of basis functions */
-        int nbasis() const { return basis.nbasis(); }
+        int nbasis() const { return basis->nbasis(); }
 
         /**
          * @brief evaluate the values of the basis functions at the given point
@@ -116,7 +116,7 @@ namespace ELEMENT {
          * @param [out] Bi the values of the basis functions at the point [size = nbasis]
          */
         void evalBasis(const T *xi, T *Bi) const {
-            basis.evalBasis(xi, Bi);
+            basis->evalBasis(xi, Bi);
         }
 
         /**
@@ -154,7 +154,7 @@ namespace ELEMENT {
          *                [size = [nbasis : i][ndim : j]] 
          */
         void evalGradBasis(const T *xi, T **dBidxj) const {
-            return basis.evalGradBasis(xi, dBidxj);
+            return basis->evalGradBasis(xi, dBidxj);
         }
        
         /**
@@ -171,7 +171,7 @@ namespace ELEMENT {
          *                [size = [nbasis : i][ndim : j]] 
          */
         void evalGradBasisQP(int quadrature_pt_idx, T **dBidxj) const {
-            return basis.evalGradBasis(quadrule[quadrature_pt_idx].abscisse, dBidxj);
+            return basis->evalGradBasis(quadrule[quadrature_pt_idx].abscisse, dBidxj);
         }
 
         /**
@@ -242,7 +242,7 @@ namespace ELEMENT {
             FE::NodalFEFunction<T, ndim> &node_list,
             T **dBidxj
         ) const {
-            return evalPhysGradBasis(quadrule[quadrature_pt_idx].abscisse, node_list, dBidxj);
+            return evalPhysGradBasis((*quadrule)[quadrature_pt_idx].abscisse, node_list, dBidxj);
         }
 
         // =========================
@@ -250,10 +250,10 @@ namespace ELEMENT {
         // =========================
 
         /** @brief get the number of quadrature points in the quadrature rule */
-        int nQP() const { return quadrule.npoints(); }
+        int nQP() const { return quadrule->npoints(); }
 
         /** @brief get the "QuadraturePoint" (contains point and weight) at the given quadrature point index */
-        const QUADRATURE::QuadraturePoint<T, ndim> getQP(int qp_idx) const { return quadrule[qp_idx]; }
+        const QUADRATURE::QuadraturePoint<T, ndim> getQP(int qp_idx) const { return (*quadrule)[qp_idx]; }
 
         // ========================
         // = Geometric Operations =

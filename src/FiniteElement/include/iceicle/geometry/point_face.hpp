@@ -5,6 +5,7 @@
  *
  */
 #pragma once
+#include "iceicle/geometry/geometry_enums.hpp"
 #include <iceicle/geometry/face.hpp>
 
 namespace ELEMENT {
@@ -47,6 +48,8 @@ namespace ELEMENT {
            if(positiveNormal) normal = 1.0;
            else normal = -1.0;
         }
+
+        REFERENCE_DOMAIN_TYPE ref_domn_type() const override { return REFERENCE_DOMAIN_TYPE::HYPERCUBE; }
 
         T getArea() const override { return area; }
 

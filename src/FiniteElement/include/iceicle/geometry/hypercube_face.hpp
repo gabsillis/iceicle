@@ -61,6 +61,8 @@ namespace ELEMENT {
             bctype, bcflag)
         {}
 
+        REFERENCE_DOMAIN_TYPE ref_domn_type() const override { return REFERENCE_DOMAIN_TYPE::HYPERCUBE; }
+
         void transform(
             const FacePoint &s,
             FE::NodalFEFunction<T, ndim> &coord,

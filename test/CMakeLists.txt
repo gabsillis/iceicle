@@ -27,6 +27,7 @@ if(ICEICLE_USE_OPENGL)
 endif()
 
 add_executable(test_felib 
+    TestFespan.cpp
     TestHypercubeFace.cpp
     TestQuadrature1d.cpp
     TestHypercubeTransform.cpp

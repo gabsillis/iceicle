@@ -44,15 +44,9 @@ namespace ICEICLE_GL {
     // = Generated Arrow =
     // ===================
 
-    const char *arrow2_vert = R"(
-    #version 330 core
-    layout(location = 0) in vec3 pos;
-
-    void main(){
-	    gl_Position.xyz = pos;
-	    gl_Position.w = 1.0;
-    }
-    )";
+    const char *arrow2_vert = 
+#include "../../shaders/bounding_box_scale.vert"
+    ;
 
     const char *arrow2_frag = R"(
     #version 330 core 

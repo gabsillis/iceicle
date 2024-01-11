@@ -92,7 +92,10 @@ namespace BASIS {
         void evalGradBasis(const T *xi, T **dBidxj) const override {
             Point xipt{};
             std::copy_n(xi, ndim, xipt.data());
-            transform.fill_deriv(xipt, dBidxj);
+            NUMTOOL::TENSOR::FIXED_SIZE::Tensor<T, transform.n_nodes(), ndim> dBi; 
+            transform.fill_deriv(xipt, dBi);
+            // TODO: get rid of memmove called here
+            std::copy_n(dBi.ptr(), ndim * transform.n_nodes(), dBidxj[0]);
         }
         
         void evalHessBasis(const T *xi, int ibasis, T Hessian[ndim][ndim]) const override {

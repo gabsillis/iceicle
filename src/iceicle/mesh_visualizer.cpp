@@ -3,12 +3,15 @@
 #include <iceicle/fe_function/opengl_fe_function_utils.hpp>
 #include <iceicle/opengl_drawer.hpp>
 #include <iceicle/load_shaders.hpp>
+#include <iceicle/opengl_utils.hpp>
+#include "iceicle/geometry/face.hpp"
+#include <iceicle/geometry/face_utils.hpp>
 
 #include <GL/glew.h>
 #include <GLFW/glfw3.h>
 #include <glm/glm.hpp>
 
-#include "iceicle/geometry/face.hpp"
+#include "Numtool/point.hpp"
 #include "imgui.h"
 #include "imgui_impl_glfw.h"
 #include "imgui_impl_opengl3.h"
@@ -84,15 +87,16 @@ int main(int argc, char**argv){
     int nx = 1, ny = 1;
     float xmin = -1, ymin = -1;
     float xmax = 1, ymax = 1;
-    bool number_elements;
-    bool number_faces;
-    bool draw_normals;
+    bool number_elements = false;
+    bool number_faces = false;
+    bool draw_normals = false;
 
     MESH::AbstractMesh<double, int, 2> *mesh = nullptr;
 
     // ======================
     // = Setup Face Drawing =
     // ======================
+    ICEICLE_GL::ShapeDrawer<ArrowGenerated> normal_drawer{};
     ICEICLE_GL::BufferedShapeDrawer<Curve> face_drawer{};
 
     // ================
@@ -157,6 +161,7 @@ int main(int argc, char**argv){
                 );
 
                 face_drawer.clear();
+                normal_drawer.clear_list();
 
                 // get the bounding box and apply to the vertex shaders
                 BoundingBox mesh_bounds = ICEICLE_GL::get_mesh_bounds(*mesh);
@@ -164,17 +169,56 @@ int main(int argc, char**argv){
                 face_drawer.shader.set3Float("xmin", mesh_bounds.xmin);
                 face_drawer.shader.set3Float("xmax", mesh_bounds.xmax);
 
+                normal_drawer.shader.load();
+                normal_drawer.shader.set3Float("xmin", mesh_bounds.xmin);
+                normal_drawer.shader.set3Float("xmax", mesh_bounds.xmax);
+
 
                 for(int iface = mesh->interiorFaceStart; iface < mesh->interiorFaceEnd; ++iface){
+                    // add the face to draw
                     face_drawer.add_shape(create_curve(mesh->faces[iface], mesh->nodes));
+
+                    // get the normal to draw 
+                    auto centroid = ELEMENT::face_centroid(*(mesh->faces[iface]), mesh->nodes);
+
+                    auto normal = ELEMENT::calc_normal(
+                        *(mesh->faces[iface]),
+                        mesh->nodes,
+                        ELEMENT::ref_face_centroid(*(mesh->faces[iface]))
+                    );
+
+                    ArrowGenerated normal_arrow = {
+                        ICEICLE_GL::to_vec3(centroid),
+                        ICEICLE_GL::to_vec3(normal)
+                    };
+
+                    normal_drawer.add_shape(normal_arrow);
                 }
 
                 for(int iface = mesh->bdyFaceStart; iface < mesh->bdyFaceEnd; ++iface){
+                    // add the face to draw
                     face_drawer.add_shape(create_curve(mesh->faces[iface], mesh->nodes));
+
+                    // get the normal to draw 
+                    auto centroid = ELEMENT::face_centroid(*(mesh->faces[iface]), mesh->nodes);
+
+                    auto normal = ELEMENT::calc_normal(
+                        *(mesh->faces[iface]),
+                        mesh->nodes,
+                        ELEMENT::ref_face_centroid(*(mesh->faces[iface]))
+                    );
+
+                    ArrowGenerated normal_arrow = {
+                        ICEICLE_GL::to_vec3(centroid),
+                        ICEICLE_GL::to_vec3(normal)
+                    };
+
+                    normal_drawer.add_shape(normal_arrow);
                 }
 
                 // update the buffers
                 face_drawer.update();
+                normal_drawer.update();
 
             } // Buttons return true when clicked (most widgets return true when edited/activated)
             ImGui::SameLine();
@@ -207,6 +251,8 @@ int main(int argc, char**argv){
             glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
             //normal_drawer.draw();
             if(mesh) face_drawer.draw();
+
+            if(mesh && draw_normals) normal_drawer.draw();
 
             fbo1.unbind();
 

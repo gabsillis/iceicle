@@ -5,6 +5,7 @@
  */
 #pragma once
 #include "iceicle/fe_function/nodal_fe_function.hpp"
+#include <iceicle/geometry/geometry_enums.hpp>
 #include <Numtool/point.hpp>
 #include <Numtool/MathUtils.hpp>
 #include <Numtool/fixed_size_tensor.hpp>
@@ -86,6 +87,9 @@ namespace ELEMENT {
 
         virtual ~Face() = default;
 
+        /** @brief get the shape that defines the reference domain */
+        virtual 
+        REFERENCE_DOMAIN_TYPE ref_domn_type() const = 0;
 
         /**
          * @brief Get the area of the face
