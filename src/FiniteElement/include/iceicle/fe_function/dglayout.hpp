@@ -103,7 +103,7 @@ namespace FE {
 
         /**
          * @brief convert a multidimensional index to a single offset 
-         * @brief fe_index collection of the element, dof, and component indices
+         * @brief idx collection of the element, dof, and component indices
          */
         constexpr std::size_t operator()(const fe_index &idx) const {
             std::size_t iel = idx.iel;

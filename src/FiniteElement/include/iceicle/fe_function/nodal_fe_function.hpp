@@ -120,6 +120,11 @@ namespace FE {
             _data = newdata;
         }
 
+        /**
+         * @brief randomly peturb all the nodes 
+         * @param min_peturb the minimum peturbation
+         * @param max_peturb the maximum peturbation 
+         */
         void random_perturb(T min_peturb, T max_peturb){
             using namespace std;
 

@@ -52,5 +52,17 @@ namespace FE {
         std::size_t iv = 0;
     };
 
+    /**
+     * @brief index into a global nodal structure
+     * collects the two required indices 
+     * indices default to zero 
+     */
+    struct gnode_index {
+        /// the node index 
+        std::size_t idof = 0;
+
+        /// the index of the vector component
+        std::size_t iv = 0;
+    };
 
 }

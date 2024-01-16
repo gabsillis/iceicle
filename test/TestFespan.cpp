@@ -53,6 +53,12 @@ TEST(test_fespan, test_dglayout){
     FE::fespan<T, FE::dg_layout<T, 2> > fespan1(data.data(), offsets);
 
     static constexpr int ndof_per_elem = ndim * (Pn + 1);
-    
-    ASSERT_EQ(5.0, (fespan1[FE::fe_index{.iel = 0, .idof = 2, .iv = 1}]));
+   
+    int neq = 2;
+    ASSERT_EQ(neq * 2 + 1.0, (fespan1[FE::fe_index{.iel = 0, .idof = 2, .iv = 1}]));
+
+    std::size_t iel = 1, idof = 2, iv = 0;
+    ASSERT_EQ(iel * std::pow(ndim, (Pn + 1)) * neq + idof * neq + iv, (fespan1[FE::fe_index{.iel = iel, .idof = idof, .iv = iv}]));
+
+    //TODO: add more tests
 }
