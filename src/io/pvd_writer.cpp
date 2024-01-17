@@ -14,7 +14,7 @@ namespace ICEICLE::IO {
                 out << " ";
                 write(f, out);
             }
-            out << ">";
+            out << ">" << std::endl;
         }
 
         void write_empty(const XMLTag &tag, std::ostream &out){
@@ -23,11 +23,11 @@ namespace ICEICLE::IO {
                 out << " ";
                 write(f, out);
             }
-            out << "/>";
+            out << "/>" << std::endl;;
         }
 
         void write_close(const XMLTag &tag, std::ostream &out){
-            out << "</" << tag.name << ">";
+            out << "</" << tag.name << ">" << std::endl;
         }
 
         void write_vtu_header(std::ostream &out){
@@ -43,7 +43,7 @@ namespace ICEICLE::IO {
         }
 
         void write_vtu_footer(std::ostream &out){
-            out << "</VTKFile";
+            out << "</VTKFile>" << std::endl;
         }
     }
 }

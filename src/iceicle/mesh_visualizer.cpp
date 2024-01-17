@@ -1,5 +1,5 @@
 #include <iceicle/mesh/mesh.hpp>
-
+#include <iceicle/pvd_writer.hpp>
 #include <iceicle/fe_function/opengl_fe_function_utils.hpp>
 #include <iceicle/opengl_drawer.hpp>
 #include <iceicle/load_shaders.hpp>
@@ -92,6 +92,7 @@ int main(int argc, char**argv){
     bool draw_normals = false;
 
     MESH::AbstractMesh<double, int, 2> *mesh = nullptr;
+    ICEICLE::IO::PVDWriter<double, int, 2> mesh_writer{mesh};
 
     // ======================
     // = Setup Face Drawing =
@@ -219,13 +220,14 @@ int main(int argc, char**argv){
                 // update the buffers
                 face_drawer.update();
                 normal_drawer.update();
+                mesh_writer.register_mesh(mesh);
 
             } // Buttons return true when clicked (most widgets return true when edited/activated)
             ImGui::SameLine();
             ImGui::Text("counter = %d", counter);
 
             if (ImGui::Button("Save Mesh")){
-                // TODO: save meshes to file
+                mesh_writer.write_mesh();
             }
             ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / io.Framerate, io.Framerate);
             ImGui::End();
