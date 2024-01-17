@@ -13,6 +13,60 @@ using namespace std;
 #include <GL/glew.h>
 
 #include <iceicle/load_shaders.hpp>
+namespace ICEICLE_GL {
+	Shader &Shader::load(){
+		glUseProgram(id);
+
+		return *this;
+	}
+
+	Shader::Shader(
+		const char *vertex_source,
+		const char *fragment_source,
+		const char *geometry_source = nullptr
+	){
+		GLuint vert_id, frag_id, geom_id;
+
+		// Create the vertex shader 
+		vert_id = glCreateShader(GL_VERTEX_SHADER); 
+		glShaderSource(vert_id, 1, &vertex_source, NULL);
+		glCompileShader(vert_id);
+		checkCompileErrors(vert_id, "VERTEX");
+
+		// create the fragment shader
+		frag_id = glCreateShader(GL_FRAGMENT_SHADER);
+		glShaderSource(frag_id, 1, &fragment_source, NULL);
+		glCompileShader(frag_id);
+		checkCompileErrors(frag_id, "FRAGMENT");
+
+		// create the geometry shader (if applicable)
+		if(geometry_source != nullptr){
+			geom_id = glCreateShader(GL_GEOMETRY_SHADER);
+			glShaderSource(geom_id, 1, &geometry_source, NULL);
+			glCompileShader(geom_id);
+			checkCompileErrors(geom_id, "GEOMETRY");
+		}
+
+		// create the shader program 
+		id = glCreateProgram();
+		// attach the compiled shaders 
+		glAttachShader(id, vert_id);
+		glAttachShader(id, frag_id);
+		if(geometry_source != nullptr) glAttachShader(id, geom_id);
+		glLinkProgram(id);
+		checkCompileErrors(id, "PROGRAM");
+
+		// delete the shaders after linking into the program 
+		glDeleteShader(vert_id);
+		glDeleteShader(frag_id);
+		if(geometry_source != nullptr) glDeleteShader(geom_id);
+	}
+
+
+	Shader::~Shader(){
+		glDeleteProgram(id);
+	}
+}
 
 GLuint LoadShaders(const char * vertex_file_path,const char * fragment_file_path){
 

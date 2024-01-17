@@ -4,6 +4,7 @@
  * @author Gianni Absillis (gabsill@ncsu.edu)
  */
 #pragma once
+#include "iceicle/fe_enums.hpp"
 #include <iceicle/geometry/geo_element.hpp>
 #include <iceicle/transformations/SimplexElementTransformation.hpp>
 
@@ -32,6 +33,10 @@ namespace ELEMENT {
         // =  Implementation  =
         // ====================
         constexpr int n_nodes() const override { return transformation.nnodes(); }
+
+        constexpr FE::DOMAIN_TYPE domain_type() const noexcept { return FE::DOMAIN_TYPE::SIMPLEX; }
+
+        constexpr int geometry_order() const noexcept { return Pn; }
 
         const IDX *nodes() const override { return _nodes; }
 

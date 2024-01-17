@@ -1,4 +1,5 @@
 add_library(iceicle_fe segment_mesh.cpp mesh.cpp)
+target_compile_features(iceicle_fe INTERFACE cxx_std_20)
 target_link_libraries(iceicle_fe PUBLIC iceicle_util)
 target_link_libraries(iceicle_fe PUBLIC nt_general)
 target_link_libraries(iceicle_fe PUBLIC nt_tensor)
@@ -20,5 +21,4 @@ if(ICEICLE_USE_OPENGL)
     target_link_libraries(iceicle_fe PUBLIC GLEW::glew)
     target_link_libraries(iceicle_fe PUBLIC glfw)
 endif()
-target_compile_features(iceicle_fe PUBLIC cxx_std_20)
 

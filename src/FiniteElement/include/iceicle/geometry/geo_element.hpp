@@ -6,6 +6,7 @@
  */
 
 #pragma once
+#include "iceicle/fe_enums.hpp"
 #include <vector>
 #include <iceicle/fe_function/nodal_fe_function.hpp>
 #include <Numtool/point.hpp>
@@ -13,6 +14,9 @@
 #include <Numtool/fixed_size_tensor.hpp>
 
 namespace ELEMENT{
+
+    // the maximum dynamic element order that is generated
+    static constexpr int MAX_DYNAMIC_ORDER = 5;
     
     /**
      * @brief A Geometric element
@@ -37,6 +41,20 @@ namespace ELEMENT{
          */
         virtual
         constexpr int n_nodes() const = 0;
+
+        /**
+         * @brief get the domain type 
+         * @return what refernce domain this maps to 
+         */
+        virtual
+        constexpr FE::DOMAIN_TYPE domain_type() const noexcept = 0;
+
+        /**
+         * @brief get the polynomial order of the geometry definition 
+         * this is used to map to output
+         */
+        virtual 
+        constexpr int geometry_order() const noexcept = 0;
 
         /**
          * @brief Get the nodes array for this element

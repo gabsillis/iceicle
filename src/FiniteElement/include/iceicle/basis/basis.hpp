@@ -14,6 +14,7 @@
  */
 #pragma once
 #include <stdexcept>
+#include <iceicle/fe_enums.hpp>
 
  namespace BASIS {
 
@@ -28,6 +29,9 @@
          */
         virtual
         int nbasis() const = 0;
+
+        virtual 
+        constexpr FE::DOMAIN_TYPE domain_type() const noexcept = 0;
 
         /**
          * @brief evaluate basis functions

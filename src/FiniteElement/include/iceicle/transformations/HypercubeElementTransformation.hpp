@@ -59,7 +59,7 @@ private:
   friend class HypercubeTraceTransformation<T, IDX, ndim + 1, Pn>;
 
 public:
-  int convert_indices_helper(int ijk[ndim]){
+  int convert_indices_helper(int ijk[ndim]) const {
     int ret = 0;
     for(int idim = 0; idim < ndim; ++idim){
       ret += ijk[idim] * std::pow(Pn + 1, ndim - idim - 1);
@@ -484,7 +484,7 @@ public:
     * @return the Jacobian matrix
     */
   NUMTOOL::TENSOR::FIXED_SIZE::Tensor<T, ndim, ndim> Jacobian(
-      FE::NodalFEFunction<T, ndim> &node_coords,
+      const FE::NodalFEFunction<T, ndim> &node_coords,
       const IDX *node_indices,
       const Point &xi
   ) const {
@@ -499,7 +499,7 @@ public:
 
       for(int inode = 0; inode < nnode; ++inode){
           IDX global_inode = node_indices[inode];
-          PointView node{node_coords[global_inode]};
+          const auto &node = node_coords[global_inode];
           for(int idim = 0; idim < ndim; ++idim){
               for(int jdim = 0; jdim < ndim; ++jdim){
                   // add contribution to jacobian from this basis function
@@ -522,7 +522,7 @@ public:
     * @param [out] the Hessian in tensor form indexed [k][i][j] as described above
     */
   void Hessian(
-      FE::NodalFEFunction<T, ndim> &node_coords,
+      const FE::NodalFEFunction<T, ndim> &node_coords,
       const IDX *node_indices,
       const Point &xi,
       T hess[ndim][ndim][ndim]
@@ -536,7 +536,7 @@ public:
     for(int inode = 0; inode < nnode; ++inode){
       // get view to the node coordinates from the node coordinate array
       IDX global_inode = node_indices[inode];
-      PointView node{node_coords[global_inode]};
+      const auto & node = node_coords[global_inode];
 
       for(int kdim = 0; kdim < ndim; ++kdim){ // k corresponds to xi 
         T node_hessian[ndim][ndim];
@@ -746,38 +746,43 @@ public:
     IDX anchor_vertex = (first_dim_sign[faceNr] < 0) ? (Pn) * strides[trace_first_dim]: 0;
 
     IDX face_node_idx = 0;
-   
-    // function to fill the nodes recursively
-    std::function<void(int, int)> fill_nodes = [&](
-        int el_node_idx, int idim
-    ) {
-      int last_dim = (trace_coord == ndim - 1) ? ndim - 2 : ndim - 1;
-      if(idim == last_dim){
-        for(int j = 0; j < Pn + 1; ++j){
-          // base case: assign the global node
-          int lidx = el_node_idx + j * strides[last_dim];
-          face_nodes[face_node_idx++] = nodes_el[lidx];
-        }
-      } else {
-        if(idim == trace_coord) {
-          // pass through 
-          fill_nodes(el_node_idx, idim + 1);
+
+    auto next_ijk = [&](int ijk[ndim]){
+      for(int idim = ndim - 1; idim >= 0; --idim) if(idim != trace_coord) {
+        if(idim == trace_first_dim && first_dim_sign[faceNr] < 0){
+          // reversed order
+          if(ijk[idim] == 0){
+            ijk[idim] = Pn;
+          } else {
+            ijk[idim]--;
+            return true;
+          }
         } else {
-          for(int j = 0; j < Pn + 1; ++j){
-            // move by the stride and recurse
-            fill_nodes(el_node_idx + j * strides[idim], idim + 1);
+          
+          if(ijk[idim] == Pn){
+            ijk[idim] = 0;
+          } else {
+            ijk[idim]++;
+            return true;
           }
         }
       }
+      return false;
     };
 
-    // handle the first dimension seperately because of possible direction difference
-    int idim = trace_first_dim;
-    for(int j = 0; j < Pn + 1; ++j){
-      // travel in the direction of the first_dim_sign
-      int jstride = j * strides[trace_first_dim] * first_dim_sign[faceNr];
-      fill_nodes(anchor_vertex + jstride, trace_first_dim + 1);
+    int ijk[ndim] = {0};
+    if(first_dim_sign[faceNr] < 0){
+      // anchor point needs to be at Pn 
+      ijk[trace_first_dim] = Pn;
     }
+    // move to the correct face between positive and negative side 
+    ijk[trace_coord] = (is_negative_xi) ? 0 : Pn;
+
+    int inode = 0;
+    do {
+      face_nodes[inode] = nodes_el[convert_indices_helper(ijk)];
+      inode++;
+    } while(next_ijk(ijk));
   }
 
   /**
@@ -1038,7 +1043,7 @@ class HypercubeTraceOrientTransformation {
     */
   void transform(
       int orientationR,
-      const TracePointView &s,
+      const T *s,
       TracePointView sR
   ) const {
 
@@ -1074,6 +1079,8 @@ class HypercubeTraceTransformation {
   NUMTOOL::TENSOR::FIXED_SIZE::Tensor<T, n_trace> first_dim_sign;
 
   public: 
+
+  static constexpr int n_nodes = trace_domain_trans.n_nodes();
 
   HypercubeTraceTransformation(){
     for(int itrace = 0; itrace < n_trace; ++itrace){
@@ -1116,9 +1123,9 @@ class HypercubeTraceTransformation {
    * @param [out] xi the position in the reference element domain 
    */
   void transform(
-    IDX *node_indices,
+    const IDX *node_indices,
     int traceNr,
-    const TracePointView &s,
+    const T *s,
     ElPointView xi
   ) const {
 
@@ -1138,6 +1145,24 @@ class HypercubeTraceTransformation {
     else xi[0] *= first_dim_sign[traceNr];
   }
 
+  void transform_physical(
+      const IDX *node_indices,
+      int traceNr,
+      const MATH::GEOMETRY::Point<T, ndim - 1> &s,
+      FE::NodalFEFunction<T, ndim> &coord,
+      ElPointView x
+  ) const {
+    using namespace NUMTOOL::TENSOR::FIXED_SIZE;
+    Tensor<T, n_nodes> Bi{};
+    trace_domain_trans.fill_shp(s, Bi.data());
+    for(int inode = 0; inode < n_nodes; ++inode) {
+      for(int idim = 0; idim < ndim; ++idim) {
+        const auto &node = coord[node_indices[inode]];
+        x[idim] += Bi[inode] * node[idim];
+      }
+    }
+  }
+
   /**
    * @brief get the Jacobian dx ds 
    * @param coord the global node coordinates 
@@ -1148,7 +1173,7 @@ class HypercubeTraceTransformation {
    */
   NUMTOOL::TENSOR::FIXED_SIZE::Tensor<T, ndim, trace_ndim> Jacobian(
       FE::NodalFEFunction<T, ndim> &coord,
-      IDX *face_node_indices,
+      const IDX *face_node_indices,
       int traceNr,
       const MATH::GEOMETRY::Point<T, trace_ndim> &s
   ) const {

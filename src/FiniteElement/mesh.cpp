@@ -7,6 +7,7 @@
 #include <iceicle/build_config.hpp>
 #include <iceicle/geometry/face.hpp>
 #include <iceicle/geometry/simplex_element.hpp>
+#include <iceicle/geometry/hypercube_element.hpp>
 #include <string>
 #include <map>
 #include <sstream>

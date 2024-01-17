@@ -5,6 +5,7 @@
  *
  */
 #pragma once
+#include "iceicle/geometry/geometry_enums.hpp"
 #include <iceicle/geometry/face.hpp>
 
 namespace ELEMENT {
@@ -48,14 +49,30 @@ namespace ELEMENT {
            else normal = -1.0;
         }
 
+        REFERENCE_DOMAIN_TYPE ref_domn_type() const override { return REFERENCE_DOMAIN_TYPE::HYPERCUBE; }
+
         T getArea() const override { return area; }
 
         void transform(
+            const FacePoint &s,
             FE::NodalFEFunction<T,ndim> &nodeCoords,
+            T *result
+        ) const {
+            result[0] = nodeCoords[node][0];
+        }
+
+        void transform_xiL(
             const FacePoint &s,
             T *result
         ) const override {
-            result[0] = nodeCoords[node][0];
+            result[0] = -1.0;
+        }
+
+        void transform_xiR(
+            const FacePoint &s,
+            T *result
+        ) const override {
+            result[0] = 1.0;
         }
 
 
@@ -71,7 +88,7 @@ namespace ELEMENT {
 
         virtual
         T rootRiemannMetric(
-            FE::NodalFEFunction<T, ndim> &nodeCoords,
+            NUMTOOL::TENSOR::FIXED_SIZE::Tensor<T, ndim, ndim - 1> &J,
             const FacePoint &s
         ) const override { return 1.0; }
 

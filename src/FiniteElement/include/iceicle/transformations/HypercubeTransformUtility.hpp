@@ -99,55 +99,52 @@ namespace ELEMENT::TRANSFORMATIONS {
                 );
             }
         } else {
-            NUMTOOL::TMP::constexpr_for_range<1, 10 * Pn + 1>([&]<int Pn_refine>{
-                if(refine_order == Pn_refine){
-                    auto &trans = quad.transformation;
-                    HypercubeElementTransformation<T, IDX, 2, Pn_refine> fine_trans;
+            auto convert_ijk = [&](int ijk[2]) -> int {
+                return ijk[0] * refine_order + ijk[1];
+            };
+
+            for(int iquad = 0; iquad < refine_order; ++iquad){
+                for(int jquad = 0; jquad < refine_order; ++jquad){
 
                     std::size_t vi_offset = vertices.size();
 
-                    // split each subquad into two triangles 
-                    for(int iquad = 0; iquad < Pn_refine; ++iquad){
-                        for(int jquad = 0; jquad < Pn_refine; ++jquad){
-                            // first triangle 
-                            int ijk1[3] = {iquad, jquad};
-                            int ijk2[3] = {iquad+1, jquad};
-                            int ijk3[3] = {iquad+1, jquad+1};
-                            // push back the triangle indices 
+                    // first triangle 
+                    int ijk1[2] = {iquad, jquad};
+                    int ijk2[2] = {iquad+1, jquad};
+                    int ijk3[2] = {iquad+1, jquad+1};
 
-                            vertexIndices.emplace_back(
-                                vi_offset + fine_trans.convert_indices_helper(ijk1));
-                            vertexIndices.emplace_back(
-                                vi_offset + fine_trans.convert_indices_helper(ijk2));
-                            vertexIndices.emplace_back(
-                                vi_offset + fine_trans.convert_indices_helper(ijk3));
+                    vertexIndices.emplace_back(vi_offset + convert_ijk(ijk1));
+                    vertexIndices.emplace_back(vi_offset + convert_ijk(ijk2));
+                    vertexIndices.emplace_back(vi_offset + convert_ijk(ijk3));
 
-                            // second triangle 
-                            int ijk4[3] = {iquad, jquad};
-                            int ijk5[3] = {iquad+1, jquad+1};
-                            int ijk6[3] = {iquad, jquad+1};
-                            // push back the triangle indices 
-                            vertexIndices.emplace_back(
-                                vi_offset + fine_trans.convert_indices_helper(ijk4));
-                            vertexIndices.emplace_back(
-                                vi_offset + fine_trans.convert_indices_helper(ijk5));
-                            vertexIndices.emplace_back(
-                                vi_offset + fine_trans.convert_indices_helper(ijk6));
-                        }
-                    }
+                    // second triangle 
+                    int ijk4[2] = {iquad, jquad};
+                    int ijk5[2] = {iquad+1, jquad+1};
+                    int ijk6[2] = {iquad, jquad+1};
 
-                    for(int inode = 0; inode < fine_trans.n_nodes(); ++inode){
-                        MATH::GEOMETRY::Point<T, 2> xi = fine_trans.reference_nodes()[inode];
-                        MATH::GEOMETRY::Point<T, 2> x;
-                        quad.transform(coord, xi, x);
-                        vertices.emplace_back(
-                            (GLfloat) x[0],
-                            (GLfloat) x[1],
-                            (GLfloat) 0.0
-                        );
-                    }
+                    vertexIndices.emplace_back(vi_offset + convert_ijk(ijk4));
+                    vertexIndices.emplace_back(vi_offset + convert_ijk(ijk5));
+                    vertexIndices.emplace_back(vi_offset + convert_ijk(ijk6));
+
                 }
-            });
+            }
+
+            for(int ivert = 0; ivert < refine_order + 1; ++ivert){
+                for(int jvert = 0; jvert < refine_order + 1; ++jvert){
+                    MATH::GEOMETRY::Point<T, 2> xi = {
+                        -1.0 + ivert * 2.0 / refine_order,
+                        -1.0 + jvert * 2.0 / refine_order 
+                    };
+
+                    MATH::GEOMETRY::Point<T, 2> x;
+                    quad.transform(coord, xi, x);
+                    vertices.emplace_back(
+                        (GLfloat) x[0],
+                        (GLfloat) x[1],
+                        (GLfloat) 0.0
+                    );
+                }
+            }
         }
     }
 }

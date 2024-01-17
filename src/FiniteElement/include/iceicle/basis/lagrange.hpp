@@ -10,6 +10,7 @@
  */
 #pragma once
 #include "Numtool/polydefs/LagrangePoly.hpp"
+#include "iceicle/fe_enums.hpp"
 #include "iceicle/transformations/HypercubeElementTransformation.hpp"
 #include <algorithm>
 #include <iceicle/basis/basis.hpp>
@@ -37,6 +38,8 @@ namespace BASIS {
         // ==============
 
         int nbasis() const override { return transform.nnodes(); }
+
+        constexpr FE::DOMAIN_TYPE domain_type() const noexcept { return FE::DOMAIN_TYPE::SIMPLEX; }
 
         void evalBasis(const T *xi, T *Bi) const override {
             for(int inode = 0; inode < transform.nnodes(); ++inode){
@@ -83,6 +86,8 @@ namespace BASIS {
 
         int nbasis() const override { return transform.n_nodes(); }
 
+        constexpr FE::DOMAIN_TYPE domain_type() const noexcept { return FE::DOMAIN_TYPE::HYPERCUBE; }
+
         void evalBasis(const T*xi, T *Bi) const override {
             Point xipt{};
             std::copy_n(xi, ndim, xipt.data());
@@ -92,7 +97,10 @@ namespace BASIS {
         void evalGradBasis(const T *xi, T **dBidxj) const override {
             Point xipt{};
             std::copy_n(xi, ndim, xipt.data());
-            transform.fill_deriv(xipt, dBidxj);
+            NUMTOOL::TENSOR::FIXED_SIZE::Tensor<T, transform.n_nodes(), ndim> dBi; 
+            transform.fill_deriv(xipt, dBi);
+            // TODO: get rid of memmove called here
+            std::copy_n(dBi.ptr(), ndim * transform.n_nodes(), dBidxj[0]);
         }
         
         void evalHessBasis(const T *xi, int ibasis, T Hessian[ndim][ndim]) const override {
