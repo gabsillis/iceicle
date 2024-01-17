@@ -6,6 +6,7 @@
 
 #pragma once
 #include "Numtool/point.hpp"
+#include "iceicle/fe_enums.hpp"
 #include <iceicle/geometry/geo_element.hpp>
 #include <iceicle/transformations/HypercubeElementTransformation.hpp>
 
@@ -37,6 +38,10 @@ namespace ELEMENT {
         // =  Implementation  =
         // ====================
         constexpr int n_nodes() const override { return transformation.n_nodes(); }
+
+        constexpr FE::DOMAIN_TYPE domain_type() const noexcept { return FE::DOMAIN_TYPE::HYPERCUBE; }
+
+        constexpr int geometry_order() const noexcept { return Pn; }
 
         const IDX *nodes() const override { return _nodes; }
 

@@ -5,6 +5,7 @@
  * 
  */
 #pragma once
+#include "iceicle/fe_enums.hpp"
 #include <iceicle/geometry/geo_element.hpp>
 #include <iceicle/transformations/SegmentTransformation.hpp>
 
@@ -30,6 +31,10 @@ namespace ELEMENT {
         }
 
         constexpr int n_nodes() const override { return nnodes; }
+
+        constexpr FE::DOMAIN_TYPE domain_type() const noexcept { return FE::DOMAIN_TYPE::HYPERCUBE; }
+
+        constexpr int geometry_order() const noexcept { return 1; }
 
         const IDX *nodes() const override { return node_idxs; }
 
