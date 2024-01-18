@@ -13,6 +13,8 @@
 #include <iceicle/element/reference_element.hpp>
 #include "iceicle/fe_enums.hpp"
 #include "iceicle/fe_function/dglayout.hpp"
+#include "iceicle/fe_function/fespan.hpp"
+#include "iceicle/fe_function/layout_enums.hpp"
 #include "iceicle/geometry/geo_element.hpp"
 #include "iceicle/quadrature/QuadratureRule.hpp"
 #include <iceicle/mesh/mesh.hpp>
@@ -140,6 +142,36 @@ namespace FE {
             // generate the dof offsets 
             dg_offsets = dg_dof_offsets(elements);
         } 
+
+        /**
+         * @brief generate an fespan to provide an index space for all 
+         * vector components of all degrees of freedom that exist in a dg representation 
+         * of the space 
+         *
+         * @tparam ncomp the number of vector components 
+         * @tparam order the order of dofs and vector components in the memory layout 
+         *         LEFT means it comes first in C style array indexing and thus is the slower index 
+         * @param data the data array to create a view for 
+         *        WARNING: it is the users responsibility to ensure that the size of the array 
+         *        is large enough to encapsulate the entire index space 
+         */
+        template<int ncomp, LAYOUT_VECTOR_ORDER order = DOF_LEFT, class AccessorPolicy = FE::default_accessor<T>>
+        constexpr FE::fespan<T, dg_layout<T, ncomp, order>, AccessorPolicy> 
+        generate_dg_fespan(T *data) const 
+        {
+            return FE::fespan<T, dg_layout<T, ncomp, order>, AccessorPolicy>(dg_offsets);
+        } 
+
+        /**
+         * @brief get the number of dg degrees of freedom in the entire fespace 
+         * multiply this by the nummber of components to get the size requirement for 
+         * a dg fespan or use the built_in function in the dg_offsets member
+         * @return the number of dg degrees of freedom
+         */
+        constexpr std::size_t ndof_dg() const noexcept
+        {
+            return dg_offsets.calculate_size_requirement(1);
+        }
     };
     
 }
