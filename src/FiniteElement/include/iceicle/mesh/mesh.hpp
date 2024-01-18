@@ -5,6 +5,7 @@
  * @date 2023-06-27
  */
 #pragma once
+#include "Numtool/fixed_size_tensor.hpp"
 #include "iceicle/geometry/hypercube_face.hpp"
 #include <iceicle/geometry/face.hpp>
 #include <iceicle/geometry/geo_element.hpp>
@@ -73,6 +74,16 @@ namespace MESH {
         : nodes{nnode}, elements{}, faces{}, interiorFaceStart(0), interiorFaceEnd(0), 
           bdyFaceStart(0), bdyFaceEnd(0) {}
 
+        private:
+
+        inline static constexpr NUMTOOL::TENSOR::FIXED_SIZE::Tensor<ELEMENT::BOUNDARY_CONDITIONS, 2*ndim>
+        all_periodic = [](){
+            NUMTOOL::TENSOR::FIXED_SIZE::Tensor<ELEMENT::BOUNDARY_CONDITIONS, 2*ndim> ret;
+            for(int i = 0; i < 2*ndim; ++i) ret[i] = ELEMENT::BOUNDARY_CONDITIONS::PERIODIC;
+            return ret;
+        }();
+
+        public:
         /**
          * @brief generate a uniform mesh of n-dimensional hypercubes
          * aligned with the axis
@@ -88,12 +99,12 @@ namespace MESH {
          *                same layout
          */
         AbstractMesh(
-            T xmin[ndim], 
-            T xmax[ndim],
-            IDX directional_nelem[ndim],
+            const T xmin[ndim], 
+            const T xmax[ndim],
+            const IDX directional_nelem[ndim],
             int order = 1,
-            ELEMENT::BOUNDARY_CONDITIONS bctypes[2 * ndim] = ELEMENT::BOUNDARY_CONDITIONS::PERIODIC, 
-            int bcflags[2 * ndim] = 0
+            NUMTOOL::TENSOR::FIXED_SIZE::Tensor<ELEMENT::BOUNDARY_CONDITIONS, 2 * ndim> bctypes = all_periodic, 
+            const int bcflags[2 * ndim] = 0
         ) : nodes{}, elements{}, faces{} {
             using namespace NUMTOOL::TENSOR::FIXED_SIZE;
 
@@ -419,6 +430,22 @@ namespace MESH {
             });
             // EXITING ORDER TEMPLATED SECTION
         } 
+
+        /**
+         * Overload for uniform mesh generation to support initializer lists
+         */
+        AbstractMesh(
+            const NUMTOOL::TENSOR::FIXED_SIZE::Tensor<T, ndim> &xmin,
+            const NUMTOOL::TENSOR::FIXED_SIZE::Tensor<T, ndim> &xmax,
+            const NUMTOOL::TENSOR::FIXED_SIZE::Tensor<IDX, ndim> &directional_nelem,
+            int order = 1,
+            NUMTOOL::TENSOR::FIXED_SIZE::Tensor<ELEMENT::BOUNDARY_CONDITIONS, 2 * ndim> bctypes = all_periodic, 
+            const NUMTOOL::TENSOR::FIXED_SIZE::Tensor<int, ndim> &bcflags = [](){
+                NUMTOOL::TENSOR::FIXED_SIZE::Tensor<int, ndim> ret{};
+                for(int i = 0; i < 2 * ndim; ++i) ret[i] = 0;
+                return ret;
+            }()
+        ) : AbstractMesh(xmin.data(), xmax.data(), directional_nelem.data(), order, bctypes, bcflags.data()) {}
 
 //        TODO: Do this in a separate file so we can build without mfem 
 //        AbstractMesh(mfem::FiniteElementSpace &mfem_mesh);

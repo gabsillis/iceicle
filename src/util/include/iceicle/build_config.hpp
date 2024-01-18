@@ -8,7 +8,7 @@
  * @copyright Copyright (c) 2022
  * 
  */
-
+#pragma once
 namespace BUILD_CONFIG {
     #ifdef T_QUAD_PRECISION
     using T = long double;
@@ -29,4 +29,10 @@ namespace BUILD_CONFIG {
     #ifdef IDX_32_BIT
     using IDX = int;
     #endif
+
+    /** 
+     * The maximum polynomial order of basis functions that gets generated at compile time 
+     * for fespace 
+     */
+    static constexpr int FESPACE_BUILD_PN = 4;
 }
