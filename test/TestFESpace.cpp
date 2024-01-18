@@ -23,4 +23,6 @@ TEST(test_fespace, test_element_construction){
     };
 
     ASSERT_EQ(fespace.elements.size(), 4);
+
+    ASSERT_EQ(fespace.dg_offsets.calculate_size_requirement(2), 4 * 2 * std::pow(pn_basis + 1, pn_geo));
 }

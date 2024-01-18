@@ -440,8 +440,8 @@ namespace MESH {
             const NUMTOOL::TENSOR::FIXED_SIZE::Tensor<IDX, ndim> &directional_nelem,
             int order = 1,
             NUMTOOL::TENSOR::FIXED_SIZE::Tensor<ELEMENT::BOUNDARY_CONDITIONS, 2 * ndim> bctypes = all_periodic, 
-            const NUMTOOL::TENSOR::FIXED_SIZE::Tensor<int, ndim> &bcflags = [](){
-                NUMTOOL::TENSOR::FIXED_SIZE::Tensor<int, ndim> ret{};
+            const NUMTOOL::TENSOR::FIXED_SIZE::Tensor<int, 2* ndim> &bcflags = [](){
+                NUMTOOL::TENSOR::FIXED_SIZE::Tensor<int, 2 * ndim> ret{};
                 for(int i = 0; i < 2 * ndim; ++i) ret[i] = 0;
                 return ret;
             }()

@@ -12,6 +12,7 @@
 #include "iceicle/element/finite_element.hpp"
 #include <iceicle/element/reference_element.hpp>
 #include "iceicle/fe_enums.hpp"
+#include "iceicle/fe_function/dglayout.hpp"
 #include "iceicle/geometry/geo_element.hpp"
 #include "iceicle/quadrature/QuadratureRule.hpp"
 #include <iceicle/mesh/mesh.hpp>
@@ -73,6 +74,9 @@ namespace FE {
         /// @brief ArrayList of finite elements in the space
         std::vector<ElementType> elements;
 
+        /** @brief index offsets for dg degrees of freedom */
+        dg_dof_offsets dg_offsets;
+
         private:
 
         // ========================================
@@ -101,7 +105,7 @@ namespace FE {
             FESPACE_ENUMS::FESPACE_BASIS_TYPE basis_type,
             FESPACE_ENUMS::FESPACE_QUADRATURE quadrature_type,
             ICEICLE::TMP::compile_int<basis_order> basis_order_arg
-        ) : meshptr(meshptr) {
+        ) : meshptr(meshptr), elements{} {
 
             // Generate the Finite Elements
             elements.reserve(meshptr->elements.size());
@@ -132,6 +136,9 @@ namespace FE {
                 // add to the elements list
                 elements.push_back(fe);
             }
+
+            // generate the dof offsets 
+            dg_offsets = dg_dof_offsets(elements);
         } 
     };
     

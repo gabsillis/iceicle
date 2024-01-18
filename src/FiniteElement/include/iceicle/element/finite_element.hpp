@@ -38,7 +38,7 @@ namespace ELEMENT {
         FEEvaluation(
             BASIS::Basis<T, ndim> *basisptr,
             QUADRATURE::QuadratureRule<T, IDX, ndim> *quadruleptr
-        ) : basis(basisptr), quadrule(quadruleptr)
+        ) : data{static_cast<std::size_t>(quadruleptr->npoints())}, basis(basisptr), quadrule(quadruleptr)
         {
             // call eval basis for each quadrature point and prestore
             for(int igauss = 0; igauss < quadrule->npoints(); ++igauss){
