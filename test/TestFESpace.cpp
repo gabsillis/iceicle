@@ -26,3 +26,25 @@ TEST(test_fespace, test_element_construction){
 
     ASSERT_EQ(fespace.dg_offsets.calculate_size_requirement(2), 4 * 2 * std::pow(pn_basis + 1, pn_geo));
 }
+
+TEST(test_fespace, test_dg_projection){
+
+    using T = double;
+    using IDX = int;
+
+    static constexpr int ndim = 2;
+    static constexpr int pn_geo = 1;
+    static constexpr int pn_basis = 2;
+
+    // create a uniform mesh
+    MESH::AbstractMesh<T, IDX, ndim> mesh({-1.0, -1.0}, {1.0, 1.0}, {2, 2}, pn_basis);
+
+    FE::FESpace<T, IDX, ndim> fespace{
+        &mesh, FE::FESPACE_ENUMS::LAGRANGE,
+        FE::FESPACE_ENUMS::GAUSS_LEGENDRE, 
+        ICEICLE::TMP::compile_int<pn_basis>()
+    };
+
+    // define a quadratic function to project onto the space
+
+}
