@@ -87,13 +87,13 @@ namespace FE {
          * @param offsets the vector component independent dof offsets
          * @param ncomp_d needed if ncomp is set to dynamic (sets the number of vector components)
          */
-        dg_layout(
+        constexpr dg_layout(
             const dg_dof_offsets &offsets,
             int ncomp_d
         ) requires(is_dynamic_ncomp<ncomp>::value)
         : offsets(offsets), ncomp_d(ncomp_d) {}
 
-        dg_layout(
+        constexpr dg_layout(
             const dg_dof_offsets &offsets
         ) requires (!is_dynamic_ncomp<ncomp>::value) 
         : offsets(offsets) {}

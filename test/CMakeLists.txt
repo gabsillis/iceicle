@@ -28,6 +28,7 @@ endif()
 
 add_executable(test_felib 
     TestFespan.cpp
+    TestFESpace.cpp
     TestHypercubeFace.cpp
     TestQuadrature1d.cpp
     TestHypercubeTransform.cpp

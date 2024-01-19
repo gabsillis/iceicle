@@ -53,6 +53,29 @@ namespace FE {
     };
 
     /**
+     * @brief index into a element local elspan
+     * collects the 2 required indices 
+     * all indices default to zero 
+     */
+    struct compact_index {
+        /// the local degree of freedom index 
+        std::size_t idof = 0;
+
+        /// the index of the vector component 
+        std::size_t iv = 0;
+    };
+
+    /**
+     * @brief the extents of the index space for 
+     * the mutidimensional compact_index 
+     */
+    struct compact_index_extents {
+        std::size_t ndof = 0;
+
+        std::size_t nv = 0;
+    };
+
+    /**
      * @brief index into a global nodal structure
      * collects the two required indices 
      * indices default to zero 

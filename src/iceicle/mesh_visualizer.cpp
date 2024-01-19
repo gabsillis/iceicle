@@ -153,12 +153,9 @@ int main(int argc, char**argv){
                 double corner2[2] = {xmax, ymax};
                 int directional_nelem[2] = {nx, ny};
 
-                ELEMENT::BOUNDARY_CONDITIONS bctypes[4] = {ELEMENT::BOUNDARY_CONDITIONS::PERIODIC};
-                int bcflags[4] = {0};
-
                 mesh = new MESH::AbstractMesh<double, int, 2>(
                     corner1, corner2, directional_nelem,
-                    1, bctypes, bcflags
+                    1
                 );
 
                 face_drawer.clear();

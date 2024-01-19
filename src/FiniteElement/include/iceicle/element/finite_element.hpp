@@ -26,28 +26,35 @@ namespace ELEMENT {
         /** @brief the basis functions evaluated at each quadrature point */
         std::vector<std::vector<T>> data;
 
+        public:
         /** @brief the basis functions */
-        const BASIS::Basis<T, ndim> &basis; 
+        const BASIS::Basis<T, ndim> *basis; 
 
         /** @brief the quadraature rule */
-        const QUADRATURE::QuadratureRule<T, IDX, ndim> &quadrule;
+        const QUADRATURE::QuadratureRule<T, IDX, ndim> *quadrule;
 
-        public:
+        FEEvaluation() = default;
+
+        FEEvaluation(
+            BASIS::Basis<T, ndim> *basisptr,
+            QUADRATURE::QuadratureRule<T, IDX, ndim> *quadruleptr
+        ) : data{static_cast<std::size_t>(quadruleptr->npoints())}, basis(basisptr), quadrule(quadruleptr)
+        {
+            // call eval basis for each quadrature point and prestore
+            for(int igauss = 0; igauss < quadrule->npoints(); ++igauss){
+                std::vector<T> &eval_vec = data[igauss];
+                eval_vec.resize(basis->nbasis());
+                basis->evalBasis(quadrule->getPoint(igauss).abscisse, eval_vec.data());
+            }
+
+            // TODO: gradient of basis (make a DenseMatrix class)
+
+        }
 
         FEEvaluation(
             BASIS::Basis<T, ndim> &basis,
             QUADRATURE::QuadratureRule<T, IDX, ndim> &quadrule
-        ) : data(quadrule.npoints()), basis(basis), quadrule(quadrule) 
-        {
-            // call eval basis for each quadrature point and prestore
-            for(int igauss = 0; igauss < quadrule.npoints(); ++igauss){
-                std::vector<T> &eval_vec = data[igauss];
-                eval_vec.resize(basis.nbasis());
-                basis.evalBasis(quadrule[igauss].abscisse, eval_vec.data());
-            }
-
-            // TODO: gradient of basis (make a DenseMatrix class)
-        }
+        ) : FEEvaluation(&basis, &quadrule){}
 
         /* @brief get the evaluations of the basis functions at the igaussth quadrature pt */
         const std::vector<T> &operator[](int igauss) const { return data[igauss]; }
@@ -74,7 +81,7 @@ namespace ELEMENT {
         const QUADRATURE::QuadratureRule<T, IDX, ndim> *quadrule;
 
         /** @brief precomputed evaluations of the basis functions at the quadrature points */
-        const FEEvaluation<T, IDX, ndim> *qp_evals;
+        const FEEvaluation<T, IDX, ndim> &qp_evals;
 
         /** @brief the element index in the mesh */
         const IDX elidx;
@@ -88,13 +95,13 @@ namespace ELEMENT {
          * @param elidx_arg the element index in the mesh
          */
         FiniteElement(
-            GeometricElement<T, IDX, ndim> *geo_el_arg,
-            BASIS::Basis<T, ndim> *basis_arg,
-            QUADRATURE::QuadratureRule<T, IDX, ndim> *quadrule_arg,
-            FEEvaluation<T, IDX, ndim> *qp_evals,
+            const GeometricElement<T, IDX, ndim> *geo_el_arg,
+            const BASIS::Basis<T, ndim> *basis_arg,
+            const QUADRATURE::QuadratureRule<T, IDX, ndim> *quadrule_arg,
+            const FEEvaluation<T, IDX, ndim> *qp_evals,
             IDX elidx_arg
         ) : geo_el(geo_el_arg), basis(basis_arg),
-            quadrule(quadrule_arg), qp_evals(qp_evals), elidx(elidx_arg) {}
+            quadrule(quadrule_arg), qp_evals(*qp_evals), elidx(elidx_arg) {}
 
         /** 
          * @brief precompute any stored quantities
@@ -258,7 +265,6 @@ namespace ELEMENT {
         // ========================
         // = Geometric Operations =
         // ========================
-
         
         /**
          * @brief transform from the reference domain to the physical domain
