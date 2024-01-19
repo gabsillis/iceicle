@@ -81,7 +81,7 @@ namespace ELEMENT {
         const QUADRATURE::QuadratureRule<T, IDX, ndim> *quadrule;
 
         /** @brief precomputed evaluations of the basis functions at the quadrature points */
-        const FEEvaluation<T, IDX, ndim> *qp_evals;
+        const FEEvaluation<T, IDX, ndim> &qp_evals;
 
         /** @brief the element index in the mesh */
         const IDX elidx;
@@ -101,7 +101,7 @@ namespace ELEMENT {
             const FEEvaluation<T, IDX, ndim> *qp_evals,
             IDX elidx_arg
         ) : geo_el(geo_el_arg), basis(basis_arg),
-            quadrule(quadrule_arg), qp_evals(qp_evals), elidx(elidx_arg) {}
+            quadrule(quadrule_arg), qp_evals(*qp_evals), elidx(elidx_arg) {}
 
         /** 
          * @brief precompute any stored quantities
@@ -265,7 +265,6 @@ namespace ELEMENT {
         // ========================
         // = Geometric Operations =
         // ========================
-
         
         /**
          * @brief transform from the reference domain to the physical domain

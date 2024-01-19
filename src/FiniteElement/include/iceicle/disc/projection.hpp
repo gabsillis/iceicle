@@ -5,6 +5,8 @@
  */
 
 #pragma once
+#include "Numtool/fixed_size_tensor.hpp"
+#include "iceicle/fe_function/fespan.hpp"
 #include <functional>
 #include <vector>
 #include <iceicle/element/finite_element.hpp>
@@ -55,9 +57,8 @@ namespace DISC {
                 el.transform(node_coords, quadpt.abscisse, phys_pt);
 
                 // calculate the jacobian determinant
-                T J[ndim][ndim];
-                el.geo_el->Jacobian(node_coords, quadpt.abscisse, J);
-                T detJ = MATH::MATRIX_T::determinant<ndim, T>(*J);
+                auto J = el.geo_el->Jacobian(node_coords, quadpt.abscisse);
+                T detJ = NUMTOOL::TENSOR::FIXED_SIZE::determinant(J);
 
                 // evaluate the function at the point in the physical domain
                 T feval[neq];
@@ -70,6 +71,38 @@ namespace DISC {
                     }          
                 }
             }
+        }
+
+        template<class LayoutPolicy, class AccessorPolicy>
+        void domainIntegral(
+            const ELEMENT::FiniteElement<T, IDX, ndim> &el,
+            FE::NodalFEFunction<T, ndim> &node_coords,
+            FE::elspan<T, LayoutPolicy, AccessorPolicy> &res
+        ) {
+            for(int ig = 0; ig < el.nQP(); ++ig){ // loop over the quadrature points
+                
+                // convert the quadrature point to the physical domain
+                const QUADRATURE::QuadraturePoint<T, ndim> quadpt = el.getQP(ig);
+                Point phys_pt{};
+                el.transform(node_coords, quadpt.abscisse, phys_pt);
+
+                // calculate the jacobian determinant
+                auto J = el.geo_el->Jacobian(node_coords, quadpt.abscisse);
+                T detJ = NUMTOOL::TENSOR::FIXED_SIZE::determinant(J);
+
+                // evaluate the function at the point in the physical domain
+                T feval[neq];
+                func(phys_pt, feval);
+
+                // loop over the equations and test functions and construct the residual
+                for(std::size_t b = 0; b < el.nbasis(); b++){
+                    for(std::size_t eq = 0; eq < neq; eq++){
+                        res[FE::compact_index{.idof = b, .iv = eq}] 
+                            += feval[eq] * quadpt.weight * el.basisQP(ig, b) * detJ;
+                    }          
+                }
+            }
+            
         }
     };
 }

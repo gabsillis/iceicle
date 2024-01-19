@@ -1,9 +1,15 @@
+#include "iceicle/disc/projection.hpp"
+#include "iceicle/element/finite_element.hpp"
 #include "iceicle/element/reference_element.hpp"
+#include "iceicle/fe_function/dglayout.hpp"
+#include "iceicle/fe_function/el_layout.hpp"
 #include "iceicle/mesh/mesh.hpp"
+#include "iceicle/solvers/element_linear_solve.hpp"
 #include "iceicle/tmp_utils.hpp"
 #include <iceicle/fespace/fespace.hpp>
 
 #include <gtest/gtest.h>
+#include <pstl/glue_execution_defs.h>
 
 TEST(test_fespace, test_element_construction){
     using T = double;
@@ -35,6 +41,7 @@ TEST(test_fespace, test_dg_projection){
     static constexpr int ndim = 2;
     static constexpr int pn_geo = 1;
     static constexpr int pn_basis = 2;
+    static constexpr int neq = 1;
 
     // create a uniform mesh
     MESH::AbstractMesh<T, IDX, ndim> mesh({-1.0, -1.0}, {1.0, 1.0}, {2, 2}, pn_basis);
@@ -46,5 +53,44 @@ TEST(test_fespace, test_dg_projection){
     };
 
     // define a quadratic function to project onto the space
+    auto bowlfunc = [](const double *xarr, double *out){
+        double x = xarr[0];
+        double y = xarr[1];
+        out[0] = x*x + y*y;
+    };
+
+    // create the projection discretization
+    DISC::Projection<double, int, ndim, neq> projection{bowlfunc};
+
+    T *u = new T[fespace.ndof_dg() * neq](); // 0 initialized
+    FE::fespan<T, FE::dg_layout<T, 1>> u_span(u, fespace.dg_offsets);
+
+    // solve the projection 
+    std::for_each(fespace.elements.begin(), fespace.elements.end(),
+        [&](const ELEMENT::FiniteElement<T, IDX, ndim> &el){
+            FE::compact_layout<double, 1> el_layout{el};
+            T *u_local = new T[el_layout.size()](); // 0 initialized 
+            FE::elspan<T, FE::compact_layout<double, 1>> u_local_span(u_local, el_layout);
+
+            T *res_local = new T[el_layout.size()](); // 0 initialized 
+            FE::elspan<T, FE::compact_layout<double, 1>> res_local_span(res_local, el_layout);
+            
+            // projection residual
+            projection.domainIntegral(el, fespace.meshptr->nodes, res_local_span);
+
+            // solve 
+            SOLVERS::ElementLinearSolver<T, IDX, ndim, neq> solver{el, fespace.meshptr->nodes};
+            solver.solve(u_local_span, res_local_span);
+
+            delete[] u_local;
+            delete[] res_local;
+
+            // TODO: test a random location
+        }
+    );
+
+    delete[] u;
+
+
 
 }

@@ -69,9 +69,10 @@ namespace ELEMENT {
                     }
 
                     // construct the quadrature rule
+                    // TODO: change quadrature order based on high order geo elements
                     switch(quadrature_type){
                         case FE::FESPACE_ENUMS::GAUSS_LEGENDRE:
-                            quadrule = std::make_unique<QUADRATURE::HypercubeGaussLegendre<T, IDX, ndim, basis_order>>();
+                            quadrule = std::make_unique<QUADRATURE::HypercubeGaussLegendre<T, IDX, ndim, basis_order+1>>();
                             break;
                         default:
                             break;
@@ -96,7 +97,7 @@ namespace ELEMENT {
                     // construct the quadrature rule
                     switch(quadrature_type){
                         case FE::FESPACE_ENUMS::GAUSS_LEGENDRE:
-                            quadrule = std::make_unique<QUADRATURE::GrundmannMollerSimplexQuadrature<T, IDX, ndim, basis_order>>();
+                            quadrule = std::make_unique<QUADRATURE::GrundmannMollerSimplexQuadrature<T, IDX, ndim, basis_order+1>>();
                             break;
                         default:
                             break;
