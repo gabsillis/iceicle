@@ -167,6 +167,9 @@ namespace FE {
             /** @brief get the upper bound of the 1D index space */
             constexpr std::size_t size() const noexcept { return __layout.size(); }
 
+            /** @brief get the extents of the multidimensional index space */
+            constexpr compact_index_extents extents() const noexcept { return __layout.extents(); }
+
             /** @brief index into the data using a compact_index
              * @param idx the compact_index which represents a multidimensional index into element local data
              * @return a reference to the data 
@@ -190,5 +193,22 @@ namespace FE {
             constexpr const pointer data() const noexcept 
             requires(std::is_same_v<AccessorPolicy, default_accessor<T>>) 
             { return __ptr; }
+
+            /**
+             * @brief contract this with another vector 
+             * along the dof index 
+             * @param [in] dof_vec the vector of degrees of freedom to contract with 
+             *  usually basis function evaluations 
+             * @param [out] eqn_out the values for each equation after contracting with dof_vec
+             * WARNING: must be zero'd out
+             */
+            void contract_dofs(const T *__restrict__ dof_vec, T *__restrict__ eqn_out){
+                compact_index_extents extents = __layout.extents();
+                for(std::size_t idof = 0; idof < extents.ndof; ++idof){
+                    for(std::size_t iv = 0; iv < extents.nv; ++iv){
+                        eqn_out[iv] += this->operator[](compact_index{.idof = idof, .iv = iv}) * dof_vec[idof];
+                    }
+                }
+            }
     };
 }

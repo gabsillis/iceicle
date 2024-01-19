@@ -64,5 +64,8 @@ namespace QUADRATURE {
         /** @brief get the quadrature point at that index (see getPoint) */
         inline
         const QuadraturePoint<T, ndim> &operator[](int ipoint) const { return getPoint(ipoint); };
+
+        virtual 
+        ~QuadratureRule() = default;
     };
 }

@@ -66,6 +66,16 @@ namespace FE {
     };
 
     /**
+     * @brief the extents of the index space for 
+     * the mutidimensional compact_index 
+     */
+    struct compact_index_extents {
+        std::size_t ndof = 0;
+
+        std::size_t nv = 0;
+    };
+
+    /**
      * @brief index into a global nodal structure
      * collects the two required indices 
      * indices default to zero 
