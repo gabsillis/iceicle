@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.20.0) # support for c++23
 project(ICEICLE_PROJECT VERSION 0.1.0)
-set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD 23)
 
 # FLOATING POINT AND DOUBLE TYPES
 # in order of priority
@@ -74,12 +74,15 @@ if(ICEICLE_USE_OPENGL)
   file(COPY ${CMAKE_SOURCE_DIR}/shaders DESTINATION ${CMAKE_RUNTIME_OUTPUT_DIRECTORY})
 endif()
 
+#mdspan
+add_subdirectory(mdspan)
+
 # Include subdirectories
 add_subdirectory(numericaltoolbox)
 add_subdirectory(src)
 
 # matplotlib-cpp integration
-option(ENABLE_MATPLOTLIB_CPP "Enables matplotlib-cpp" ON)
+option(ENABLE_MATPLOTLIB_CPP "Enables matplotlib-cpp" OFF)
 if(ENABLE_MATPLOTLIB_CPP)
   FetchContent_Declare(
     matplotplusplus

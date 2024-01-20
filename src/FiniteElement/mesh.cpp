@@ -15,7 +15,9 @@
 #include <iostream>
 #include <exception>
 #include <stdexcept>
+#ifdef ICEICLE_USE_MPI
 #include "mpi.h"
+#endif
 
 namespace MESH {
     

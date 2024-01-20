@@ -3,7 +3,9 @@
  * @author Gianni Absillis (gabsill@ncsu.edu)
  * @brief Segment Mesh Implementation
  */
+#ifdef ICEICLE_USE_MPI
 #include <mpi.h>
+#endif
 #include <iceicle/mesh/segment_mesh.hpp>
 #include <iceicle/geometry/point_face.hpp>
 #include <iceicle/build_config.hpp>
@@ -91,6 +93,7 @@ namespace MESH {
         BMesh::bdyFaceEnd = faces.size();
     }
 
+#ifdef ICEICLE_USE_MPI
     template<>
     ParSegmentMesh<T, IDX>::ParSegmentMesh(
         IDX nelem,
@@ -192,4 +195,5 @@ namespace MESH {
         BMesh::bdyFaceEnd = faces.size();
 
     }
+#endif
 }
