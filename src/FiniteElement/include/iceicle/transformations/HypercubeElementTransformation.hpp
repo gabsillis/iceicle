@@ -387,8 +387,9 @@ public:
 
             for(int irep = 0; irep < nrepeat; ++irep) {
 
-                NUMTOOL::TMP::constexpr_for_range<0, Pn + 1>(
-                    [&, irep]<int ibasis>(const Point &xi) {
+              for(int ibasis = 0; ibasis < Pn + 1; ++ibasis){
+//                NUMTOOL::TMP::constexpr_for_range<0, Pn + 1>(
+//                    [&, irep]<int ibasis>(const Point &xi) {
                         T dBi_idim = lagrange_derivs[idim][ibasis];
                         const int nfill = std::pow(Pn + 1, ndim - idim - 1);
 
@@ -406,9 +407,10 @@ public:
                                 }
                             });
                         }
-                    },
-                    xi
-                );
+ //                   },
+ //                   xi
+ //               );
+              }
             }
         },
         xi
