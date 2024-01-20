@@ -376,7 +376,7 @@ public:
             }
         }
       },
-      xi[0]);
+      xi);
     
     NUMTOOL::TMP::constexpr_for_range<1, ndim>(
         [&]<int idim>(const Point &xi){

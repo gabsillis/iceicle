@@ -15,6 +15,7 @@
 #pragma once
 #include <stdexcept>
 #include <iceicle/fe_enums.hpp>
+#include <mdspan/mdarray.hpp>
 
  namespace BASIS {
 
@@ -95,5 +96,9 @@
          */
         virtual
         inline int getPolynomialOrder() const = 0;
+
+        /** @brief virtual destructor */ 
+        virtual
+        ~Basis() = default;
     };
  }

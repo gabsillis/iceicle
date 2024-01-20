@@ -9,7 +9,6 @@
  * 
  */
 #pragma once
-#include "Numtool/polydefs/LagrangePoly.hpp"
 #include "iceicle/fe_enums.hpp"
 #include "iceicle/transformations/HypercubeElementTransformation.hpp"
 #include <algorithm>
@@ -39,7 +38,7 @@ namespace BASIS {
 
         int nbasis() const override { return transform.nnodes(); }
 
-        constexpr FE::DOMAIN_TYPE domain_type() const noexcept { return FE::DOMAIN_TYPE::SIMPLEX; }
+        constexpr FE::DOMAIN_TYPE domain_type() const noexcept override { return FE::DOMAIN_TYPE::SIMPLEX; }
 
         void evalBasis(const T *xi, T *Bi) const override {
             for(int inode = 0; inode < transform.nnodes(); ++inode){
@@ -86,7 +85,7 @@ namespace BASIS {
 
         int nbasis() const override { return transform.n_nodes(); }
 
-        constexpr FE::DOMAIN_TYPE domain_type() const noexcept { return FE::DOMAIN_TYPE::HYPERCUBE; }
+        constexpr FE::DOMAIN_TYPE domain_type() const noexcept override { return FE::DOMAIN_TYPE::HYPERCUBE; }
 
         void evalBasis(const T*xi, T *Bi) const override {
             Point xipt{};
