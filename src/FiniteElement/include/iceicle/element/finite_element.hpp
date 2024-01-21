@@ -11,7 +11,10 @@
 #include <iceicle/geometry/geo_element.hpp>
 #include <iceicle/basis/basis.hpp>
 #include <iceicle/quadrature/QuadratureRule.hpp>
+#include <span>
 #include <vector>
+
+#include <mdspan/mdspan.hpp>
 
 namespace ELEMENT {
     
@@ -154,14 +157,20 @@ namespace ELEMENT {
          * @param [in] xi  the point in the reference domain [size = ndim]
          * @param [out] dBidxj the values of the first derivatives of the basis functions
          *                with respect to the reference domain at that point
-         *                This is in the form of a 2d pointer array that must be preallocated
-         *                row major order and contiguous
-         *                \frac{dB_i}{d\xi_j} where i is ibasis
-         *                takes a pointer to the first element of this data structure
-         *                [size = [nbasis : i][ndim : j]] 
+         *                This is in the form of a 1d pointer array that must be preallocated
+         *                size must be nbasis * ndim or larger
+         *
+         * @return an mdspan view of dBidxj for an easy interface 
+         *         \frac{dB_i}{d\xi_j} where i is ibasis
+         *         takes a pointer to the first element of this data structure
+         *         [size = [nbasis : i][ndim : j]] 
          */
-        void evalGradBasis(const T *xi, T **dBidxj) const {
-            return basis->evalGradBasis(xi, dBidxj);
+        auto evalGradBasis(const T *xi, T *dBidxj) const {
+            basis->evalGradBasis(xi, dBidxj);
+            std::experimental::extents<int, std::dynamic_extent, ndim> extents(nbasis());
+            std::experimental::mdspan gbasis{dBidxj, extents};
+            static_assert(gbasis.extent(1)==ndim);
+            return gbasis;
         }
        
         /**
@@ -171,14 +180,20 @@ namespace ELEMENT {
          * @param [in] quadrature_pt_idx the index of the quadrature point [0, ngauss()]
          * @param [out] dBidxj the values of the first derivatives of the basis functions
          *                with respect to the reference domain at that point
-         *                This is in the form of a 2d pointer array that must be preallocated
-         *                row major order and contiguous
-         *                \frac{dB_i}{d\xi_j} where i is ibasis
-         *                takes a pointer to the first element of this data structure
-         *                [size = [nbasis : i][ndim : j]] 
+         *                This is in the form of a 1d pointer array that must be preallocated
+         *                size must be nbasis * ndim or larger
+         *
+         * @return an mdspan view of dBidxj for an easy interface 
+         *         \frac{dB_i}{d\xi_j} where i is ibasis
+         *         takes a pointer to the first element of this data structure
+         *         [size = [nbasis : i][ndim : j]] 
          */
-        void evalGradBasisQP(int quadrature_pt_idx, T **dBidxj) const {
-            return basis->evalGradBasis(quadrule[quadrature_pt_idx].abscisse, dBidxj);
+        void evalGradBasisQP(int quadrature_pt_idx, T *dBidxj) const {
+            basis->evalGradBasis(quadrule[quadrature_pt_idx].abscisse, dBidxj);
+            std::experimental::extents<int, std::dynamic_extent, ndim> extents(nbasis());
+            std::experimental::mdspan gbasis{dBidxj, extents};
+            static_assert(gbasis.extent(1)==ndim);
+            return gbasis;
         }
 
         /**

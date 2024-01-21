@@ -45,6 +45,8 @@ namespace FE {
 
         public:
 
+        using extents_type = compact_index_extents<ncomp>;
+
         /**
          * @brief Constructor 
          * @param el the element this will represent compact data for 
@@ -106,8 +108,8 @@ namespace FE {
         /**
          * @brief get the extents of the compact index space 
          */
-        constexpr compact_index_extents extents() const noexcept {
-            return compact_index_extents{.ndof = ndof, .nv = (std::size_t) get_ncomp()};
+        constexpr extents_type extents() const noexcept {
+            return extents_type{.ndof = ndof, .nv = (std::size_t) get_ncomp()};
         }
 
     };

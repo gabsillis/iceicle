@@ -14,7 +14,7 @@
 #include <algorithm>
 #include <iceicle/basis/basis.hpp>
 #include <iceicle/transformations/SimplexElementTransformation.hpp>
-
+#include <mdspan/mdspan.hpp>
 namespace BASIS {
     
     /**
@@ -46,11 +46,12 @@ namespace BASIS {
             }
         }
 
-        void evalGradBasis(const T *xi, T **dBidxj) const override 
+        void evalGradBasis(const T *xi, T *dBidxj) const override 
         {
+            auto dB = std::experimental::mdspan(dBidxj, transform.nnodes(), ndim);
             for(int inode = 0; inode < transform.nnodes(); ++inode){
                 for(int jderiv = 0; jderiv < ndim; ++jderiv){
-                    dBidxj[inode][jderiv] = transform.dshp(xi, inode, jderiv);
+                   dB[inode, jderiv] = transform.dshp(xi, inode, jderiv);
                 }
             }
         }
@@ -93,13 +94,13 @@ namespace BASIS {
             transform.fill_shp(xipt, Bi);
         }
 
-        void evalGradBasis(const T *xi, T **dBidxj) const override {
+        void evalGradBasis(const T *xi, T *dBidxj) const override {
             Point xipt{};
             std::copy_n(xi, ndim, xipt.data());
             NUMTOOL::TENSOR::FIXED_SIZE::Tensor<T, transform.n_nodes(), ndim> dBi; 
             transform.fill_deriv(xipt, dBi);
             // TODO: get rid of memmove called here
-            std::copy_n(dBi.ptr(), ndim * transform.n_nodes(), dBidxj[0]);
+            std::copy_n(dBi.ptr(), ndim * transform.n_nodes(), dBidxj);
         }
         
         void evalHessBasis(const T *xi, int ibasis, T Hessian[ndim][ndim]) const override {

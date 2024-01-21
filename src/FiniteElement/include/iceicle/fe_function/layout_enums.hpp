@@ -4,6 +4,7 @@
  */
 #pragma once
 #include <cstdlib>
+#include <type_traits>
 
 namespace FE {
 
@@ -69,10 +70,15 @@ namespace FE {
      * @brief the extents of the index space for 
      * the mutidimensional compact_index 
      */
+    template<int ncomp>
     struct compact_index_extents {
         std::size_t ndof = 0;
 
-        std::size_t nv = 0;
+        std::size_t nv = (is_dynamic_ncomp<ncomp>::value) ?
+            0 : ncomp;
+
+        /// get the ncomp template argument
+        static constexpr int get_ncomp() noexcept { return ncomp; }
     };
 
     /**

@@ -15,7 +15,6 @@
 #pragma once
 #include <stdexcept>
 #include <iceicle/fe_enums.hpp>
-#include <mdspan/mdarray.hpp>
 
  namespace BASIS {
 
@@ -48,14 +47,13 @@
          * 
          * @param [in] xi  the point in the reference domain [size = ndim]
          * @param [out] b the values of the first derivatives of the basis functions at that point
-         *                This is in the form of a 2d pointer array that must be preallocated
-         *                row major order
+         *                This is in the form of a 1d pointer array that must be preallocated
+         *                size must be nbasis * ndim or larger
          *                \frac{dB_i}{d\xi_j} where i is ibasis
-         *                takes a pointer to the first element of this data structure
          *                [size = [nbasis : i][ndim : j]] 
          */
         virtual
-        void evalGradBasis(const T *xi, T **dBidxj) const = 0;
+        void evalGradBasis(const T *xi, T *dBidxj) const = 0;
 
         /**
          * @brief evaluate the hessian of the basis functions in the reference domain
