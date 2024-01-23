@@ -46,6 +46,7 @@ TEST(test_fespace, test_dg_projection){
 
     // create a uniform mesh
     MESH::AbstractMesh<T, IDX, ndim> mesh({-1.0, -1.0}, {1.0, 1.0}, {50, 10}, pn_geo);
+    mesh.nodes.random_perturb(-0.4 * 1.0 / 50, 0.4*1.0/50);
 
     FE::FESpace<T, IDX, ndim> fespace{
         &mesh, FE::FESPACE_ENUMS::LAGRANGE,
@@ -59,6 +60,17 @@ TEST(test_fespace, test_dg_projection){
         double x = xarr[0];
         double y = xarr[1];
         out[0] = std::pow(x, pn_basis) + std::pow(y, pn_basis) + 0.5 + std::pow(x, pn_basis / 2);
+    };
+
+    auto dprojfunc = [](const double *xarr){
+        double x = xarr[0];
+        double y = xarr[1];
+        int half_basis = pn_basis / 2;
+        NUMTOOL::TENSOR::FIXED_SIZE::Tensor<double, ndim> deriv = {
+            pn_basis * std::pow(x, pn_basis - 1) + (half_basis) * std::pow(x, half_basis - 1),
+            pn_basis * std::pow(y, pn_basis - 1)
+        };
+        return deriv;
     };
 
     // define a quadratic function to project onto the space
@@ -108,6 +120,21 @@ TEST(test_fespace, test_dg_projection){
                 u_local_span.contract_dofs(basis_vals, &projected_val);
 
                 ASSERT_NEAR(projected_val, act_val, 1e-8);
+
+                // test the derivatives
+                std::vector<double> grad_basis_data(el.nbasis() * ndim);
+                auto grad_basis = el.evalPhysGradBasis(ref_pt, fespace.meshptr->nodes, grad_basis_data.data());
+                static_assert(grad_basis.rank() == 2);
+                static_assert(grad_basis.extent(1) == ndim);
+
+                // get the derivatives for each equation by contraction
+                std::vector<double> grad_eq_data(neq * ndim, 0);
+                auto grad_eq = u_local_span.contract_mdspan(grad_basis, grad_eq_data.data());
+
+                auto dproj = dprojfunc(phys_pt);
+                ASSERT_NEAR(dproj[0], (grad_eq[0, 0]), 1e-8);
+                ASSERT_NEAR(dproj[1], (grad_eq[0, 1]), 1e-8);
+
                 delete[] basis_vals;
             }
 

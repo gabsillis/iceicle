@@ -34,9 +34,9 @@ namespace ELEMENT {
         // ====================
         constexpr int n_nodes() const override { return transformation.nnodes(); }
 
-        constexpr FE::DOMAIN_TYPE domain_type() const noexcept { return FE::DOMAIN_TYPE::SIMPLEX; }
+        constexpr FE::DOMAIN_TYPE domain_type() const noexcept override { return FE::DOMAIN_TYPE::SIMPLEX; }
 
-        constexpr int geometry_order() const noexcept { return Pn; }
+        constexpr int geometry_order() const noexcept override { return Pn; }
 
         const IDX *nodes() const override { return _nodes; }
 

@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.20.0) # support for c++23
 project(ICEICLE_PROJECT VERSION 0.1.0)
-set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD 23)
 
 # FLOATING POINT AND DOUBLE TYPES
 # in order of priority
@@ -74,12 +74,18 @@ if(ICEICLE_USE_OPENGL)
   file(COPY ${CMAKE_SOURCE_DIR}/shaders DESTINATION ${CMAKE_RUNTIME_OUTPUT_DIRECTORY})
 endif()
 
+#mdspan
+add_library(mdspan INTERFACE)
+target_include_directories(mdspan INTERFACE 
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/mdspan/include>
+    $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
+
 # Include subdirectories
 add_subdirectory(numericaltoolbox)
 add_subdirectory(src)
 
 # matplotlib-cpp integration
-option(ENABLE_MATPLOTLIB_CPP "Enables matplotlib-cpp" ON)
+option(ENABLE_MATPLOTLIB_CPP "Enables matplotlib-cpp" OFF)
 if(ENABLE_MATPLOTLIB_CPP)
   FetchContent_Declare(
     matplotplusplus
@@ -98,6 +104,8 @@ endif()
 #TESTING
 option(ENABLE_TESTING_ICEICLE "Enables testing and downlod gtest for ICEicle" ON)
 IF(ENABLE_TESTING_ICEICLE)
+  enable_testing()
+  include(CTest)
 # replacing find_package with a download
 #  find_package(GTest REQUIRED)
   FetchContent_Declare(
@@ -106,6 +114,7 @@ IF(ENABLE_TESTING_ICEICLE)
     GIT_TAG        v1.14.0
   )
 
+  set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
   FetchContent_MakeAvailable(googletest)
   add_subdirectory(test)
 

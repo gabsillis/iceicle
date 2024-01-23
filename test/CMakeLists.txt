@@ -26,6 +26,13 @@ if(ICEICLE_USE_OPENGL)
     target_include_directories(drawtest PUBLIC ${imgui_SOURCE_DIR}/backends)
 endif()
 
+
+# ==================
+# === UNIT TESTS ===
+# ==================
+
+
+include(GoogleTest)
 add_executable(test_felib 
     TestFespan.cpp
     TestFESpace.cpp
@@ -41,3 +48,6 @@ add_executable(test_felib
 target_link_libraries( test_felib PUBLIC iceicle_fe )
 target_link_libraries( test_felib PUBLIC nt_autodiff) 
 target_link_libraries( test_felib PUBLIC gtest gtest_main) 
+
+gtest_discover_tests(test_felib)
+

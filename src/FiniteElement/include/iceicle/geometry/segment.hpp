@@ -32,9 +32,9 @@ namespace ELEMENT {
 
         constexpr int n_nodes() const override { return nnodes; }
 
-        constexpr FE::DOMAIN_TYPE domain_type() const noexcept { return FE::DOMAIN_TYPE::HYPERCUBE; }
+        constexpr FE::DOMAIN_TYPE domain_type() const noexcept override { return FE::DOMAIN_TYPE::HYPERCUBE; }
 
-        constexpr int geometry_order() const noexcept { return 1; }
+        constexpr int geometry_order() const noexcept override { return 1; }
 
         const IDX *nodes() const override { return node_idxs; }
 

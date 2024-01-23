@@ -6,12 +6,16 @@
 
 #pragma once
 
+#include "Numtool/fixed_size_tensor.hpp"
 #include <Numtool/matrixT.hpp>
 #include <Numtool/matrix/dense_matrix.hpp>
 #include <iceicle/geometry/geo_element.hpp>
 #include <iceicle/basis/basis.hpp>
 #include <iceicle/quadrature/QuadratureRule.hpp>
+#include <span>
 #include <vector>
+
+#include <mdspan/mdspan.hpp>
 
 namespace ELEMENT {
     
@@ -154,14 +158,20 @@ namespace ELEMENT {
          * @param [in] xi  the point in the reference domain [size = ndim]
          * @param [out] dBidxj the values of the first derivatives of the basis functions
          *                with respect to the reference domain at that point
-         *                This is in the form of a 2d pointer array that must be preallocated
-         *                row major order and contiguous
-         *                \frac{dB_i}{d\xi_j} where i is ibasis
-         *                takes a pointer to the first element of this data structure
-         *                [size = [nbasis : i][ndim : j]] 
+         *                This is in the form of a 1d pointer array that must be preallocated
+         *                size must be nbasis * ndim or larger
+         *
+         * @return an mdspan view of dBidxj for an easy interface 
+         *         \frac{dB_i}{d\xi_j} where i is ibasis
+         *         takes a pointer to the first element of this data structure
+         *         [size = [nbasis : i][ndim : j]] 
          */
-        void evalGradBasis(const T *xi, T **dBidxj) const {
-            return basis->evalGradBasis(xi, dBidxj);
+        auto evalGradBasis(const T *xi, T *dBidxj) const {
+            basis->evalGradBasis(xi, dBidxj);
+            std::experimental::extents<int, std::dynamic_extent, ndim> extents(nbasis());
+            std::experimental::mdspan gbasis{dBidxj, extents};
+            static_assert(gbasis.extent(1)==ndim);
+            return gbasis;
         }
        
         /**
@@ -171,14 +181,20 @@ namespace ELEMENT {
          * @param [in] quadrature_pt_idx the index of the quadrature point [0, ngauss()]
          * @param [out] dBidxj the values of the first derivatives of the basis functions
          *                with respect to the reference domain at that point
-         *                This is in the form of a 2d pointer array that must be preallocated
-         *                row major order and contiguous
-         *                \frac{dB_i}{d\xi_j} where i is ibasis
-         *                takes a pointer to the first element of this data structure
-         *                [size = [nbasis : i][ndim : j]] 
+         *                This is in the form of a 1d pointer array that must be preallocated
+         *                size must be nbasis * ndim or larger
+         *
+         * @return an mdspan view of dBidxj for an easy interface 
+         *         \frac{dB_i}{d\xi_j} where i is ibasis
+         *         takes a pointer to the first element of this data structure
+         *         [size = [nbasis : i][ndim : j]] 
          */
-        void evalGradBasisQP(int quadrature_pt_idx, T **dBidxj) const {
-            return basis->evalGradBasis(quadrule[quadrature_pt_idx].abscisse, dBidxj);
+        void evalGradBasisQP(int quadrature_pt_idx, T *dBidxj) const {
+            basis->evalGradBasis(quadrule[quadrature_pt_idx].abscisse, dBidxj);
+            std::experimental::extents<int, std::dynamic_extent, ndim> extents(nbasis());
+            std::experimental::mdspan gbasis{dBidxj, extents};
+            static_assert(gbasis.extent(1)==ndim);
+            return gbasis;
         }
 
         /**
@@ -188,44 +204,55 @@ namespace ELEMENT {
          * @param [in] transformation the transformation from the reference domain to the physical domain
          *                            (must be compatible with the geometric element)
          * @param [in] node_list the list of global node coordinates
-         * @param [out] dBidxj the values of the first derivatives wrt the physical domain
-         *                This is in the form of a 2d pointer array that must be preallocated
-         *                row major order and contiguous
-         *                \frac{dB_i}{dx_j} where i is ibasis
-         *                takes a pointer to the first element of this data structure
-         *                [size = [nbasis : i][ndim : j]] 
+         * @param [out] dBidxj the values of the first derivatives of the basis functions
+         *                with respect to the reference domain at that point
+         *                This is in the form of a 1d pointer array that must be preallocated
+         *                size must be nbasis * ndim or larger
+         *
+         * @return an mdspan view of dBidxj for an easy interface 
+         *         \frac{dB_i}{d\xi_j} where i is ibasis
+         *         takes a pointer to the first element of this data structure
+         *         [size = [nbasis : i][ndim : j]] 
          */
-        void evalPhysGradBasis(
+        auto evalPhysGradBasis(
             const Point &xi,
             FE::NodalFEFunction<T, ndim> &node_list,
-            T **dBidxj
+            T *dBidxj
         ) const {
+            using namespace NUMTOOL::TENSOR::FIXED_SIZE;
+
             //  fill with zero
-            std::fill_n(dBidxj[0], nbasis() * ndim, 0.0);
+            std::fill_n(dBidxj, nbasis() * ndim, 0.0);
 
             // get the Jacobian
-            T J[ndim][ndim];
-            geo_el->Jacobian(node_list, geo_el->nodes(), xi, J);
+            auto J = geo_el->Jacobian(node_list, xi);
 
             // the inverse of J = adj(J) / det(J)
-            T adjJ[ndim][ndim]; // note: this will be a symmetric matrix
-            MATH::MATRIX_T::adjugate<ndim>(J[0], adjJ[0]);
-            T detJ = MATH::MATRIX_T::determinant<ndim>(J[0]);
+            auto adjJ = adjugate(J);
+            auto detJ = determinant(J);
 
             // Evaluate dBi in reference domain
-            using namespace MATH::MATRIX;
-            DenseMatrixSetWidth<T, ndim> dBi(nbasis());
-            evalGradBasis(xi, dBi);
+            std::vector<T> dBi_data(ndim * nbasis(), 0.0);
+            auto dBi = evalGradBasis(xi, dBi_data.data());
 
+            std::experimental::extents<int, std::dynamic_extent, ndim> extents(nbasis());
+            std::experimental::mdspan gbasis{dBidxj, extents};
             // dBidxj =  Jadj_{jk} * dBidxk
             for(int i = 0; i < nbasis(); ++i){
                 for(int j = 0; j < ndim; ++j){
-                    dBidxj[i][j] = 0.0;
+                    // gbasis[i, j] = 0.0;
                     for(int k = 0; k < ndim; ++k){
-                        dBidxj[i][j] += dBi[i][k] * adjJ[j][k];
+                        gbasis[i, j] += dBi[i, k] * adjJ[k][j];
                     }
                 }
             }
+            
+            // multiply though by the determinant 
+            for(int i = 0; i < nbasis() * ndim; ++i){
+                dBidxj[i] /= detJ;
+            }
+
+            return gbasis;
         }
 
         /**
@@ -237,17 +264,20 @@ namespace ELEMENT {
          * @param [in] transformation the transformation from the reference domain to the physical domain
          *                            (must be compatible with the geometric element)
          * @param [in] node_list the list of global node coordinates
-         * @param [out] dBidxj the values of the first derivatives wrt the physical domain
-         *                This is in the form of a 2d pointer array that must be preallocated
-         *                row major order and contiguous
-         *                \frac{dB_i}{dx_j} where i is ibasis
-         *                takes a pointer to the first element of this data structure
-         *                [size = [nbasis : i][ndim : j]] 
+         * @param [out] dBidxj the values of the first derivatives of the basis functions
+         *                with respect to the reference domain at that point
+         *                This is in the form of a 1d pointer array that must be preallocated
+         *                size must be nbasis * ndim or larger
+         *
+         * @return an mdspan view of dBidxj for an easy interface 
+         *         \frac{dB_i}{d\xi_j} where i is ibasis
+         *         takes a pointer to the first element of this data structure
+         *         [size = [nbasis : i][ndim : j]] 
          */
-        void evalPhysGradBasisQP(
+        auto evalPhysGradBasisQP(
             int quadrature_pt_idx,
             FE::NodalFEFunction<T, ndim> &node_list,
-            T **dBidxj
+            T *dBidxj
         ) const {
             return evalPhysGradBasis((*quadrule)[quadrature_pt_idx].abscisse, node_list, dBidxj);
         }

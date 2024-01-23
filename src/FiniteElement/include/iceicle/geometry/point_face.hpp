@@ -57,7 +57,7 @@ namespace ELEMENT {
             const FacePoint &s,
             FE::NodalFEFunction<T,ndim> &nodeCoords,
             T *result
-        ) const {
+        ) const override {
             result[0] = nodeCoords[node][0];
         }
 

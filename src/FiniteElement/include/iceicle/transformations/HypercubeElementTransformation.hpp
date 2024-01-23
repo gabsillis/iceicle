@@ -376,7 +376,7 @@ public:
             }
         }
       },
-      xi[0]);
+      xi);
     
     NUMTOOL::TMP::constexpr_for_range<1, ndim>(
         [&]<int idim>(const Point &xi){
@@ -387,28 +387,25 @@ public:
 
             for(int irep = 0; irep < nrepeat; ++irep) {
 
-                NUMTOOL::TMP::constexpr_for_range<0, Pn + 1>(
-                    [&, irep]<int ibasis>(const Point &xi) {
-                        T dBi_idim = lagrange_derivs[idim][ibasis];
-                        const int nfill = std::pow(Pn + 1, ndim - idim - 1);
+              for(int ibasis = 0; ibasis < Pn + 1; ++ibasis){
+                T dBi_idim = lagrange_derivs[idim][ibasis];
+                const int nfill = std::pow(Pn + 1, ndim - idim - 1);
 
-                        // offset for multiplying by this ibasis
-                        const int start_offset = ibasis * nfill;
+                // offset for multiplying by this ibasis
+                const int start_offset = ibasis * nfill;
 
-                        // multiply the next nfill by the current basis function
-                        for (int ifill = 0; ifill < nfill; ++ifill) {
-                            const int offset = irep * cyclesize + start_offset;
-                            NUMTOOL::TMP::constexpr_for_range<0, ndim>([&]<int jdim>(){
-                                if constexpr(jdim == idim){
-                                    dBidxj[offset + ifill][jdim] *= dBi_idim;
-                                } else {
-                                    dBidxj[offset + ifill][jdim] *= lagrange_evals[idim][ibasis];
-                                }
-                            });
+                // multiply the next nfill by the current basis function
+                for (int ifill = 0; ifill < nfill; ++ifill) {
+                    const int offset = irep * cyclesize + start_offset;
+                    NUMTOOL::TMP::constexpr_for_range<0, ndim>([&]<int jdim>(){
+                        if constexpr(jdim == idim){
+                            dBidxj[offset + ifill][jdim] *= dBi_idim;
+                        } else {
+                            dBidxj[offset + ifill][jdim] *= lagrange_evals[idim][ibasis];
                         }
-                    },
-                    xi
-                );
+                    });
+                }
+              }
             }
         },
         xi

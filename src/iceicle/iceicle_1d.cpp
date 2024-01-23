@@ -1,9 +1,12 @@
 #include <iceicle/geometry/segment.hpp>
 #include <iceicle/mesh/segment_mesh.hpp>
+#ifdef ICEICLE_USE_MPI
 #include <mpi.h>
+#endif
 #include <iostream>
 int main(int argc, char *argv[]) {
 
+#ifdef ICEICLE_USE_MPI
     MPI_Init(&argc, &argv);
     using namespace ELEMENT;
     // construct a segment
@@ -23,4 +26,5 @@ int main(int argc, char *argv[]) {
         }
     }
     MPI_Finalize();
+#endif
 }

@@ -9,7 +9,6 @@
 #include <Numtool/polydefs/LegendrePoly.hpp>
 #include <Numtool/tmp_flow_control.hpp>
 #include <Numtool/constexpr_math.hpp>
-#include <limits>
 
 #include <iceicle/quadrature/QuadratureRule.hpp>
 namespace QUADRATURE {
@@ -63,16 +62,16 @@ namespace QUADRATURE {
                 T weight = 2.0 / ((1 - SQUARED(xi)) * SQUARED(dlegendre));
                 if constexpr (npoin % 2 != 0) weightcenter -=  2 * weight;
                 int iarr = i - 1;
-                qpoints[2 * iarr].abscisse = xi;
+                qpoints[2 * iarr].abscisse = {xi};
                 qpoints[2 * iarr].weight = weight;
 
-                qpoints[2 * iarr + 1].abscisse = -xi;
+                qpoints[2 * iarr + 1].abscisse = {-xi};
                 qpoints[2 * iarr + 1].weight = weight;
                 
             }
 
             if constexpr(npoin % 2 != 0){
-                qpoints[npoin - 1].abscisse = 0.0;
+                qpoints[npoin - 1].abscisse = {0.0};
                 qpoints[npoin - 1].weight = weightcenter;
             }
         }

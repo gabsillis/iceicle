@@ -4,9 +4,12 @@
  * reminiscent of mdspan
  */
 #pragma once
+#include "Numtool/tmp_flow_control.hpp"
 #include <cstdlib>
+#include <span>
 #include <type_traits>
 #include <iceicle/fe_function/layout_enums.hpp>
+#include <mdspan/mdspan.hpp>
 
 namespace FE {
     
@@ -168,7 +171,7 @@ namespace FE {
             constexpr std::size_t size() const noexcept { return __layout.size(); }
 
             /** @brief get the extents of the multidimensional index space */
-            constexpr compact_index_extents extents() const noexcept { return __layout.extents(); }
+            constexpr LayoutPolicy::extents_type extents() const noexcept { return __layout.extents(); }
 
             /** @brief index into the data using a compact_index
              * @param idx the compact_index which represents a multidimensional index into element local data
@@ -176,6 +179,15 @@ namespace FE {
              */
             constexpr reference operator[](const compact_index &idx) const {
                 return __accessor.access(__ptr, __layout.operator()(idx));
+            }
+
+            /** @brief index into the data using the set order
+             * @param idof the degree of freedom index 
+             * @param iv the vector index
+             * @return a reference to the data 
+             */
+            constexpr reference operator[](std::size_t idof, std::size_t iv){
+                return __accessor.access(__ptr, __layout.operator()(FE::compact_index{.idof = idof, .iv = iv}));
             }
 
             /**
@@ -208,6 +220,100 @@ namespace FE {
                     for(std::size_t iv = 0; iv < extents.nv; ++iv){
                         eqn_out[iv] += this->operator[](compact_index{.idof = idof, .iv = iv}) * dof_vec[idof];
                     }
+                }
+            }
+
+        public:
+
+            /**
+             * @brief contract along the first index dimension with the dof index 
+             * with an mdspan type object
+             *
+             * specialized for rank 2 and 3 mdspan objects
+             * Assumes the first index into the mdspan is the dof index 
+             *
+             * TODO: currently asssumes all non-dof extents are static extents
+             *
+             * @param [in] dof_mdspan
+             * @param [out] result_data pointer to memory 
+             *      where the result of the contraction will be stored 
+             *      WARNING: must be zero'd out beforehand 
+             *
+             * @return an mdspan view of the result data with the contraction indices
+             *  the first index of the contraction result will be the vector component index from 
+             *  this elspan 
+             *  the rest will be the indices from the dof_mdspan
+             */
+            template<class in_mdspan>
+            auto contract_mdspan(const in_mdspan &dof_mdspan, T *result_data){
+                static_assert(dof_mdspan.rank() == 2 || dof_mdspan.rank() == 3, "only defined for ranks 2 and 3");
+                // get the equation extent
+                static constexpr int eq_extent = (is_dynamic_ncomp<LayoutPolicy::extents_type::get_ncomp()>::value)
+                ? std::dynamic_extent : LayoutPolicy::extents_type::get_ncomp();
+
+                static constexpr int rank_dynamic = ((eq_extent == std::dynamic_extent) ? 1 : 0);
+
+                // build up the array of dynamic extents
+                std::array<int, rank_dynamic> dynamic_extents{};
+                if constexpr(eq_extent == std::dynamic_extent) dynamic_extents[0] = extents().nv;
+//                int iarr = 1;
+//                NUMTOOL::TMP::constexpr_for_range<1, dof_mdspan.rank()>([&]<int iextent>{
+//                    if constexpr (dof_mdspan.static_extent(iextent) == std::dynamic_extent){
+//                        dynamic_extents[iarr++] = dof_mdspan.extent(iextent);
+//                    }
+//                });
+
+                if constexpr(dof_mdspan.rank() == 2){
+                    static constexpr int ext_1 = dof_mdspan.static_extent(1);
+
+                    // set up the extents and construc the mdspan
+                    std::experimental::extents<
+                        int,
+                        eq_extent,
+                        ext_1
+                    > result_extents{dynamic_extents};
+                    std::experimental::mdspan eq_mdspan{result_data, result_extents};
+
+                    // perform the contraction 
+                    for(int idof = 0; idof < extents().ndof; ++idof){
+                        for(int iv = 0; iv < extents().nv; ++iv){
+                            for(int iext1 = 0; iext1 < ext_1; ++iext1){
+                                eq_mdspan[iv, iext1] += 
+                                    operator[](idof, iv) * dof_mdspan[idof, iext1];
+                            }
+                        }
+                    }
+                    return eq_mdspan;
+                } else if constexpr (dof_mdspan.rank() == 3) {
+
+                    static constexpr int ext_1 = dof_mdspan.static_extent(1);
+                    static constexpr int ext_2 = dof_mdspan.static_extent(2);
+
+                    // set up the extents and construc the mdspan
+                    std::experimental::extents<
+                        int,
+                        eq_extent,
+                        ext_1,
+                        ext_2
+                    > result_extents{dynamic_extents};
+                    std::experimental::mdspan eq_mdspan{result_data, result_extents};
+
+                    // perform the contraction 
+                    for(int idof = 0; idof < extents().ndof; ++idof){
+                        for(int iv = 0; iv < extents().nv; ++iv){
+                            for(int iext1 = 0; iext1 < ext_1; ++iext1){
+                                for(int iext2 = 0; iext2 < ext_2; ++iext2){
+                                    eq_mdspan[iv, iext1] += 
+                                        operator[](idof, iv) * dof_mdspan[idof, iext1, iext2];
+                                }
+                            }
+                        }
+                    }
+                    return eq_mdspan;
+                } else {
+
+                    std::experimental::mdspan ret{result_data};
+                    return ret;
                 }
             }
     };
