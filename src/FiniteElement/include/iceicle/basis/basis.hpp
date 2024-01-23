@@ -59,12 +59,13 @@
          * @brief evaluate the hessian of the basis functions in the reference domain
          *
          * @param [in] a the point [size = ndim]
-         * @param [in] ibasis the basis function index
-         * @param [out] the hessian [size = ndim * ndim]
+         * @param [out] the hessian of all the basis functions as a 1D array 
+         *      [size = nbasis * ndim * ndim]
+         *      ordered in C array order basis, ndim, ndim
          */
         virtual
-        void evalHessBasis(const T*a, int ibasis, T Hessian[ndim][ndim]) const {
-            throw std::logic_error("Not Overriden");
+        void evalHessBasis(const T*a, T *Hessian) const {
+            throw std::logic_error("Not Implemented");
         };
 
         /**

@@ -32,6 +32,7 @@ namespace ELEMENT{
 
         // namespace aliases
         using Point = MATH::GEOMETRY::Point<T, ndim>;
+        using HessianType = NUMTOOL::TENSOR::FIXED_SIZE::Tensor<T, ndim, ndim, ndim>;
 
         public:
         /**
@@ -96,13 +97,12 @@ namespace ELEMENT{
          *         = \frac{\partial x_k}{\partial \xi_i \partial \xi_j}
          * @param [in] node_coords the coordinates of all the nodes
          * @param [in] xi the position in the reference domain at which to calculate the hessian
-         * @param [out] the Hessian in tensor form indexed [k][i][j] as described above
+         * @return the Hessian in tensor form indexed [k][i][j] as described above
          */
         virtual
-        void Hessian(
+        HessianType Hessian(
             FE::NodalFEFunction<T, ndim> &node_coords,
-            const Point &xi,
-            T hess[ndim][ndim][ndim]
+            const Point &xi
         ) const = 0;
 
         /**

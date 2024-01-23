@@ -427,7 +427,7 @@ public:
    *
    * @return an mdspan view of nodal_hessian_data
    */
-  auto fill_hess(const T *xi, T *nodal_hessian_data){
+  auto fill_hess(const T *xi, T *nodal_hessian_data) const noexcept{
     using namespace std::experimental;
     using namespace NUMTOOL::TENSOR::FIXED_SIZE;
 
@@ -463,10 +463,20 @@ public:
                 }
               }
             } else {
-              hess[ibasis, ideriv, jderiv] *= 
-                  lagrange_derivs[ideriv][ijk_poin[ibasis][ideriv]]
-                * lagrange_derivs[jderiv][ijk_poin[ibasis][jderiv]];
-
+              // loop over the 1d basis functions for each dimension
+              for(int idim = 0; idim < ndim; ++idim){
+                if(idim == ideriv){
+                  hess[ibasis, ideriv, jderiv] *= 
+                    lagrange_derivs[ideriv][ijk_poin[ibasis][idim]];
+                } else if(idim == jderiv){
+                  hess[ibasis, ideriv, jderiv] *= 
+                    lagrange_derivs[jderiv][ijk_poin[ibasis][idim]];
+                } else {
+                  // not a derivative so just the 1d function 
+                  hess[ibasis, ideriv, jderiv] *=
+                    lagrange_evals[idim][ijk_poin[ibasis][idim]];
+                }
+              }
             }
           }
       }
@@ -552,19 +562,18 @@ public:
     * @param [in] node_coords the coordinates of all the nodes
     * @param [in] node_indices the indices in node_coords that pretain to this element in order
     * @param [in] xi the position in the reference domain at which to calculate the hessian
-    * @param [out] the Hessian in tensor form indexed [k][i][j] as described above
+    * @return the Hessian in tensor form indexed [k][i][j] as described above
     */
-  void Hessian(
+  NUMTOOL::TENSOR::FIXED_SIZE::Tensor<T, ndim, ndim, ndim> Hessian(
       const FE::NodalFEFunction<T, ndim> &node_coords,
       const IDX *node_indices,
-      const Point &xi,
-      T hess[ndim][ndim][ndim]
-  ) const {
-    // Get a 1D pointer representation
-    T *Hptr = hess[0][0];
+      const Point &xi
+  ) const noexcept {
+    using namespace NUMTOOL::TENSOR::FIXED_SIZE;
 
-    // fill with zeros
-    std::fill_n(Hptr, ndim * ndim * ndim, 0.0);
+    Tensor<T, ndim, ndim, ndim> hess;
+    // Zero initialize
+    hess = 0;
 
     // Get the hessian at each node 
     std::vector<T> nodal_hessian_data(nnode * ndim * ndim);
@@ -578,7 +587,7 @@ public:
       for(int kdim = 0; kdim < ndim; ++kdim){ // k corresponds to xi 
         for(int idim = 0; idim < ndim; ++idim){
           for(int jdim = idim; jdim < ndim; ++jdim){
-            hess[kdim][idim][jdim] += nodal_hessian[inode, idim,jdim] * node[kdim];
+            hess[kdim][idim][jdim] += nodal_hessian[inode, idim, jdim] * node[kdim];
           }
         }
       }
@@ -592,6 +601,8 @@ public:
         }
       }
     }
+
+    return hess;
   }
 
   /** @brief get the number of nodes that define the transformation */

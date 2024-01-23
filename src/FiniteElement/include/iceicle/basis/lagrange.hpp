@@ -56,15 +56,6 @@ namespace BASIS {
             }
         }
 
-        void evalHessBasis(const T *xi, int ibasis, T Hessian[ndim][ndim]) const override 
-        {
-            for(int ideriv = 0; ideriv < ndim; ++ideriv){
-                for(int jderiv = 0; jderiv < ndim; ++jderiv){
-                    Hessian[ideriv][jderiv] = transform.dshp2(xi, ibasis, ideriv, jderiv);
-                }
-            }
-        }
-
         bool isOrthonormal() const override { return false; }
 
         bool isNodal() const override { return true; }
@@ -103,8 +94,8 @@ namespace BASIS {
             std::copy_n(dBi.ptr(), ndim * transform.n_nodes(), dBidxj);
         }
         
-        void evalHessBasis(const T *xi, int ibasis, T Hessian[ndim][ndim]) const override {
-            transform.dshp2(xi, ibasis, Hessian);
+        void evalHessBasis(const T *xi, T *HessianData) const override {
+            transform.fill_hess(xi, HessianData);
         }
 
         bool isOrthonormal() const override { return false; }

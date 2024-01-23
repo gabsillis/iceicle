@@ -20,6 +20,7 @@ namespace ELEMENT {
         using Point = MATH::GEOMETRY::Point<T, ndim>;
         using PointView = MATH::GEOMETRY::PointView<T, ndim>;
         using JacobianType = NUMTOOL::TENSOR::FIXED_SIZE::Tensor<T, ndim, ndim>;
+        using HessianType = NUMTOOL::TENSOR::FIXED_SIZE::Tensor<T, ndim, ndim, ndim>;
 
         public:
         static inline TRANSFORMATIONS::HypercubeElementTransformation<T, IDX, ndim, Pn> transformation{};
@@ -57,12 +58,11 @@ namespace ELEMENT {
             return transformation.Jacobian(node_coords, _nodes, xi);
         }
 
-        void Hessian(
+        HessianType Hessian(
             FE::NodalFEFunction<T, ndim> &node_coords,
-            const Point &xi,
-            T hess[ndim][ndim][ndim]
+            const Point &xi
         ) const override {
-            return transformation.Hessian(node_coords, _nodes, xi, hess);
+            return transformation.Hessian(node_coords, _nodes, xi);
         }
 
         /** @brief set the node index at idx to value */
