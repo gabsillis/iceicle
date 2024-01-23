@@ -31,7 +31,6 @@ endif()
 # === UNIT TESTS ===
 # ==================
 
-enable_testing()
 
 include(GoogleTest)
 add_executable(test_felib 
