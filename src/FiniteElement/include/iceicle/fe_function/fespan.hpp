@@ -246,7 +246,7 @@ namespace FE {
              */
             template<class in_mdspan>
             auto contract_mdspan(const in_mdspan &dof_mdspan, T *result_data){
-                static_assert(dof_mdspan.rank() == 2 || dof_mdspan.rank() == 3, "only defined for ranks 2 and 3");
+                static_assert(in_mdspan::rank() == 2 || in_mdspan::rank() == 3, "only defined for ranks 2 and 3");
                 // get the equation extent
                 static constexpr int eq_extent = (is_dynamic_ncomp<LayoutPolicy::extents_type::get_ncomp()>::value)
                 ? std::dynamic_extent : LayoutPolicy::extents_type::get_ncomp();
@@ -263,8 +263,8 @@ namespace FE {
 //                    }
 //                });
 
-                if constexpr(dof_mdspan.rank() == 2){
-                    static constexpr int ext_1 = dof_mdspan.static_extent(1);
+                if constexpr(in_mdspan::rank() == 2){
+                    static constexpr int ext_1 = in_mdspan::static_extent(1);
 
                     // set up the extents and construc the mdspan
                     std::experimental::extents<
@@ -284,10 +284,10 @@ namespace FE {
                         }
                     }
                     return eq_mdspan;
-                } else if constexpr (dof_mdspan.rank() == 3) {
+                } else if constexpr (in_mdspan::rank() == 3) {
 
-                    static constexpr int ext_1 = dof_mdspan.static_extent(1);
-                    static constexpr int ext_2 = dof_mdspan.static_extent(2);
+                    static constexpr int ext_1 = in_mdspan::static_extent(1);
+                    static constexpr int ext_2 = in_mdspan::static_extent(2);
 
                     // set up the extents and construc the mdspan
                     std::experimental::extents<
