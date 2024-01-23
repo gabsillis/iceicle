@@ -635,6 +635,78 @@ TEST( test_hypercube_transform, test_fill_deriv ){
   ASSERT_DOUBLE_EQ(  lagrange1(xi[0]) * dlagrange1(xi[1]), dBidxj[3][1]);
 }
 
+TEST( test_hypercube_transform, test_fill_hess){
+
+  auto lagrange0 = [](double s){ return s*(s - 1) / 2.0;};
+  auto lagrange1 = [](double s){ return 1 - s * s; };
+  auto lagrange2 = [](double s){ return s * (1 + s) / 2.0;};
+
+  auto dlagrange0 = [](double s){ return s - 0.5; };
+  auto dlagrange1 = [](double s){ return -2.0 * s; };
+  auto dlagrange2 = [](double s){ return s + 0.5; };
+
+  auto d2lagrange0 = [](double s){ return 1.0; };
+  auto d2lagrange1 = [](double s){ return -2.0; };
+  auto d2lagrange2 = [](double s){ return 1.0; };
+
+  static constexpr int ndim = 2;
+  static constexpr int Pn = 2;
+  HypercubeElementTransformation<double, int, ndim, Pn> trans{};
+  MATH::GEOMETRY::Point<double, 2> xi = {0.3, -0.4};
+
+  std::vector<double> hess_data(ndim * ndim * trans.n_nodes());
+  auto hess = trans.fill_hess(xi, hess_data.data());
+
+  ASSERT_DOUBLE_EQ( d2lagrange0(xi[0]) *   lagrange0(xi[1]), (hess[0, 0, 0]));
+  ASSERT_DOUBLE_EQ(  dlagrange0(xi[0]) *  dlagrange0(xi[1]), (hess[0, 0, 1]));
+  ASSERT_DOUBLE_EQ(  dlagrange0(xi[0]) *  dlagrange0(xi[1]), (hess[0, 1, 0]));
+  ASSERT_DOUBLE_EQ(   lagrange0(xi[0]) * d2lagrange0(xi[1]), (hess[0, 1, 1]));
+
+  ASSERT_DOUBLE_EQ( d2lagrange0(xi[0]) *   lagrange1(xi[1]), (hess[1, 0, 0]));
+  ASSERT_DOUBLE_EQ(  dlagrange0(xi[0]) *  dlagrange1(xi[1]), (hess[1, 0, 1]));
+  ASSERT_DOUBLE_EQ(  dlagrange0(xi[0]) *  dlagrange1(xi[1]), (hess[1, 1, 0]));
+  ASSERT_DOUBLE_EQ(   lagrange0(xi[0]) * d2lagrange1(xi[1]), (hess[1, 1, 1]));
+
+  ASSERT_DOUBLE_EQ( d2lagrange0(xi[0]) *   lagrange2(xi[1]), (hess[2, 0, 0]));
+  ASSERT_DOUBLE_EQ(  dlagrange0(xi[0]) *  dlagrange2(xi[1]), (hess[2, 0, 1]));
+  ASSERT_DOUBLE_EQ(  dlagrange0(xi[0]) *  dlagrange2(xi[1]), (hess[2, 1, 0]));
+  ASSERT_DOUBLE_EQ(   lagrange0(xi[0]) * d2lagrange2(xi[1]), (hess[2, 1, 1]));
+
+
+
+  ASSERT_DOUBLE_EQ( d2lagrange1(xi[0]) *   lagrange0(xi[1]), (hess[3, 0, 0]));
+  ASSERT_DOUBLE_EQ(  dlagrange1(xi[0]) *  dlagrange0(xi[1]), (hess[3, 0, 1]));
+  ASSERT_DOUBLE_EQ(  dlagrange1(xi[0]) *  dlagrange0(xi[1]), (hess[3, 1, 0]));
+  ASSERT_DOUBLE_EQ(   lagrange1(xi[0]) * d2lagrange0(xi[1]), (hess[3, 1, 1]));
+
+  ASSERT_DOUBLE_EQ( d2lagrange1(xi[0]) *   lagrange1(xi[1]), (hess[4, 0, 0]));
+  ASSERT_DOUBLE_EQ(  dlagrange1(xi[0]) *  dlagrange1(xi[1]), (hess[4, 0, 1]));
+  ASSERT_DOUBLE_EQ(  dlagrange1(xi[0]) *  dlagrange1(xi[1]), (hess[4, 1, 0]));
+  ASSERT_DOUBLE_EQ(   lagrange1(xi[0]) * d2lagrange1(xi[1]), (hess[4, 1, 1]));
+
+  ASSERT_DOUBLE_EQ( d2lagrange1(xi[0]) *   lagrange2(xi[1]), (hess[5, 0, 0]));
+  ASSERT_DOUBLE_EQ(  dlagrange1(xi[0]) *  dlagrange2(xi[1]), (hess[5, 0, 1]));
+  ASSERT_DOUBLE_EQ(  dlagrange1(xi[0]) *  dlagrange2(xi[1]), (hess[5, 1, 0]));
+  ASSERT_DOUBLE_EQ(   lagrange1(xi[0]) * d2lagrange2(xi[1]), (hess[5, 1, 1]));
+
+
+
+  ASSERT_DOUBLE_EQ( d2lagrange2(xi[0]) *   lagrange0(xi[1]), (hess[6, 0, 0]));
+  ASSERT_DOUBLE_EQ(  dlagrange2(xi[0]) *  dlagrange0(xi[1]), (hess[6, 0, 1]));
+  ASSERT_DOUBLE_EQ(  dlagrange2(xi[0]) *  dlagrange0(xi[1]), (hess[6, 1, 0]));
+  ASSERT_DOUBLE_EQ(   lagrange2(xi[0]) * d2lagrange0(xi[1]), (hess[6, 1, 1]));
+
+  ASSERT_DOUBLE_EQ( d2lagrange2(xi[0]) *   lagrange1(xi[1]), (hess[7, 0, 0]));
+  ASSERT_DOUBLE_EQ(  dlagrange2(xi[0]) *  dlagrange1(xi[1]), (hess[7, 0, 1]));
+  ASSERT_DOUBLE_EQ(  dlagrange2(xi[0]) *  dlagrange1(xi[1]), (hess[7, 1, 0]));
+  ASSERT_DOUBLE_EQ(   lagrange2(xi[0]) * d2lagrange1(xi[1]), (hess[7, 1, 1]));
+
+  ASSERT_DOUBLE_EQ( d2lagrange2(xi[0]) *   lagrange2(xi[1]), (hess[8, 0, 0]));
+  ASSERT_DOUBLE_EQ(  dlagrange2(xi[0]) *  dlagrange2(xi[1]), (hess[8, 0, 1]));
+  ASSERT_DOUBLE_EQ(  dlagrange2(xi[0]) *  dlagrange2(xi[1]), (hess[8, 1, 0]));
+  ASSERT_DOUBLE_EQ(   lagrange2(xi[0]) * d2lagrange2(xi[1]), (hess[8, 1, 1]));
+}
+
 
 TEST( test_hypercube_transform, test_jacobian ){
   std::random_device rdev{};

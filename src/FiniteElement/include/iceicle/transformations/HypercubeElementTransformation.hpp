@@ -10,6 +10,8 @@
 #include <cmath>
 #include <iceicle/fe_function/nodal_fe_function.hpp>
 
+#include <mdspan/mdspan.hpp>
+
 #include <algorithm>
 #include <sstream>
 #include <stdexcept>
@@ -413,36 +415,71 @@ public:
   }
 
   /**
-   * @brief evaluate the second derivatives of the given basis function 
+   * @brief fill the provided 1d array with the hessian of each basis function 
+   * \frac{ d^2Bi }{ dx_j dx_k}
+   * in C row major order this corresponds to [i][j][k]
+   * and is symmetric in the last two indices 
+   *
    * @param [in] xi the point in the reference domain to evaluate at 
-   * @param [in] ibasis the index of the basis function 
-   * @param [out] Hessian the hessian of the basis function 
+   * @param [out] nodal_hessian_data the pointer to fill with the hessian 
+   * must be preallocated to n_nodes() * ndim * ndim 
+   * (this get's zero'd out by this function before use)
+   *
+   * @return an mdspan view of nodal_hessian_data
    */
-  void dshp2(const T *xi, int ibasis, T Hessian[ndim][ndim]) const {
-      std::fill_n(Hessian[0], ndim * ndim, 1.0);
+  auto fill_hess(const T *xi, T *nodal_hessian_data){
+    using namespace std::experimental;
+    using namespace NUMTOOL::TENSOR::FIXED_SIZE;
+
+    // view the hessian output array by an mdspan 
+    mdspan hess{nodal_hessian_data, extents{nnode, ndim, ndim}};
+
+    // fill with ones for multiplicative identity
+    std::fill_n(nodal_hessian_data, nnode*ndim*ndim, 1.0);
+    
+    // run-time precompute the lagrange polynomial evaluations 
+    // and derivatives for each coordinate
+    Tensor<T, ndim, Pn + 1> lagrange_evals{};
+    Tensor<T, ndim, Pn + 1> lagrange_derivs{};
+    for(int idim = 0; idim < ndim; ++idim){
+      interpolation_1d.deriv_all(
+          xi[idim], lagrange_evals[idim], lagrange_derivs[idim]);
+    }
+
+    // TODO: optimize using the fill strategy like fill_deriv 
+
+    for(int ibasis = 0; ibasis < nnode; ++ibasis){
+
       for(int ideriv = 0; ideriv < ndim; ++ideriv){
           for(int jderiv = ideriv; jderiv < ndim; ++jderiv){
+            // handle diagonal terms 
+            if(ideriv == jderiv){
               for(int idim = 0; idim < ndim; ++idim){
-                  if(ideriv == jderiv){
-                      Hessian[ideriv][jderiv] *= POLYNOMIAL::dNlagrange1d<T, Pn>(
-                              ijk_poin[ibasis][idim], 2, xi[ideriv]);
-                  } else {
-                      Hessian[ideriv][jderiv] *= 
-                          POLYNOMIAL::dlagrange1d<T, Pn>(
-                                  ijk_poin[ibasis][idim], xi[ideriv])
-                          * POLYNOMIAL::dlagrange1d<T, Pn>(
-                                  ijk_poin[ibasis][idim], xi[jderiv]);
-                  }
+                if(idim == ideriv){
+                  hess[ibasis, ideriv, jderiv] *= POLYNOMIAL::dNlagrange1d<T, Pn>(
+                    ijk_poin[ibasis][idim], 2, xi[ideriv]);
+                } else {
+                  hess[ibasis, ideriv, jderiv] *= lagrange_evals[idim][ijk_poin[ibasis][idim]];
+                }
               }
+            } else {
+              hess[ibasis, ideriv, jderiv] *= 
+                  lagrange_derivs[ideriv][ijk_poin[ibasis][ideriv]]
+                * lagrange_derivs[jderiv][ijk_poin[ibasis][jderiv]];
+
+            }
           }
       }
 
       // copy symmetric part 
       for(int ideriv = 0; ideriv < ndim; ++ideriv){
-          for(int jderiv = 0; jderiv < ideriv; ++jderiv){
-              Hessian[ideriv][jderiv] = Hessian[jderiv][ideriv];
-          }
+        for(int jderiv = 0; jderiv < ideriv; ++jderiv){
+            hess[ibasis, ideriv, jderiv] = hess[ibasis, jderiv, ideriv];
+        }
       }
+    }
+
+    return hess;
   }
 
   /**
@@ -508,7 +545,6 @@ public:
       return J;
   }
 
-
   /**
     * @brief get the Hessian of the transformation
     * H_{kij} = \frac{\partial T(s)_k}{\partial s_i \partial s_j} 
@@ -530,17 +566,19 @@ public:
     // fill with zeros
     std::fill_n(Hptr, ndim * ndim * ndim, 0.0);
 
+    // Get the hessian at each node 
+    std::vector<T> nodal_hessian_data(nnode * ndim * ndim);
+    auto nodal_hessian = fill_hess(xi, nodal_hessian_data.data());
+
     for(int inode = 0; inode < nnode; ++inode){
       // get view to the node coordinates from the node coordinate array
       IDX global_inode = node_indices[inode];
       const auto & node = node_coords[global_inode];
 
       for(int kdim = 0; kdim < ndim; ++kdim){ // k corresponds to xi 
-        T node_hessian[ndim][ndim];
-        dshp2(xi, inode, node_hessian);
         for(int idim = 0; idim < ndim; ++idim){
           for(int jdim = idim; jdim < ndim; ++jdim){
-            hess[kdim][idim][jdim] += node_hessian[idim][jdim] * node[kdim];
+            hess[kdim][idim][jdim] += nodal_hessian[inode, idim,jdim] * node[kdim];
           }
         }
       }
