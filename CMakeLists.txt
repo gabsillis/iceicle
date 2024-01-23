@@ -104,6 +104,8 @@ endif()
 #TESTING
 option(ENABLE_TESTING_ICEICLE "Enables testing and downlod gtest for ICEicle" ON)
 IF(ENABLE_TESTING_ICEICLE)
+  enable_testing()
+  include(CTest)
 # replacing find_package with a download
 #  find_package(GTest REQUIRED)
   FetchContent_Declare(
@@ -112,6 +114,7 @@ IF(ENABLE_TESTING_ICEICLE)
     GIT_TAG        v1.14.0
   )
 
+  set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
   FetchContent_MakeAvailable(googletest)
   add_subdirectory(test)
 
