@@ -46,6 +46,7 @@ TEST(test_fespace, test_dg_projection){
 
     // create a uniform mesh
     MESH::AbstractMesh<T, IDX, ndim> mesh({-1.0, -1.0}, {1.0, 1.0}, {50, 10}, pn_geo);
+    mesh.nodes.random_perturb(-0.4 * 1.0 / 50, 0.4*1.0/50);
 
     FE::FESpace<T, IDX, ndim> fespace{
         &mesh, FE::FESPACE_ENUMS::LAGRANGE,
@@ -122,7 +123,7 @@ TEST(test_fespace, test_dg_projection){
 
                 // test the derivatives
                 std::vector<double> grad_basis_data(el.nbasis() * ndim);
-                auto grad_basis = el.evalGradBasis(ref_pt, grad_basis_data.data());
+                auto grad_basis = el.evalPhysGradBasis(ref_pt, fespace.meshptr->nodes, grad_basis_data.data());
                 static_assert(grad_basis.rank() == 2);
                 static_assert(grad_basis.extent(1) == ndim);
 
