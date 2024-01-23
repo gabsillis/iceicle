@@ -61,7 +61,7 @@ endif()
 include(FetchContent)
 
 # OPENGL VISUALIZATION
-option(ICEICLE_USE_OPENGL "Enables OpenGL visualization" ON)
+option(ICEICLE_USE_OPENGL "Enables OpenGL visualization" OFF)
 if(ICEICLE_USE_OPENGL)
   find_package(OpenGL REQUIRED)
   find_package(GLEW REQUIRED)
