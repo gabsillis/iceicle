@@ -303,7 +303,7 @@ namespace FE {
                         for(int iv = 0; iv < extents().nv; ++iv){
                             for(int iext1 = 0; iext1 < ext_1; ++iext1){
                                 for(int iext2 = 0; iext2 < ext_2; ++iext2){
-                                    eq_mdspan[iv, iext1] += 
+                                    eq_mdspan[iv, iext1, iext2] += 
                                         operator[](idof, iv) * dof_mdspan[idof, iext1, iext2];
                                 }
                             }
