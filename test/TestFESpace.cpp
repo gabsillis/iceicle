@@ -174,7 +174,7 @@ TEST(test_fespace, test_dg_projection){
 
     static constexpr int ndim = 2;
     static constexpr int pn_geo = 1;
-    static constexpr int pn_basis = 1;
+    static constexpr int pn_basis = 4;
     static constexpr int neq = 1;
 
     // create a uniform mesh
