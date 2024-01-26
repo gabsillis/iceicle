@@ -21,7 +21,12 @@
 
 namespace ELEMENT {
 
-template <typename T, typename IDX, int ndim> class FEEvaluation {
+/**
+ * @brief Precomputed values of basis functions and other reference domain quantities 
+ * at important points (such as quadrature points)
+ */
+template <typename T, typename IDX, int ndim> 
+class FEEvaluation {
 private:
   /** @brief the basis functions evaluated at each quadrature point */
   std::vector<std::vector<T>> data;
@@ -58,7 +63,28 @@ public:
   const std::vector<T> &operator[](int igauss) const { return data[igauss]; }
 };
 
-template <typename T, typename IDX, int ndim> class FiniteElement {
+/**
+ * @brief FiniteElement is a collection of components
+ * to represent functions on a physical subdomain, that is mapped to a reference subdomain 
+ * and perform calculations to query and integrate these functions
+ *
+ * Consists of:
+ * A GeometricElement - to represent the transformation from reference to physical space 
+ *                      and stores the node coordinates to represent the subdomain
+ * 
+ * Basis function set - finite element functions are a linear combination
+ *                      of coefficients and basis functions
+ *
+ * Quadrature Rule    - for integrating functions on the finite element
+ *
+ * Evaluation         - precomputed values
+ *
+ * @tparam T the data type
+ * @tparam IDX the index type
+ * @tparam ndim the number of dimensions
+ */
+template <typename T, typename IDX, int ndim>
+class FiniteElement {
 
   using Point = MATH::GEOMETRY::Point<T, ndim>;
 
@@ -73,8 +99,14 @@ public:
   /** @brief the quadraature rule */
   const QUADRATURE::QuadratureRule<T, IDX, ndim> *quadrule;
 
-  /** @brief precomputed evaluations of the basis functions at the quadrature
-   * points */
+  /** @brief precomputed evaluations of the basis functions 
+   * at the quadrature points 
+   *
+   * NOTE: this is stored by reference because many physical elements will share the same 
+   * reference domain, basis functions, and quadrature rule 
+   * therefore the evaluations will be the same
+   *
+   **/
   const FEEvaluation<T, IDX, ndim> &qp_evals;
 
   /** @brief the element index in the mesh */
@@ -88,12 +120,13 @@ public:
    * @param qp_evals evaluations of the basis functions at the quadrature points
    * @param elidx_arg the element index in the mesh
    */
-  FiniteElement(const GeometricElement<T, IDX, ndim> *geo_el_arg,
-                const BASIS::Basis<T, ndim> *basis_arg,
-                const QUADRATURE::QuadratureRule<T, IDX, ndim> *quadrule_arg,
-                const FEEvaluation<T, IDX, ndim> *qp_evals, IDX elidx_arg)
-      : geo_el(geo_el_arg), basis(basis_arg), quadrule(quadrule_arg),
-        qp_evals(*qp_evals), elidx(elidx_arg) {}
+  FiniteElement(
+    const GeometricElement<T, IDX, ndim> *geo_el_arg,
+    const BASIS::Basis<T, ndim> *basis_arg,
+    const QUADRATURE::QuadratureRule<T, IDX, ndim> *quadrule_arg,
+    const FEEvaluation<T, IDX, ndim> *qp_evals, IDX elidx_arg
+  ) : geo_el(geo_el_arg), basis(basis_arg), quadrule(quadrule_arg),
+      qp_evals(*qp_evals), elidx(elidx_arg) {}
 
   /**
    * @brief precompute any stored quantities
@@ -208,9 +241,11 @@ public:
    *         takes a pointer to the first element of this data structure
    *         [size = [nbasis : i][ndim : j]]
    */
-  auto evalPhysGradBasis(const Point &xi,
-                         FE::NodalFEFunction<T, ndim> &node_list,
-                         T *dBidxj) const {
+  auto evalPhysGradBasis(
+    const Point &xi,
+    FE::NodalFEFunction<T, ndim> &node_list,
+    T *dBidxj
+  ) const {
     using namespace NUMTOOL::TENSOR::FIXED_SIZE;
 
     //  fill with zero
@@ -265,8 +300,22 @@ public:
     return hess_basis;
   }
 
-  auto evalPhysHessBasis(const Point &xi, FE::NodalFEFunction<T, ndim> &coord,
-                         T *basis_hessian_data) const {
+  /**
+   * @brief evaluate the second derivatives of the basis functions in the
+   * physical domain
+   *
+   * @param [in] xi the point in the reference domain to evaluate at
+   * @param [in] coord the global node coordinates array
+   * @param [out] basis_hessian_data pointer to the 1d array to store the
+   * hessian data in ordered i, j, k in C style array for \frac{\partial^2
+   * B_i}{\partial x_j \partial x_k}
+   * @return a multidimensional array view of the basis_hessian_data
+   */
+  auto evalPhysHessBasis(
+    const Point &xi,
+    FE::NodalFEFunction<T, ndim> &coord,
+    T *basis_hessian_data
+  ) const {
     using namespace std::experimental;
 
     // Get the Transformation Jacobian and Hessian
@@ -274,10 +323,12 @@ public:
     auto trans_hess = geo_el->Hessian(coord, xi);
 
     // Evaluate basis function derivatives and second derivatives
-    // wrt reference domain coordinates
+
+    // derivatives wrt Physical Coordinates
     std::vector<T> dBi_data(ndim * nbasis(), 0.0);
     auto dBi = evalPhysGradBasis(xi, coord, dBi_data.data());
 
+    // Hessian wrt reference coordinates
     std::vector<T> hess_Bi_data(ndim * ndim * nbasis(), 0.0);
     auto hessBi = evalHessBasis(xi, hess_Bi_data.data());
 
@@ -294,12 +345,15 @@ public:
     T detJ = determinant(trans_jac);
     T detJ2 = SQUARED(detJ);
 
+    // loop variables (idof = degree of freedom index), (*d = dimension index)
+    int idof, id, jd, kd, ld;
+
     // form the rhs of the physical hessian equation
     // (put this result in hessBi overwriting the values)
-    for (int idof = 0; idof < nbasis(); ++idof) {
-      for (int id = 0; id < ndim; ++id) {
-        for (int jd = 0; jd < ndim; ++jd) {
-          for (int kd = 0; kd < ndim; ++kd) {
+    for (idof = 0; idof < nbasis(); ++idof) {
+      for (id = 0; id < ndim; ++id) {
+        for (jd = 0; jd < ndim; ++jd) {
+          for (kd = 0; kd < ndim; ++kd) {
             hessBi[idof, id, jd] -= trans_hess[kd][id][jd] * dBi[idof, kd];
           }
         }
@@ -307,14 +361,14 @@ public:
     }
 
     // compute the hessians
-    int idof, id, jd, kd, ld;
     for (idof = 0; idof < nbasis(); ++idof) {
-      // J transpose inverse times H twice 
+      // J transpose inverse times H twice
       for (id = 0; id < ndim; ++id) {
         for (jd = 0; jd < ndim; ++jd) {
-          for(kd = 0; kd < ndim; ++kd){
-            for(ld = 0; ld < ndim; ++ld){
-              hess_phys[idof, id, jd] += adjJ[kd][jd] * adjJ[ld][id] * hessBi[idof, ld, kd];
+          for (kd = 0; kd < ndim; ++kd) {
+            for (ld = 0; ld < ndim; ++ld) {
+              hess_phys[idof, id, jd] +=
+                  adjJ[kd][jd] * adjJ[ld][id] * hessBi[idof, ld, kd];
             }
           }
         }
