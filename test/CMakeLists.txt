@@ -34,6 +34,7 @@ endif()
 
 include(GoogleTest)
 add_executable(test_felib 
+    TestTraceSpace.cpp
     TestFespan.cpp
     TestFESpace.cpp
     TestHypercubeFace.cpp

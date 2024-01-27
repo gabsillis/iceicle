@@ -12,6 +12,7 @@
 #include <iceicle/geometry/face.hpp>
 
 #include <vector>
+#include <cassert>
 #include <mdspan/mdspan.hpp>
 
 namespace ELEMENT {
@@ -32,6 +33,7 @@ private:
   std::vector<T> data_;
 
 public:
+  TraceEvaluation(){}
   TraceEvaluation(const FEType &fe_l, const FEType &fe_r) {
   }
 };
@@ -44,6 +46,10 @@ public:
  * dubbed the Left and Right elements (indexed respectively)
  * Convention for the left and right is that the normal vector 
  * points from the left element into the right element
+ *
+ * NOTE: if this is a boundary face, then the Left element is the interior element 
+ * by convention. However, to satisfy reference invariants, the finite element 
+ * for the right element is set to the left element as well
  *
  * The reference domain for the trace space or, in short, reference trace space
  * is a subset of \mathbb{R}^{d-1} where d = ndim is the dimensionality of the 
@@ -109,6 +115,7 @@ public:
    * @param facptr pointer to the geometric face 
    * @param elLptr pointer to the left FiniteElement 
    * @param elRptr pointer to the right FiniteElement
+   * @param quadruleptr pointer to the trace quadrature rule
    * @param qp_evals_ptr pointer to the quadrature evaluations
    * @param facidx the index of this face in the container
    */
@@ -116,10 +123,40 @@ public:
       const FaceType *facptr,
       const FEType *elLptr,
       const FEType *elRptr,
+      const QuadratureType *quadruleptr,
       const TraceEvaluation<T, IDX, ndim> *qp_evals_ptr,
       IDX facidx
-  ) : face(*facptr), elL(elLptr), elR(elRptr), 
-      qp_evals(qp_evals_ptr), facidx(facidx) {}
+  ) : face(*facptr), elL(*elLptr), elR(*elRptr), quadrule(*quadruleptr),
+      qp_evals(*qp_evals_ptr), facidx(facidx) 
+  {
+    assert((facptr->bctype == ELEMENT::BOUNDARY_CONDITIONS::INTERIOR) 
+        && "The given face is not an interior face.");
+  }
+
+  /**
+   * @brief create a boundary face
+   * special case named constructor
+   * separated from regular constructors to encourage intentional use 
+   *
+   * NOTE: reuses elL as elR
+   *
+   * @param facptr pointer to the geometric face 
+   * @param elLptr pointer to the interior FiniteElement 
+   * @param quadruleptr pointer to the trace quadrature rule
+   * @param qp_evals_ptr pointer to the quadrature evaluations
+   * @param facidx the index of this face in the container
+   */
+  static constexpr TraceSpace<T, IDX, ndim> make_bdy_trace_space(
+      const FaceType *facptr,
+      const FEType *elLptr,
+      const QuadratureType *quadruleptr,
+      const TraceEvaluation<T, IDX, ndim> *qp_evals_ptr,
+      IDX facidx
+  ) {
+    assert((facptr->bctype != ELEMENT::BOUNDARY_CONDITIONS::INTERIOR) 
+        && "The given face is not a boundary face.");
+    return TraceSpace(facptr, elLptr, elLptr, quadruleptr, qp_evals_ptr, facidx);
+  }
 
   // =============================
   // = Basis Function Operations =
@@ -164,5 +201,6 @@ public:
   }
 
 };
+
 
 }

@@ -124,7 +124,8 @@ public:
     const GeometricElement<T, IDX, ndim> *geo_el_arg,
     const BASIS::Basis<T, ndim> *basis_arg,
     const QUADRATURE::QuadratureRule<T, IDX, ndim> *quadrule_arg,
-    const FEEvaluation<T, IDX, ndim> *qp_evals, IDX elidx_arg
+    const FEEvaluation<T, IDX, ndim> *qp_evals,
+    IDX elidx_arg
   ) : geo_el(geo_el_arg), basis(basis_arg), quadrule(quadrule_arg),
       qp_evals(*qp_evals), elidx(elidx_arg) {}
 
