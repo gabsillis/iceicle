@@ -79,5 +79,18 @@ TEST(test_trace_space, test_basis_eval){
     // Test the number of basis functions 
     ASSERT_EQ(trace.nbasisL(), std::pow(PnL + 1, ndim));
     ASSERT_EQ(trace.nbasisR(), std::pow(PnR + 1, ndim));
+
+    MATH::GEOMETRY::Point<T, ndim - 1> s = {0.0};
+
+    std::vector<double> BiL(trace.nbasisL());
+    std::vector<double> BiR(trace.nbasisR());
+
+    trace.evalBasisL(s, BiL.data());
+    trace.evalBasisR(s, BiR.data());
+
+    ASSERT_DOUBLE_EQ(BiL[0], 0.0);
+    ASSERT_DOUBLE_EQ(BiL[1], 0.0);
+    ASSERT_DOUBLE_EQ(BiL[2], 0.5);
+    ASSERT_DOUBLE_EQ(BiL[3], 0.5);
     
 }

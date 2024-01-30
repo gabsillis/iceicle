@@ -178,8 +178,10 @@ TEST(test_fespace, test_dg_projection){
     static constexpr int neq = 1;
 
     // create a uniform mesh
-    MESH::AbstractMesh<T, IDX, ndim> mesh({-1.0, -1.0}, {1.0, 1.0}, {50, 10}, pn_geo);
-    mesh.nodes.random_perturb(-0.4 * 1.0 / 50, 0.4*1.0/50);
+    int nx = 50;
+    int ny = 10;
+    MESH::AbstractMesh<T, IDX, ndim> mesh({-1.0, -1.0}, {1.0, 1.0}, {nx, ny}, pn_geo);
+    mesh.nodes.random_perturb(-0.4 * 1.0 / std::max(nx, ny), 0.4*1.0/std::max(nx, ny));
 
     FE::FESpace<T, IDX, ndim> fespace{
         &mesh, FE::FESPACE_ENUMS::LAGRANGE,
@@ -187,51 +189,6 @@ TEST(test_fespace, test_dg_projection){
         ICEICLE::TMP::compile_int<pn_basis>()
     };
 
-
-//    // define a pn_basis order polynomial function to project onto the space
-//    auto projfunc = [](const double *xarr, double *out){
-//        double x = xarr[0];
-//        double y = xarr[1];
-//        out[0] = std::pow(x, pn_basis) + std::pow(y, pn_basis) + 0.5 + std::pow(x, pn_basis / 2);
-//    };
-//
-//    auto dprojfunc = [](const double *xarr){
-//        double x = xarr[0];
-//        double y = xarr[1];
-//        int half_basis = pn_basis / 2;
-//        NUMTOOL::TENSOR::FIXED_SIZE::Tensor<double, ndim> deriv = {
-//            pn_basis * std::pow(x, pn_basis - 1) + (half_basis) * std::pow(x, half_basis - 1),
-//            pn_basis * std::pow(y, pn_basis - 1)
-//        };
-//        return deriv;
-//    };
-//
-//    auto hessfunc = [](const double *xarr){
-//        using namespace std;
-//        double x = xarr[0];
-//        double y = xarr[1];
-//        int half_basis = pn_basis / 2;
-//        int b_on = (pn_basis - 2) < 0 ? 0 : 1;
-//        int hlf_b_on = (half_basis - 2) < 0 ? 0 : 1;
-//
-//        NUMTOOL::TENSOR::FIXED_SIZE::Tensor<double, ndim> deriv = {
-//            pn_basis * std::pow(x, pn_basis - 1) + (half_basis) * std::pow(x, half_basis - 1),
-//            pn_basis * std::pow(y, pn_basis - 1)
-//        };
-//
-//        NUMTOOL::TENSOR::FIXED_SIZE::Tensor<double, ndim, ndim> hess = {{
-//            {
-//                pn_basis * (pn_basis - 1) * b_on * pow(x, pn_basis - 2) 
-//                + half_basis * (half_basis - 1) * hlf_b_on * pow(x, half_basis -2),
-//                deriv[0] * deriv[1]
-//            }, {
-//                deriv[0] * deriv[1],
-//                pn_basis * (pn_basis - 1) * b_on * pow(x, pn_basis - 2)
-//            }
-//        }};
-//        return hess;
-//    };
-//
     // define a pn_basis order polynomial function to project onto the space 
     auto projfunc = [](const double *xarr, double *out){
         double x = xarr[0];
@@ -267,13 +224,6 @@ TEST(test_fespace, test_dg_projection){
             return hess;
         }
     };
-
-    // define a quadratic function to project onto the space
-//    auto projfunc = [](const double *xarr, double *out){
-//        double x = xarr[0];
-//        double y = xarr[1];
-//        out[0] = x*x + y*y;
-//    };
 
 
     // create the projection discretization

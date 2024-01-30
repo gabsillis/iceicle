@@ -5,12 +5,13 @@
 #pragma once
 #include "iceicle/basis/lagrange.hpp"
 #include "iceicle/fe_enums.hpp"
-#include "iceicle/geometry/geometry_enums.hpp"
+#include "iceicle/geometry/geo_element.hpp"
 #include "iceicle/quadrature/SimplexQuadrature.hpp"
 #include "iceicle/quadrature/HypercubeGaussLegendre.hpp"
-#include "iceicle/quadrature/quadrules_1d.hpp"
 #include <iceicle/element/finite_element.hpp>
 #include <iceicle/tmp_utils.hpp>
+
+#include <Numtool/tmp_flow_control.hpp>
 #include <memory>
 
 namespace FE {
@@ -57,7 +58,7 @@ namespace ELEMENT {
             using namespace FE;
             using namespace FESPACE_ENUMS;
             switch(geo_el->domain_type()){
-                case FE::HYPERCUBE:
+                case FE::HYPERCUBE: {
                     // construct the basis 
                     switch(basis_type){
                         case LAGRANGE:
@@ -70,19 +71,27 @@ namespace ELEMENT {
 
                     // construct the quadrature rule
                     // TODO: change quadrature order based on high order geo elements
-                    switch(quadrature_type){
-                        case FE::FESPACE_ENUMS::GAUSS_LEGENDRE:
-                            quadrule = std::make_unique<QUADRATURE::HypercubeGaussLegendre<T, IDX, ndim, basis_order+1>>();
-                            break;
-                        default:
-                            break;
-                    }
+                    auto el_order_dispatch = [&]<int geo_order>{
+                        switch(quadrature_type){
+                            case FE::FESPACE_ENUMS::GAUSS_LEGENDRE:
+                                quadrule = std::make_unique<QUADRATURE::HypercubeGaussLegendre<T, IDX, ndim, (geo_order+1)+(basis_order+1)>>();
+                                break;
+                            default:
+                                break;
+                        }
+                        return 0;
+                    };
+                    NUMTOOL::TMP::invoke_at_index(
+                        NUMTOOL::TMP::make_range_sequence<int, 0, ELEMENT::MAX_DYNAMIC_ORDER>{},
+                        geo_el->geometry_order(),
+                        el_order_dispatch
+                    );
 
                     // construct the evaluation
                     eval = FEEvalType(basis.get(), quadrule.get());
 
                     break;
-
+                }
                 case FE::SIMPLEX:
                     // construct the basis 
                     switch(basis_type){

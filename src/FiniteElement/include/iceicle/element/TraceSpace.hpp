@@ -5,6 +5,7 @@
  */
 
 #include "Numtool/point.hpp"
+#include "iceicle/fe_function/nodal_fe_function.hpp"
 #include "iceicle/geometry/geo_element.hpp"
 #include "iceicle/quadrature/QuadratureRule.hpp"
 #include <iceicle/element/finite_element.hpp>
@@ -69,6 +70,7 @@ class TraceSpace {
   // = Aliases =
   // ===========
 private:
+  // None
 public:
   /// @brief the type of geometric faces 
   using FaceType = ELEMENT::Face<T, IDX, ndim>;
@@ -92,6 +94,7 @@ public:
   // = Data Members =
   // ================
 private:
+  // None
 public:
   const FaceType &face;
   /// @brief the left finite element 
@@ -168,6 +171,8 @@ public:
   /// @brief get the number of basis functions on the right element 
   inline int nbasisR() const { return elR.nbasis(); }
 
+  // === Function Value ===
+
   /**
    * @brief calculate the basis functions on the left element 
    * at a point in the reference trace space 
@@ -180,7 +185,7 @@ public:
    */
   void evalBasisL(const FacePoint &s, T *Bi) const {
     DomainPoint xi{};
-    face.transform_xiL(s, xi);
+    face.transform_xiL(s, xi.data());
     elL.evalBasis(xi, Bi);
   }
 
@@ -196,8 +201,401 @@ public:
    */
   void evalBasisR(const FacePoint &s, T *Bi) const {
     DomainPoint xi{};
-    face.transform_xiR(s, xi);
+    face.transform_xiR(s, xi.data());
     elR.evalBasis(xi, Bi);
+  }
+
+  /**
+   * @brief get the basis function evaluations at the given quadrature point 
+   * @param [in] quadrature_idx the index of the quadrature point 
+   * @param [out] Bi the values of the basis functions on the left 
+   *              (size = nbasis)
+   */
+  void evalBasisQPL(int quadrature_idx, T *Bi) const {
+    // TODO: prestore
+    return evalBasisL(quadrule[quadrature_idx].abscisse, Bi);
+  }
+
+  /**
+   * @brief get the basis function evaluations at the given quadrature point 
+   * @param [in] quadrature_idx the index of the quadrature point 
+   * @param [out] Bi the values of the basis functions on the right
+   *              (size = nbasis)
+   */
+  void evalBasisQPR(int quadrature_idx, T *Bi) const {
+    // TODO: prestore
+    return evalBasisR(quadrule[quadrature_idx].abscisse, Bi);
+  }
+
+  // === First Derivatives ===
+
+  /**
+   * @brief evaluate the first derivatives of the basis functions
+   *        with respect to reference domain coordinates
+   *        on the left element
+   *
+   * @param [in] s the point in the reference trace space 
+   * @param [out] dBidxj the values of the first derivatives of the basis
+   * functions with respect to the reference domain at that point This is in the
+   * form of a 1d pointer array that must be preallocated size must be nbasis *
+   * ndim or larger
+   *
+   * @return an mdspan view of dBidxj for an easy interface
+   *         \frac{dB_i}{d\xi_j} where i is ibasis
+   *         takes a pointer to the first element of this data structure
+   *         [size = [nbasis : i][ndim : j]]
+   */
+  auto evalGradBasisL(const FacePoint &s, T *grad_data) const {
+    DomainPoint xi{};
+    face.transform_xiL(s, xi.data());
+    return elL.evalGradBasis(xi, grad_data);
+  }
+
+  /**
+   * @brief evaluate the first derivatives of the basis functions
+   *        with respect to reference domain coordinates
+   *        on the right element
+   *
+   * @param [in] s the point in the reference trace space 
+   * @param [out] dBidxj the values of the first derivatives of the basis
+   * functions with respect to the reference domain at that point This is in the
+   * form of a 1d pointer array that must be preallocated size must be nbasis *
+   * ndim or larger
+   *
+   * @return an mdspan view of dBidxj for an easy interface
+   *         \frac{dB_i}{d\xi_j} where i is ibasis
+   *         takes a pointer to the first element of this data structure
+   *         [size = [nbasis : i][ndim : j]]
+   */
+  auto evalGradBasisR(const FacePoint &s, T *grad_data) const {
+    DomainPoint xi{};
+    face.transform_xiR(s, xi.data());
+    return elR.evalGradBasis(xi, grad_data);
+  }
+
+  /**
+   * @brief evaluate the first derivaives of the basis functions
+   *        with respect to physical domain coordinates 
+   *        on the left element 
+   *
+   * @param [in] s the point in the reference trace space 
+   * @param [out] dBidxj the values of the first derivatives of the basis
+   * functions with respect to the reference domain at that point This is in the
+   * form of a 1d pointer array that must be preallocated size must be nbasis *
+   * ndim or larger
+   *
+   * @return an mdspan view of dBidxj for an easy interface
+   *         \frac{dB_i}{dx_j} where i is ibasis
+   *         takes a pointer to the first element of this data structure
+   *         [size = [nbasis : i][ndim : j]]
+   */
+  auto evalPhysGradBasisL(
+      const FacePoint &s,
+      FE::NodalFEFunction<T, ndim> &node_list,
+      T *grad_data
+  ) const {
+    DomainPoint xi{};
+    face.transform_xiR(s, xi.data());
+    return elL.evalPhysGradBasis(xi, node_list, grad_data);
+  }
+
+  /**
+   * @brief evaluate the first derivaives of the basis functions
+   *        with respect to physical domain coordinates 
+   *        on the right element 
+   *
+   * @param [in] s the point in the reference trace space 
+   * @param [out] dBidxj the values of the first derivatives of the basis
+   * functions with respect to the reference domain at that point This is in the
+   * form of a 1d pointer array that must be preallocated size must be nbasis *
+   * ndim or larger
+   *
+   * @return an mdspan view of dBidxj for an easy interface
+   *         \frac{dB_i}{dx_j} where i is ibasis
+   *         takes a pointer to the first element of this data structure
+   *         [size = [nbasis : i][ndim : j]]
+   */
+  auto evalPhysGradBasisR(
+      const FacePoint &s,
+      FE::NodalFEFunction<T, ndim> &node_list,
+      T *grad_data
+  ) const {
+    DomainPoint xi{};
+    face.transform_xiR(s, xi.data());
+    return elR.evalPhysGradBasis(xi, node_list, grad_data);
+  }
+
+
+  /**
+   * @brief evaluate the first derivatives of the basis functions
+   *        with respect to reference domain coordinates
+   *        on the left element
+   *
+   * @param [in] qidx the quadrature point index
+   * @param [out] dBidxj the values of the first derivatives of the basis
+   * functions with respect to the reference domain at that point This is in the
+   * form of a 1d pointer array that must be preallocated size must be nbasis *
+   * ndim or larger
+   *
+   * @return an mdspan view of dBidxj for an easy interface
+   *         \frac{dB_i}{d\xi_j} where i is ibasis
+   *         takes a pointer to the first element of this data structure
+   *         [size = [nbasis : i][ndim : j]]
+   */
+  auto evalGradBasisQPL(int qidx, T *grad_data) const {
+    DomainPoint xi{};
+    face.transform_xiL(quadrule[qidx].abscisse, xi.data());
+    return elL.evalGradBasis(xi, grad_data);
+  }
+
+  /**
+   * @brief evaluate the first derivatives of the basis functions
+   *        with respect to reference domain coordinates
+   *        on the right element
+   *
+   * @param [in] qidx the quadrature point index
+   * @param [out] dBidxj the values of the first derivatives of the basis
+   * functions with respect to the reference domain at that point This is in the
+   * form of a 1d pointer array that must be preallocated size must be nbasis *
+   * ndim or larger
+   *
+   * @return an mdspan view of dBidxj for an easy interface
+   *         \frac{dB_i}{d\xi_j} where i is ibasis
+   *         takes a pointer to the first element of this data structure
+   *         [size = [nbasis : i][ndim : j]]
+   */
+  auto evalGradBasisQPR(int qidx, T *grad_data) const {
+    DomainPoint xi{};
+    face.transform_xiR(quadrule[qidx].abscisse, xi.data());
+    return elR.evalGradBasis(xi, grad_data);
+  }
+
+  /**
+   * @brief evaluate the first derivaives of the basis functions
+   *        with respect to physical domain coordinates 
+   *        on the left element 
+   *
+   * @param [in] qidx the quadrature point index
+   * @param [out] dBidxj the values of the first derivatives of the basis
+   * functions with respect to the reference domain at that point This is in the
+   * form of a 1d pointer array that must be preallocated size must be nbasis *
+   * ndim or larger
+   *
+   * @return an mdspan view of dBidxj for an easy interface
+   *         \frac{dB_i}{dx_j} where i is ibasis
+   *         takes a pointer to the first element of this data structure
+   *         [size = [nbasis : i][ndim : j]]
+   */
+  auto evalPhysGradBasisQPL(
+      int qidx,
+      FE::NodalFEFunction<T, ndim> &node_list,
+      T *grad_data
+  ) const {
+    DomainPoint xi{};
+    face.transform_xiR(quadrule[qidx].abscisse, xi.data());
+    return elL.evalPhysGradBasis(xi, node_list, grad_data);
+  }
+
+  /**
+   * @brief evaluate the first derivaives of the basis functions
+   *        with respect to physical domain coordinates 
+   *        on the right element 
+   *
+   * @param [in] qidx the quadrature point index
+   * @param [out] dBidxj the values of the first derivatives of the basis
+   * functions with respect to the reference domain at that point This is in the
+   * form of a 1d pointer array that must be preallocated size must be nbasis *
+   * ndim or larger
+   *
+   * @return an mdspan view of dBidxj for an easy interface
+   *         \frac{dB_i}{dx_j} where i is ibasis
+   *         takes a pointer to the first element of this data structure
+   *         [size = [nbasis : i][ndim : j]]
+   */
+  auto evalPhysGradBasisQPR(
+      int qidx,
+      FE::NodalFEFunction<T, ndim> &node_list,
+      T *grad_data
+  ) const {
+    DomainPoint xi{};
+    face.transform_xiR(quadrule[qidx].abscisse, xi.data());
+    return elR.evalPhysGradBasis(xi, node_list, grad_data);
+  }
+
+  // === Second Derivatives ===
+
+  /**
+   * @brief evaluate the second derivatives of the basis functions
+   *        with respect to reference domain coordinates 
+   *        for the left element
+   *
+   * @param [in] s the point in the reference trace space
+   * @param [out] basis_hessian_data pointer to the 1d array to store the
+   * hessian data in ordered i, j, k in C style array for \frac{\partial^2
+   * B_i}{\partial \xi_j \partial \xi_k}
+   * @return a multidimensional array view of the basis_hessian_data
+   */
+  auto evalHessBasisL(const FacePoint &s, T *hess_data) const {
+    DomainPoint xi{};
+    face.transform_xiL(s, xi.data());
+    return elL.evalHessBasis(xi, hess_data);
+  }
+
+  /**
+   * @brief evaluate the second derivatives of the basis functions
+   *        with respect to reference domain coordinates 
+   *        for the right element
+   *
+   * @param [in] s the point in the reference trace space
+   * @param [out] basis_hessian_data pointer to the 1d array to store the
+   * hessian data in ordered i, j, k in C style array for \frac{\partial^2
+   * B_i}{\partial \xi_j \partial \xi_k}
+   * @return a multidimensional array view of the basis_hessian_data
+   */
+  auto evalHessBasisR(const FacePoint &s, T *hess_data) const {
+    DomainPoint xi{};
+    face.transform_xiR(s, xi.data());
+    return elR.evalHessBasis(xi, hess_data);
+  }
+
+  /**
+   * @brief evaluate the second derivatives of the basis functions
+   *        wrt physical domain coordinates 
+   *        for the left element
+   *
+   * @param [in] s the point in the reference trace space
+   * @param [in] coord the global node coordinates array
+   * @param [out] basis_hessian_data pointer to the 1d array to store the
+   * hessian data in ordered i, j, k in C style array for \frac{\partial^2
+   * B_i}{\partial x_j \partial x_k}
+   * @return a multidimensional array view of the basis_hessian_data
+   */
+  auto evalPhysHessBasisL(
+      const FacePoint &s,
+      FE::NodalFEFunction<T, ndim> &node_list,
+      T *hess_data
+  ) const {
+    DomainPoint xi{};
+    face.transform_xiR(s, xi.data());
+    return elL.evalPhysHessBasis(xi, node_list, hess_data);
+  }
+
+  /**
+   * @brief evaluate the second derivatives of the basis functions
+   *        wrt physical domain coordinates 
+   *        for the right element
+   *
+   * @param [in] s the point in the reference trace space
+   * @param [in] coord the global node coordinates array
+   * @param [out] basis_hessian_data pointer to the 1d array to store the
+   * hessian data in ordered i, j, k in C style array for \frac{\partial^2
+   * B_i}{\partial x_j \partial x_k}
+   * @return a multidimensional array view of the basis_hessian_data
+   */
+  auto evalPhysHessBasisR(
+      const FacePoint &s,
+      FE::NodalFEFunction<T, ndim> &node_list,
+      T *hess_data
+  ) const {
+    DomainPoint xi{};
+    face.transform_xiR(s, xi.data());
+    return elR.evalPhysHessBasis(xi, node_list, hess_data);
+  }
+
+  /**
+   * @brief evaluate the second derivatives of the basis functions
+   *        with respect to reference domain coordinates 
+   *        for the left element
+   *
+   * @param [in] qidx the quadrature point index
+   * @param [out] basis_hessian_data pointer to the 1d array to store the
+   * hessian data in ordered i, j, k in C style array for \frac{\partial^2
+   * B_i}{\partial \xi_j \partial \xi_k}
+   * @return a multidimensional array view of the basis_hessian_data
+   */
+  auto evalHessBasisQPL(int qidx, T *hess_data) const {
+    DomainPoint xi{};
+    face.transform_xiL(quadrule[qidx].abscisse, xi.data());
+    return elL.evalHessBasis(xi, hess_data);
+  }
+
+  /**
+   * @brief evaluate the second derivatives of the basis functions
+   *        with respect to reference domain coordinates 
+   *        for the right element
+   *
+   * @param [in] qidx the quadrature point index
+   * @param [out] basis_hessian_data pointer to the 1d array to store the
+   * hessian data in ordered i, j, k in C style array for \frac{\partial^2
+   * B_i}{\partial \xi_j \partial \xi_k}
+   * @return a multidimensional array view of the basis_hessian_data
+   */
+  auto evalHessBasisQPR(int qidx, T *hess_data) const {
+    DomainPoint xi{};
+    face.transform_xiR(quadrule[qidx].abscisse, xi.data());
+    return elR.evalHessBasis(xi, hess_data);
+  }
+
+  /**
+   * @brief evaluate the second derivatives of the basis functions
+   *        wrt physical domain coordinates 
+   *        for the left element
+   *
+   * @param [in] qidx the quadrature point index
+   * @param [in] coord the global node coordinates array
+   * @param [out] basis_hessian_data pointer to the 1d array to store the
+   * hessian data in ordered i, j, k in C style array for \frac{\partial^2
+   * B_i}{\partial x_j \partial x_k}
+   * @return a multidimensional array view of the basis_hessian_data
+   */
+  auto evalPhysHessBasisQPL(
+      int qidx,
+      FE::NodalFEFunction<T, ndim> &node_list,
+      T *hess_data
+  ) const {
+    DomainPoint xi{};
+    face.transform_xiR(quadrule[qidx].abscisse, xi.data());
+    return elL.evalPhysHessBasis(xi, node_list, hess_data);
+  }
+
+  /**
+   * @brief evaluate the second derivatives of the basis functions
+   *        wrt physical domain coordinates 
+   *        for the right element
+   *
+   * @param [in] qidx the quadrature point index
+   * @param [in] coord the global node coordinates array
+   * @param [out] basis_hessian_data pointer to the 1d array to store the
+   * hessian data in ordered i, j, k in C style array for \frac{\partial^2
+   * B_i}{\partial x_j \partial x_k}
+   * @return a multidimensional array view of the basis_hessian_data
+   */
+  auto evalPhysHessBasisQPR(
+      int qidx,
+      FE::NodalFEFunction<T, ndim> &node_list,
+      T *hess_data
+  ) const {
+    DomainPoint xi{};
+    face.transform_xiR(quadrule[qidx].abscisse, xi.data());
+    return elR.evalPhysHessBasis(xi, node_list, hess_data);
+  }
+
+
+  // =========================
+  // = Quadrature Operations =
+  // =========================
+
+  /** @brief get the number of quadrature points in the quadrature rule */
+  int nQP() const { return quadrule.npoints(); }
+
+  /** 
+   * @brief get the "QuadraturePoint" (contains point and weight) at the given
+   * quadrature point index 
+   **/
+  inline constexpr const QUADRATURE::QuadraturePoint<T, ndim> 
+  getQP(int qp_idx) const
+  {
+    return quadrule[qp_idx];
   }
 
 };

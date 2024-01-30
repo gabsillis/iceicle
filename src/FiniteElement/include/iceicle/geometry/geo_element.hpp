@@ -51,6 +51,40 @@ namespace ELEMENT{
         constexpr FE::DOMAIN_TYPE domain_type() const noexcept = 0;
 
         /**
+         * @brief calculate the centroid in the physical domain 
+         * @param [in] coord the node coordinates arrray
+         * @return the centroid in the physical domain
+         */
+        virtual 
+        MATH::GEOMETRY::Point<T, ndim> centroid(
+            FE::NodalFEFunction<T, ndim> &node_coords
+        ) const {
+            MATH::GEOMETRY::Point<T, ndim> refpt;
+            MATH::GEOMETRY::Point<T, ndim> physpt;
+
+            // get the centroid in the reference domain based on domain type
+            switch(domain_type()){
+                case FE::DOMAIN_TYPE::HYPERCUBE:
+                    for(int idim = 0; idim < ndim; ++idim) 
+                        { refpt[idim] = 0.0; }
+                    break;
+
+                case FE::DOMAIN_TYPE::SIMPLEX:
+                    for(int idim = 0; idim < ndim; ++idim) 
+                        { refpt[idim] = 1.0 / 3.0; }
+                    break;
+
+                default: // WARNING: use 0 as centroid for default
+                    for(int idim = 0; idim < ndim; ++idim) 
+                        { refpt[idim] = 0.0; }
+                    break;
+            }
+            
+            transform(node_coords, refpt, physpt);
+            return physpt;
+        }
+
+        /**
          * @brief get the polynomial order of the geometry definition 
          * this is used to map to output
          */

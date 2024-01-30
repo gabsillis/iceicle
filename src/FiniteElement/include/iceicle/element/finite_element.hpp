@@ -87,6 +87,8 @@ template <typename T, typename IDX, int ndim>
 class FiniteElement {
 
   using Point = MATH::GEOMETRY::Point<T, ndim>;
+  using JacobianType = NUMTOOL::TENSOR::FIXED_SIZE::Tensor<T, ndim, ndim>;
+  using HessianType = NUMTOOL::TENSOR::FIXED_SIZE::Tensor<T, ndim, ndim, ndim>;
 
 public:
   /** @brief the geometric element (container for node indices and basic
@@ -178,6 +180,7 @@ public:
 
   /**
    * @brief evaluate the first derivatives of the basis functions
+   *        with respect to reference domain coordinates
    *
    * @param [in] xi  the point in the reference domain [size = ndim]
    * @param [out] dBidxj the values of the first derivatives of the basis
@@ -216,7 +219,7 @@ public:
    *         takes a pointer to the first element of this data structure
    *         [size = [nbasis : i][ndim : j]]
    */
-  void evalGradBasisQP(int quadrature_pt_idx, T *dBidxj) const {
+  auto evalGradBasisQP(int quadrature_pt_idx, T *dBidxj) const {
     basis->evalGradBasis(quadrule[quadrature_pt_idx].abscisse, dBidxj);
     std::experimental::extents<int, std::dynamic_extent, ndim> extents(
         nbasis());
@@ -232,28 +235,28 @@ public:
    * @param [in] transformation the transformation from the reference domain to
    * the physical domain (must be compatible with the geometric element)
    * @param [in] node_list the list of global node coordinates
+   * @param [in] J the jacobian of the element transformation 
+   *               (optional: see overload)
    * @param [out] dBidxj the values of the first derivatives of the basis
    * functions with respect to the reference domain at that point This is in the
    * form of a 1d pointer array that must be preallocated size must be nbasis *
    * ndim or larger
    *
    * @return an mdspan view of dBidxj for an easy interface
-   *         \frac{dB_i}{d\xi_j} where i is ibasis
+   *         \frac{dB_i}{dx_j} where i is ibasis
    *         takes a pointer to the first element of this data structure
    *         [size = [nbasis : i][ndim : j]]
    */
   auto evalPhysGradBasis(
     const Point &xi,
     FE::NodalFEFunction<T, ndim> &node_list,
+    const JacobianType &J,
     T *dBidxj
   ) const {
     using namespace NUMTOOL::TENSOR::FIXED_SIZE;
 
     //  fill with zero
     std::fill_n(dBidxj, nbasis() * ndim, 0.0);
-
-    // get the Jacobian
-    auto J = geo_el->Jacobian(node_list, xi);
 
     // the inverse of J = adj(J) / det(J)
     auto adjJ = adjugate(J);
@@ -282,6 +285,61 @@ public:
     }
 
     return gbasis;
+  }
+
+  /** Calculates the Jacobian: \overload */
+  auto evalPhysGradBasis(
+    const Point &xi,
+    FE::NodalFEFunction<T, ndim> &node_list,
+    T *dbidxj 
+  ) const {
+    JacobianType J = geo_el->Jacobian(node_list, xi);
+    return evalPhysGradBasis(xi, node_list, J, dbidxj);
+  }
+
+  /**
+   * @brief evaluate the first derivatives of the basis functions
+   *        with respect to physical domain coordinates at the given quadrature
+   * point
+   *
+   * @param [in] quadrature_pt_idx the quadrature point index
+   * @param [in] transformation the transformation from the reference domain to
+   * the physical domain (must be compatible with the geometric element)
+   * @param [in] node_list the list of global node coordinates
+   * @param [in] J the jacobian of the element transformation 
+   *               (optional: see overload)
+   * @param [out] dBidxj the values of the first derivatives of the basis
+   * functions with respect to the reference domain at that point This is in the
+   * form of a 1d pointer array that must be preallocated size must be nbasis *
+   * ndim or larger
+   *
+   * @return an mdspan view of dBidxj for an easy interface
+   *         \frac{dB_i}{d\xi_j} where i is ibasis
+   *         takes a pointer to the first element of this data structure
+   *         [size = [nbasis : i][ndim : j]]
+   */
+  auto evalPhysGradBasisQP(
+      int quadrature_pt_idx,
+      FE::NodalFEFunction<T, ndim> &node_list,
+      const JacobianType &J,
+      T *dBidxj
+  ) const {
+    // TODO: prestore
+    return evalPhysGradBasis(
+        (*quadrule)[quadrature_pt_idx].abscisse,
+        node_list, J, dBidxj);
+  }
+  
+  /** Calculates the Jacobian: \overload */
+  auto evalPhysGradBasisQP(
+      int quadrature_pt_idx,
+      FE::NodalFEFunction<T, ndim> &node_list,
+      T *dBidxj
+  ) const {
+    // TODO: prestore
+    return evalPhysGradBasis(
+        (*quadrule)[quadrature_pt_idx].abscisse,
+        node_list, dBidxj);
   }
 
   /**
@@ -384,30 +442,22 @@ public:
   }
 
   /**
-   * @brief evaluate the first derivatives of the basis functions
-   *        with respect to physical domain coordinates at the given quadrature
-   * point
+   * @brief evaluate the second derivatives of the basis functions in the
+   * physical domain
    *
-   * TODO: prestore
-   * @param [in] quadrature_pt_idx the quadrature point index
-   * @param [in] transformation the transformation from the reference domain to
-   * the physical domain (must be compatible with the geometric element)
-   * @param [in] node_list the list of global node coordinates
-   * @param [out] dBidxj the values of the first derivatives of the basis
-   * functions with respect to the reference domain at that point This is in the
-   * form of a 1d pointer array that must be preallocated size must be nbasis *
-   * ndim or larger
-   *
-   * @return an mdspan view of dBidxj for an easy interface
-   *         \frac{dB_i}{d\xi_j} where i is ibasis
-   *         takes a pointer to the first element of this data structure
-   *         [size = [nbasis : i][ndim : j]]
+   * @param [in] iqp the quadrature point index
+   * @param [in] coord the global node coordinates array
+   * @param [out] basis_hessian_data pointer to the 1d array to store the
+   * hessian data in ordered i, j, k in C style array for \frac{\partial^2
+   * B_i}{\partial x_j \partial x_k}
+   * @return a multidimensional array view of the basis_hessian_data
    */
-  auto evalPhysGradBasisQP(int quadrature_pt_idx,
-                           FE::NodalFEFunction<T, ndim> &node_list,
-                           T *dBidxj) const {
-    return evalPhysGradBasis((*quadrule)[quadrature_pt_idx].abscisse, node_list,
-                             dBidxj);
+  auto evalPhysHessBasisQP(
+    int iqp,
+    FE::NodalFEFunction<T, ndim> &coord,
+    T *basis_hessian_data
+  ) const {
+    return evalPhysHessBasis((*quadrule)[iqp].abscisse, coord, basis_hessian_data);
   }
 
   // =========================
