@@ -66,7 +66,7 @@ namespace FE {
      */
     template<
         typename T,                           /// the element type
-        int ncomp = dynamic_ncomp,             /// the number of vector components
+        int ncomp = dynamic_ncomp,             /// the number of vector components  TODO: switch to size_t and std::dymamic_extent
         LAYOUT_VECTOR_ORDER order = DOF_LEFT /// how dofs are organized wrt vector components
     >
     class dg_layout {

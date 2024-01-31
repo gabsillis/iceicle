@@ -9,9 +9,12 @@
 #include "Numtool/fixed_size_tensor.hpp"
 #include "Numtool/matrixT.hpp"
 #include "iceicle/fe_function/fespan.hpp"
+#include "iceicle/fe_function/nodal_fe_function.hpp"
+#include "iceicle/geometry/face.hpp"
 #include "iceicle/quadrature/QuadratureRule.hpp"
 #include <iceicle/element/finite_element.hpp>
 #include <iceicle/element/TraceSpace.hpp>
+#include <iostream>
 #include <vector>
 namespace DISC {
 
@@ -21,7 +24,9 @@ namespace DISC {
      * \frac{du}{dt} = \mu \Delta u
      *
      * this is a spatial-only discretization (semi-discrete)
-     * this is an aggregate type where mu can be set directly
+     *
+     * the diffusion coefficient mu is publically accessible
+     * as well as boundary condition lists
      *
      * this uses a DDG discretization
      *
@@ -37,6 +42,14 @@ namespace DISC {
 
         /// @brief the diffusion coefficient
         T mu = 0.001;
+
+        /// @brief the value for each bcflag (index into this list) 
+        /// for dirichlet bc
+        std::vector<T> dirichlet_values;
+
+        /// @brief the prescribed gradient for each bcflag 
+        /// (index into this list) for neumann bc
+        std::vector<NUMTOOL::TENSOR::FIXED_SIZE::Tensor<T, ndim>> neumann_values;
 
         /**
          * @brief calculate the domain integral 
@@ -185,16 +198,120 @@ namespace DISC {
                     grad_ddg[idim] += beta1 * h_ddg * hessTerm;
                 }
 
-                T flux = mu * MATH::MATRIX_T::dotprod<T, ndim>(grad_ddg, unit_normal);
+                // calculate the flux weighted by the quadrature and face metric
+                T flux = mu * MATH::MATRIX_T::dotprod<T, ndim>(grad_ddg, unit_normal.data()) 
+                    * quadpt.weight * sqrtg;
+
                 // contribution to the residual 
                 for(std::size_t itest = 0; itest < elL.nbasis(); ++itest){
                     resL[feidx{.idof = itest, .iv = 0}] -= flux * bi_dataL[itest];
                 }
                 for(std::size_t itest = 0; itest < elR.nbasis(); ++itest){
-                    resL[feidx{.idof = itest, .iv = 0}] += flux * bi_dataR[itest];
+                    resR[feidx{.idof = itest, .iv = 0}] += flux * bi_dataR[itest];
                 }
             }
 
+        }
+
+        /**
+         * @brief calculate the weak form for a boundary condition 
+         *        NOTE: Left is the interior element
+         *
+         * @tparam ULayoutPolicy the layout policy for the element data 
+         * @tparam UAccessorPolicy the accessor policy for element data 
+         * @tparam ResLayoutPolicy the layout policy for the residual data 
+         *         (the accessor is the default for the residual)
+         *
+         * @param [in] trace the trace to integrate over 
+         * @param [in] coord the global node coordinates array
+         * @param [in] uL the interior element basis coefficients 
+         * @param [in] uR is the same as uL unless this is a periodic boundary
+         *                then this is the coefficients for the periodic element 
+         * @param [out] resL the residual for the interior element 
+         */
+        template<class ULayoutPolicy, class UAccessorPolicy, class ResLayoutPolicy>
+        void boundaryIntegral(
+            const ELEMENT::TraceSpace<T, IDX, ndim> &trace,
+            FE::NodalFEFunction<T, ndim> &coord,
+            FE::elspan<T, ULayoutPolicy, UAccessorPolicy> &uL,
+            FE::elspan<T, ULayoutPolicy, UAccessorPolicy> &uR,
+            FE::elspan<T, ResLayoutPolicy> &resL
+        ) const {
+            using namespace NUMTOOL::TENSOR::FIXED_SIZE;
+            using FiniteElement = ELEMENT::FiniteElement<T, IDX, ndim>;
+            const FiniteElement &elL = trace.elL;
+
+            switch(trace.face.bctype){
+                case ELEMENT::BOUNDARY_CONDITIONS::DIRICHLET: 
+                {
+                    // see Arnold et al 2002 sec 2.1
+                    // Interior Penalty method 
+                    static constexpr T penalty = 1e12;
+
+                    // loop over quadrature points
+                    for(int iqp = 0; iqp < trace.nQp(); ++iqp){
+                        const QUADRATURE::QuadraturePoint<T, ndim - 1> &quadpt = trace.getQP(iqp);
+
+                        // calculate the jacobian and riemannian metric root det
+                        auto Jfac = trace.face.Jacobian(coord, quadpt.abscisse);
+                        T sqrtg = trace.face.rootRiemannMetric(Jfac, quadpt.abscisse);
+
+                        // get the function values
+                        std::vector<T> bi_dataL(elL.nbasis());
+                        trace.evalGradBasisQPL(iqp, bi_dataL.data());
+
+                        T value_uL = 0.0;
+                        for(std::size_t ibasis = 0; ibasis < elL.nbasis(); ++ibasis)
+                        { value_uL += uL[feidx{.idof = ibasis, .iv = 0}] * bi_dataL[ibasis]; }
+
+                        T dirichlet_val = dirichlet_values[trace.face.bcflag];
+
+                        for(std::size_t itest = 0; itest < elL.nbasis(); ++itest){
+                            resL[feidx{.idof = itest, .iv = 0}] -= 
+                                penalty * (value_uL - dirichlet_val) * bi_dataL * quadpt.weight * sqrtg;
+                        }
+                    }
+                }
+                break;
+
+                case ELEMENT::BOUNDARY_CONDITIONS::NEUMANN:
+                {
+                    // Li and Tang 2017 sec 9.1.1
+                    auto gradu = neumann_values[trace.face.bcflag];
+
+                    // loop over quadrature points 
+                    for(int iqp = 0; iqp < trace.nQp(); ++iqp){
+
+                        const QUADRATURE::QuadraturePoint<T, ndim - 1> &quadpt = trace.getQP(iqp);
+
+                        // calculate the jacobian and riemannian metric root det
+                        auto Jfac = trace.face.Jacobian(coord, quadpt.abscisse);
+                        T sqrtg = trace.face.rootRiemannMetric(Jfac, quadpt.abscisse);
+
+                        // get the basis function values
+                        std::vector<T> bi_dataL(elL.nbasis());
+                        trace.evalGradBasisQPL(iqp, bi_dataL.data());
+
+                        // get the unit normal vector 
+                        auto unit_normal = normalize(calc_ortho(Jfac));
+
+                        // flux contribution weighted by quadrature and face metric 
+                        T flux = mu * MATH::MATRIX_T::dotprod<T, ndim>(gradu.data(), unit_normal.data())
+                            * quadpt.weight * sqrtg;
+                        
+
+                        for(std::size_t itest = 0; itest < elL.nbasis(); ++itest){
+                            resL[feidx{.idof = itest, .iv = 0}] -= bi_dataL[itest] * flux;
+                        }
+                    }
+                }
+                break;
+
+                default:
+                    // assume essential
+                    std::cerr << "Warning: assuming essential BC." << std::endl;;
+                    break;
+            }
         }
     };
 }
