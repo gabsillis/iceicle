@@ -60,5 +60,15 @@ TEST(test_fespan, test_dglayout){
     std::size_t iel = 1, idof = 2, iv = 0;
     ASSERT_EQ(iel * std::pow(ndim, (Pn + 1)) * neq + idof * neq + iv, (fespan1[FE::fe_index{.iel = iel, .idof = idof, .iv = iv}]));
 
+
+    auto local_layout = fespan1.create_element_layout(1);
+    std::vector<T> el_memory(local_layout.size());
+    FE::elspan elspan1{el_memory.data(), local_layout};
+    FE::extract_elspan(1, fespan1, elspan1);
+
+    iel = 1;
+    idof = 8;
+    iv = 1;
+    ASSERT_DOUBLE_EQ(iel * std::pow(ndim, (Pn + 1)) * neq + idof * neq + iv, (elspan1[FE::compact_index{idof, iv}]));
     //TODO: add more tests
 }

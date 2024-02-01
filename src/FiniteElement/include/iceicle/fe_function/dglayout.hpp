@@ -8,6 +8,7 @@
 #include <iceicle/geometry/geo_element.hpp>
 #include <iceicle/basis/basis.hpp>
 #include <iceicle/element/finite_element.hpp>
+#include <iceicle/fe_function/el_layout.hpp>
 
 #include <type_traits>
 namespace FE {
@@ -98,12 +99,23 @@ namespace FE {
         ) requires (!is_dynamic_ncomp<ncomp>::value) 
         : offsets(offsets) {}
 
-        inline static constexpr int is_global() { return true;  }
-        inline static constexpr int is_nodal()  { return false; }
+        inline static constexpr bool is_global() { return true;  }
+        inline static constexpr bool is_nodal()  { return false; }
+
+        /**
+         * @brief
+         * consecutive local degrees of freedom (ignoring vector components)
+         * are contiguous in the layout
+         * meaning that the data for a an element can be block copied 
+         * to a elspan provided the layout parameters are the same 
+         */
+        inline static constexpr bool local_dof_contiguous() { return true; }
 
         /**
          * @brief convert a multidimensional index to a single offset 
-         * @brief idx collection of the element, dof, and component indices
+         * @param idx collection of the element, dof, and component indices
+         *        TODO: ABIs tend to put 8+ byte structs on stack instead of passing
+         *        through registers so maybe go away from this construct
          */
         constexpr std::size_t operator()(const fe_index &idx) const {
             std::size_t iel = idx.iel;
@@ -122,7 +134,38 @@ namespace FE {
             int component_mult = get_ncomp();
             return offsets.back() * component_mult;
         }
+
+        /**
+         * @brief create the element layout that matches this layout 
+         * @param iel the element index 
+         * @return the layout to construct 
+         */
+        constexpr auto create_element_layout(std::size_t iel){
+            std::size_t ndof = offsets[iel + 1] - offsets[iel];
+            if constexpr(is_dynamic_ncomp<ncomp>::value){
+                return FE::compact_layout<T, ncomp, order>{ndof, ncomp_d};
+            } else {
+                return FE::compact_layout<T, ncomp, order>(ndof);
+            }
+        }
         
+    };
+
+    /** 
+     * @brief with equivalent layout parameters 
+     * a DG Layout is block copyable
+     * so specialize the struct
+     */
+    template<
+        typename T,
+        int ncomp,
+        LAYOUT_VECTOR_ORDER order
+    >
+    struct is_equivalent_el_layout<
+        compact_layout<T, ncomp, order>,
+        dg_layout<T, ncomp, order>
+    > {
+        static constexpr bool value = true;
     };
     
 }

@@ -112,6 +112,17 @@ namespace FE {
             constexpr const pointer data() const noexcept 
             requires(std::is_same_v<AccessorPolicy, default_accessor<T>>) 
             { return __ptr; }
+
+            /**
+             * @brief create the element layout that matches the global layout 
+             * will pick the most efficient layout for 
+             * gather/scatter operations and data extraction
+             * @param iel the element index 
+             * @return the element layout 
+             */
+            constexpr auto create_element_layout(std::size_t iel){
+                return __layout.create_element_layout(iel);
+            }
     };
 
 
@@ -330,4 +341,48 @@ namespace FE {
                 }
             }
     };
+
+    // deduction guides
+    template<typename T, class LayoutPolicy>
+    elspan(T * data, LayoutPolicy &) -> elspan<T, LayoutPolicy>;
+
+    /**
+     * @brief extract the data for a specific element 
+     * from a global fespan 
+     * to a local elspan 
+     * @param iel the element index 
+     * @param fedata the fespan to get data from
+     * @param eldata the elspan to copy data to
+     */
+    template<
+        class T,
+        class GlobalLayoutPolicy,
+        class GlobalAccessorPolicy,
+        class LocalLayoutPolicy
+    > inline void extract_elspan(
+        std::size_t iel,
+        const fespan<T, GlobalLayoutPolicy, GlobalAccessorPolicy> &fedata,
+        elspan<T, LocalLayoutPolicy> &eldata
+    ){
+        // if the default accessor is used 
+        // and the layout is block copyable 
+        // this is the most efficient operation
+        if constexpr (
+            is_equivalent_el_layout<LocalLayoutPolicy, GlobalLayoutPolicy>::value 
+            && std::is_same<GlobalAccessorPolicy, default_accessor<T>>::value
+        ) {
+            // memcopy/memmove poggers
+            std::copy_n(
+                &( fedata[fe_index{iel, 0, 0}] ),
+                eldata.extents().ndof * eldata.extents().nv,
+                eldata.data());
+        } else {
+            // NOTE: assuming extents are equivalent
+            for(std::size_t idof = 0; idof < eldata.extents().ndof; ++idof){
+                for(std::size_t iv = 0; iv < eldata.extents().nv; ++iv){
+                    eldata[compact_index{idof, iv}] = fedata[fe_index{iel, idof, iv}];
+                }
+            }
+        }
+    }
 }

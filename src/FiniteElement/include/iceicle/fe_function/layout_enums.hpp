@@ -94,4 +94,13 @@ namespace FE {
         std::size_t iv = 0;
     };
 
+    /**
+     * @brief struct concept to tell if the data for an element can be 
+     * copied out of the global fespan in a contiguous block
+     */
+    template< class local_layout, class global_layout >
+    struct is_equivalent_el_layout {
+        static constexpr bool value = false;
+    };
+
 }
