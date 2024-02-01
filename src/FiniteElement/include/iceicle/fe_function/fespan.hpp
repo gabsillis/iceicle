@@ -361,8 +361,8 @@ namespace FE {
         class LocalLayoutPolicy
     > inline void extract_elspan(
         std::size_t iel,
-        const fespan<T, GlobalLayoutPolicy, GlobalAccessorPolicy> &fedata,
-        elspan<T, LocalLayoutPolicy> &eldata
+        const fespan<T, GlobalLayoutPolicy, GlobalAccessorPolicy> fedata,
+        elspan<T, LocalLayoutPolicy> eldata
     ){
         // if the default accessor is used 
         // and the layout is block copyable 
@@ -381,6 +381,54 @@ namespace FE {
             for(std::size_t idof = 0; idof < eldata.extents().ndof; ++idof){
                 for(std::size_t iv = 0; iv < eldata.extents().nv; ++iv){
                     eldata[compact_index{idof, iv}] = fedata[fe_index{iel, idof, iv}];
+                }
+            }
+        }
+    }
+
+    /**
+     * @brief perform a scatter operation to incorporate element data 
+     * back into the global data array 
+     *
+     * follows the y = alpha * x + beta * y convention
+     * inspired by BLAS interface 
+     *
+     * @param [in] iel the element index of the element data 
+     * @param [in] alpha the multiplier for element data 
+     * @param [in] eldata the element local data 
+     * @param [in] beta the multiplier for values in the global data array 
+     * @param [in/out] fedata the global data array to scatter to 
+     */
+    template< 
+        class T,
+        class GlobalLayoutPolicy,
+        class LocalLayoutPolicy,
+        class LocalAccessorPolicy
+    > inline void scatter_elspan(
+        std::size_t iel,
+        T alpha,
+        const elspan<T, LocalLayoutPolicy, LocalAccessorPolicy> eldata,
+        T beta,
+        fespan<T, GlobalLayoutPolicy> fedata
+    ) {
+
+        if constexpr (
+            is_equivalent_el_layout<LocalLayoutPolicy, GlobalLayoutPolicy>::value 
+            && std::is_same<LocalAccessorPolicy, default_accessor<T>>::value
+        ) {
+            T *fe_data_block = &( fedata[fe_index{iel, 0, 0}] );
+            T *el_data_block = eldata.data();
+            std::size_t blocksize = eldata.extents().ndof * eldata.extents().nv;
+            for(int i = 0; i < blocksize; ++i){
+                fe_data_block[i] = alpha * el_data_block[i] + beta * fe_data_block[i];
+            }
+        } else {
+            // NOTE: assuming extents are equivalent 
+            for(std::size_t idof = 0; idof < eldata.extents().ndof; ++idof){
+                for(std::size_t iv = 0; iv < eldata.extents().nv; ++iv){
+                    fedata[fe_index{iel, idof, iv}] = 
+                        alpha * eldata[compact_index{idof, iv}]
+                        + beta * fedata[fe_index{iel, idof, iv}];
                 }
             }
         }

@@ -70,5 +70,18 @@ TEST(test_fespan, test_dglayout){
     idof = 8;
     iv = 1;
     ASSERT_DOUBLE_EQ(iel * std::pow(ndim, (Pn + 1)) * neq + idof * neq + iv, (elspan1[FE::compact_index{idof, iv}]));
+
+    FE::scatter_elspan(1, 1.0, elspan1, 1.0, fespan1);
+    ASSERT_DOUBLE_EQ(2.0 * (iel * std::pow(ndim, (Pn + 1)) * neq + idof * neq + iv), (fespan1[FE::fe_index{.iel = iel, .idof = idof, .iv = iv}]));
+    iel = 1;
+    idof = 1;
+    iv = 1;
+    ASSERT_DOUBLE_EQ(2.0 *(iel * std::pow(ndim, (Pn + 1)) * neq + idof * neq + iv), (fespan1[FE::fe_index{.iel = iel, .idof = idof, .iv = iv}]));
+    iel = 0;
+    idof = 8;
+    iv = 0;
+    // make sure original element data remains unchanged
+    ASSERT_DOUBLE_EQ(iel * std::pow(ndim, (Pn + 1)) * neq + idof * neq + iv, (fespan1[FE::fe_index{.iel = iel, .idof = idof, .iv = iv}]));
+
     //TODO: add more tests
 }
