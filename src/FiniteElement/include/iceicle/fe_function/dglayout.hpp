@@ -11,6 +11,7 @@
 #include <iceicle/fe_function/el_layout.hpp>
 
 #include <type_traits>
+#include <algorithm>
 namespace FE {
 
     /** 
@@ -59,6 +60,19 @@ namespace FE {
          */
         constexpr std::size_t calculate_size_requirement( int nv_comp ) const noexcept {
             return offsets.back() * nv_comp;
+        }
+
+        /**
+         * @brief calculate the largest size requirement for a single element 
+         * @param nv_comp the number of vector components per dof 
+         * @return the maximum size requirement 
+         */
+        constexpr std::size_t max_el_size_reqirement( int nv_comp ){
+            std::size_t max_offset = 0;
+            for(int i = 1; i < offsets.size(); ++i){
+                max_offset = std::max(max_offset, offsets[i] - offsets[i - 1]);
+            }
+            return nv_comp * max_offset;
         }
     };
 

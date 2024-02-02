@@ -123,6 +123,21 @@ namespace FE {
             constexpr auto create_element_layout(std::size_t iel){
                 return __layout.create_element_layout(iel);
             }
+
+            /**
+             * @brief set the value at every index 
+             * in the index space to the value 
+             * @return reference to this
+             */
+            constexpr fespan<T, LayoutPolicy, AccessorPolicy> &operator=( T value )
+            {
+                // TODO: be more specific about the index space
+                // maybe by delegating to the LayoutPolicy
+                for(int i = 0; i < size(); ++i){
+                    __ptr[i] = value;
+                }
+                return *this;
+            }
     };
 
 
@@ -218,6 +233,21 @@ namespace FE {
             { return __ptr; }
 
             /**
+             * @brief set the value at every index 
+             * in the index space to the value 
+             * @return reference to this
+             */
+            constexpr elspan<T, LayoutPolicy, AccessorPolicy> &operator=( T value )
+            {
+                // TODO: be more specific about the index space
+                // maybe by delegating to the LayoutPolicy
+                for(int i = 0; i < size(); ++i){
+                    __ptr[i] = value;
+                }
+                return *this;
+            }
+
+            /**
              * @brief contract this with another vector 
              * along the dof index 
              * @param [in] dof_vec the vector of degrees of freedom to contract with 
@@ -233,8 +263,6 @@ namespace FE {
                     }
                 }
             }
-
-        public:
 
             /**
              * @brief contract along the first index dimension with the dof index 

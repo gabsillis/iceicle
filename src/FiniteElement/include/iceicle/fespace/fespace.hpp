@@ -123,12 +123,12 @@ namespace FE {
 
         /// @brief the start index of the interior traces 
         std::size_t interior_trace_start;
-        /// @brief the end index of the interior traces 
+        /// @brief the end index of the interior traces (exclusive) 
         std::size_t interior_trace_end;
 
         /// @brief the start index of the boundary traces 
         std::size_t bdy_trace_start;
-        /// @brief the end index of the boundary traces 
+        /// @brief the end index of the boundary traces (exclusive)
         std::size_t bdy_trace_end;
 
         /** @brief index offsets for dg degrees of freedom */
@@ -197,8 +197,8 @@ namespace FE {
                 elements.push_back(fe);
             }
 
-            traces.reserve(meshptr->faces.size());
             // Generate the Trace Spaces
+            traces.reserve(meshptr->faces.size());
             for(const GeoFaceType *fac : meshptr->faces){
                 // NOTE: assuming element indexing is the same as the mesh still
 
@@ -242,6 +242,11 @@ namespace FE {
                     geo_order_dispatch                    
                 );
             }
+            // reuse the face indexing from the mesh
+            interior_trace_start = meshptr->interiorFaceStart;
+            interior_trace_end = meshptr->interiorFaceEnd;
+            bdy_trace_start = meshptr->bdyFaceStart;
+            bdy_trace_end = meshptr->bdyFaceEnd;
 
             // generate the dof offsets 
             dg_offsets = dg_dof_offsets(elements);
@@ -276,6 +281,27 @@ namespace FE {
         {
             return dg_offsets.calculate_size_requirement(1);
         }
+
+        /**
+         * @brief get the span that is the subset of the trace space list 
+         * that only includes interior traces 
+         * @return span over the interior traces 
+         */
+        std::span<TraceType> get_interior_traces(){
+            return std::span<TraceType>{traces.begin() + interior_trace_start,
+                traces.begin() + interior_trace_end};
+        }
+
+        /**
+         * @brief get the span that is the subset of the trace space list 
+         * that only includes boundary traces 
+         * @return span over the boundary traces 
+         */
+        std::span<TraceType> get_boundary_traces(){
+            return std::span<TraceType>{traces.begin() + bdy_trace_start,
+                traces.begin() + bdy_trace_end};
+        }
+
     };
     
 }

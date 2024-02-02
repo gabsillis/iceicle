@@ -43,6 +43,9 @@ namespace DISC {
         /// @brief the number of vector components
         static constexpr int nv_comp = 1;
 
+        /// @brief the dynamic number of vector components
+        static const int dnv_comp = 1;
+
         /// @brief the diffusion coefficient
         T mu = 0.001;
 
