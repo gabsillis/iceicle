@@ -15,12 +15,14 @@
 #include "iceicle/fe_function/dglayout.hpp"
 #include "iceicle/fe_function/fespan.hpp"
 #include "iceicle/fe_function/layout_enums.hpp"
+#include "iceicle/geometry/face.hpp"
 #include "iceicle/geometry/geo_element.hpp"
 #include "iceicle/quadrature/QuadratureRule.hpp"
 #include <iceicle/mesh/mesh.hpp>
 #include <iceicle/tmp_utils.hpp>
 #include <Numtool/tmp_flow_control.hpp>
 #include <map>
+#include <type_traits>
 
 namespace FE {
     /**
@@ -30,25 +32,63 @@ namespace FE {
     struct FETypeKey {
         int basis_order;
 
+        int geometry_order;
+
         FE::DOMAIN_TYPE domain_type;
 
         FESPACE_ENUMS::FESPACE_QUADRATURE qtype;
 
         FESPACE_ENUMS::FESPACE_BASIS_TYPE btype;
 
+
         friend bool operator<(const FETypeKey &l, const FETypeKey &r){
             using namespace FESPACE_ENUMS;
-            int ileft = 
-                (int) N_BASIS_TYPES * (int) N_QUADRATURE_TYPES * (int) N_DOMAIN_TYPES * l.basis_order
-                + (int) N_BASIS_TYPES * (int) N_DOMAIN_TYPES * (int) l.qtype 
-                + (int) N_BASIS_TYPES * (int) l.domain_type
-                + l.btype;
-            int iright = 
-                (int) N_BASIS_TYPES * (int) N_QUADRATURE_TYPES * (int) N_DOMAIN_TYPES * r.basis_order
-                + (int) N_BASIS_TYPES * (int) N_DOMAIN_TYPES * (int) r.qtype 
-                + (int) N_BASIS_TYPES * (int) r.domain_type
-                + r.btype;
-            return ileft < iright;
+            if(l.qtype != r.qtype){
+                return (int) l.qtype < (int) r.qtype;
+            } else if(l.btype != r.btype){
+                return (int) l.btype < (int) r.btype;
+            } else if(l.domain_type != r.domain_type) {
+                return (int) l.domain_type < (int) r.domain_type;
+            } else if (l.geometry_order != r.geometry_order){
+                return l.geometry_order < r.geometry_order;
+            } else if( l.basis_order != r.basis_order) {
+                return l.basis_order < r.basis_order;
+            } else {
+                // they are equal so less than is false for both cases
+                return false;
+            }
+        }
+    };
+
+    /**
+     * key to define surjective mapping from trace space to 
+     * corresponding evaluation 
+     */
+    struct TraceTypeKey {
+
+        int basis_order;
+
+        int geometry_order;
+
+        FE::DOMAIN_TYPE domain_type;
+
+        FESPACE_ENUMS::FESPACE_QUADRATURE qtype;
+
+        friend bool operator<(const TraceTypeKey &l, const TraceTypeKey &r){
+            using namespace FESPACE_ENUMS;
+           
+            if(l.qtype != r.qtype){
+                return (int) l.qtype < (int) r.qtype;
+            } else if(l.domain_type != r.domain_type) {
+                return (int) l.domain_type < (int) r.domain_type;
+            } else if (l.geometry_order != r.geometry_order){
+                return l.geometry_order < r.geometry_order;
+            } else if( l.basis_order != r.basis_order) {
+                return l.basis_order < r.basis_order;
+            } else {
+                // they are equal so less than is false for both cases
+                return false;
+            }
         }
     };
 
@@ -65,7 +105,9 @@ namespace FE {
         public:
 
         using ElementType = ELEMENT::FiniteElement<T, IDX, ndim>;
+        using TraceType = ELEMENT::TraceSpace<T, IDX, ndim>;
         using GeoElementType = ELEMENT::GeometricElement<T, IDX, ndim>;
+        using GeoFaceType = ELEMENT::Face<T, IDX, ndim>;
         using MeshType = MESH::AbstractMesh<T, IDX, ndim>;
         using BasisType = BASIS::Basis<T, ndim>;
         using QuadratureType = QUADRATURE::QuadratureRule<T, IDX, ndim>;
@@ -73,8 +115,21 @@ namespace FE {
         /// @brief pointer to the mesh used
         MeshType *meshptr;
 
-        /// @brief ArrayList of finite elements in the space
+        /// @brief Array of finite elements in the space
         std::vector<ElementType> elements;
+
+        /// @brief Array of trace spaces in the space 
+        std::vector<TraceType> traces;
+
+        /// @brief the start index of the interior traces 
+        std::size_t interior_trace_start;
+        /// @brief the end index of the interior traces 
+        std::size_t interior_trace_end;
+
+        /// @brief the start index of the boundary traces 
+        std::size_t bdy_trace_start;
+        /// @brief the end index of the boundary traces 
+        std::size_t bdy_trace_end;
 
         /** @brief index offsets for dg degrees of freedom */
         dg_dof_offsets dg_offsets;
@@ -86,7 +141,9 @@ namespace FE {
         // ========================================
 
         using ReferenceElementType = ELEMENT::ReferenceElement<T, IDX, ndim>;
+        using ReferenceTraceType = ELEMENT::ReferenceTraceSpace<T, IDX, ndim>;
         std::map<FETypeKey, ReferenceElementType> ref_el_map;
+        std::map<TraceTypeKey, ReferenceTraceType> ref_trace_map;
 
         public:
 
@@ -115,6 +172,7 @@ namespace FE {
                 // create the Element Domain type key
                 FETypeKey fe_key = {
                     .basis_order = basis_order,
+                    .geometry_order = geo_el->geometry_order(),
                     .domain_type = geo_el->domain_type(),
                     .qtype = quadrature_type,
                     .btype = basis_type
@@ -137,6 +195,52 @@ namespace FE {
 
                 // add to the elements list
                 elements.push_back(fe);
+            }
+
+            traces.reserve(meshptr->faces.size());
+            // Generate the Trace Spaces
+            for(const GeoFaceType *fac : meshptr->faces){
+                // NOTE: assuming element indexing is the same as the mesh still
+
+                bool is_interior = fac->bctype == ELEMENT::INTERIOR;
+                ElementType &elL = elements[fac->elemL];
+                ElementType &elR = (is_interior) ? elements[fac->elemR] : elements[fac->elemL];
+
+                int geo_order = std::max(elL.geo_el->geometry_order(), elR.geo_el->geometry_order());
+
+                auto geo_order_dispatch = [&]<int geo_order>() -> int{
+                    TraceTypeKey trace_key = {
+                        .basis_order = std::max(elL.basis->getPolynomialOrder(), elR.basis->getPolynomialOrder()), 
+                        .geometry_order = geo_order,
+                        .domain_type = fac->domain_type(),
+                        .qtype = quadrature_type
+                    };
+
+                    if(ref_trace_map.find(trace_key) == ref_trace_map.end()){
+                        ref_trace_map[trace_key] = ReferenceTraceType(fac, quadrature_type, 
+                            std::integral_constant<int, basis_order>{},
+                            std::integral_constant<int, geo_order>{});
+                    }
+                    ReferenceTraceType &ref_trace = ref_trace_map[trace_key];
+                    
+                    if(is_interior){
+                        TraceType trace{ fac, &elL, &elR, ref_trace.quadrule.get(),
+                            &(ref_trace.eval), (IDX) traces.size() };
+                        traces.push_back(trace);
+                    } else {
+                        TraceType trace = TraceType::make_bdy_trace_space(fac, &elL,
+                            ref_trace.quadrule.get(), &(ref_trace.eval), (IDX) traces.size());
+                        traces.push_back(trace);
+                    }
+
+                    return 0;
+                };
+
+                NUMTOOL::TMP::invoke_at_index(
+                    NUMTOOL::TMP::make_range_sequence<int, 1, ELEMENT::MAX_DYNAMIC_ORDER>{},
+                    geo_order,
+                    geo_order_dispatch                    
+                );
             }
 
             // generate the dof offsets 

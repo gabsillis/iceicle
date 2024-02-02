@@ -97,7 +97,7 @@ private:
   // None
 public:
   const FaceType &face;
-  /// @brief the left finite element 
+  /// @brief the left finite element (WARNING: if vector of elements changes this will probably need to be updated)
   const FEType &elL;
   /// @brief the right finite element
   const FEType &elR;
@@ -132,8 +132,9 @@ public:
   ) : face(*facptr), elL(*elLptr), elR(*elRptr), quadrule(*quadruleptr),
       qp_evals(*qp_evals_ptr), facidx(facidx) 
   {
-    assert((facptr->bctype == ELEMENT::BOUNDARY_CONDITIONS::INTERIOR) 
-        && "The given face is not an interior face.");
+    // TODO: can't do assertion because we call from make_bdy_trace_space
+ //   assert((facptr->bctype == ELEMENT::BOUNDARY_CONDITIONS::INTERIOR) 
+ //       && "The given face is not an interior face.");
   }
 
   /**

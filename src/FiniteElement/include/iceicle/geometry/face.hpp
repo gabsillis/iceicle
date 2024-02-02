@@ -8,14 +8,13 @@
 #include <iceicle/geometry/geometry_enums.hpp>
 #include <Numtool/point.hpp>
 #include <Numtool/MathUtils.hpp>
+#include <iceicle/fe_enums.hpp>
 #include <Numtool/fixed_size_tensor.hpp>
-#include <vector>
 #include <string>
 
 namespace ELEMENT {
     
-
-    enum BOUNDARY_CONDITIONS{
+    enum BOUNDARY_CONDITIONS {
         PERIODIC = 0,
         PARALLEL_COM,
         NEUMANN,
@@ -89,7 +88,7 @@ namespace ELEMENT {
 
         /** @brief get the shape that defines the reference domain */
         virtual 
-        REFERENCE_DOMAIN_TYPE ref_domn_type() const = 0;
+        constexpr FE::DOMAIN_TYPE domain_type() const = 0;
 
         /**
          * @brief Get the area of the face

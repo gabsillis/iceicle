@@ -6,9 +6,9 @@
 
 namespace ELEMENT {
     
-    enum REFERENCE_DOMAIN_TYPE {
-        HYPERCUBE = 0,
-        SIMPLEX = 1
-    };
+//    enum REFERENCE_DOMAIN_TYPE {
+//        HYPERCUBE = 0,
+//        SIMPLEX = 1
+//    };
 
 };

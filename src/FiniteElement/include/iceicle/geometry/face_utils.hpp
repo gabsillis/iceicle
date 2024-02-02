@@ -40,7 +40,7 @@ namespace ELEMENT {
         const Face<T, IDX, ndim> &face
     ) {
         MATH::GEOMETRY::Point<T, ndim - 1> centroid;
-        switch(face.ref_domn_type()){
+        switch(face.domain_type()){
             case HYPERCUBE:
                 std::fill_n(centroid.data(), ndim - 1, 0.0);
                 return centroid;

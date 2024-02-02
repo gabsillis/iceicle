@@ -18,3 +18,7 @@ if(ICEICLE_USE_OPENGL)
     target_include_directories(mesh_visualizer PUBLIC ${imgui_SOURCE_DIR})
     target_include_directories(mesh_visualizer PUBLIC ${imgui_SOURCE_DIR}/backends)
 endif()
+
+add_executable(heat_eqn_miniapp heat_eqn_miniapp.cpp)
+target_link_libraries(heat_eqn_miniapp iceicle_lib)
+target_link_libraries(iceicle_1d ${MPI_CXX_LIBRARIES})

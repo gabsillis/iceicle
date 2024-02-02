@@ -5,13 +5,12 @@
  */
 #pragma once
 #include <concepts>
+#include <type_traits>
 namespace ICEICLE::TMP{
 
     /** @brief a compile time constant integer type
      * for template argument deduction */
     template<int ival>
-    struct compile_int{
-        static constexpr int value = ival;
-    };
+    using compile_int = std::integral_constant<int, ival>;
 
 }

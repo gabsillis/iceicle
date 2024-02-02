@@ -40,6 +40,9 @@ namespace DISC {
 
     public:
 
+        /// @brief the number of vector components
+        static constexpr int nv_comp = 1;
+
         /// @brief the diffusion coefficient
         T mu = 0.001;
 
@@ -50,6 +53,20 @@ namespace DISC {
         /// @brief the prescribed gradient for each bcflag 
         /// (index into this list) for neumann bc
         std::vector<NUMTOOL::TENSOR::FIXED_SIZE::Tensor<T, ndim>> neumann_values;
+
+        /**
+         * @brief get the timestep from cfl 
+         * often this will require data to be set from the domain and boundary integrals 
+         * such as wavespeeds, which will arise naturally during residual computation
+         * (WARNING: except for the very first iteration)
+         *
+         * @param cfl the cfl condition 
+         * @param reference_length the size to use for the length of the cfl condition 
+         * @return the timestep based on the cfl condition
+         */
+        T dt_from_cfl(T cfl, T reference_length){
+            return SQUARED(reference_length) / mu * cfl;
+        }
 
         /**
          * @brief calculate the domain integral 

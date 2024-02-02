@@ -7,6 +7,7 @@
 #include <iceicle/transformations/HypercubeElementTransformation.hpp>
 #include <iceicle/geometry/face.hpp>
 
+#include "iceicle/fe_enums.hpp"
 #include "iceicle/fe_function/nodal_fe_function.hpp"
 #include "iceicle/transformations/HypercubeElementTransformation.hpp"
 namespace ELEMENT {
@@ -61,7 +62,7 @@ namespace ELEMENT {
             bctype, bcflag)
         {}
 
-        REFERENCE_DOMAIN_TYPE ref_domn_type() const override { return REFERENCE_DOMAIN_TYPE::HYPERCUBE; }
+        constexpr FE::DOMAIN_TYPE domain_type() const override { return FE::DOMAIN_TYPE::HYPERCUBE; }
 
         void transform(
             const FacePoint &s,
