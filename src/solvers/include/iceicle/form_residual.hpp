@@ -7,10 +7,7 @@
 #pragma once 
 #include "iceicle/element/finite_element.hpp"
 #include "iceicle/fe_function/fespan.hpp"
-#include "iceicle/fe_function/layout_enums.hpp"
 #include "iceicle/fespace/fespace.hpp"
-#include <span>
-#include <stdexcept>
 
 namespace ICEICLE::SOLVERS {
 
@@ -49,35 +46,21 @@ namespace ICEICLE::SOLVERS {
         class T, 
         class IDX,
         int ndim,
-        class disc_class
+        class disc_class,
+        class uLayoutPolicy,
+        class uAccessorPolicy,
+        class resLayoutPolicy
     >
     void form_residual(
         FE::FESpace<T, IDX, ndim> &fespace,
         disc_class &disc,
-        std::span<T> u_data,
-        std::span<T> res_data
+        FE::fespan<T, uLayoutPolicy, uAccessorPolicy> u,
+        FE::fespan<T, resLayoutPolicy> res
     )
     requires specifies_ncomp<disc_class>
     {
         using Element = ELEMENT::FiniteElement<T, IDX, ndim>;
         using Trace = ELEMENT::TraceSpace<T, IDX, ndim>;
-
-        // TODO: machinery for Continuous Galerkin case 
-        if(res_data.size() < fespace.dg_offsets.calculate_size_requirement(disc_class::dnv_comp)){
-            throw std::out_of_range("The residual span given is not large enough to accomadate the DG residual");
-        }
-
-        // get global views of the solution and residual data
-        constexpr bool dynamic_vec_components = FE::is_dynamic_ncomp<disc_class::nv_comp>::value;
-        std::enable_if< dynamic_vec_components, int> dncomp;
-        if constexpr(dynamic_vec_components){
-            dncomp = disc_class::dnv_comp;
-        }
-
-        FE::fespan<T, FE::dg_layout<T, disc_class::nv_comp>> u{
-            u_data.data(), fespace.dg_offsets, dncomp};
-        FE::fespan<T, FE::dg_layout<T, disc_class::nv_comp>> res{
-            res_data.data(), fespace.dg_offsets, dncomp};
 
         // zero out the residual
         res = 0;

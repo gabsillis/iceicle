@@ -138,8 +138,14 @@ namespace FE {
                 }
                 return *this;
             }
+
+            /** @brief get a const reference too the layout policy */
+            constexpr const LayoutPolicy &get_layout() const { return __layout; }
     };
 
+    // deduction guides
+    template<typename T, class LayoutPolicy>
+    fespan(T *data, const LayoutPolicy &) -> fespan<T, LayoutPolicy>;
 
     /**
      * @brief elspan represents a non-owning view for the data of a single element

@@ -489,4 +489,36 @@ public:
   }
 };
 
+/**
+ * @brief calculate the mass matrix for an element 
+ * @param el the element to calculate the mass matrix for 
+ * @param node_coords the global node coordinates array 
+ * @return the mass matrix
+ */
+template<class T, class IDX, int ndim>
+MATH::MATRIX::DenseMatrix<T> calculate_mass_matrix(
+  FiniteElement<T, IDX, ndim> &el,
+  FE::NodalFEFunction<T, ndim> &node_coords
+){
+  MATH::MATRIX::DenseMatrix<T> mass(el.nbasis(), el.nbasis());
+  mass = 0;
+
+  for(int ig = 0; ig < el.nQP(); ++ig){
+    const QUADRATURE::QuadraturePoint<T, ndim> quadpt = el.getQP(ig);
+
+    // calculate the jacobian determinant
+    auto J = el.geo_el->Jacobian(node_coords, quadpt.abscisse);
+    T detJ = NUMTOOL::TENSOR::FIXED_SIZE::determinant(J);
+
+    // integrate Bi * Bj
+    for(int ibasis = 0; ibasis < el.nbasis(); ++ibasis){
+      for(int jbasis = 0; jbasis < el.nbasis(); ++jbasis){
+        mass[ibasis][jbasis] += el.basisQP(ig, ibasis) * el.basisQP(ig, jbasis) * quadpt.weight * detJ;
+      }
+    }
+  }
+
+  return mass;
+}
+
 } // namespace ELEMENT

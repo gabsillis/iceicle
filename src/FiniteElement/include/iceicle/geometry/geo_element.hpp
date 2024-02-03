@@ -51,17 +51,13 @@ namespace ELEMENT{
         constexpr FE::DOMAIN_TYPE domain_type() const noexcept = 0;
 
         /**
-         * @brief calculate the centroid in the physical domain 
-         * @param [in] coord the node coordinates arrray
-         * @return the centroid in the physical domain
+         * @brief calculate the centroid in the reference domain 
+         * @return the centroid in the reference domain 
          */
         virtual 
-        MATH::GEOMETRY::Point<T, ndim> centroid(
-            FE::NodalFEFunction<T, ndim> &node_coords
-        ) const {
-            MATH::GEOMETRY::Point<T, ndim> refpt;
-            MATH::GEOMETRY::Point<T, ndim> physpt;
+        MATH::GEOMETRY::Point<T, ndim> centroid_ref() const {
 
+            MATH::GEOMETRY::Point<T, ndim> refpt;
             // get the centroid in the reference domain based on domain type
             switch(domain_type()){
                 case FE::DOMAIN_TYPE::HYPERCUBE:
@@ -79,8 +75,21 @@ namespace ELEMENT{
                         { refpt[idim] = 0.0; }
                     break;
             }
+            return refpt;
+        }
+
+        /**
+         * @brief calculate the centroid in the physical domain 
+         * @param [in] coord the node coordinates arrray
+         * @return the centroid in the physical domain
+         */
+        virtual 
+        MATH::GEOMETRY::Point<T, ndim> centroid(
+            FE::NodalFEFunction<T, ndim> &node_coords
+        ) const {
+            MATH::GEOMETRY::Point<T, ndim> physpt;
             
-            transform(node_coords, refpt, physpt);
+            transform(node_coords, centroid_ref(), physpt);
             return physpt;
         }
 
