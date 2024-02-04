@@ -49,19 +49,27 @@ namespace DISC {
         /// @brief the diffusion coefficient
         T mu = 0.001;
 
+        /// @brief the interior penalty coefficient for 
+        /// Dirichlet boundary conditions 
+        // see Arnold et al 2002 sec 2.1
+        // also: https://mooseframework.inl.gov/source/bcs/PenaltyDirichletBC.html
+        // must be > 1.0
+        T penalty = 1.001;
+
         /// @brief the value for each bcflag (index into this list) 
         /// for dirichlet bc
         std::vector<T> dirichlet_values;
 
-        /// @brief the prescribed gradient for each bcflag 
+        /// @brief the prescribed normal gradient for each bcflag 
         /// (index into this list) for neumann bc
-        std::vector<NUMTOOL::TENSOR::FIXED_SIZE::Tensor<T, ndim>> neumann_values;
+        std::vector<T> neumann_values;
 
         /**
          * @brief get the timestep from cfl 
          * often this will require data to be set from the domain and boundary integrals 
          * such as wavespeeds, which will arise naturally during residual computation
          * (WARNING: except for the very first iteration)
+         * WARNING: does not consider polynomial order of basis functions
          *
          * @param cfl the cfl condition 
          * @param reference_length the size to use for the length of the cfl condition 
@@ -154,8 +162,8 @@ namespace DISC {
                 // get the function values
                 std::vector<T> bi_dataL(elL.nbasis());
                 std::vector<T> bi_dataR(elR.nbasis());
-                trace.evalGradBasisQPL(iqp, bi_dataL.data());
-                trace.evalGradBasisQPR(iqp, bi_dataR.data());
+                trace.evalBasisQPL(iqp, bi_dataL.data());
+                trace.evalBasisQPR(iqp, bi_dataR.data());
 
                 T value_uL = 0.0, value_uR = 0.0;
                 for(std::size_t ibasis = 0; ibasis < elL.nbasis(); ++ibasis)
@@ -186,7 +194,8 @@ namespace DISC {
                 auto hessuR = uR.contract_mdspan(hessBiR, hessu_dataR.data());
 
                 // calculate the normal vector 
-                auto unit_normal = normalize(calc_ortho(Jfac));
+                auto normal = calc_ortho(Jfac);
+                auto unit_normal = normalize(normal);
 
                 // calculate the DDG distance
                 T h_ddg = 0;
@@ -197,6 +206,7 @@ namespace DISC {
                     );
                 }
 
+                static constexpr int ieq = 0;
                 // construct the DDG derivatives
                 T grad_ddg[ndim];
                 int max_basis_order = std::min(
@@ -205,14 +215,14 @@ namespace DISC {
                 );
                 // Danis and Yan reccomended for NS
                 T beta0 = std::pow(max_basis_order + 1, 2);
-                T beta1 = 1 / (T) (2 * max_basis_order * (max_basis_order * 2));
+                T beta1 = 1 / std::max((T) (2 * max_basis_order * (max_basis_order + 1)), 1.0);
                 T jumpu = value_uR - value_uL;
                 for(int idim = 0; idim < ndim; ++idim){
                     grad_ddg[idim] = beta0 * jumpu / h_ddg * unit_normal[idim]
-                        + 0.5 * (graduL[idim] + graduR[idim]);
+                        + 0.5 * (graduL[ieq, idim] + graduR[ieq, idim]);
                     T hessTerm = 0;
                     for(int jdim = 0; jdim < ndim; ++jdim){
-                        hessTerm += (hessuR[jdim][idim] - hessuL[jdim][idim])
+                        hessTerm += (hessuR[ieq, jdim, idim] - hessuL[ieq, jdim, idim])
                             * unit_normal[jdim];
                     }
                     grad_ddg[idim] += beta1 * h_ddg * hessTerm;
@@ -266,10 +276,9 @@ namespace DISC {
                 {
                     // see Arnold et al 2002 sec 2.1
                     // Interior Penalty method 
-                    static constexpr T penalty = 1e12;
 
                     // loop over quadrature points
-                    for(int iqp = 0; iqp < trace.nQp(); ++iqp){
+                    for(int iqp = 0; iqp < trace.nQP(); ++iqp){
                         const QUADRATURE::QuadraturePoint<T, ndim - 1> &quadpt = trace.getQP(iqp);
 
                         // calculate the jacobian and riemannian metric root det
@@ -278,7 +287,7 @@ namespace DISC {
 
                         // get the function values
                         std::vector<T> bi_dataL(elL.nbasis());
-                        trace.evalGradBasisQPL(iqp, bi_dataL.data());
+                        trace.evalBasisQPL(iqp, bi_dataL.data());
 
                         T value_uL = 0.0;
                         for(std::size_t ibasis = 0; ibasis < elL.nbasis(); ++ibasis)
@@ -288,7 +297,8 @@ namespace DISC {
 
                         for(std::size_t itest = 0; itest < elL.nbasis(); ++itest){
                             resL[feidx{.idof = itest, .iv = 0}] -= 
-                                penalty * (value_uL - dirichlet_val) * bi_dataL * quadpt.weight * sqrtg;
+                                penalty * (value_uL - dirichlet_val) 
+                                * bi_dataL[itest] * quadpt.weight * sqrtg;
                         }
                     }
                 }
@@ -296,11 +306,8 @@ namespace DISC {
 
                 case ELEMENT::BOUNDARY_CONDITIONS::NEUMANN:
                 {
-                    // Li and Tang 2017 sec 9.1.1
-                    auto gradu = neumann_values[trace.face.bcflag];
-
                     // loop over quadrature points 
-                    for(int iqp = 0; iqp < trace.nQp(); ++iqp){
+                    for(int iqp = 0; iqp < trace.nQP(); ++iqp){
 
                         const QUADRATURE::QuadraturePoint<T, ndim - 1> &quadpt = trace.getQP(iqp);
 
@@ -310,15 +317,12 @@ namespace DISC {
 
                         // get the basis function values
                         std::vector<T> bi_dataL(elL.nbasis());
-                        trace.evalGradBasisQPL(iqp, bi_dataL.data());
-
-                        // get the unit normal vector 
-                        auto unit_normal = normalize(calc_ortho(Jfac));
+                        trace.evalBasisQPL(iqp, bi_dataL.data());
 
                         // flux contribution weighted by quadrature and face metric 
-                        T flux = mu * MATH::MATRIX_T::dotprod<T, ndim>(gradu.data(), unit_normal.data())
+                        // Li and Tang 2017 sec 9.1.1
+                        T flux = mu * neumann_values[trace.face.bcflag]
                             * quadpt.weight * sqrtg;
-                        
 
                         for(std::size_t itest = 0; itest < elL.nbasis(); ++itest){
                             resL[feidx{.idof = itest, .iv = 0}] -= bi_dataL[itest] * flux;

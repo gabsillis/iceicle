@@ -10,6 +10,9 @@
 #include "iceicle/element/finite_element.hpp"
 #include "iceicle/fespace/fespace.hpp"
 #include "iceicle/form_residual.hpp"
+
+#include <iostream>
+#include <iomanip>
 namespace ICEICLE::SOLVERS {
 
 template< class T, class IDX >
@@ -40,6 +43,26 @@ public:
     /// @brief the current time 
     T time = 0.0;
 
+    /// @brief the callback function for visualization during solve()
+    /// is given a reference to this when called 
+    /// default is to print out a l2 norm of the residual data array
+    std::function<void(ExplicitEuler &)> vis_callback = [](ExplicitEuler &disc){
+        T sum = 0.0;
+        for(int i = 0; i < disc.res_data.size(); ++i){
+            sum += SQUARED(disc.res_data[i]);
+        }
+        std::cout << std::setprecision(8);
+        std::cout << "itime: " << std::setw(6) << disc.itime 
+            << " | t: " << std::setw(14) << disc.time
+            << " | residual l2: " << std::setw(14) << std::sqrt(sum) 
+            << std::endl;
+    };
+
+    /// @brief if this is a positive integer 
+    /// then the vis_callback will be called every ivis timesteps 
+    /// (itime % ivis == 0)
+    IDX ivis = -1;
+
     /**
      * @brief create a ExplicitEuler solver 
      * initializes the residual data vector
@@ -68,7 +91,7 @@ public:
      * @param [in/out] u the solution as an fespan view
      */
     template<int ndim, class disc_class, class LayoutPolicy, class uAccessorPolicy>
-    T step(FE::FESpace<T, IDX, ndim> &fespace, disc_class &disc, FE::fespan<T, LayoutPolicy, uAccessorPolicy> u){
+    void step(FE::FESpace<T, IDX, ndim> &fespace, disc_class &disc, FE::fespan<T, LayoutPolicy, uAccessorPolicy> u){
        
         // calculate the timestep 
         T dt;
@@ -79,16 +102,19 @@ public:
 
             // first: reference length is the minimum diagonal entry of the jacobian at the cell center
             T reflen = 1e8;
+            int Pn_max = 1;
             for(const ELEMENT::FiniteElement<T, IDX, ndim> &el : fespace.elements){
-                MATH::GEOMETRY::Point<T, ndim> center_xi = el.geo_el.centroid_ref();
+                MATH::GEOMETRY::Point<T, ndim> center_xi = el.geo_el->centroid_ref();
                 auto J = el.geo_el->Jacobian(fespace.meshptr->nodes, center_xi);
                 for(int idim = 0; idim < ndim; ++idim){
                     reflen = std::min(reflen, J[idim][idim]);
                 }
+
+                Pn_max = std::max(Pn_max, el.basis->getPolynomialOrder());
             }
 
             // calculate the timestep from the CFL condition 
-            disc.dt_from_cfl(cfl, reflen);
+            dt = disc.dt_from_cfl(cfl, reflen) / (2 * (Pn_max + 1));
         }
 
         // if final time is non-negative make sure we don't go over the final time 
@@ -115,20 +141,20 @@ public:
             DenseMatrix<T> mass = ELEMENT::calculate_mass_matrix(el, fespace.meshptr->nodes);
             PermutationMatrix<unsigned int> pi = decompose_lu(mass);
 
-            const int ndof = el.nbasis();
-            for(int ieqn = 0; ieqn < disc_class::dnv_comp; ++ieqn){
+            const std::size_t ndof = el.nbasis();
+            for(std::size_t ieqn = 0; ieqn < disc_class::dnv_comp; ++ieqn){
 
                 // copy the residual for each degree of freedom to the rhs 
-                for(int idof = 0; idof < el.nbasis(); ++idof){
-                    b[idof] = res[FE::fe_index{el.elidx, idof, ieqn}];
+                for(std::size_t idof = 0; idof < el.nbasis(); ++idof){
+                    b[idof] = res[FE::fe_index{(std::size_t) el.elidx, idof, ieqn}];
                 }
 
                 // solve the matrix equation 
                 sub_lu(mass, pi, b.data(), du.data());
 
                 // TODO: add to u 
-                for(int idof = 0; idof < el.nbasis(); ++idof){
-                    u[FE::fe_index{el.elidx, idof, ieqn}] += dt * du[idof];
+                for(std::size_t idof = 0; idof < el.nbasis(); ++idof){
+                    u[FE::fe_index{(std::size_t) el.elidx, idof, ieqn}] += dt * du[idof];
                 }
             }
         }
@@ -150,7 +176,7 @@ public:
      * @param [in/out] u the solution as an fespan view
      */
     template<int ndim, class disc_class, class LayoutPolicy, class uAccessorPolicy>
-    T solve(FE::FESpace<T, IDX, ndim> &fespace, disc_class &disc, FE::fespan<T, LayoutPolicy, uAccessorPolicy> u) {
+    void solve(FE::FESpace<T, IDX, ndim> &fespace, disc_class &disc, FE::fespan<T, LayoutPolicy, uAccessorPolicy> u) {
 
         // stop conditions
         auto done = [&]() -> bool {
@@ -161,11 +187,22 @@ public:
             }
         };
 
+        // visualization callback on initial state (0 % anything == 0) 
+        vis_callback(*this);
+
+        // timestep loop
         while(!done()){
             step(fespace, disc, u);
+            if(itime % ivis == 0){
+                vis_callback(*this);
+            }
         }
     }
 };
 
+// template argument deduction
+template<class T, class IDX, int ndim, class disc_class>
+ExplicitEuler(FE::FESpace<T, IDX, ndim> &fespace, disc_class &disc,
+    T cfl, IDX ntime, T tfinal, T dt) -> ExplicitEuler<T, IDX>;
 
 }

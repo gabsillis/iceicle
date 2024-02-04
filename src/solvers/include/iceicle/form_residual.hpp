@@ -8,6 +8,7 @@
 #include "iceicle/element/finite_element.hpp"
 #include "iceicle/fe_function/fespan.hpp"
 #include "iceicle/fespace/fespace.hpp"
+#include <concepts>
 
 namespace ICEICLE::SOLVERS {
 
@@ -22,8 +23,8 @@ namespace ICEICLE::SOLVERS {
      */
     template< class disc_class >
     concept specifies_ncomp = 
-        std::is_same_v<decltype(disc_class::dnv_comp), int>
-        && std::is_same_v<decltype(disc_class::nv_comp), int>;
+        std::convertible_to<decltype(disc_class::dnv_comp), int>
+        && std::convertible_to<decltype(disc_class::nv_comp), int>;
 
 
 
@@ -92,7 +93,7 @@ namespace ICEICLE::SOLVERS {
             // zero out the residual
             resL = 0;
 
-           disc.boudaryIntegral(trace, fespace.meshptr->nodes, uL, uR, resL);
+           disc.boundaryIntegral(trace, fespace.meshptr->nodes, uL, uR, resL);
 
            FE::scatter_elspan(trace.elL.elidx, 1.0, resL, 1.0, res);
         }

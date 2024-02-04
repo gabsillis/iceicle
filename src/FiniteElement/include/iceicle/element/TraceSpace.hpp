@@ -3,6 +3,7 @@
  * @brief Trace Space (element faces)
  * @author Gianni Absillis (gabsill@ncsu.edu)
  */
+#pragma once
 
 #include "Numtool/point.hpp"
 #include "iceicle/fe_function/nodal_fe_function.hpp"
@@ -593,7 +594,7 @@ public:
    * @brief get the "QuadraturePoint" (contains point and weight) at the given
    * quadrature point index 
    **/
-  inline constexpr const QUADRATURE::QuadraturePoint<T, ndim> 
+  inline constexpr const QUADRATURE::QuadraturePoint<T, ndim - 1> 
   getQP(int qp_idx) const
   {
     return quadrule[qp_idx];

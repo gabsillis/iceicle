@@ -379,6 +379,8 @@ namespace FE {
     // deduction guides
     template<typename T, class LayoutPolicy>
     elspan(T * data, LayoutPolicy &) -> elspan<T, LayoutPolicy>;
+    template<typename T, class LayoutPolicy>
+    elspan(T * data, const LayoutPolicy &) -> elspan<T, LayoutPolicy>;
 
     /**
      * @brief extract the data for a specific element 
