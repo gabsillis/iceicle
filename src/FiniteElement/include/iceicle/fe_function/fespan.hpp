@@ -297,10 +297,10 @@ namespace FE {
                     || in_mdspan::rank() == 3, 
                 "only defined for ranks 2 and 3");
                 // get the equation extent
-                static constexpr int eq_extent = (is_dynamic_ncomp<LayoutPolicy::extents_type::get_ncomp()>::value)
+                static constexpr std::size_t eq_extent = (is_dynamic_ncomp<LayoutPolicy::extents_type::get_ncomp()>::value)
                 ? std::dynamic_extent : LayoutPolicy::extents_type::get_ncomp();
 
-                static constexpr int rank_dynamic = ((eq_extent == std::dynamic_extent) ? 1 : 0);
+                static constexpr std::size_t rank_dynamic = ((eq_extent == std::dynamic_extent) ? 1 : 0);
 
                 // build up the array of dynamic extents
                 std::array<int, rank_dynamic> dynamic_extents{};

@@ -15,6 +15,7 @@
 #include <iceicle/explicit_euler.hpp>
 #include <iceicle/solvers/element_linear_solve.hpp>
 #include <iceicle/build_config.hpp>
+#include <iceicle/pvd_writer.hpp>
 #include <type_traits>
 #include <fenv.h>
 
@@ -36,7 +37,7 @@ int main(int argc, char *argv[]){
     // = create a uniform mesh =
     // =========================
 
-    IDX nx=4, ny=4;
+    IDX nx=40, ny=40;
     const IDX nelem_arr[ndim] = {nx, ny};
     // bottom left corner
     T xmin[ndim] = {-1.0, -1.0};
@@ -46,12 +47,12 @@ int main(int argc, char *argv[]){
     Tensor<ELEMENT::BOUNDARY_CONDITIONS, 2 * ndim> bctypes = {{
         ELEMENT::BOUNDARY_CONDITIONS::DIRICHLET, // left side 
         ELEMENT::BOUNDARY_CONDITIONS::DIRICHLET, // right side 
-        ELEMENT::BOUNDARY_CONDITIONS::NEUMANN,   // bottom side 
-        ELEMENT::BOUNDARY_CONDITIONS::NEUMANN    // top side
+        ELEMENT::BOUNDARY_CONDITIONS::DIRICHLET,   // bottom side 
+        ELEMENT::BOUNDARY_CONDITIONS::DIRICHLET    // top side
     }};
     int bcflags[2 * ndim] = {
         0, // left side 
-        1, // right side
+        0, // right side
         0, // bottom side 
         0  // top side
     };
@@ -134,12 +135,28 @@ int main(int argc, char *argv[]){
     // =============================
     // = Solve with Explicit Euler =
     // =============================
-    ICEICLE::SOLVERS::ExplicitEuler explicit_euler{fespace, heat_equation};
+    using namespace ICEICLE::SOLVERS;
+    ExplicitEuler explicit_euler{fespace, heat_equation};
     explicit_euler.ivis = 10;
     explicit_euler.ntime = 1000;
     explicit_euler.tfinal = -1.0;
     explicit_euler.dt_fixed = 0.01;
+    ICEICLE::IO::PVDWriter<T, IDX, ndim> pvd_writer;
+    pvd_writer.register_fespace(fespace);
+    pvd_writer.register_fields(u, "u");
+    explicit_euler.vis_callback = [&](ExplicitEuler<T, IDX> &disc){
+        T sum = 0.0;
+        for(int i = 0; i < disc.res_data.size(); ++i){
+            sum += SQUARED(disc.res_data[i]);
+        }
+        std::cout << std::setprecision(8);
+        std::cout << "itime: " << std::setw(6) << disc.itime 
+            << " | t: " << std::setw(14) << disc.time
+            << " | residual l2: " << std::setw(14) << std::sqrt(sum) 
+            << std::endl;
 
+        pvd_writer.write_vtu(disc.itime, disc.time);
+    };
     explicit_euler.solve(fespace, heat_equation, u);
     return 0;
 }

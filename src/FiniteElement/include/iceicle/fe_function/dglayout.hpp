@@ -81,7 +81,7 @@ namespace FE {
      */
     template<
         typename T,                           /// the element type
-        int ncomp = dynamic_ncomp,             /// the number of vector components  TODO: switch to size_t and std::dymamic_extent
+        std::size_t ncomp = dynamic_ncomp,             /// the number of vector components  TODO: switch to size_t and std::dymamic_extent
         LAYOUT_VECTOR_ORDER order = DOF_LEFT /// how dofs are organized wrt vector components
     >
     class dg_layout {
@@ -89,14 +89,17 @@ namespace FE {
 
         std::enable_if<is_dynamic_ncomp<ncomp>::value, int> ncomp_d;
 
-        inline constexpr int get_ncomp() const {
+        public:
+
+        // @brief get the number of vector components
+        inline constexpr std::size_t get_ncomp() const {
             if constexpr(is_dynamic_ncomp<ncomp>::value){
                 return ncomp_d;
             } else {
                 return ncomp;
             }
         }
-        public:
+
         /**
          * @brief create a dg_layout 
          * @param offsets the vector component independent dof offsets
@@ -104,7 +107,7 @@ namespace FE {
          */
         constexpr dg_layout(
             const dg_dof_offsets &offsets,
-            int ncomp_d
+            std::size_t ncomp_d
         ) requires(is_dynamic_ncomp<ncomp>::value)
         : offsets(offsets), ncomp_d(ncomp_d) {}
 
@@ -136,7 +139,7 @@ namespace FE {
             std::size_t ildof = idx.idof;
             std::size_t iv = idx.iv;
             if constexpr (order == DOF_LEFT) {
-                int component_mult = get_ncomp();
+                std::size_t component_mult = get_ncomp();
                 return component_mult * offsets[iel] + component_mult * ildof + iv;
             } else {
                 return iv * offsets.back() + offsets[iel] + ildof;
@@ -145,7 +148,7 @@ namespace FE {
 
         /** @brief the upper bound of the index space */
         constexpr std::size_t size() const noexcept { 
-            int component_mult = get_ncomp();
+            std::size_t component_mult = get_ncomp();
             return offsets.back() * component_mult;
         }
 
@@ -172,7 +175,7 @@ namespace FE {
      */
     template<
         typename T,
-        int ncomp,
+        std::size_t ncomp,
         LAYOUT_VECTOR_ORDER order
     >
     struct is_equivalent_el_layout<
