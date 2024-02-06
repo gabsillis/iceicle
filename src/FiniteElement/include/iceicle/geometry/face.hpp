@@ -30,6 +30,26 @@ namespace ELEMENT {
         INTERIOR // default condition that does nothing
     };
 
+    /// @brief get a human readable name for each boundary condition
+    constexpr const inline char* bc_name(const BOUNDARY_CONDITIONS bc) noexcept {
+        const char *names[] = {
+            "Periodic",
+            "Parallel_Communication",
+            "Neumann",
+            "Dirichlet",
+            "Riemann Solver (Characteristic)",
+            "No slip",
+            "Slip wall",
+            "General Wall",
+            "Inlet",
+            "Outlet",
+            "Initial condition",
+            "Time upwind",
+            "Interior face (NO BC)"
+        };
+        return names[(int) bc];
+    }
+
     /// face_info / this gives the face number 
     /// face_info % this gives the orientation
     static constexpr unsigned int FACE_INFO_MOD = 512;

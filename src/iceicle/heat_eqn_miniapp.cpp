@@ -37,7 +37,7 @@ int main(int argc, char *argv[]){
     // = create a uniform mesh =
     // =========================
 
-    IDX nx=2, ny=2;
+    IDX nx=10, ny=10;
     const IDX nelem_arr[ndim] = {nx, ny};
     // bottom left corner
     T xmin[ndim] = {-1.0, -1.0};
@@ -46,15 +46,15 @@ int main(int argc, char *argv[]){
     // boundary conditions
     Tensor<ELEMENT::BOUNDARY_CONDITIONS, 2 * ndim> bctypes = {{
         ELEMENT::BOUNDARY_CONDITIONS::DIRICHLET, // left side 
+        ELEMENT::BOUNDARY_CONDITIONS::NEUMANN,   // bottom side 
         ELEMENT::BOUNDARY_CONDITIONS::DIRICHLET, // right side 
-        ELEMENT::BOUNDARY_CONDITIONS::DIRICHLET,   // bottom side 
-        ELEMENT::BOUNDARY_CONDITIONS::DIRICHLET    // top side
+        ELEMENT::BOUNDARY_CONDITIONS::NEUMANN    // top side
     }};
     int bcflags[2 * ndim] = {
-        -1, // left side 
-        -1, // right side
-        -1, // bottom side 
-        -1  // top side
+        0, // left side 
+        0, // bottom side 
+        1, // right side
+        0  // top side
     };
     int geometry_order = 1;
 
@@ -80,9 +80,9 @@ int main(int argc, char *argv[]){
 
     DISC::HeatEquation<T, IDX, ndim> heat_equation{}; 
     // Dirichlet BC: Left side = 0
-    heat_equation.dirichlet_values.push_back(0.0); 
-    // Dirichlet BC: Rigght side = 1
     heat_equation.dirichlet_values.push_back(1.0); 
+    // Dirichlet BC: Rigght side = 1
+    heat_equation.dirichlet_values.push_back(2.0); 
     // Neumann BC: Top and bottom have 0 normal gradient 
     heat_equation.neumann_values.push_back(0.0);
 
@@ -101,8 +101,8 @@ int main(int argc, char *argv[]){
         double x = xarr[0];
         double y = xarr[1];
 
-        out[0] = x + y;
-        // out[0] = std::sin(x) * std::cos(y);
+        //out[0] = x;
+        out[0] = std::sin(x) * std::cos(y);
     };
     
     // Manufactured solution BC 
@@ -145,9 +145,7 @@ int main(int argc, char *argv[]){
     using namespace ICEICLE::SOLVERS;
     ExplicitEuler explicit_euler{fespace, heat_equation};
     explicit_euler.ivis = 10;
-    explicit_euler.ntime = 1000;
-    explicit_euler.tfinal = -1.0;
-    explicit_euler.dt_fixed = 0.01;
+    explicit_euler.tfinal = 2000;
     ICEICLE::IO::PVDWriter<T, IDX, ndim> pvd_writer;
     pvd_writer.register_fespace(fespace);
     pvd_writer.register_fields(u, "u");

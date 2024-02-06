@@ -53,6 +53,8 @@ namespace DISC {
         /// Dirichlet boundary conditions 
         // see Arnold et al 2002 sec 2.1
         // This is an additional penalty see Huang, Chen, Li, Yan (2016)
+        // WARNING: probably shouldn't be used 
+        //
         // also: https://mooseframework.inl.gov/source/bcs/PenaltyDirichletBC.html
         T penalty = 0.0;
 
@@ -209,10 +211,11 @@ namespace DISC {
                 T h_ddg = 0;
                 for(int idim = 0; idim < ndim; ++idim){
                     h_ddg += unit_normal[idim] * (
-                        std::abs(phys_pt[idim] - centroidL[idim])
-                        + std::abs(phys_pt[idim] - centroidR[idim])
+                        (phys_pt[idim] - centroidL[idim])
+                        + (centroidR[idim] - phys_pt[idim])
                     );
                 }
+                h_ddg = std::abs(h_ddg);
 
                 static constexpr int ieq = 0;
                 // construct the DDG derivatives
@@ -242,10 +245,10 @@ namespace DISC {
 
                 // contribution to the residual 
                 for(std::size_t itest = 0; itest < elL.nbasis(); ++itest){
-                    resL[feidx{.idof = itest, .iv = 0}] -= flux * bi_dataL[itest];
+                    resL[feidx{.idof = itest, .iv = 0}] += flux * bi_dataL[itest];
                 }
                 for(std::size_t itest = 0; itest < elR.nbasis(); ++itest){
-                    resR[feidx{.idof = itest, .iv = 0}] += flux * bi_dataR[itest];
+                    resR[feidx{.idof = itest, .iv = 0}] -= flux * bi_dataR[itest];
                 }
             }
 
@@ -284,8 +287,7 @@ namespace DISC {
             switch(trace.face.bctype){
                 case ELEMENT::BOUNDARY_CONDITIONS::DIRICHLET: 
                 {
-                    // see Arnold et al 2002 sec 2.1
-                    // Interior Penalty method 
+                    // see Huang, Chen, Li, Yan 2016
 
                     // loop over quadrature points
                     for(int iqp = 0; iqp < trace.nQP(); ++iqp){
@@ -334,33 +336,33 @@ namespace DISC {
                         trace.face.transform(quadpt.abscisse, coord, phys_pt.data());
                         T h_ddg = 0; // uses distance to quadpt on boundary face
                         for(int idim = 0; idim < ndim; ++idim){
-                            h_ddg += unit_normal[idim] * (
-                                std::abs(phys_pt[idim] - centroidL[idim])
+                            h_ddg += std::abs(unit_normal[idim] * 
+                                (phys_pt[idim] - centroidL[idim])
                             );
                         }
 
                         static constexpr int ieq = 0;
                         // construct the DDG derivatives
-                        T grad_ddg[ndim];
                         int max_basis_order = 
                             elL.basis->getPolynomialOrder();
 
                         // Danis and Yan reccomended for NS
                         T beta0 = std::pow(max_basis_order + 1, 2);
                         T jumpu = dirichlet_val - value_uL;
+                        // NOTE: directly constructing the normal gradient as in Huang, Chen, Li, Yan 2016
+                        T grad_ddg_n = beta0 * jumpu / h_ddg;
                         for(int idim = 0; idim < ndim; ++idim){
-                            grad_ddg[idim] = beta0 * jumpu / h_ddg * unit_normal[idim]
-                                + 0.5 * (graduL[ieq, idim]);
+                            grad_ddg_n += graduL[ieq, idim] * unit_normal[idim];
                         }
 
                         // calculate the flux weighted by the quadrature and face metric
                         T flux = (
-                            mu * MATH::MATRIX_T::dotprod<T, ndim>(grad_ddg, unit_normal.data()) 
+                            mu * grad_ddg_n
                             + penalty * jumpu
                         ) * quadpt.weight * sqrtg;
 
                         for(std::size_t itest = 0; itest < elL.nbasis(); ++itest){
-                            resL[feidx{.idof = itest, .iv = 0}] -= flux * bi_dataL[itest];
+                            resL[feidx{.idof = itest, .iv = 0}] += flux * bi_dataL[itest];
                         }
                     }
                 }
@@ -387,7 +389,7 @@ namespace DISC {
                             * quadpt.weight * sqrtg;
 
                         for(std::size_t itest = 0; itest < elL.nbasis(); ++itest){
-                            resL[feidx{.idof = itest, .iv = 0}] -= bi_dataL[itest] * flux;
+                            resL[feidx{.idof = itest, .iv = 0}] += bi_dataL[itest] * flux;
                         }
                     }
                 }
