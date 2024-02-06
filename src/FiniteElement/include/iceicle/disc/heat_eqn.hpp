@@ -46,19 +46,25 @@ namespace DISC {
         /// @brief the dynamic number of vector components
         static const int dnv_comp = 1;
 
-        /// @brief the diffusion coefficient
+        /// @brief the diffusion coefficient (positive)
         T mu = 0.001;
 
         /// @brief the interior penalty coefficient for 
         /// Dirichlet boundary conditions 
         // see Arnold et al 2002 sec 2.1
+        // This is an additional penalty see Huang, Chen, Li, Yan (2016)
         // also: https://mooseframework.inl.gov/source/bcs/PenaltyDirichletBC.html
-        // must be > 1.0
-        T penalty = 1.001;
+        T penalty = 0.0;
 
         /// @brief the value for each bcflag (index into this list) 
         /// for dirichlet bc
         std::vector<T> dirichlet_values;
+
+        /// @brief dirichlet value for each negative bcflag
+        /// as a function callback 
+        /// This function will take the physical domain point (size = ndim)
+        /// and output neq values in the second argument
+        std::vector< std::function<void(T *, T *)> > dirichlet_callbacks;
 
         /// @brief the prescribed normal gradient for each bcflag 
         /// (index into this list) for neumann bc
@@ -110,18 +116,18 @@ namespace DISC {
                 T detJ = NUMTOOL::TENSOR::FIXED_SIZE::determinant(J);
 
                 // get the gradients in the physical domain
-                std::vector<T> grad_data(el.nbasis() * ndim);
-                auto gradBi = el.evalPhysGradBasisQP(iqp, coord, J, grad_data.data());
+                std::vector<T> gradx_data(el.nbasis() * ndim);
+                auto gradxBi = el.evalPhysGradBasisQP(iqp, coord, J, gradx_data.data());
 
                 // construct the gradient of u
                 T gradu[ndim] = {0};
-                u.contract_mdspan(gradBi, gradu);
+                u.contract_mdspan(gradxBi, gradu);
 
                 // loop over the test functions and construct the residual 
                 for(std::size_t itest = 0; itest < el.nbasis(); ++itest){
                     for(std::size_t jdim = 0; jdim < ndim; ++jdim){
                         res[feidx{.idof = itest, .iv = 0}]
-                            -= mu * gradu[jdim] * gradBi[itest, jdim] * detJ * quadpt.weight;
+                            -= mu * gradu[jdim] * gradxBi[itest, jdim] * detJ * quadpt.weight;
                     }
                 }
             }
@@ -174,8 +180,8 @@ namespace DISC {
                 // get the gradients the physical domain
                 std::vector<T> grad_dataL(elL.nbasis() * ndim);
                 std::vector<T> grad_dataR(elR.nbasis() * ndim);
-                auto gradBiL = trace.evalGradBasisQPL(iqp, grad_dataL.data());
-                auto gradBiR = trace.evalGradBasisQPR(iqp, grad_dataR.data());
+                auto gradBiL = trace.evalPhysGradBasisQPL(iqp, coord, grad_dataL.data());
+                auto gradBiR = trace.evalPhysGradBasisQPR(iqp, coord, grad_dataR.data());
 
                 std::vector<T> gradu_dataL(ndim);
                 std::vector<T> gradu_dataR(ndim);
@@ -185,8 +191,8 @@ namespace DISC {
                 // get the hessians in the physical domain 
                 std::vector<T> hess_dataL(elL.nbasis() * ndim * ndim);
                 std::vector<T> hess_dataR(elR.nbasis() * ndim * ndim);
-                auto hessBiL = trace.evalHessBasisQPL(iqp, hess_dataL.data());
-                auto hessBiR = trace.evalHessBasisQPR(iqp, hess_dataR.data());
+                auto hessBiL = trace.evalPhysHessBasisQPL(iqp, coord, hess_dataL.data());
+                auto hessBiR = trace.evalPhysHessBasisQPR(iqp, coord, hess_dataR.data());
 
                 std::vector<T> hessu_dataL(ndim * ndim);
                 std::vector<T> hessu_dataR(ndim * ndim);
@@ -198,11 +204,13 @@ namespace DISC {
                 auto unit_normal = normalize(normal);
 
                 // calculate the DDG distance
+                MATH::GEOMETRY::Point<T, ndim> phys_pt;
+                trace.face.transform(quadpt.abscisse, coord, phys_pt.data());
                 T h_ddg = 0;
                 for(int idim = 0; idim < ndim; ++idim){
                     h_ddg += unit_normal[idim] * (
-                        std::abs(quadpt.abscisse[idim] - centroidL[idim])
-                        + std::abs(quadpt.abscisse[idim] - centroidR[idim])
+                        std::abs(phys_pt[idim] - centroidL[idim])
+                        + std::abs(phys_pt[idim] - centroidR[idim])
                     );
                 }
 
@@ -271,6 +279,8 @@ namespace DISC {
             using FiniteElement = ELEMENT::FiniteElement<T, IDX, ndim>;
             const FiniteElement &elL = trace.elL;
 
+            auto centroidL = elL.geo_el->centroid(coord);
+
             switch(trace.face.bctype){
                 case ELEMENT::BOUNDARY_CONDITIONS::DIRICHLET: 
                 {
@@ -285,20 +295,72 @@ namespace DISC {
                         auto Jfac = trace.face.Jacobian(coord, quadpt.abscisse);
                         T sqrtg = trace.face.rootRiemannMetric(Jfac, quadpt.abscisse);
 
+                        // calculate the normal vector 
+                        auto normal = calc_ortho(Jfac);
+                        auto unit_normal = normalize(normal);
+
                         // get the function values
                         std::vector<T> bi_dataL(elL.nbasis());
                         trace.evalBasisQPL(iqp, bi_dataL.data());
+
+                        // get the gradients the physical domain
+                        std::vector<T> grad_dataL(elL.nbasis() * ndim);
+                        auto gradBiL = trace.evalPhysGradBasisQPL(iqp, coord, grad_dataL.data());
+
+                        std::vector<T> gradu_dataL(ndim);
+                        auto graduL = uL.contract_mdspan(gradBiL, gradu_dataL.data());
 
                         T value_uL = 0.0;
                         for(std::size_t ibasis = 0; ibasis < elL.nbasis(); ++ibasis)
                         { value_uL += uL[feidx{.idof = ibasis, .iv = 0}] * bi_dataL[ibasis]; }
 
-                        T dirichlet_val = dirichlet_values[trace.face.bcflag];
+                        // Get the value at the boundary 
+                        T dirichlet_val;
+                        if(trace.face.bcflag < 0){
+                            // calback using physical domain location
+                            MATH::GEOMETRY::Point<T, ndim> ref_pt, phys_pt;
+                            trace.face.transform_xiL(quadpt.abscisse, ref_pt.data());
+                            elL.transform(coord, ref_pt, phys_pt);
+                            
+                            dirichlet_callbacks[-trace.face.bcflag](phys_pt.data(), &dirichlet_val);
+
+                        } else {
+                            // just use the value
+                            dirichlet_val = dirichlet_values[trace.face.bcflag];
+                        }
+
+                        // calculate the DDG distance
+                        MATH::GEOMETRY::Point<T, ndim> phys_pt;
+                        trace.face.transform(quadpt.abscisse, coord, phys_pt.data());
+                        T h_ddg = 0; // uses distance to quadpt on boundary face
+                        for(int idim = 0; idim < ndim; ++idim){
+                            h_ddg += unit_normal[idim] * (
+                                std::abs(phys_pt[idim] - centroidL[idim])
+                            );
+                        }
+
+                        static constexpr int ieq = 0;
+                        // construct the DDG derivatives
+                        T grad_ddg[ndim];
+                        int max_basis_order = 
+                            elL.basis->getPolynomialOrder();
+
+                        // Danis and Yan reccomended for NS
+                        T beta0 = std::pow(max_basis_order + 1, 2);
+                        T jumpu = dirichlet_val - value_uL;
+                        for(int idim = 0; idim < ndim; ++idim){
+                            grad_ddg[idim] = beta0 * jumpu / h_ddg * unit_normal[idim]
+                                + 0.5 * (graduL[ieq, idim]);
+                        }
+
+                        // calculate the flux weighted by the quadrature and face metric
+                        T flux = (
+                            mu * MATH::MATRIX_T::dotprod<T, ndim>(grad_ddg, unit_normal.data()) 
+                            + penalty * jumpu
+                        ) * quadpt.weight * sqrtg;
 
                         for(std::size_t itest = 0; itest < elL.nbasis(); ++itest){
-                            resL[feidx{.idof = itest, .iv = 0}] -= 
-                                penalty * (value_uL - dirichlet_val) 
-                                * bi_dataL[itest] * quadpt.weight * sqrtg;
+                            resL[feidx{.idof = itest, .iv = 0}] -= flux * bi_dataL[itest];
                         }
                     }
                 }

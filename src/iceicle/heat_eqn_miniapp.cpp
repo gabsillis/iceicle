@@ -37,7 +37,7 @@ int main(int argc, char *argv[]){
     // = create a uniform mesh =
     // =========================
 
-    IDX nx=40, ny=40;
+    IDX nx=2, ny=2;
     const IDX nelem_arr[ndim] = {nx, ny};
     // bottom left corner
     T xmin[ndim] = {-1.0, -1.0};
@@ -51,10 +51,10 @@ int main(int argc, char *argv[]){
         ELEMENT::BOUNDARY_CONDITIONS::DIRICHLET    // top side
     }};
     int bcflags[2 * ndim] = {
-        0, // left side 
-        0, // right side
-        0, // bottom side 
-        0  // top side
+        -1, // left side 
+        -1, // right side
+        -1, // bottom side 
+        -1  // top side
     };
     int geometry_order = 1;
 
@@ -65,7 +65,7 @@ int main(int argc, char *argv[]){
     // = create the finite element space =
     // ===================================
 
-    static constexpr int basis_order = 0;
+    static constexpr int basis_order = 1;
 
     FE::FESpace<T, IDX, ndim> fespace{
         &mesh, 
@@ -100,8 +100,15 @@ int main(int argc, char *argv[]){
     auto ic = [](const double *xarr, double *out) -> void{
         double x = xarr[0];
         double y = xarr[1];
-        out[0] = std::sin(x) * std::cos(y);
+
+        out[0] = x + y;
+        // out[0] = std::sin(x) * std::cos(y);
     };
+    
+    // Manufactured solution BC 
+    heat_equation.dirichlet_callbacks.resize(2);
+    heat_equation.dirichlet_callbacks[1] = ic;
+
 
     DISC::Projection<T, IDX, ndim, neq> projection{ic};
     // TODO: extract into LinearFormSolver

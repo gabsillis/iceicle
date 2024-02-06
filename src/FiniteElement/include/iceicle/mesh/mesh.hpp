@@ -282,7 +282,7 @@ namespace MESH {
                             );
 
                             // get the orientations
-                            static constexpr int nfacevert = MATH::power_T<2, ndim>::value;
+                            static constexpr int nfacevert = MATH::power_T<2, ndim-1>::value;
                             IDX vert_l[nfacevert];
                             IDX vert_r[nfacevert];
                             transl.get_face_vert(face_nr_l, elements[iel]->nodes(), vert_l);

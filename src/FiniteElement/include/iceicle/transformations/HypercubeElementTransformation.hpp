@@ -959,7 +959,7 @@ class HypercubeTraceOrientTransformation {
   /// number of dimensions for the trace space 
   static constexpr int trace_ndim = ndim - 1;
   /// number of vertices in a face
-  static constexpr int nvert_tr = MATH::power_T<2, ndim>::value;
+  static constexpr int nvert_tr = MATH::power_T<2, trace_ndim>::value;
 
   /// upper bound (not inclusive) of the sign codes
   static constexpr int sign_code_bound = MATH::power_T<2, trace_ndim>::value;
@@ -971,7 +971,7 @@ class HypercubeTraceOrientTransformation {
   template<int idim> inline int idim_mask() const { return (1 << idim); }
 
   /**
-   * @brief copy the sign at the specified dimension 
+   * @brief multiply by the sign at the given dimension
    * @param [in] idim the dimension index (the bit index into sign_code)
    * @param [in] mag the magnitude to apply the sign to 
    * @param [in] sign code a set of bits
@@ -982,7 +982,7 @@ class HypercubeTraceOrientTransformation {
 
     int is_negative = sign_code & (1 << idim);
     // TODO: remove branch
-    return (is_negative) ? std::copysign(mag, -1) : std::copysign(mag, 1);
+    return (is_negative) ? mag * -1 : mag;
   }
 
   std::vector<std::vector<int>> axis_permutations;
@@ -994,6 +994,8 @@ class HypercubeTraceOrientTransformation {
     std::vector<int> first_perm{};
     for(int i = 0; i < trace_ndim; ++i) first_perm.push_back(i);
 
+    // need both of these for std::next_permutation
+    // the second one (iperm=1) gets immediately permuted
     axis_permutations.push_back(first_perm);
     axis_permutations.push_back(first_perm);
     int iperm = 1;
@@ -1097,6 +1099,7 @@ class HypercubeTraceOrientTransformation {
     int sign_code = orientationR % sign_code_bound;
 
     for(int idim = 0; idim < trace_ndim; ++idim){
+      // TODO: rename copysign_idim to better reflect multiply action
       sR[idim] = copysign_idim(
           idim, 
           s[axis_permutations[iperm][idim]],
@@ -1198,6 +1201,8 @@ class HypercubeTraceTransformation {
       FE::NodalFEFunction<T, ndim> &coord,
       ElPointView x
   ) const {
+    // zero fill 
+    std::fill_n(x.data(), ndim, 0.0);
     using namespace NUMTOOL::TENSOR::FIXED_SIZE;
     Tensor<T, n_nodes> Bi{};
     trace_domain_trans.fill_shp(s, Bi.data());

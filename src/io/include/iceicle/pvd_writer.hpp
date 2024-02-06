@@ -244,7 +244,8 @@ namespace ICEICLE::IO {
                             el.evalBasis(refnode, basis_data.data());
                             T field_value = 0;
                             for(std::size_t idof = 0; idof < el.nbasis(); ++idof){
-                                field_value += fedata[FE::fe_index{(std::size_t) el.elidx, idof, ifield}];
+                                field_value += fedata[FE::fe_index{(std::size_t) el.elidx, idof, ifield}] 
+                                    * basis_data[idof];
                             }
 
                             vtu_file << field_value << " ";
