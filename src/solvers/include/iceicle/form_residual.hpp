@@ -93,9 +93,9 @@ namespace ICEICLE::SOLVERS {
             // zero out the residual
             resL = 0;
 
-           disc.boundaryIntegral(trace, fespace.meshptr->nodes, uL, uR, resL);
+            disc.boundaryIntegral(trace, fespace.meshptr->nodes, uL, uR, resL);
 
-           FE::scatter_elspan(trace.elL.elidx, 1.0, resL, 1.0, res);
+            FE::scatter_elspan(trace.elL.elidx, 1.0, resL, 1.0, res);
         }
 
         // interior faces 

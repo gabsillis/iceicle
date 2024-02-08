@@ -65,7 +65,7 @@ int main(int argc, char *argv[]){
     // = create the finite element space =
     // ===================================
 
-    static constexpr int basis_order = 1;
+    static constexpr int basis_order = 2;
 
     FE::FESpace<T, IDX, ndim> fespace{
         &mesh, 
@@ -146,6 +146,7 @@ int main(int argc, char *argv[]){
     ExplicitEuler explicit_euler{fespace, heat_equation};
     explicit_euler.ivis = 10;
     explicit_euler.tfinal = 2000;
+    explicit_euler.dt_fixed = 0.1;
     ICEICLE::IO::PVDWriter<T, IDX, ndim> pvd_writer;
     pvd_writer.register_fespace(fespace);
     pvd_writer.register_fields(u, "u");

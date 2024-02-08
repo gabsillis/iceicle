@@ -36,6 +36,11 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 find_package(MPI)
 
+if(MPI_FOUND)
+  # if MPI is available build they hypre library
+  add_subdirectory(./hypre/src)
+endif()
+
 include_directories(SYSTEM ${MPI_INCLUDE_PATH})
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin/obj)
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin/obj)
