@@ -38,7 +38,10 @@ find_package(MPI)
 
 if(MPI_FOUND)
   # if MPI is available build they hypre library
+  set(ICEICLE_USE_HYPRE TRUE)
   add_subdirectory(./hypre/src)
+else()
+  set(ICEICLE_USE_HYPRE FALSE)
 endif()
 
 include_directories(SYSTEM ${MPI_INCLUDE_PATH})

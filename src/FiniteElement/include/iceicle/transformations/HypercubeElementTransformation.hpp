@@ -1155,7 +1155,8 @@ class HypercubeTraceTransformation {
         { lc_indices[idim + 1] = idim + 1; }
 
       // get the levi_civita tensor, then chose sign based on normal direction 
-      T lc = NUMTOOL::TENSOR::FIXED_SIZE::levi_civita<T, ndim>.list_index(lc_indices);
+      auto lc_tensor = NUMTOOL::TENSOR::FIXED_SIZE::levi_civita<T, ndim>;
+      T lc = lc_tensor.list_index(lc_indices);
       if(is_negative_xi) lc = -lc;
 
       first_dim_sign[itrace] = lc;
