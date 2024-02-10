@@ -3,6 +3,11 @@
  *
  * @author Gianni Absillis (gabsill@ncsu.edu)
  */
+#ifdef ICEICLE_USE_MPI
+#include "HYPRE_utilities.h"
+#include "iceicle/form_hypre_jacobian.hpp"
+#include "mpi.h"
+#endif
 
 #include "iceicle/disc/heat_eqn.hpp"
 #include "iceicle/disc/projection.hpp"
@@ -16,10 +21,18 @@
 #include <iceicle/solvers/element_linear_solve.hpp>
 #include <iceicle/build_config.hpp>
 #include <iceicle/pvd_writer.hpp>
+#include <string>
 #include <type_traits>
 #include <fenv.h>
 
 int main(int argc, char *argv[]){
+#ifdef ICEICLE_USE_MPI
+   /* Initialize MPI */
+   MPI_Init(&argc, &argv);
+   HYPRE_Initialize();
+#endif
+
+
     feenableexcept(FE_ALL_EXCEPT & ~FE_INEXACT);
 
     // using declarations
@@ -37,7 +50,7 @@ int main(int argc, char *argv[]){
     // = create a uniform mesh =
     // =========================
 
-    IDX nx=10, ny=10;
+    IDX nx=2, ny=2;
     const IDX nelem_arr[ndim] = {nx, ny};
     // bottom left corner
     T xmin[ndim] = {-1.0, -1.0};
@@ -65,7 +78,7 @@ int main(int argc, char *argv[]){
     // = create the finite element space =
     // ===================================
 
-    static constexpr int basis_order = 2;
+    static constexpr int basis_order = 1;
 
     FE::FESpace<T, IDX, ndim> fespace{
         &mesh, 
@@ -145,25 +158,39 @@ int main(int argc, char *argv[]){
     using namespace ICEICLE::SOLVERS;
     ExplicitEuler explicit_euler{fespace, heat_equation};
     explicit_euler.ivis = 10;
-    explicit_euler.tfinal = 2000;
-    explicit_euler.dt_fixed = 0.1;
+    explicit_euler.tfinal = 2;
+    //explicit_euler.dt_fixed = 0.1;
     ICEICLE::IO::PVDWriter<T, IDX, ndim> pvd_writer;
     pvd_writer.register_fespace(fespace);
     pvd_writer.register_fields(u, "u");
-    explicit_euler.vis_callback = [&](ExplicitEuler<T, IDX> &disc){
+    explicit_euler.vis_callback = [&](ExplicitEuler<T, IDX> &solver){
         T sum = 0.0;
-        for(int i = 0; i < disc.res_data.size(); ++i){
-            sum += SQUARED(disc.res_data[i]);
+        for(int i = 0; i < solver.res_data.size(); ++i){
+            sum += SQUARED(solver.res_data[i]);
         }
         std::cout << std::setprecision(8);
-        std::cout << "itime: " << std::setw(6) << disc.itime 
-            << " | t: " << std::setw(14) << disc.time
+        std::cout << "itime: " << std::setw(6) << solver.itime 
+            << " | t: " << std::setw(14) << solver.time
             << " | residual l2: " << std::setw(14) << std::sqrt(sum) 
             << std::endl;
 
-        pvd_writer.write_vtu(disc.itime, disc.time);
+        pvd_writer.write_vtu(solver.itime, solver.time);
+
+#ifdef ICEICLE_USE_MPI
+        auto J = form_hypre_jacobian(fespace, heat_equation, u);
+        std::string jac_filename = "J" + std::to_string(solver.itime) + ".out.J"; 
+        HYPRE_IJMatrixPrint(J, jac_filename.c_str());
+        HYPRE_IJMatrixDestroy(J);
+#endif
     };
     explicit_euler.solve(fespace, heat_equation, u);
+
+    //cleanup
+
+#ifdef ICEICLE_USE_MPI
+    HYPRE_Finalize();
+    MPI_Finalize();
+#endif
     return 0;
 }
 

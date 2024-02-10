@@ -138,6 +138,26 @@ namespace ICEICLE::SOLVERS {
 }
     
 
+    /**
+     * @brief form a hypre sparse matrix that represents the jacobian 
+     * The jacobian is J_{ij} = \frac{\partial f_i}{\partial u_j}
+     * 
+     * WARNING: this has no way to track the storage duration of the matrix 
+     * HYPRE_IJMatrixDestory() must be called to free memory
+     *
+     * @tparam T the floating point type 
+     * @tparam IDX the index type 
+     * @tparam ndim the number of dimension
+     * @tparam disc_class the discretization type to get the jacobian for 
+     * @tparam uLayoutPolicy the layout policy for the solution vector 
+     * @tparam uAccessorPolicy the accessor policy for the solution vector 
+     *
+     * @param fespace the finite element space 
+     * @param disc the discretization to get the jacobian for 
+     * @param u the solution to evaluate the jacobian at 
+     * @param comm (optional) the mpi commmunicator (defaults to world)
+     * @return the HYPRE_IJMatrix handle of the jacobian 
+     */
     template<
         class T,
         class IDX,
@@ -204,18 +224,19 @@ namespace ICEICLE::SOLVERS {
         HYPRE_IJMatrixCreate(comm, ilower, iupper, ilower, iupper, &J);
         HYPRE_IJMatrixSetObjectType(J, HYPRE_PARCSR);
         HYPRE_IJMatrixInitialize(J);
+//        HYPRE_IJMatrixSetPrintLevel(J, 1);
 
         // boundary traces (TODO: consider parallel contribution from/to other proceses)
-        for(const Trace &trace : fespace.get_boundary_traces()){
+        for(Trace const& trace : fespace.get_boundary_traces()){
             // set up compact data views
             auto uL_layout = u.create_element_layout(trace.elL.elidx);
-            FE::elspan uL{uL_data, uL_layout};
+            FE::elspan uL{uL_data.data(), uL_layout};
             auto uR_layout = u.create_element_layout(trace.elR.elidx);
-            FE::elspan uR{uR_data, uR_layout};
+            FE::elspan uR{uR_data.data(), uR_layout};
 
             // using the layout to match the input data (will be most optimal)
             auto resL_layout = u.create_element_layout(trace.elL.elidx);
-            FE::elspan resL{resL_data, resL_layout};
+            FE::elspan resL{resL_data.data(), resL_layout};
 
             // extract the compact values from the global u view
             FE::extract_elspan(trace.elL.elidx, u, uL);
@@ -228,22 +249,22 @@ namespace ICEICLE::SOLVERS {
             disc.boundaryIntegral(trace, fespace.meshptr->nodes, uL, uR, resL);
 
             // finite difference with perturbed solutions
-            FE::elspan resLp{resLp_data, resL_layout};
+            FE::elspan resLp{resLp_data.data(), resL_layout};
 
             // set up the perturbation amount scaled by unperturbed residual 
             T eps_scaled = std::max(epsilon, resL.vector_norm() * epsilon);
 
             // all the local information for a call to AddToValues
-            std::size_t sizeL = uL.extents.ndof() * ncomp;
-            std::vector<IDX> rows(sizeL);
+            std::size_t sizeL = uL.extents().ndof * ncomp;
+            std::vector<IDX> rows{}; // use push_back to fill
             std::vector<IDX> ncols(sizeL, sizeL);
             std::vector<IDX> cols_data(sizeL * sizeL);
             mdspan cols{cols_data.data(), extents{sizeL, sizeL}};
             std::vector<T> Jcompact_data(sizeL * sizeL);
             mdspan Jcompact{Jcompact_data.data(), extents{sizeL, sizeL}};
 
-            for(int idof = 0; idof < uL.extents().ndof; ++idof){
-                for(int iv = 0; iv < ncomp; ++iv){
+            for(std::size_t idof = 0; idof < uL.extents().ndof; ++idof){
+                for(std::size_t iv = 0; iv < ncomp; ++iv){
                     // local jacobian matrix index
                     std::size_t jlocal = idof * ncomp + iv;
 
@@ -254,7 +275,7 @@ namespace ICEICLE::SOLVERS {
                     disc.boundaryIntegral(trace, fespace.meshptr->nodes, uL, uR, resLp);
 
                     // get the matrix index corresponding to the perturbed u value 
-                    IDX icol = ilower + u.get_layout()(FE::fe_index{trace.elL.elidx, idof, iv});
+                    IDX icol = ilower + u.get_layout()(FE::fe_index{(std::size_t) trace.elL.elidx, idof, iv});
 
                     // add the column index to the rows array 
                     // (NOTE: this is an out of order operation)
@@ -281,22 +302,22 @@ namespace ICEICLE::SOLVERS {
 
             // call the AddValues 
             HYPRE_IJMatrixAddToValues(J, rows.size(), ncols.data(),
-                    rows.data(), cols.data_handle(), Jcompact.data_handle());
+                    rows.data(), cols_data.data(), Jcompact_data.data());
         }
 
         // interior traces 
-        for(const Trace &trace : fespace.get_interior_traces()){
+        for(Trace const& trace : fespace.get_interior_traces()){
             // set up compact data views
             auto uL_layout = u.create_element_layout(trace.elL.elidx);
-            FE::elspan uL{uL_data, uL_layout};
+            FE::elspan uL{uL_data.data(), uL_layout};
             auto uR_layout = u.create_element_layout(trace.elR.elidx);
-            FE::elspan uR{uR_data, uR_layout};
+            FE::elspan uR{uR_data.data(), uR_layout};
 
             // using the layout to match the input data (will be most optimal)
             auto resL_layout = u.create_element_layout(trace.elL.elidx);
-            FE::elspan resL{resL_data, resL_layout};
+            FE::elspan resL{resL_data.data(), resL_layout};
             auto resR_layout = u.create_element_layout(trace.elR.elidx);
-            FE::elspan resR{resR_data, resR_layout};
+            FE::elspan resR{resR_data.data(), resR_layout};
 
             // extract the compact values from the global u view
             FE::extract_elspan(trace.elL.elidx, u, uL);
@@ -310,25 +331,25 @@ namespace ICEICLE::SOLVERS {
             disc.traceIntegral(trace, fespace.meshptr->nodes, uL, uR, resL, resR);
 
             // finite difference with perturbed solutions
-            FE::elspan resLp{resLp_data, resL_layout};
-            FE::elspan resRp{resRp_data, resR_layout};
+            FE::elspan resLp{resLp_data.data(), resL_layout};
+            FE::elspan resRp{resRp_data.data(), resR_layout};
 
             // set up the perturbation amount scaled by unperturbed residual 
-            T eps_scaled = std::max(epsilon, resL.vector_norm() * epsilon, resR.vector_norm() * epsilon);
+            T eps_scaled = std::max(epsilon, std::max(resL.vector_norm() * epsilon, resR.vector_norm() * epsilon));
 
             // all the local information for a call to AddToValues
-            std::size_t sizeL = uL.extents.ndof() * ncomp;
-            std::size_t sizeR = uR.extents.ndof() * ncomp;
+            std::size_t sizeL = uL.extents().ndof * ncomp;
+            std::size_t sizeR = uR.extents().ndof * ncomp;
             std::size_t sizeLR = sizeL + sizeR;
-            std::vector<IDX> rows(sizeLR);
+            std::vector<IDX> rows{}; // use push_back to fill
             std::vector<IDX> ncols(sizeLR, sizeLR);
             std::vector<IDX> cols_data(sizeLR * sizeLR);
             mdspan cols{cols_data.data(), extents{sizeLR, sizeLR}};
             std::vector<T> Jcompact_data(sizeLR * sizeLR);
             mdspan Jcompact{Jcompact_data.data(), extents{sizeLR, sizeLR}};
 
-            for(int idof = 0; idof < uL.extents().ndof; ++idof){
-                for(int iv = 0; iv < ncomp; ++iv){
+            for(std::size_t idof = 0; idof < uL.extents().ndof; ++idof){
+                for(std::size_t iv = 0; iv < ncomp; ++iv){
                     // === perturb the left side first ===
                     T old_val = uL[idof, iv];
                     uL[idof, iv] += eps_scaled;
@@ -340,7 +361,7 @@ namespace ICEICLE::SOLVERS {
                     disc.traceIntegral(trace, fespace.meshptr->nodes, uL, uR, resLp, resRp);
 
                     // get the matrix index corresponding to the perturbed u value 
-                    IDX icol = ilower + u.get_layout()(FE::fe_index{trace.elL.elidx, idof, iv});
+                    IDX icol = ilower + u.get_layout()(FE::fe_index{(std::size_t) trace.elL.elidx, idof, iv});
                     // add the column index to the rows array 
                     // (NOTE: this is an out of order operation)
                     //  the values don't added in the upcomping loop do not necessarily belong to this row
@@ -377,8 +398,8 @@ namespace ICEICLE::SOLVERS {
                 }
             }
 
-            for(int idof = 0; idof < uR.extents().ndof; ++idof){
-                for(int iv = 0; iv < ncomp; ++iv){
+            for(std::size_t idof = 0; idof < uR.extents().ndof; ++idof){
+                for(std::size_t iv = 0; iv < ncomp; ++iv){
                     // === perturb the right side ===
                     T old_val = uR[idof, iv];
                     uR[idof, iv] += eps_scaled;
@@ -390,7 +411,7 @@ namespace ICEICLE::SOLVERS {
                     disc.traceIntegral(trace, fespace.meshptr->nodes, uL, uR, resLp, resRp);
 
                     // get the matrix index corresponding to the perturbed u value 
-                    IDX icol = ilower + u.get_layout()(FE::fe_index{trace.elR.elidx, idof, iv});
+                    IDX icol = ilower + u.get_layout()(FE::fe_index{(std::size_t) trace.elR.elidx, idof, iv});
                     // add the column index to the rows array 
                     rows.push_back(icol);
 
@@ -427,18 +448,18 @@ namespace ICEICLE::SOLVERS {
 
             // call the AddValues 
             HYPRE_IJMatrixAddToValues(J, rows.size(), ncols.data(),
-                    rows.data(), cols.data_handle(), Jcompact.data_handle());
+                    rows.data(), cols_data.data(), Jcompact_data.data());
         }
 
         // domain integral
-        for(const Element &el : fespace.elements){
+        for(Element const& el : fespace.elements){
             // set up compact data views (reuse the storage defined for traces)
             auto uel_layout = u.create_element_layout(el.elidx);
-            FE::elspan u_el{uL_data, uel_layout};
+            FE::elspan u_el{uL_data.data(), uel_layout};
 
             // using the layout to match the input data (will be most optimal)
             auto ures_layout = u.create_element_layout(el.elidx);
-            FE::elspan res_el{resL_data, ures_layout};
+            FE::elspan res_el{resL_data.data(), ures_layout};
 
             // extract the compact values from the global u view 
             FE::extract_elspan(el.elidx, u, u_el);
@@ -449,7 +470,65 @@ namespace ICEICLE::SOLVERS {
             // unperturbed residual 
             disc.domainIntegral(el, fespace.meshptr->nodes, u_el, res_el);
 
+            // finite difference with perturbed solutions
+            FE::elspan res_elp{resLp_data.data(), ures_layout};
+
+            // set up the perturbation amount scaled by unperturbed residual 
+            T eps_scaled = std::max(epsilon, res_el.vector_norm() * epsilon);
+
+            // all local information for a call to AddToValues
+            std::size_t usize = u_el.extents().ndof * ncomp;
+            std::vector<IDX> rows{}; // use push_back to fill
+            std::vector<IDX> ncols(usize, usize); // initialized 
+            std::vector<IDX> cols_data(usize * usize);
+            mdspan cols{cols_data.data(), extents{usize, usize}};
+            std::vector<T> Jcompact_data(usize * usize);
+            mdspan Jcompact{Jcompact_data.data(), extents{usize, usize}};
+
+            for(std::size_t idof = 0; idof < u_el.extents().ndof; ++idof){
+                for(std::size_t iv = 0; iv < ncomp; ++iv){
+                    // local jacobian matrix index
+                    std::size_t jlocal = idof * ncomp + iv;
+
+                    T old_val = u_el[idof, iv];
+                    u_el[idof, iv] += eps_scaled;
+
+                    // get the perturbed residual
+                    disc.domainIntegral(el, fespace.meshptr->nodes, u_el, res_elp);
+
+                    // get the matrix index corresponding to the perturbed u value 
+                    IDX icol = ilower + u.get_layout()(FE::fe_index{(std::size_t) el.elidx, idof, iv});
+
+                    // add the column index to the rows array 
+                    // (NOTE: this is an out of order operation)
+                    //  the values don't added in the upcomping loop do not necessarily belong to this row
+                    rows.push_back(icol);
+
+                    // scatter finite difference 
+                    for(std::size_t idof2 = 0; idof2 < u_el.extents().ndof; ++idof2){
+                        for(std::size_t iv2 = 0; iv2 < ncomp; ++iv2){
+                            // local jacobian matrix index
+                            std::size_t ilocal = idof2 * ncomp + iv2;
+
+                            // finite difference value
+                            T fd_val = (res_elp[idof2, iv2] - res_el[idof2, iv2]) / eps_scaled;
+
+                            cols[ilocal, jlocal]= icol;
+                            Jcompact[ilocal, jlocal] = fd_val;
+                        }
+                    }
+                    // reset the perturbed value 
+                    u_el[idof, iv] = old_val;
+                }
+            }
+
+            // call the AddValues 
+            HYPRE_IJMatrixAddToValues(J, rows.size(), ncols.data(),
+                    rows.data(), cols_data.data(), Jcompact_data.data());
         }
 
+        // finish setting up the matrix
+        HYPRE_IJMatrixAssemble(J);
+        return J;
     }
 }
