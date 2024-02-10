@@ -7,6 +7,7 @@
 #include "Numtool/tmp_flow_control.hpp"
 #include <cstdlib>
 #include <span>
+#include <cmath>
 #include <type_traits>
 #include <iceicle/fe_function/layout_enums.hpp>
 #include <mdspan/mdspan.hpp>
@@ -238,6 +239,9 @@ namespace FE {
             requires(std::is_same_v<AccessorPolicy, default_accessor<T>>) 
             { return __ptr; }
 
+            /** @brief get the layout */
+            constexpr inline LayoutPolicy &get_layout() { return __layout; }
+
             /**
              * @brief set the value at every index 
              * in the index space to the value 
@@ -251,6 +255,30 @@ namespace FE {
                     __ptr[i] = value;
                 }
                 return *this;
+            }
+
+            /**
+             * @brief get the norm of the vector data components 
+             * NOTE: this is not a finite element norm 
+             *
+             * @tparam order the lp polynomial order 
+             * @return the vector lp norm 
+             */
+            template<int order = 2>
+            constexpr T vector_norm(){
+
+                T sum = 0;
+                // TODO: be more specific about the index space
+                // maybe by delegating to the LayoutPolicy
+                for(int i = 0; i < size(); ++i){
+                    sum += std::pow(__ptr[i], order);
+                }
+                
+                if constexpr (order == 2){
+                    return std::sqrt(sum);
+                } else {
+                    return std::pow(sum, 1.0 / order);
+                }
             }
 
             /**
