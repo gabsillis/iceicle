@@ -142,6 +142,30 @@ namespace FE {
 
             /** @brief get a const reference too the layout policy */
             constexpr const LayoutPolicy &get_layout() const { return __layout; }
+
+            /**
+             * @brief get the norm of the vector data components 
+             * NOTE: this is not a finite element norm 
+             *
+             * @tparam order the lp polynomial order 
+             * @return the vector lp norm 
+             */
+            template<int order = 2>
+            constexpr T vector_norm(){
+
+                T sum = 0;
+                // TODO: be more specific about the index space
+                // maybe by delegating to the LayoutPolicy
+                for(int i = 0; i < size(); ++i){
+                    sum += std::pow(__ptr[i], order);
+                }
+                
+                if constexpr (order == 2){
+                    return std::sqrt(sum);
+                } else {
+                    return std::pow(sum, 1.0 / order);
+                }
+            }
     };
 
     // deduction guides

@@ -4,8 +4,6 @@
  * @author Gianni Absillis (gabsill@ncsu.edu)
  */
 #ifdef ICEICLE_USE_MPI
-#include "HYPRE_utilities.h"
-#include "iceicle/form_hypre_jacobian.hpp"
 #include "mpi.h"
 #endif
 
@@ -29,7 +27,6 @@ int main(int argc, char *argv[]){
 #ifdef ICEICLE_USE_MPI
    /* Initialize MPI */
    MPI_Init(&argc, &argv);
-   HYPRE_Initialize();
 #endif
 
 
@@ -176,19 +173,12 @@ int main(int argc, char *argv[]){
 
         pvd_writer.write_vtu(solver.itime, solver.time);
 
-#ifdef ICEICLE_USE_MPI
-        auto J = form_hypre_jacobian(fespace, heat_equation, u);
-        std::string jac_filename = "J" + std::to_string(solver.itime) + ".out.J"; 
-        HYPRE_IJMatrixPrint(J, jac_filename.c_str());
-        HYPRE_IJMatrixDestroy(J);
-#endif
     };
     explicit_euler.solve(fespace, heat_equation, u);
 
     //cleanup
 
 #ifdef ICEICLE_USE_MPI
-    HYPRE_Finalize();
     MPI_Finalize();
 #endif
     return 0;
