@@ -2,6 +2,7 @@
 #include "iceicle/fe_function/dglayout.hpp"
 #include "iceicle/fe_function/fespan.hpp"
 #include "iceicle/hypre_interface.hpp"
+#include "iceicle/petsc_interface.hpp"
 #include "mdspan/mdspan.hpp"
 #include "gtest/gtest.h"
 
