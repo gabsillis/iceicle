@@ -10,11 +10,9 @@
 #include <iceicle/geometry/face.hpp>
 #include <iceicle/geometry/geo_element.hpp>
 #include <iceicle/geometry/hypercube_element.hpp>
-#include <memory>
 #include <ostream>
-#include <string>
-#include <cassert>
 #include <iceicle/fe_function/nodal_fe_function.hpp>
+#include <iomanip>
 namespace MESH {
 
     /**
@@ -93,7 +91,13 @@ namespace MESH {
          * @param order the polynomial order of the hypercubes
          * @param bctypes the boundary conditions for each face of the whole domain,
          *                following the hypercube numbering convention
-         *                TODO: defaults to periodic
+         *                i.e the coordinate direction index (x: 0, y:1, z:2, ...) = face_number % ndim
+         *                the negative side face is face_number / ndim == 0, and positive side otherwise 
+         *                so for 2d this would be: 
+         *                0: left face 
+         *                1: bottom face 
+         *                2: right face 
+         *                3: top face
          *
          * @param bcflags the boundary condition flags for each face of the whole domain,
          *                same layout
@@ -282,7 +286,7 @@ namespace MESH {
                             );
 
                             // get the orientations
-                            static constexpr int nfacevert = MATH::power_T<2, ndim>::value;
+                            static constexpr int nfacevert = MATH::power_T<2, ndim-1>::value;
                             IDX vert_l[nfacevert];
                             IDX vert_r[nfacevert];
                             transl.get_face_vert(face_nr_l, elements[iel]->nodes(), vert_l);
@@ -340,18 +344,22 @@ namespace MESH {
 
                             int orientationr = 0; // choose the simplest one for the boundary
 
+                            int bc_idx = idim;
                             FaceType *faceA = new FaceType(
                                 iel, -1, face_nodes, face_nr_l, face_nr_r,
-                                orientationr, bctypes[idim], bcflags[idim]
+                                orientationr, bctypes[bc_idx], bcflags[bc_idx]
                             );
 
 #ifndef NDEBUG
-                            std::cout << "Boundary Face A |" << " iel: " << iel << " ier: " << -1
+                            std::cout << "Boundary Face A |" << " iel: " << std::setw(3) <<  faceA->elemL
+                                << " | ier: " << std::setw(3) << faceA->elemR
                                 << " | #: " << face_nr_l << " | orient: " << orientationr << " | nodes [ ";
                             for(int i = 0; i < FaceType::trans.n_nodes; ++i){
-                                std::cout << face_nodes[i] << " ";
+                                std::cout << std::setw(3) << face_nodes[i] << " ";
                             }
-                            std::cout << "]" << std::endl;
+                            std::cout << "]" 
+                                " | bctype: " << bc_name(faceA->bctype) 
+                                << " | bcflag" << std::setw(2) << faceA->bcflag << std::endl;
 #endif // !DEBUG
 
                             // form the +1 face
@@ -376,18 +384,22 @@ namespace MESH {
                             );
 
                             orientationr = 0; // choose the simplest one for the boundary
-                                                
+
+                            bc_idx = ndim + idim;
                             FaceType *faceB = new FaceType(
                                 iel, -1, face_nodes, face_nr_l, face_nr_r,
-                                orientationr, bctypes[idim], bcflags[idim]
+                                orientationr, bctypes[bc_idx], bcflags[bc_idx]
                             );
 #ifndef NDEBUG
-                            std::cout << "Boundary Face B |" << " iel: " << iel << " ier: " << -1
-                                << " #: " << face_nr_l << " | orient: " << orientationr << " | nodes [ ";
+                            std::cout << "Boundary Face B |" << " iel: " << std::setw(3) <<  faceB->elemL
+                                << " | ier: " << std::setw(3) << faceB->elemR
+                                << " | #: " << face_nr_l << " | orient: " << orientationr << " | nodes [ ";
                             for(int i = 0; i < FaceType::trans.n_nodes; ++i){
-                                std::cout << face_nodes[i] << " ";
+                                std::cout << std::setw(3) << face_nodes[i] << " ";
                             }
-                            std::cout << "]" << std::endl;
+                            std::cout << "]" 
+                                " | bctype: " << bc_name(faceB->bctype) 
+                                << " | bcflag" << std::setw(2) << faceB->bcflag << std::endl;
 #endif // !DEBUG
 
                             // Take care of periodic bc 

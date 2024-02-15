@@ -4,6 +4,7 @@
  */
 #pragma once
 #include <cstdlib>
+#include <span>
 #include <type_traits>
 
 namespace FE {
@@ -24,16 +25,16 @@ namespace FE {
     };
 
     /** @brief tag to specify that the number of vector component is a runtime parameter */
-    static constexpr int dynamic_ncomp = -1;
+    static constexpr std::size_t dynamic_ncomp = std::dynamic_extent;
 
     /**
      * @brief determine if the number of vector components represents a dynamic number 
      */
-    template<int ncomp>
+    template<std::size_t ncomp>
     struct is_dynamic_ncomp {
 
         /// the boolean value
-        inline static constexpr bool value = (ncomp == -1);
+        inline static constexpr bool value = (ncomp == std::dynamic_extent);
     };
 
 
@@ -70,7 +71,7 @@ namespace FE {
      * @brief the extents of the index space for 
      * the mutidimensional compact_index 
      */
-    template<int ncomp>
+    template<std::size_t ncomp>
     struct compact_index_extents {
         std::size_t ndof = 0;
 
@@ -78,7 +79,7 @@ namespace FE {
             0 : ncomp;
 
         /// get the ncomp template argument
-        static constexpr int get_ncomp() noexcept { return ncomp; }
+        static constexpr std::size_t get_ncomp() noexcept { return ncomp; }
     };
 
     /**
@@ -92,6 +93,15 @@ namespace FE {
 
         /// the index of the vector component
         std::size_t iv = 0;
+    };
+
+    /**
+     * @brief struct concept to tell if the data for an element can be 
+     * copied out of the global fespan in a contiguous block
+     */
+    template< class local_layout, class global_layout >
+    struct is_equivalent_el_layout {
+        static constexpr bool value = false;
     };
 
 }

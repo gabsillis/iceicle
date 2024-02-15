@@ -36,6 +36,25 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 find_package(MPI)
 
+find_package(PkgConfig REQUIRED)
+
+if(MPI_FOUND)
+
+  # find Petsc
+  option(ICEICLE_USE_PETSC OFF)
+  if(ICEICLE_USE_PETSC)
+    set(ENV{PKG_CONFIG_PATH} "$ENV{PETSC_DIR}/$ENV{PETSC_ARCH}/lib/pkgconfig:$ENV{PKG_CONFIG_PATH}")
+    pkg_search_module(PETSC PETSc>3.5.0 IMPORTED_TARGET REQUIRED)
+    message(STATUS "Using PETSc version: ${PETSC_VERSION}")
+  endif()
+
+  # if MPI is available build they hypre library
+  set(ICEICLE_USE_HYPRE TRUE)
+  add_subdirectory(./hypre/src)
+else()
+  set(ICEICLE_USE_HYPRE FALSE)
+endif()
+
 include_directories(SYSTEM ${MPI_INCLUDE_PATH})
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin/obj)
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin/obj)

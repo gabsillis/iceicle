@@ -15,7 +15,7 @@ namespace FE {
      */
     template<
         typename T,
-        int ncomp = dynamic_ncomp,
+        std::size_t ncomp = dynamic_ncomp,
         LAYOUT_VECTOR_ORDER order = DOF_LEFT
     >
     class cg_layout {
@@ -28,7 +28,7 @@ namespace FE {
         /// store the number of degrees of freedom if DOF_RIGHT
         std::size_t ndof;
 
-        inline constexpr int get_ncomp() const {
+        inline constexpr std::size_t get_ncomp() const {
             if constexpr(is_dynamic_ncomp<ncomp>::value){
                 return ncomp_d;
             } else {

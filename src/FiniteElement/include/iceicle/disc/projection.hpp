@@ -8,7 +8,6 @@
 #include "Numtool/fixed_size_tensor.hpp"
 #include "iceicle/fe_function/fespan.hpp"
 #include <functional>
-#include <vector>
 #include <iceicle/element/finite_element.hpp>
 #include <iceicle/fe_function/fe_function.hpp>
 #include <Numtool/matrixT.hpp>
@@ -42,7 +41,7 @@ namespace DISC {
          *        /int f(x) v dx
          * @param el the element
          * @param node_coords the node coordinates array
-         * @param res the residual function (WARNING: MUST BE ZEROED OUT)
+         * @param res the residual function (WARNING: MUST BE ZEROED OUT
          */
         void domainIntegral(
             const ELEMENT::FiniteElement<T, IDX, ndim> &el,

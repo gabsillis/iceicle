@@ -31,9 +31,11 @@ endif()
 # === UNIT TESTS ===
 # ==================
 
-
 include(GoogleTest)
-add_executable(test_felib 
+
+# === Unit Tests for the Finite Element Library ===
+set(FELIB_TEST_SOURCES
+    TestTraceSpace.cpp
     TestFespan.cpp
     TestFESpace.cpp
     TestHypercubeFace.cpp
@@ -42,12 +44,25 @@ add_executable(test_felib
     TestSimplexTransform.cpp
     TestSimplexQuadrature.cpp
     TestSimplexLagrange.cpp
-  #  TestHypercubeFE.cpp
-  #  TestSimplexFE.cpp
-)
+    )
+
+add_executable(test_felib ${FELIB_TEST_SOURCES})
 target_link_libraries( test_felib PUBLIC iceicle_fe )
 target_link_libraries( test_felib PUBLIC nt_autodiff) 
 target_link_libraries( test_felib PUBLIC gtest gtest_main) 
 
 gtest_discover_tests(test_felib)
+
+# === Unit Tests for the Solver Library ===
+#  ( currently not in CI )
+
+if(ICEICLE_USE_HYPRE)
+set(SOLVER_TEST_SOURCES
+    test_solvers_main.cpp
+    test_hypre_interface.cpp)
+add_executable( test_solvers ${SOLVER_TEST_SOURCES})
+target_link_libraries( test_solvers PUBLIC iceicle_fe )
+target_link_libraries( test_solvers PUBLIC iceicle_solvers )
+target_link_libraries( test_solvers PUBLIC gtest )
+endif()
 

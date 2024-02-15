@@ -8,14 +8,13 @@
 #include <iceicle/geometry/geometry_enums.hpp>
 #include <Numtool/point.hpp>
 #include <Numtool/MathUtils.hpp>
+#include <iceicle/fe_enums.hpp>
 #include <Numtool/fixed_size_tensor.hpp>
-#include <vector>
 #include <string>
 
 namespace ELEMENT {
     
-
-    enum BOUNDARY_CONDITIONS{
+    enum BOUNDARY_CONDITIONS {
         PERIODIC = 0,
         PARALLEL_COM,
         NEUMANN,
@@ -30,6 +29,26 @@ namespace ELEMENT {
         TIME_UPWIND, /// used for the top of a time slab
         INTERIOR // default condition that does nothing
     };
+
+    /// @brief get a human readable name for each boundary condition
+    constexpr const inline char* bc_name(const BOUNDARY_CONDITIONS bc) noexcept {
+        const char *names[] = {
+            "Periodic",
+            "Parallel_Communication",
+            "Neumann",
+            "Dirichlet",
+            "Riemann Solver (Characteristic)",
+            "No slip",
+            "Slip wall",
+            "General Wall",
+            "Inlet",
+            "Outlet",
+            "Initial condition",
+            "Time upwind",
+            "Interior face (NO BC)"
+        };
+        return names[(int) bc];
+    }
 
     /// face_info / this gives the face number 
     /// face_info % this gives the orientation
@@ -89,7 +108,7 @@ namespace ELEMENT {
 
         /** @brief get the shape that defines the reference domain */
         virtual 
-        REFERENCE_DOMAIN_TYPE ref_domn_type() const = 0;
+        constexpr FE::DOMAIN_TYPE domain_type() const = 0;
 
         /**
          * @brief Get the area of the face

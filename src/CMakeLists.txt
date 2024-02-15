@@ -4,8 +4,10 @@ add_subdirectory(util)
 add_subdirectory(math)
 add_subdirectory(FiniteElement)
 add_subdirectory(io)
+add_subdirectory(solvers)
 
 target_link_libraries(iceicle_lib INTERFACE iceicle_fe)
+target_link_libraries(iceicle_lib INTERFACE iceicle_solvers)
 target_link_libraries(iceicle_lib INTERFACE iceicle_io)
 
 # executables

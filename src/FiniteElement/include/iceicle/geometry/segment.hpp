@@ -18,6 +18,7 @@ namespace ELEMENT {
         static constexpr int nnodes = 2;
 
         using Point = MATH::GEOMETRY::Point<T, ndim>;
+        using HessianType = NUMTOOL::TENSOR::FIXED_SIZE::Tensor<T, ndim, ndim, ndim>;
 
         IDX node_idxs[nnodes];
 
@@ -48,12 +49,12 @@ namespace ELEMENT {
         { return transformation.Jacobian(node_coords, node_idxs, xi); }
 
 
-        void Hessian(
+        HessianType Hessian(
             FE::NodalFEFunction<T, ndim> &node_coords,
-            const Point &xi,
-            T hess[ndim][ndim][ndim]
+            const Point &xi
         ) const override {
-            transformation.Hessian(node_coords, node_idxs, xi, hess);
+            HessianType ret{{{{0}}}};;
+            return ret;
         }
     };
 }

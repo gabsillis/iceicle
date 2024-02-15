@@ -8,6 +8,7 @@
 #include "gtest/gtest.h"
 #include <random>
 #include <limits>
+#include <iomanip>
 
 using namespace ELEMENT::TRANSFORMATIONS;
 
@@ -635,6 +636,184 @@ TEST( test_hypercube_transform, test_fill_deriv ){
   ASSERT_DOUBLE_EQ(  lagrange1(xi[0]) * dlagrange1(xi[1]), dBidxj[3][1]);
 }
 
+TEST( test_hypercube_transform, test_fill_hess){
+
+  auto lagrange0 = [](double s){ return s*(s - 1) / 2.0;};
+  auto lagrange1 = [](double s){ return 1 - s * s; };
+  auto lagrange2 = [](double s){ return s * (1 + s) / 2.0;};
+
+  auto dlagrange0 = [](double s){ return s - 0.5; };
+  auto dlagrange1 = [](double s){ return -2.0 * s; };
+  auto dlagrange2 = [](double s){ return s + 0.5; };
+
+  auto d2lagrange0 = [](double s){ return 1.0; };
+  auto d2lagrange1 = [](double s){ return -2.0; };
+  auto d2lagrange2 = [](double s){ return 1.0; };
+
+  static constexpr int ndim = 2;
+  static constexpr int Pn = 2;
+  HypercubeElementTransformation<double, int, ndim, Pn> trans{};
+  MATH::GEOMETRY::Point<double, 2> xi = {0.3, -0.4};
+
+  std::vector<double> hess_data(ndim * ndim * trans.n_nodes());
+  auto hess = trans.fill_hess(xi, hess_data.data());
+
+  ASSERT_DOUBLE_EQ( d2lagrange0(xi[0]) *   lagrange0(xi[1]), (hess[0, 0, 0]));
+  ASSERT_DOUBLE_EQ(  dlagrange0(xi[0]) *  dlagrange0(xi[1]), (hess[0, 0, 1]));
+  ASSERT_DOUBLE_EQ(  dlagrange0(xi[0]) *  dlagrange0(xi[1]), (hess[0, 1, 0]));
+  ASSERT_DOUBLE_EQ(   lagrange0(xi[0]) * d2lagrange0(xi[1]), (hess[0, 1, 1]));
+
+  ASSERT_DOUBLE_EQ( d2lagrange0(xi[0]) *   lagrange1(xi[1]), (hess[1, 0, 0]));
+  ASSERT_DOUBLE_EQ(  dlagrange0(xi[0]) *  dlagrange1(xi[1]), (hess[1, 0, 1]));
+  ASSERT_DOUBLE_EQ(  dlagrange0(xi[0]) *  dlagrange1(xi[1]), (hess[1, 1, 0]));
+  ASSERT_DOUBLE_EQ(   lagrange0(xi[0]) * d2lagrange1(xi[1]), (hess[1, 1, 1]));
+
+  ASSERT_DOUBLE_EQ( d2lagrange0(xi[0]) *   lagrange2(xi[1]), (hess[2, 0, 0]));
+  ASSERT_DOUBLE_EQ(  dlagrange0(xi[0]) *  dlagrange2(xi[1]), (hess[2, 0, 1]));
+  ASSERT_DOUBLE_EQ(  dlagrange0(xi[0]) *  dlagrange2(xi[1]), (hess[2, 1, 0]));
+  ASSERT_DOUBLE_EQ(   lagrange0(xi[0]) * d2lagrange2(xi[1]), (hess[2, 1, 1]));
+
+
+
+  ASSERT_DOUBLE_EQ( d2lagrange1(xi[0]) *   lagrange0(xi[1]), (hess[3, 0, 0]));
+  ASSERT_DOUBLE_EQ(  dlagrange1(xi[0]) *  dlagrange0(xi[1]), (hess[3, 0, 1]));
+  ASSERT_DOUBLE_EQ(  dlagrange1(xi[0]) *  dlagrange0(xi[1]), (hess[3, 1, 0]));
+  ASSERT_DOUBLE_EQ(   lagrange1(xi[0]) * d2lagrange0(xi[1]), (hess[3, 1, 1]));
+
+  ASSERT_DOUBLE_EQ( d2lagrange1(xi[0]) *   lagrange1(xi[1]), (hess[4, 0, 0]));
+  ASSERT_DOUBLE_EQ(  dlagrange1(xi[0]) *  dlagrange1(xi[1]), (hess[4, 0, 1]));
+  ASSERT_DOUBLE_EQ(  dlagrange1(xi[0]) *  dlagrange1(xi[1]), (hess[4, 1, 0]));
+  ASSERT_DOUBLE_EQ(   lagrange1(xi[0]) * d2lagrange1(xi[1]), (hess[4, 1, 1]));
+
+  ASSERT_DOUBLE_EQ( d2lagrange1(xi[0]) *   lagrange2(xi[1]), (hess[5, 0, 0]));
+  ASSERT_DOUBLE_EQ(  dlagrange1(xi[0]) *  dlagrange2(xi[1]), (hess[5, 0, 1]));
+  ASSERT_DOUBLE_EQ(  dlagrange1(xi[0]) *  dlagrange2(xi[1]), (hess[5, 1, 0]));
+  ASSERT_DOUBLE_EQ(   lagrange1(xi[0]) * d2lagrange2(xi[1]), (hess[5, 1, 1]));
+
+
+
+  ASSERT_DOUBLE_EQ( d2lagrange2(xi[0]) *   lagrange0(xi[1]), (hess[6, 0, 0]));
+  ASSERT_DOUBLE_EQ(  dlagrange2(xi[0]) *  dlagrange0(xi[1]), (hess[6, 0, 1]));
+  ASSERT_DOUBLE_EQ(  dlagrange2(xi[0]) *  dlagrange0(xi[1]), (hess[6, 1, 0]));
+  ASSERT_DOUBLE_EQ(   lagrange2(xi[0]) * d2lagrange0(xi[1]), (hess[6, 1, 1]));
+
+  ASSERT_DOUBLE_EQ( d2lagrange2(xi[0]) *   lagrange1(xi[1]), (hess[7, 0, 0]));
+  ASSERT_DOUBLE_EQ(  dlagrange2(xi[0]) *  dlagrange1(xi[1]), (hess[7, 0, 1]));
+  ASSERT_DOUBLE_EQ(  dlagrange2(xi[0]) *  dlagrange1(xi[1]), (hess[7, 1, 0]));
+  ASSERT_DOUBLE_EQ(   lagrange2(xi[0]) * d2lagrange1(xi[1]), (hess[7, 1, 1]));
+
+  ASSERT_DOUBLE_EQ( d2lagrange2(xi[0]) *   lagrange2(xi[1]), (hess[8, 0, 0]));
+  ASSERT_DOUBLE_EQ(  dlagrange2(xi[0]) *  dlagrange2(xi[1]), (hess[8, 0, 1]));
+  ASSERT_DOUBLE_EQ(  dlagrange2(xi[0]) *  dlagrange2(xi[1]), (hess[8, 1, 0]));
+  ASSERT_DOUBLE_EQ(   lagrange2(xi[0]) * d2lagrange2(xi[1]), (hess[8, 1, 1]));
+}
+
+TEST( test_hypercube_transform, test_fill_hess_3d){
+
+  static constexpr int ndim = 3;
+  static constexpr int Pn = 1;
+
+  auto lagrange0 = [](double s){ return (1.0 - s) / 2.0; };
+  auto lagrange1 = [](double s){ return (1.0 + s) / 2.0; };
+
+  auto dlagrange0 = [](double s){ return -0.5; };
+  auto dlagrange1 = [](double s){ return 0.5; };
+
+  auto d2lagrange0 = [](double s){ return 0; };
+  auto d2lagrange1 = [](double s){ return 0; };
+
+  HypercubeElementTransformation<double, int, ndim, Pn> trans{};
+  MATH::GEOMETRY::Point<double, ndim> xi = {0.3, -0.4, 0.1};
+
+  std::vector<double> hess_data(ndim * ndim * trans.n_nodes());
+  auto hess = trans.fill_hess(xi, hess_data.data());
+
+  ASSERT_DOUBLE_EQ( d2lagrange0(xi[0]) *   lagrange0(xi[1]) *   lagrange0(xi[2]), (hess[0, 0, 0]));
+  ASSERT_DOUBLE_EQ(  dlagrange0(xi[0]) *  dlagrange0(xi[1]) *   lagrange0(xi[2]), (hess[0, 0, 1]));
+  ASSERT_DOUBLE_EQ(  dlagrange0(xi[0]) *   lagrange0(xi[1]) *  dlagrange0(xi[2]), (hess[0, 0, 2]));
+  ASSERT_DOUBLE_EQ(  dlagrange0(xi[0]) *  dlagrange0(xi[1]) *   lagrange0(xi[2]), (hess[0, 1, 0]));
+  ASSERT_DOUBLE_EQ(   lagrange0(xi[0]) * d2lagrange0(xi[1]) *   lagrange0(xi[2]), (hess[0, 1, 1]));
+  ASSERT_DOUBLE_EQ(   lagrange0(xi[0]) *  dlagrange0(xi[1]) *  dlagrange0(xi[2]), (hess[0, 1, 2]));
+  ASSERT_DOUBLE_EQ(  dlagrange0(xi[0]) *   lagrange0(xi[1]) *  dlagrange0(xi[2]), (hess[0, 2, 0]));
+  ASSERT_DOUBLE_EQ(   lagrange0(xi[0]) *  dlagrange0(xi[1]) *  dlagrange0(xi[2]), (hess[0, 2, 1]));
+  ASSERT_DOUBLE_EQ(   lagrange0(xi[0]) *   lagrange0(xi[1]) * d2lagrange0(xi[2]), (hess[0, 2, 2]));
+
+  ASSERT_DOUBLE_EQ( d2lagrange0(xi[0]) *   lagrange0(xi[1]) *   lagrange1(xi[2]), (hess[1, 0, 0]));
+  ASSERT_DOUBLE_EQ(  dlagrange0(xi[0]) *  dlagrange0(xi[1]) *   lagrange1(xi[2]), (hess[1, 0, 1]));
+  ASSERT_DOUBLE_EQ(  dlagrange0(xi[0]) *   lagrange0(xi[1]) *  dlagrange1(xi[2]), (hess[1, 0, 2]));
+  ASSERT_DOUBLE_EQ(  dlagrange0(xi[0]) *  dlagrange0(xi[1]) *   lagrange1(xi[2]), (hess[1, 1, 0]));
+  ASSERT_DOUBLE_EQ(   lagrange0(xi[0]) * d2lagrange0(xi[1]) *   lagrange1(xi[2]), (hess[1, 1, 1]));
+  ASSERT_DOUBLE_EQ(   lagrange0(xi[0]) *  dlagrange0(xi[1]) *  dlagrange1(xi[2]), (hess[1, 1, 2]));
+  ASSERT_DOUBLE_EQ(  dlagrange0(xi[0]) *   lagrange0(xi[1]) *  dlagrange1(xi[2]), (hess[1, 2, 0]));
+  ASSERT_DOUBLE_EQ(   lagrange0(xi[0]) *  dlagrange0(xi[1]) *  dlagrange1(xi[2]), (hess[1, 2, 1]));
+  ASSERT_DOUBLE_EQ(   lagrange0(xi[0]) *   lagrange0(xi[1]) * d2lagrange1(xi[2]), (hess[1, 2, 2]));
+
+
+  ASSERT_DOUBLE_EQ( d2lagrange0(xi[0]) *   lagrange1(xi[1]) *   lagrange0(xi[2]), (hess[2, 0, 0]));
+  ASSERT_DOUBLE_EQ(  dlagrange0(xi[0]) *  dlagrange1(xi[1]) *   lagrange0(xi[2]), (hess[2, 0, 1]));
+  ASSERT_DOUBLE_EQ(  dlagrange0(xi[0]) *   lagrange1(xi[1]) *  dlagrange0(xi[2]), (hess[2, 0, 2]));
+  ASSERT_DOUBLE_EQ(  dlagrange0(xi[0]) *  dlagrange1(xi[1]) *   lagrange0(xi[2]), (hess[2, 1, 0]));
+  ASSERT_DOUBLE_EQ(   lagrange0(xi[0]) * d2lagrange1(xi[1]) *   lagrange0(xi[2]), (hess[2, 1, 1]));
+  ASSERT_DOUBLE_EQ(   lagrange0(xi[0]) *  dlagrange1(xi[1]) *  dlagrange0(xi[2]), (hess[2, 1, 2]));
+  ASSERT_DOUBLE_EQ(  dlagrange0(xi[0]) *   lagrange1(xi[1]) *  dlagrange0(xi[2]), (hess[2, 2, 0]));
+  ASSERT_DOUBLE_EQ(   lagrange0(xi[0]) *  dlagrange1(xi[1]) *  dlagrange0(xi[2]), (hess[2, 2, 1]));
+  ASSERT_DOUBLE_EQ(   lagrange0(xi[0]) *   lagrange1(xi[1]) * d2lagrange0(xi[2]), (hess[2, 2, 2]));
+
+  ASSERT_DOUBLE_EQ( d2lagrange0(xi[0]) *   lagrange1(xi[1]) *   lagrange1(xi[2]), (hess[3, 0, 0]));
+  ASSERT_DOUBLE_EQ(  dlagrange0(xi[0]) *  dlagrange1(xi[1]) *   lagrange1(xi[2]), (hess[3, 0, 1]));
+  ASSERT_DOUBLE_EQ(  dlagrange0(xi[0]) *   lagrange1(xi[1]) *  dlagrange1(xi[2]), (hess[3, 0, 2]));
+  ASSERT_DOUBLE_EQ(  dlagrange0(xi[0]) *  dlagrange1(xi[1]) *   lagrange1(xi[2]), (hess[3, 1, 0]));
+  ASSERT_DOUBLE_EQ(   lagrange0(xi[0]) * d2lagrange1(xi[1]) *   lagrange1(xi[2]), (hess[3, 1, 1]));
+  ASSERT_DOUBLE_EQ(   lagrange0(xi[0]) *  dlagrange1(xi[1]) *  dlagrange1(xi[2]), (hess[3, 1, 2]));
+  ASSERT_DOUBLE_EQ(  dlagrange0(xi[0]) *   lagrange1(xi[1]) *  dlagrange1(xi[2]), (hess[3, 2, 0]));
+  ASSERT_DOUBLE_EQ(   lagrange0(xi[0]) *  dlagrange1(xi[1]) *  dlagrange1(xi[2]), (hess[3, 2, 1]));
+  ASSERT_DOUBLE_EQ(   lagrange0(xi[0]) *   lagrange1(xi[1]) * d2lagrange1(xi[2]), (hess[3, 2, 2]));
+
+
+
+
+  ASSERT_DOUBLE_EQ( d2lagrange1(xi[0]) *   lagrange0(xi[1]) *   lagrange0(xi[2]), (hess[4, 0, 0]));
+  ASSERT_DOUBLE_EQ(  dlagrange1(xi[0]) *  dlagrange0(xi[1]) *   lagrange0(xi[2]), (hess[4, 0, 1]));
+  ASSERT_DOUBLE_EQ(  dlagrange1(xi[0]) *   lagrange0(xi[1]) *  dlagrange0(xi[2]), (hess[4, 0, 2]));
+  ASSERT_DOUBLE_EQ(  dlagrange1(xi[0]) *  dlagrange0(xi[1]) *   lagrange0(xi[2]), (hess[4, 1, 0]));
+  ASSERT_DOUBLE_EQ(   lagrange1(xi[0]) * d2lagrange0(xi[1]) *   lagrange0(xi[2]), (hess[4, 1, 1]));
+  ASSERT_DOUBLE_EQ(   lagrange1(xi[0]) *  dlagrange0(xi[1]) *  dlagrange0(xi[2]), (hess[4, 1, 2]));
+  ASSERT_DOUBLE_EQ(  dlagrange1(xi[0]) *   lagrange0(xi[1]) *  dlagrange0(xi[2]), (hess[4, 2, 0]));
+  ASSERT_DOUBLE_EQ(   lagrange1(xi[0]) *  dlagrange0(xi[1]) *  dlagrange0(xi[2]), (hess[4, 2, 1]));
+  ASSERT_DOUBLE_EQ(   lagrange1(xi[0]) *   lagrange0(xi[1]) * d2lagrange0(xi[2]), (hess[4, 2, 2]));
+
+  ASSERT_DOUBLE_EQ( d2lagrange1(xi[0]) *   lagrange0(xi[1]) *   lagrange1(xi[2]), (hess[5, 0, 0]));
+  ASSERT_DOUBLE_EQ(  dlagrange1(xi[0]) *  dlagrange0(xi[1]) *   lagrange1(xi[2]), (hess[5, 0, 1]));
+  ASSERT_DOUBLE_EQ(  dlagrange1(xi[0]) *   lagrange0(xi[1]) *  dlagrange1(xi[2]), (hess[5, 0, 2]));
+  ASSERT_DOUBLE_EQ(  dlagrange1(xi[0]) *  dlagrange0(xi[1]) *   lagrange1(xi[2]), (hess[5, 1, 0]));
+  ASSERT_DOUBLE_EQ(   lagrange1(xi[0]) * d2lagrange0(xi[1]) *   lagrange1(xi[2]), (hess[5, 1, 1]));
+  ASSERT_DOUBLE_EQ(   lagrange1(xi[0]) *  dlagrange0(xi[1]) *  dlagrange1(xi[2]), (hess[5, 1, 2]));
+  ASSERT_DOUBLE_EQ(  dlagrange1(xi[0]) *   lagrange0(xi[1]) *  dlagrange1(xi[2]), (hess[5, 2, 0]));
+  ASSERT_DOUBLE_EQ(   lagrange1(xi[0]) *  dlagrange0(xi[1]) *  dlagrange1(xi[2]), (hess[5, 2, 1]));
+  ASSERT_DOUBLE_EQ(   lagrange1(xi[0]) *   lagrange0(xi[1]) * d2lagrange1(xi[2]), (hess[5, 2, 2]));
+
+
+  ASSERT_DOUBLE_EQ( d2lagrange1(xi[0]) *   lagrange1(xi[1]) *   lagrange0(xi[2]), (hess[6, 0, 0]));
+  ASSERT_DOUBLE_EQ(  dlagrange1(xi[0]) *  dlagrange1(xi[1]) *   lagrange0(xi[2]), (hess[6, 0, 1]));
+  ASSERT_DOUBLE_EQ(  dlagrange1(xi[0]) *   lagrange1(xi[1]) *  dlagrange0(xi[2]), (hess[6, 0, 2]));
+  ASSERT_DOUBLE_EQ(  dlagrange1(xi[0]) *  dlagrange1(xi[1]) *   lagrange0(xi[2]), (hess[6, 1, 0]));
+  ASSERT_DOUBLE_EQ(   lagrange1(xi[0]) * d2lagrange1(xi[1]) *   lagrange0(xi[2]), (hess[6, 1, 1]));
+  ASSERT_DOUBLE_EQ(   lagrange1(xi[0]) *  dlagrange1(xi[1]) *  dlagrange0(xi[2]), (hess[6, 1, 2]));
+  ASSERT_DOUBLE_EQ(  dlagrange1(xi[0]) *   lagrange1(xi[1]) *  dlagrange0(xi[2]), (hess[6, 2, 0]));
+  ASSERT_DOUBLE_EQ(   lagrange1(xi[0]) *  dlagrange1(xi[1]) *  dlagrange0(xi[2]), (hess[6, 2, 1]));
+  ASSERT_DOUBLE_EQ(   lagrange1(xi[0]) *   lagrange1(xi[1]) * d2lagrange0(xi[2]), (hess[6, 2, 2]));
+
+  ASSERT_DOUBLE_EQ( d2lagrange1(xi[0]) *   lagrange1(xi[1]) *   lagrange1(xi[2]), (hess[7, 0, 0]));
+  ASSERT_DOUBLE_EQ(  dlagrange1(xi[0]) *  dlagrange1(xi[1]) *   lagrange1(xi[2]), (hess[7, 0, 1]));
+  ASSERT_DOUBLE_EQ(  dlagrange1(xi[0]) *   lagrange1(xi[1]) *  dlagrange1(xi[2]), (hess[7, 0, 2]));
+  ASSERT_DOUBLE_EQ(  dlagrange1(xi[0]) *  dlagrange1(xi[1]) *   lagrange1(xi[2]), (hess[7, 1, 0]));
+  ASSERT_DOUBLE_EQ(   lagrange1(xi[0]) * d2lagrange1(xi[1]) *   lagrange1(xi[2]), (hess[7, 1, 1]));
+  ASSERT_DOUBLE_EQ(   lagrange1(xi[0]) *  dlagrange1(xi[1]) *  dlagrange1(xi[2]), (hess[7, 1, 2]));
+  ASSERT_DOUBLE_EQ(  dlagrange1(xi[0]) *   lagrange1(xi[1]) *  dlagrange1(xi[2]), (hess[7, 2, 0]));
+  ASSERT_DOUBLE_EQ(   lagrange1(xi[0]) *  dlagrange1(xi[1]) *  dlagrange1(xi[2]), (hess[7, 2, 1]));
+  ASSERT_DOUBLE_EQ(   lagrange1(xi[0]) *   lagrange1(xi[1]) * d2lagrange1(xi[2]), (hess[7, 2, 2]));
+}
+
 
 TEST( test_hypercube_transform, test_jacobian ){
   std::random_device rdev{};
@@ -703,6 +882,164 @@ TEST( test_hypercube_transform, test_jacobian ){
       }
     });
   });
+}
+
+TEST( test_hypercube_transform, test_hessian ) {
+  using namespace MATH::GEOMETRY;
+  std::random_device rdev{};
+  std::default_random_engine engine{rdev()};
+  std::uniform_real_distribution<double> dist{-0.2, 0.2};
+  std::uniform_real_distribution<double> domain_dist{-1.0, 1.0};
+
+  static constexpr double epsilon = 1e-6;
+  static constexpr int ntest = 50;
+  static constexpr int n_domain_pts = 10;
+
+  NUMTOOL::TMP::constexpr_for_range<1, 5>([&]<int ndim>(){
+    NUMTOOL::TMP::constexpr_for_range<1, 4>([&]<int Pn>(){
+      std::cout << "ndim: " << ndim << " | Pn: " << Pn << std::endl;
+      HypercubeElementTransformation<double, int, ndim, Pn> trans1{};
+
+      int node_indices[trans1.n_nodes()];
+      FE::NodalFEFunction<double, ndim> node_coords(trans1.n_nodes());
+
+      for(int k = 0; k < ntest; ++k){ // repeat test 50 times
+        // randomly peturb
+        for(int inode = 0; inode < trans1.n_nodes(); ++inode){
+          node_indices[inode] = inode; // set the node index
+          for(int idim = 0; idim < ndim; ++idim){
+            node_coords[inode][idim] = trans1.reference_nodes()[inode][idim] + dist(engine);
+          }
+        }
+
+        // test a bunch of random points in the domain 
+        for(int k2 = 0; k2 < n_domain_pts; ++k2){
+          Point<double, ndim> xi;
+          for(int idim = 0; idim < ndim; ++idim) xi[idim] = domain_dist(engine);
+
+          double hessfd[ndim][ndim][ndim];
+          auto hess = trans1.Hessian(node_coords, node_indices, xi);
+
+          Point<double, ndim> unpeturb_x;
+
+          for(int ixi = 0; ixi < ndim; ++ixi){
+            for(int jxi = 0; jxi < ndim; ++jxi){
+
+              if(ixi == jxi){ // diagonal
+                // set up all the perturbations
+                Point<double, ndim> xi_pi = xi;
+                xi_pi[ixi] += epsilon;
+
+                Point<double, ndim> xi_pj = xi;
+                xi_pj[jxi] += epsilon;
+                
+                Point<double, ndim> xi_mi = xi;
+                xi_mi[ixi] -= epsilon;
+
+                Point<double, ndim> xi_mj = xi;
+                xi_mj[jxi] -= epsilon;
+
+
+
+                Point<double, ndim> xi_p2i = xi;
+                xi_p2i[ixi] += 2 * epsilon;
+
+                Point<double, ndim> xi_p2j = xi;
+                xi_p2j[jxi] += 2 * epsilon;
+                
+                Point<double, ndim> xi_m2i = xi;
+                xi_m2i[ixi] -= 2 * epsilon;
+
+                Point<double, ndim> xi_m2j = xi;
+                xi_m2j[jxi] -= 2 * epsilon;
+
+                // calculate the transformations
+                Point<double, ndim> x, x_pi, x_pj, x_mi, x_mj, x_p2i, x_p2j, x_m2i, x_m2j;
+                trans1.transform(node_coords, node_indices, xi, x);
+                trans1.transform(node_coords, node_indices, xi_pi, x_pi);
+                trans1.transform(node_coords, node_indices, xi_pj, x_pj);
+                trans1.transform(node_coords, node_indices, xi_mi, x_mi);
+                trans1.transform(node_coords, node_indices, xi_mj, x_mj);
+
+                trans1.transform(node_coords, node_indices, xi_p2i, x_p2i);
+                trans1.transform(node_coords, node_indices, xi_p2j, x_p2j);
+                trans1.transform(node_coords, node_indices, xi_m2i, x_m2i);
+                trans1.transform(node_coords, node_indices, xi_m2j, x_m2j);
+                for(int ix = 0; ix < ndim; ++ix){
+                  hessfd[ix][ixi][jxi] = (
+                      -x_p2i[ix]
+                      + 16 * x_pi[ix] 
+                      - 30 * x[ix]
+                      + 16 * x_mi[ix]
+                      - x_m2i[ix]
+                  ) / (12 * epsilon * epsilon);
+                }
+              } else {
+                // set up all the perturbations 
+                Point<double, ndim> xi_pi_pj = xi;
+                xi_pi_pj[ixi] += epsilon;
+                xi_pi_pj[jxi] += epsilon;
+
+                Point<double, ndim> xi_pi_mj = xi;
+                xi_pi_mj[ixi] += epsilon;
+                xi_pi_mj[jxi] -= epsilon;
+
+                Point<double, ndim> xi_mi_pj = xi;
+                xi_mi_pj[ixi] -= epsilon;
+                xi_mi_pj[jxi] += epsilon;
+
+                Point<double, ndim> xi_mi_mj = xi;
+                xi_mi_mj[ixi] -= epsilon;
+                xi_mi_mj[jxi] -= epsilon;
+
+                // calcualate the transformations 
+                Point<double, ndim> x_pi_pj, x_pi_mj, x_mi_pj, x_mi_mj;
+                trans1.transform(node_coords, node_indices, xi_pi_pj, x_pi_pj);
+                trans1.transform(node_coords, node_indices, xi_pi_mj, x_pi_mj);
+                trans1.transform(node_coords, node_indices, xi_mi_pj, x_mi_pj);
+                trans1.transform(node_coords, node_indices, xi_mi_mj, x_mi_mj);
+
+                for(int ix = 0; ix < ndim; ++ix){
+                  hessfd[ix][ixi][jxi] = (
+                    x_pi_pj[ix]
+                    - x_pi_mj[ix]
+                    - x_mi_pj[ix]
+                    + x_mi_mj[ix]
+                  ) / (4 * epsilon * epsilon);
+                }
+              }
+            }
+          }
+
+          // print the hessians 
+          auto print_hess = []<class hess_type>(const hess_type &hess){
+            std::cout << std::setprecision(5);
+            for(int ix = 0; ix < ndim; ++ix){
+              for(int ixi = 0; ixi < ndim; ++ixi){
+                std::cout << "| ";
+                for(int jxi = 0; jxi < ndim; ++jxi){
+                  std::cout << std::setw(7) << hess[ix][ixi][jxi] << " ";
+                }
+                std::cout << "|" << std::endl;
+              }
+              std::cout << std::endl;
+            }
+          };
+//          std::cout << "Calculated Hessian" << std::endl;
+//          print_hess(hess);
+//          std::cout << std::endl;
+//          std::cout << "FD Hessian" << std::endl;
+//          print_hess(hessfd);
+
+          double scaled_tol = epsilon * 5000 * (std::pow(10, 0.4 * (Pn - 1)));
+          for(int ix = 0; ix < ndim; ++ix) for(int ixi = 0; ixi < ndim; ++ixi) for(int jxi = 0; jxi < ndim; ++jxi)
+            { ASSERT_NEAR(hess[ix][ixi][jxi], hessfd[ix][ixi][jxi], scaled_tol); }
+        }
+
+      }
+    });
+  });
+
 }
 
 

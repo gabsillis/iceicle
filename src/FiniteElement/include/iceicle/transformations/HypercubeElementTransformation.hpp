@@ -10,6 +10,8 @@
 #include <cmath>
 #include <iceicle/fe_function/nodal_fe_function.hpp>
 
+#include <mdspan/mdspan.hpp>
+
 #include <algorithm>
 #include <sstream>
 #include <stdexcept>
@@ -413,36 +415,81 @@ public:
   }
 
   /**
-   * @brief evaluate the second derivatives of the given basis function 
+   * @brief fill the provided 1d array with the hessian of each basis function 
+   * \frac{ d^2Bi }{ dx_j dx_k}
+   * in C row major order this corresponds to [i][j][k]
+   * and is symmetric in the last two indices 
+   *
    * @param [in] xi the point in the reference domain to evaluate at 
-   * @param [in] ibasis the index of the basis function 
-   * @param [out] Hessian the hessian of the basis function 
+   * @param [out] nodal_hessian_data the pointer to fill with the hessian 
+   * must be preallocated to n_nodes() * ndim * ndim 
+   * (this get's zero'd out by this function before use)
+   *
+   * @return an mdspan view of nodal_hessian_data
    */
-  void dshp2(const T *xi, int ibasis, T Hessian[ndim][ndim]) const {
-      std::fill_n(Hessian[0], ndim * ndim, 1.0);
+  auto fill_hess(const T *xi, T *nodal_hessian_data) const noexcept{
+    using namespace std::experimental;
+    using namespace NUMTOOL::TENSOR::FIXED_SIZE;
+
+    // view the hessian output array by an mdspan 
+    mdspan hess{nodal_hessian_data, extents{nnode, ndim, ndim}};
+
+    // fill with ones for multiplicative identity
+    std::fill_n(nodal_hessian_data, nnode*ndim*ndim, 1.0);
+    
+    // run-time precompute the lagrange polynomial evaluations 
+    // and derivatives for each coordinate
+    Tensor<T, ndim, Pn + 1> lagrange_evals{};
+    Tensor<T, ndim, Pn + 1> lagrange_derivs{};
+    for(int idim = 0; idim < ndim; ++idim){
+      interpolation_1d.deriv_all(
+          xi[idim], lagrange_evals[idim], lagrange_derivs[idim]);
+    }
+
+    // TODO: optimize using the fill strategy like fill_deriv 
+
+    for(int ibasis = 0; ibasis < nnode; ++ibasis){
+
       for(int ideriv = 0; ideriv < ndim; ++ideriv){
           for(int jderiv = ideriv; jderiv < ndim; ++jderiv){
+            // handle diagonal terms 
+            if(ideriv == jderiv){
               for(int idim = 0; idim < ndim; ++idim){
-                  if(ideriv == jderiv){
-                      Hessian[ideriv][jderiv] *= POLYNOMIAL::dNlagrange1d<T, Pn>(
-                              ijk_poin[ibasis][idim], 2, xi[ideriv]);
-                  } else {
-                      Hessian[ideriv][jderiv] *= 
-                          POLYNOMIAL::dlagrange1d<T, Pn>(
-                                  ijk_poin[ibasis][idim], xi[ideriv])
-                          * POLYNOMIAL::dlagrange1d<T, Pn>(
-                                  ijk_poin[ibasis][idim], xi[jderiv]);
-                  }
+                if(idim == ideriv){
+                  hess[ibasis, ideriv, jderiv] *= POLYNOMIAL::dNlagrange1d<T, Pn>(
+                    ijk_poin[ibasis][idim], 2, xi[ideriv]);
+                } else {
+                  hess[ibasis, ideriv, jderiv] *= lagrange_evals[idim][ijk_poin[ibasis][idim]];
+                }
               }
+            } else {
+              // loop over the 1d basis functions for each dimension
+              for(int idim = 0; idim < ndim; ++idim){
+                if(idim == ideriv){
+                  hess[ibasis, ideriv, jderiv] *= 
+                    lagrange_derivs[ideriv][ijk_poin[ibasis][idim]];
+                } else if(idim == jderiv){
+                  hess[ibasis, ideriv, jderiv] *= 
+                    lagrange_derivs[jderiv][ijk_poin[ibasis][idim]];
+                } else {
+                  // not a derivative so just the 1d function 
+                  hess[ibasis, ideriv, jderiv] *=
+                    lagrange_evals[idim][ijk_poin[ibasis][idim]];
+                }
+              }
+            }
           }
       }
 
       // copy symmetric part 
       for(int ideriv = 0; ideriv < ndim; ++ideriv){
-          for(int jderiv = 0; jderiv < ideriv; ++jderiv){
-              Hessian[ideriv][jderiv] = Hessian[jderiv][ideriv];
-          }
+        for(int jderiv = 0; jderiv < ideriv; ++jderiv){
+            hess[ibasis, ideriv, jderiv] = hess[ibasis, jderiv, ideriv];
+        }
       }
+    }
+
+    return hess;
   }
 
   /**
@@ -508,7 +555,6 @@ public:
       return J;
   }
 
-
   /**
     * @brief get the Hessian of the transformation
     * H_{kij} = \frac{\partial T(s)_k}{\partial s_i \partial s_j} 
@@ -516,19 +562,22 @@ public:
     * @param [in] node_coords the coordinates of all the nodes
     * @param [in] node_indices the indices in node_coords that pretain to this element in order
     * @param [in] xi the position in the reference domain at which to calculate the hessian
-    * @param [out] the Hessian in tensor form indexed [k][i][j] as described above
+    * @return the Hessian in tensor form indexed [k][i][j] as described above
     */
-  void Hessian(
+  NUMTOOL::TENSOR::FIXED_SIZE::Tensor<T, ndim, ndim, ndim> Hessian(
       const FE::NodalFEFunction<T, ndim> &node_coords,
       const IDX *node_indices,
-      const Point &xi,
-      T hess[ndim][ndim][ndim]
-  ) const {
-    // Get a 1D pointer representation
-    T *Hptr = hess[0][0];
+      const Point &xi
+  ) const noexcept {
+    using namespace NUMTOOL::TENSOR::FIXED_SIZE;
 
-    // fill with zeros
-    std::fill_n(Hptr, ndim * ndim * ndim, 0.0);
+    Tensor<T, ndim, ndim, ndim> hess;
+    // Zero initialize
+    hess = 0;
+
+    // Get the hessian at each node 
+    std::vector<T> nodal_hessian_data(nnode * ndim * ndim);
+    auto nodal_hessian = fill_hess(xi, nodal_hessian_data.data());
 
     for(int inode = 0; inode < nnode; ++inode){
       // get view to the node coordinates from the node coordinate array
@@ -536,11 +585,9 @@ public:
       const auto & node = node_coords[global_inode];
 
       for(int kdim = 0; kdim < ndim; ++kdim){ // k corresponds to xi 
-        T node_hessian[ndim][ndim];
-        dshp2(xi, inode, node_hessian);
         for(int idim = 0; idim < ndim; ++idim){
           for(int jdim = idim; jdim < ndim; ++jdim){
-            hess[kdim][idim][jdim] += node_hessian[idim][jdim] * node[kdim];
+            hess[kdim][idim][jdim] += nodal_hessian[inode, idim, jdim] * node[kdim];
           }
         }
       }
@@ -554,6 +601,8 @@ public:
         }
       }
     }
+
+    return hess;
   }
 
   /** @brief get the number of nodes that define the transformation */
@@ -910,7 +959,7 @@ class HypercubeTraceOrientTransformation {
   /// number of dimensions for the trace space 
   static constexpr int trace_ndim = ndim - 1;
   /// number of vertices in a face
-  static constexpr int nvert_tr = MATH::power_T<2, ndim>::value;
+  static constexpr int nvert_tr = MATH::power_T<2, trace_ndim>::value;
 
   /// upper bound (not inclusive) of the sign codes
   static constexpr int sign_code_bound = MATH::power_T<2, trace_ndim>::value;
@@ -922,7 +971,7 @@ class HypercubeTraceOrientTransformation {
   template<int idim> inline int idim_mask() const { return (1 << idim); }
 
   /**
-   * @brief copy the sign at the specified dimension 
+   * @brief multiply by the sign at the given dimension
    * @param [in] idim the dimension index (the bit index into sign_code)
    * @param [in] mag the magnitude to apply the sign to 
    * @param [in] sign code a set of bits
@@ -933,7 +982,7 @@ class HypercubeTraceOrientTransformation {
 
     int is_negative = sign_code & (1 << idim);
     // TODO: remove branch
-    return (is_negative) ? std::copysign(mag, -1) : std::copysign(mag, 1);
+    return (is_negative) ? mag * -1 : mag;
   }
 
   std::vector<std::vector<int>> axis_permutations;
@@ -945,6 +994,8 @@ class HypercubeTraceOrientTransformation {
     std::vector<int> first_perm{};
     for(int i = 0; i < trace_ndim; ++i) first_perm.push_back(i);
 
+    // need both of these for std::next_permutation
+    // the second one (iperm=1) gets immediately permuted
     axis_permutations.push_back(first_perm);
     axis_permutations.push_back(first_perm);
     int iperm = 1;
@@ -1048,6 +1099,7 @@ class HypercubeTraceOrientTransformation {
     int sign_code = orientationR % sign_code_bound;
 
     for(int idim = 0; idim < trace_ndim; ++idim){
+      // TODO: rename copysign_idim to better reflect multiply action
       sR[idim] = copysign_idim(
           idim, 
           s[axis_permutations[iperm][idim]],
@@ -1103,7 +1155,8 @@ class HypercubeTraceTransformation {
         { lc_indices[idim + 1] = idim + 1; }
 
       // get the levi_civita tensor, then chose sign based on normal direction 
-      T lc = NUMTOOL::TENSOR::FIXED_SIZE::levi_civita<T, ndim>.list_index(lc_indices);
+      auto lc_tensor = NUMTOOL::TENSOR::FIXED_SIZE::levi_civita<T, ndim>;
+      T lc = lc_tensor.list_index(lc_indices);
       if(is_negative_xi) lc = -lc;
 
       first_dim_sign[itrace] = lc;
@@ -1149,6 +1202,8 @@ class HypercubeTraceTransformation {
       FE::NodalFEFunction<T, ndim> &coord,
       ElPointView x
   ) const {
+    // zero fill 
+    std::fill_n(x.data(), ndim, 0.0);
     using namespace NUMTOOL::TENSOR::FIXED_SIZE;
     Tensor<T, n_nodes> Bi{};
     trace_domain_trans.fill_shp(s, Bi.data());

@@ -23,7 +23,7 @@ namespace FE {
      */
     template<
         typename T,
-        int ncomp = dynamic_ncomp,
+        std::size_t ncomp = dynamic_ncomp,
         LAYOUT_VECTOR_ORDER order = DOF_LEFT 
     >
     class compact_layout {
@@ -35,7 +35,7 @@ namespace FE {
         std::size_t ndof;
 
         /** @brief accessor for the number of components that abstracts compile_time vs dynamic */
-        inline constexpr int get_ncomp() const noexcept {
+        inline constexpr std::size_t get_ncomp() const noexcept {
             if constexpr(is_dynamic_ncomp<ncomp>::value){
                 return ncomp_d;
             } else {
@@ -55,7 +55,7 @@ namespace FE {
         template<typename IDX, int ndim>
         constexpr compact_layout(
             const ELEMENT::FiniteElement<T, IDX, ndim> &el,
-            std::enable_if<is_dynamic_ncomp<ncomp>::value, int> ncomp_d
+            std::enable_if<is_dynamic_ncomp<ncomp>::value, std::size_t> ncomp_d
         ) : ncomp_d(ncomp_d), ndof(el.nbasis()){}
 
         /**
@@ -74,7 +74,7 @@ namespace FE {
          */
         constexpr compact_layout(
             int ndof,
-            std::enable_if<is_dynamic_ncomp<ncomp>::value, int> ncomp_d
+            std::enable_if<is_dynamic_ncomp<ncomp>::value, std::size_t> ncomp_d
         ) : ncomp_d(ncomp_d), ndof(ndof) {}
 
         /**
