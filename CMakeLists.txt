@@ -38,6 +38,29 @@ find_package(MPI)
 
 find_package(PkgConfig REQUIRED)
 
+include(ExternalProject)
+find_program(MAKE_EXECUTABLE
+NAMES gmake mingw32-make make
+NAMES_PER_DIR
+DOC "GNU Make")
+
+option(ICEICLE_USE_METIS "Download and use Metis for mesh partitioning" OFF) 
+if(ICEICLE_USE_METIS)
+  ExternalProject_Add(GKLib 
+    GIT_REPOSITORY https://github.com/KarypisLab/GKlib.git 
+    GIT_TAG master 
+    CONFIGURE_COMMAND ""
+    BUILD_COMMAND ${MAKE_EXECUTABLE} -C <SOURCE_DIR>
+      config
+      cc=${CMAKE_C_COMPILER}
+      prefix=<SOURCE_DIR>
+    LOG_BUILD TRUE
+    LOG_INSTALL TRUE
+    BUILD_IN_SOURCE TRUE
+    INSTALL_COMMAND make -j install
+  )
+endif()
+
 if(MPI_FOUND)
 
   # find Petsc

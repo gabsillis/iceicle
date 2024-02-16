@@ -25,4 +25,8 @@ if(ICEICLE_USE_OPENGL)
     target_link_libraries(iceicle_fe PUBLIC GLEW::glew)
     target_link_libraries(iceicle_fe PUBLIC glfw)
 endif()
+if(ICEICLE_USE_METIS)
+
+    add_dependencies(iceicle_fe GKLib)
+endif()
 
