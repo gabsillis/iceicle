@@ -59,6 +59,7 @@ gtest_discover_tests(test_felib)
 if(ICEICLE_USE_HYPRE)
 set(SOLVER_TEST_SOURCES
     test_solvers_main.cpp
+    test_petsc_solvers.cpp
     test_hypre_interface.cpp)
 add_executable( test_solvers ${SOLVER_TEST_SOURCES})
 target_link_libraries( test_solvers PUBLIC iceicle_fe )
