@@ -52,23 +52,24 @@ int main(int argc, char *argv[]){
     // = create a uniform mesh =
     // =========================
 
-    IDX nx=4, ny=4;
+    IDX nx=20, ny=20;
     const IDX nelem_arr[ndim] = {nx, ny};
     // bottom left corner
-    T xmin[ndim] = {-1.0, -1.0};
+    T xmin[ndim] = {0.0, 0.0};
     // top right corner
     T xmax[ndim] = {1.0, 1.0};
     // boundary conditions
     Tensor<ELEMENT::BOUNDARY_CONDITIONS, 2 * ndim> bctypes = {{
         ELEMENT::BOUNDARY_CONDITIONS::DIRICHLET, // left side 
-        ELEMENT::BOUNDARY_CONDITIONS::NEUMANN,   // bottom side 
+        ELEMENT::BOUNDARY_CONDITIONS::DIRICHLET,   // bottom side 
         ELEMENT::BOUNDARY_CONDITIONS::DIRICHLET, // right side 
-        ELEMENT::BOUNDARY_CONDITIONS::NEUMANN    // top side
+        ELEMENT::BOUNDARY_CONDITIONS::DIRICHLET    // top side
     }};
+
     int bcflags[2 * ndim] = {
         0, // left side 
         0, // bottom side 
-        1, // right side
+        -1, // right side
         0  // top side
     };
     int geometry_order = 1;
@@ -80,7 +81,7 @@ int main(int argc, char *argv[]){
     // = create the finite element space =
     // ===================================
 
-    static constexpr int basis_order = 0;
+    static constexpr int basis_order = 1;
 
     FE::FESpace<T, IDX, ndim> fespace{
         &mesh, 
@@ -94,10 +95,10 @@ int main(int argc, char *argv[]){
     // =============================
 
     DISC::HeatEquation<T, IDX, ndim> heat_equation{}; 
-    // Dirichlet BC: Left side = 0
+    // Dirichlet BC: set to 0
+    heat_equation.dirichlet_values.push_back(0.0); 
+    // Dirichlet BC: set to 1
     heat_equation.dirichlet_values.push_back(1.0); 
-    // Dirichlet BC: Rigght side = 1
-    heat_equation.dirichlet_values.push_back(2.0); 
     // Neumann BC: Top and bottom have 0 normal gradient 
     heat_equation.neumann_values.push_back(0.0);
 
@@ -118,12 +119,19 @@ int main(int argc, char *argv[]){
 
         //out[0] = x;
         // out[0] = std::sin(x) * std::cos(y);
-        out[0] = 0;
+        out[0] = 1;
+    };
+
+    auto dirichlet_func = [](const double *xarr, double *out) ->void{
+        double x = xarr[0];
+        double y = xarr[1];
+
+        out[0] = 1 + 0.1 * std::sin(M_PI * y);
     };
     
     // Manufactured solution BC 
     heat_equation.dirichlet_callbacks.resize(2);
-    heat_equation.dirichlet_callbacks[1] = ic;
+    heat_equation.dirichlet_callbacks[1] = dirichlet_func;
 
 
     DISC::Projection<T, IDX, ndim, neq> projection{ic};
@@ -190,9 +198,9 @@ int main(int argc, char *argv[]){
     // = Solve with Newton's Method =
     // ==============================
     using namespace ICEICLE::SOLVERS;
-    ConvergenceCriteria<T, IDX> conv_criteria{.kmax = 2};
+    ConvergenceCriteria<T, IDX> conv_criteria{.kmax = 5};
     PetscNewton solver{fespace, heat_equation, conv_criteria};
-    solver.idiag = 1;
+    solver.idiag = -1;
     solver.ivis = 1;
     ICEICLE::IO::PVDWriter<T, IDX, ndim> pvd_writer;
     pvd_writer.register_fespace(fespace);

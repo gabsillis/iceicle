@@ -108,7 +108,6 @@ namespace ICEICLE::SOLVERS {
 
             // zero out the residuals 
             resL = 0;
-            resLp = 0;
 
             // get the unperturbed residual and send to full residual
             disc.boundaryIntegral(trace, fespace.meshptr->nodes, uL, uR, resL);
@@ -128,6 +127,9 @@ namespace ICEICLE::SOLVERS {
                     // perturb
                     T old_val = uL[idofu, iequ];
                     uL[idofu, iequ] += eps_scaled;
+
+                    // zero out the residual 
+                    resLp = 0;
 
                     // get the perturbed residual
                     disc.boundaryIntegral(trace, fespace.meshptr->nodes, uL, uR, resLp);
@@ -169,9 +171,7 @@ namespace ICEICLE::SOLVERS {
 
             // zero out the residuals 
             resL = 0;
-            resLp = 0;
             resR = 0;
-            resRp = 0;
 
             // get the unperturbed residual and send to full residual
             disc.traceIntegral(trace, fespace.meshptr->nodes, uL, uR, resL, resR);
@@ -199,6 +199,10 @@ namespace ICEICLE::SOLVERS {
                     // perturb
                     T old_val = uL[idofu, iequ];
                     uL[idofu, iequ] += eps_scaled;
+
+                    // zero out the residuals
+                    resLp = 0;
+                    resRp = 0;
 
                     // get the perturbed residual
                     disc.traceIntegral(trace, fespace.meshptr->nodes, uL, uR, resLp, resRp);
@@ -240,8 +244,12 @@ namespace ICEICLE::SOLVERS {
                     std::size_t jcol = uR.get_layout()(FE::compact_index{idofu, iequ});
 
                     // perturb
-                    T old_val = uL[idofu, iequ];
-                    uL[idofu, iequ] += eps_scaled;
+                    T old_val = uR[idofu, iequ];
+                    uR[idofu, iequ] += eps_scaled;
+
+                    // zero out the residuals
+                    resLp = 0;
+                    resRp = 0;
 
                     // get the perturbed residual
                     disc.traceIntegral(trace, fespace.meshptr->nodes, uL, uR, resLp, resRp);
@@ -261,7 +269,7 @@ namespace ICEICLE::SOLVERS {
                     }
 
                     // undo the perturbation
-                    uL[idofu, iequ] = old_val;
+                    uR[idofu, iequ] = old_val;
                 }
             }
             // send the jacobians to the petsc matrix 
@@ -302,6 +310,9 @@ namespace ICEICLE::SOLVERS {
                     // perturb
                     T old_val = u_el[idofu, iequ];
                     u_el[idofu, iequ] += eps_scaled;
+
+                    // zero out the residual 
+                    resp_el = 0;
 
                     // get the perturbed residual
                     disc.domainIntegral(el, fespace.meshptr->nodes, u_el, resp_el);
