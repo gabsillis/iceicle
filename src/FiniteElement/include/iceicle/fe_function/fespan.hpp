@@ -168,6 +168,28 @@ namespace FE {
             }
     };
 
+    /**
+     * @brief cmpute a vector scalar product and add to a vector 
+     * y <= alpha * x + y
+     *
+     * @param [in] alpha the scalar to multiply x by
+     * @param [in] x the fespan to add 
+     * @param [in/out] y the fespan to add to
+     */
+    template<typename T, class LayoutPolicyx, class LayoutPolicyy>
+    void axpy(T alpha, const fespan<T, LayoutPolicyx> &x, fespan<T, LayoutPolicyy> y){
+        if constexpr(std::is_same_v<LayoutPolicyy, LayoutPolicyx>) {
+            // do in a single loop over the 1d index space 
+            T *ydata = y.data();
+            T *xdata = x.data();
+            for(int i = 0; i < x.size(); ++i){
+                ydata[i] += alpha * xdata[i];
+            }
+        } else {
+            // TODO: 
+        }
+    }
+
     // deduction guides
     template<typename T, class LayoutPolicy>
     fespan(T *data, const LayoutPolicy &) -> fespan<T, LayoutPolicy>;

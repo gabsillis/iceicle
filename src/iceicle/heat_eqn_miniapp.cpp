@@ -3,6 +3,9 @@
  *
  * @author Gianni Absillis (gabsill@ncsu.edu)
  */
+#ifdef ICEICLE_USE_PETSC 
+#include "iceicle/petsc_newton.hpp"
+#endif
 #ifdef ICEICLE_USE_MPI
 #include "mpi.h"
 #endif
@@ -24,7 +27,9 @@
 #include <fenv.h>
 
 int main(int argc, char *argv[]){
-#ifdef ICEICLE_USE_MPI
+#ifdef ICEICLE_USE_PETSC
+    PetscInitialize(&argc, &argv, nullptr, nullptr);
+#elifdef ICEICLE_USE_MPI
    /* Initialize MPI */
    MPI_Init(&argc, &argv);
 #endif
@@ -47,7 +52,7 @@ int main(int argc, char *argv[]){
     // = create a uniform mesh =
     // =========================
 
-    IDX nx=2, ny=2;
+    IDX nx=4, ny=4;
     const IDX nelem_arr[ndim] = {nx, ny};
     // bottom left corner
     T xmin[ndim] = {-1.0, -1.0};
@@ -75,7 +80,7 @@ int main(int argc, char *argv[]){
     // = create the finite element space =
     // ===================================
 
-    static constexpr int basis_order = 1;
+    static constexpr int basis_order = 0;
 
     FE::FESpace<T, IDX, ndim> fespace{
         &mesh, 
@@ -112,7 +117,8 @@ int main(int argc, char *argv[]){
         double y = xarr[1];
 
         //out[0] = x;
-        out[0] = std::sin(x) * std::cos(y);
+        // out[0] = std::sin(x) * std::cos(y);
+        out[0] = 0;
     };
     
     // Manufactured solution BC 
@@ -149,14 +155,16 @@ int main(int argc, char *argv[]){
         }
     );
 
+    bool use_explicit = false;
+
+    if(use_explicit){
     // =============================
     // = Solve with Explicit Euler =
     // =============================
     using namespace ICEICLE::SOLVERS;
     ExplicitEuler explicit_euler{fespace, heat_equation};
     explicit_euler.ivis = 10;
-    explicit_euler.tfinal = 2;
-    //explicit_euler.dt_fixed = 0.1;
+    explicit_euler.tfinal = 2000;
     ICEICLE::IO::PVDWriter<T, IDX, ndim> pvd_writer;
     pvd_writer.register_fespace(fespace);
     pvd_writer.register_fields(u, "u");
@@ -176,11 +184,39 @@ int main(int argc, char *argv[]){
     };
     explicit_euler.solve(fespace, heat_equation, u);
 
-    //cleanup
+    } else {
+#ifdef ICEICLE_USE_PETSC
+    // ==============================
+    // = Solve with Newton's Method =
+    // ==============================
+    using namespace ICEICLE::SOLVERS;
+    ConvergenceCriteria<T, IDX> conv_criteria{.kmax = 2};
+    PetscNewton solver{fespace, heat_equation, conv_criteria};
+    solver.idiag = 1;
+    solver.ivis = 1;
+    ICEICLE::IO::PVDWriter<T, IDX, ndim> pvd_writer;
+    pvd_writer.register_fespace(fespace);
+    pvd_writer.register_fields(u, "u");
+    pvd_writer.write_vtu(0, 0.0); // print the initial solution
+    solver.vis_callback = [&](decltype(solver) &solver, IDX k, Vec res_data, Vec du_data){
+        T res_norm;
+        PetscCallAbort(solver.comm, VecNorm(res_data, NORM_2, &res_norm));
+        std::cout << std::setprecision(8);
+        std::cout << "itime: " << std::setw(6) << k
+            << " | residual l2: " << std::setw(14) << res_norm
+            << std::endl;
+        // offset by initial solution iteration
+        pvd_writer.write_vtu(k + 1, (T) k + 1);
+    };
+    solver.solve(u);
 
-#ifdef ICEICLE_USE_MPI
+    //cleanup
+    PetscFinalize();
+#elifdef ICEICLE_USE_MPI
+    // cleanup
     MPI_Finalize();
 #endif
+    }
     return 0;
 }
 

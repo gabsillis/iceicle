@@ -99,7 +99,8 @@ namespace ICEICLE::SOLVERS {
             FE::elspan resLp{resLp_data.data(), res.create_element_layout(trace.elL.elidx)};
 
             // compact jacobian views 
-            mdspan jacL{jacL_data.data(), extents{uL.size(), resL.size()}};
+            mdspan jacL{jacL_data.data(), extents{resL.size(), uL.size()}};
+            std::fill_n(jacL_data.begin(), jacL.size(), 0);
 
             // extract the compact values from the global u view 
             FE::extract_elspan(trace.elL.elidx, u, uL);
@@ -135,7 +136,7 @@ namespace ICEICLE::SOLVERS {
                     for(std::size_t idoff = 0; idoff < trace.elL.nbasis(); ++idoff) {
                         for(std::size_t ieqf = 0; ieqf < ncomp; ++ieqf){
                             std::size_t irow = uL.get_layout()(FE::compact_index{idoff, ieqf});
-                            jacL[irow, jcol] = (resLp[idoff, ieqf] - resL[idoff, ieqf]) / eps_scaled;
+                            jacL[irow, jcol] += (resLp[idoff, ieqf] - resL[idoff, ieqf]) / eps_scaled;
                         }
                     }
 
@@ -173,7 +174,7 @@ namespace ICEICLE::SOLVERS {
             resRp = 0;
 
             // get the unperturbed residual and send to full residual
-            disc.traceIntegral(trace, fespace.meshptr->nodes, uL, uR, resL, resL);
+            disc.traceIntegral(trace, fespace.meshptr->nodes, uL, uR, resL, resR);
             FE::scatter_elspan(trace.elL.elidx, 1.0, resL, 1.0, res);
             FE::scatter_elspan(trace.elR.elidx, 1.0, resR, 1.0, res);
 
@@ -186,8 +187,10 @@ namespace ICEICLE::SOLVERS {
 
             // perturb and form jacobian wrt uL
             // compact jacobian views 
-            mdspan jacL{jacL_data.data(), extents{uL.size(), resL.size()}};
-            mdspan jacR{jacR_data.data(), extents{uL.size(), resR.size()}};
+            mdspan jacL{jacL_data.data(), extents{resL.size(), uL.size()}};
+            mdspan jacR{jacR_data.data(), extents{resR.size(), uL.size()}};
+            std::fill_n(jacL_data.begin(), jacL.size(), 0);
+            std::fill_n(jacR_data.begin(), jacR.size(), 0);
             for(std::size_t idofu = 0; idofu < trace.elL.nbasis(); ++idofu){
                 for(std::size_t iequ = 0; iequ < ncomp; ++iequ){
                     // get the compact column index for this dof and component 
@@ -204,13 +207,13 @@ namespace ICEICLE::SOLVERS {
                     for(std::size_t idoff = 0; idoff < trace.elL.nbasis(); ++idoff) {
                         for(std::size_t ieqf = 0; ieqf < ncomp; ++ieqf){
                             std::size_t irow = uL.get_layout()(FE::compact_index{idoff, ieqf});
-                            jacL[irow, jcol] = (resLp[idoff, ieqf] - resL[idoff, ieqf]) / eps_scaled;
+                            jacL[irow, jcol] += (resLp[idoff, ieqf] - resL[idoff, ieqf]) / eps_scaled;
                         }
                     }
                     for(std::size_t idoff = 0; idoff < trace.elR.nbasis(); ++idoff) {
                         for(std::size_t ieqf = 0; ieqf < ncomp; ++ieqf){
                             std::size_t irow = uR.get_layout()(FE::compact_index{idoff, ieqf});
-                            jacR[irow, jcol] = (resRp[idoff, ieqf] - resR[idoff, ieqf]) / eps_scaled;
+                            jacR[irow, jcol] += (resRp[idoff, ieqf] - resR[idoff, ieqf]) / eps_scaled;
                         }
                     }
 
@@ -227,8 +230,10 @@ namespace ICEICLE::SOLVERS {
             
             // perturb and form jacobian wrt uR
             // make compact jacobian views
-            jacL = mdspan{jacL_data.data(), extents{uR.size(), resL.size()}};
-            jacR = mdspan{jacR_data.data(), extents{uR.size(), resR.size()}};
+            jacL = mdspan{jacL_data.data(), extents{resL.size(), uR.size()}};
+            jacR = mdspan{jacR_data.data(), extents{resR.size(), uR.size()}};
+            std::fill_n(jacL_data.begin(), jacL.size(), 0);
+            std::fill_n(jacR_data.begin(), jacR.size(), 0);
             for(std::size_t idofu = 0; idofu < trace.elR.nbasis(); ++idofu){
                 for(std::size_t iequ = 0; iequ < ncomp; ++iequ){
                     // get the compact column index for this dof and component 
@@ -245,13 +250,13 @@ namespace ICEICLE::SOLVERS {
                     for(std::size_t idoff = 0; idoff < trace.elL.nbasis(); ++idoff) {
                         for(std::size_t ieqf = 0; ieqf < ncomp; ++ieqf){
                             std::size_t irow = uL.get_layout()(FE::compact_index{idoff, ieqf});
-                            jacL[irow, jcol] = (resLp[idoff, ieqf] - resL[idoff, ieqf]) / eps_scaled;
+                            jacL[irow, jcol] += (resLp[idoff, ieqf] - resL[idoff, ieqf]) / eps_scaled;
                         }
                     }
                     for(std::size_t idoff = 0; idoff < trace.elR.nbasis(); ++idoff) {
                         for(std::size_t ieqf = 0; ieqf < ncomp; ++ieqf){
                             std::size_t irow = uR.get_layout()(FE::compact_index{idoff, ieqf});
-                            jacR[irow, jcol] = (resRp[idoff, ieqf] - resR[idoff, ieqf]) / eps_scaled;
+                            jacR[irow, jcol] += (resRp[idoff, ieqf] - resR[idoff, ieqf]) / eps_scaled;
                         }
                     }
 
@@ -276,7 +281,8 @@ namespace ICEICLE::SOLVERS {
             FE::elspan resp_el{resLp_data.data(), res.create_element_layout(el.elidx)};
 
             // jacobian data view
-            mdspan jac_el{jacL_data.data(), extents{u_el.size(), res_el.size()}};
+            mdspan jac_el{jacL_data.data(), extents{res_el.size(), u_el.size()}};
+            std::fill_n(jacL_data.begin(), jac_el.size(), 0);
 
             res_el = 0;
             disc.domainIntegral(el, fespace.meshptr->nodes, u_el, res_el);
@@ -304,7 +310,7 @@ namespace ICEICLE::SOLVERS {
                     for(std::size_t idoff = 0; idoff < el.nbasis(); ++idoff) {
                         for(std::size_t ieqf = 0; ieqf < ncomp; ++ieqf){
                             std::size_t irow = u_el.get_layout()(FE::compact_index{idoff, ieqf});
-                            jac_el[irow, jcol] = (resp_el[idoff, ieqf] - res_el[idoff, ieqf]) / eps_scaled;
+                            jac_el[irow, jcol] += (resp_el[idoff, ieqf] - res_el[idoff, ieqf]) / eps_scaled;
                         }
                     }
 
