@@ -3,6 +3,7 @@
  *
  * @author Gianni Absillis (gabsill@ncsu.edu)
  */
+#include <limits>
 #ifdef ICEICLE_USE_PETSC 
 #include "iceicle/petsc_newton.hpp"
 #endif
@@ -205,7 +206,11 @@ int main(int argc, char *argv[]){
     // = Solve with Newton's Method =
     // ==============================
     using namespace ICEICLE::SOLVERS;
-    ConvergenceCriteria<T, IDX> conv_criteria{.kmax = 5};
+    ConvergenceCriteria<T, IDX> conv_criteria{
+        .tau_abs = std::numeric_limits<T>::epsilon(),
+        .tau_rel = std::numeric_limits<T>::epsilon(),
+        .kmax = 5
+    };
     PetscNewton solver{fespace, heat_equation, conv_criteria};
     solver.idiag = -1;
     solver.ivis = 1;

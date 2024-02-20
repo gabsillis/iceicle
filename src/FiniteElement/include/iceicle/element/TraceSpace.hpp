@@ -297,7 +297,7 @@ public:
       T *grad_data
   ) const {
     DomainPoint xi{};
-    face.transform_xiR(s, xi.data());
+    face.transform_xiL(s, xi.data());
     return elL.evalPhysGradBasis(xi, node_list, grad_data);
   }
 
@@ -394,7 +394,7 @@ public:
       T *grad_data
   ) const {
     DomainPoint xi{};
-    face.transform_xiR(quadrule[qidx].abscisse, xi.data());
+    face.transform_xiL(quadrule[qidx].abscisse, xi.data());
     return elL.evalPhysGradBasis(xi, node_list, grad_data);
   }
 
@@ -478,7 +478,7 @@ public:
       T *hess_data
   ) const {
     DomainPoint xi{};
-    face.transform_xiR(s, xi.data());
+    face.transform_xiL(s, xi.data());
     return elL.evalPhysHessBasis(xi, node_list, hess_data);
   }
 
@@ -556,7 +556,7 @@ public:
       T *hess_data
   ) const {
     DomainPoint xi{};
-    face.transform_xiR(quadrule[qidx].abscisse, xi.data());
+    face.transform_xiL(quadrule[qidx].abscisse, xi.data());
     return elL.evalPhysHessBasis(xi, node_list, hess_data);
   }
 

@@ -292,11 +292,16 @@ namespace ICEICLE::SOLVERS {
             mdspan jac_el{jacL_data.data(), extents{res_el.size(), u_el.size()}};
             std::fill_n(jacL_data.begin(), jac_el.size(), 0);
 
+            // extract the compact values from the global u view 
+            FE::extract_elspan(el.elidx, u, u_el);
+
             res_el = 0;
             disc.domainIntegral(el, fespace.meshptr->nodes, u_el, res_el);
 
             // get the global index to the start of the contiguous component x dof range for L/R elem
             std::size_t glob_index_el = u.get_layout()(FE::fe_index{(std::size_t) el.elidx, 0, 0});
+            // send residual to global residual 
+            FE::scatter_elspan(el.elidx, 1.0, res_el, 1.0, res);
 
             // set up the perturbation amount scaled by unperturbed residual 
             T eps_scaled = std::max(epsilon, res_el.vector_norm() * epsilon);
