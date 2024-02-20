@@ -168,7 +168,7 @@ namespace DISC {
                 T sqrtg = trace.face.rootRiemannMetric(Jfac, quadpt.abscisse);
 
                 // get the function values
-                std::vector<T> bi_dataL(elL.nbasis());
+                std::vector<T> bi_dataL(elL.nbasis()); //TODO: move storage declaration out of loop
                 std::vector<T> bi_dataR(elR.nbasis());
                 trace.evalBasisQPL(iqp, bi_dataL.data());
                 trace.evalBasisQPR(iqp, bi_dataR.data());

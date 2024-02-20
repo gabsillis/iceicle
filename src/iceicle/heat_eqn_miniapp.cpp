@@ -67,10 +67,10 @@ int main(int argc, char *argv[]){
     }};
 
     int bcflags[2 * ndim] = {
-        0, // left side 
-        0, // bottom side 
+        1, // left side 
+        1, // bottom side 
         -1, // right side
-        0  // top side
+        1  // top side
     };
     int geometry_order = 1;
 
@@ -122,6 +122,13 @@ int main(int argc, char *argv[]){
         out[0] = 1;
     };
 
+    auto analytic_sol = [](const double *xarr, double *out) -> void{
+        double x = xarr[0];
+        double y = xarr[1];
+
+        out[0] = 0.1 * std::sinh(M_PI * x) / std::sinh(M_PI) * std::sin(M_PI * y) + 1.0;
+    };
+
     auto dirichlet_func = [](const double *xarr, double *out) ->void{
         double x = xarr[0];
         double y = xarr[1];
@@ -134,7 +141,7 @@ int main(int argc, char *argv[]){
     heat_equation.dirichlet_callbacks[1] = dirichlet_func;
 
 
-    DISC::Projection<T, IDX, ndim, neq> projection{ic};
+    DISC::Projection<T, IDX, ndim, neq> projection{analytic_sol};
     // TODO: extract into LinearFormSolver
     std::vector<T> u_local_data(fespace.dg_offsets.max_el_size_reqirement(neq));
     std::vector<T> res_local_data(fespace.dg_offsets.max_el_size_reqirement(neq));

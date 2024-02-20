@@ -40,7 +40,7 @@ TEST(test_hypercube_face, test_transform){
     elR.setNode(0, 1);
     elR.setNode(1, 4);
     elR.setNode(2, 2);
-    elR.setNode(3, 6);
+    elR.setNode(3, 5);
 
     auto transL = decltype(elL)::transformation;
     auto transR = decltype(elR)::transformation;
