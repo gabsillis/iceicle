@@ -31,41 +31,73 @@ if(USE_64_BIT_INT)
   add_definitions(-DIDX_64_BIT)
 endif()
 
-# Generate Compile Commands
-set(CMAKE_EXPORT_COMPILE_COMMANDS ON)	
+# ===============
+# = TPL OPTIONS =
+# ===============
+option(ICEICLE_USE_PETSC "Builds ICEicle with Petsc integration" OFF)
+option(ICEICLE_USE_HYPRE "Builds ICEicle with Hypre integration" OFF)
+option(ICEICLE_USE_MFEM  "Enables MFEM as a third party library" OFF)
+option(ICEICLE_USE_OPENGL "Enables OpenGL visualization with imgui" OFF)
+option(ICEICLE_USE_MATPLOTPLUSPLUS "Enables matplotlib-cpp" OFF)
 
+# ==================
+# = CMake includes =
+# ==================
+include(FetchContent)
 find_package(MPI)
-
 find_package(PkgConfig REQUIRED)
 
-if(MPI_FOUND)
+# Generate Compile Commands (good for LSPs)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)	
 
-  # find Petsc
-  option(ICEICLE_USE_PETSC OFF)
-  if(ICEICLE_USE_PETSC)
-    set(ENV{PKG_CONFIG_PATH} "$ENV{PETSC_DIR}/$ENV{PETSC_ARCH}/lib/pkgconfig:$ENV{PKG_CONFIG_PATH}")
-    pkg_search_module(PETSC PETSc>3.5.0 IMPORTED_TARGET REQUIRED)
-    message(STATUS "Using PETSc version: ${PETSC_VERSION}")
-  endif()
-
-  # if MPI is available build they hypre library
-  set(ICEICLE_USE_HYPRE TRUE)
-  add_subdirectory(./hypre/src)
-else()
-  set(ICEICLE_USE_HYPRE FALSE)
-endif()
-
+# ================================
+# = Cmake Output Directory Setup =
+# ================================
 include_directories(SYSTEM ${MPI_INCLUDE_PATH})
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin/obj)
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin/obj)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 add_custom_target(OUTPUTDIR ALL COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/output)
 
-# THIRD PARTY LIBRARIES
+# =========================
+# = Third Party Libraries =
+# =========================
+
+# === REQUIRED Third Party Library: mdspan
+add_library(mdspan INTERFACE)
+target_include_directories(mdspan INTERFACE 
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/mdspan/include>
+    $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
+
+
+# MPI Dependent 3rd party libraries 
+if(MPI_FOUND)
+  # === Third Party Library: Hypre ===
+  if(ICEICLE_USE_HYPRE)
+    add_subdirectory(./hypre/src)
+  endif()
+
+# === Third Party Library: Petsc ===
+# NOTE: we use mpi functions in most cases with petsc 
+# so even though petsc supports non-MPI builds, we do not
+  if(ICEICLE_USE_PETSC)
+    set(ENV{PKG_CONFIG_PATH} "$ENV{PETSC_DIR}/$ENV{PETSC_ARCH}/lib/pkgconfig:$ENV{PKG_CONFIG_PATH}")
+    pkg_search_module(PETSC PETSc>3.5.0 IMPORTED_TARGET REQUIRED)
+    message(STATUS "Using PETSc version: ${PETSC_VERSION}")
+  endif()
+else()
+  if(ICEICLE_USE_HYPRE)
+    message(SEND_ERROR "ICEICLE_USE_HYPRE requires MPI_FOUND")
+  endif()
+  if(ICEICLE_USE_PETSC)
+    message(SEND_ERROR "ICEICLE_USE_PETSC requires MPI_FOUND")
+  endif()
+endif()
+
+# ==== Third Party Library: MFEM ===
 set(ICEICLE_TPL_DIR "${CMAKE_SOURCE_DIR}/../iceicle_tpl")
 set(MFEM_BUILD_DIR "${ICEICLE_TPL_DIR}/mfem/build")
-option(ICEICLE_USE_TPL "Enables third party libraries" OFF)
-if(ICEICLE_USE_TPL)
+if(ICEICLE_USE_MFEM)
   add_definitions(-DICEICLE_HAS_MFEM)
   message("Searching for mfem in: ${MFEM_BUILD_DIR}")
   if(MFEM_BUILD_DIR)
@@ -77,10 +109,7 @@ if(ICEICLE_USE_TPL)
   endif()
 endif()
 
-include(FetchContent)
-
-# OPENGL VISUALIZATION
-option(ICEICLE_USE_OPENGL "Enables OpenGL visualization" OFF)
+# === Third Party Library: OpenGL ===
 if(ICEICLE_USE_OPENGL)
   find_package(OpenGL REQUIRED)
   find_package(GLEW REQUIRED)
@@ -93,19 +122,8 @@ if(ICEICLE_USE_OPENGL)
   file(COPY ${CMAKE_SOURCE_DIR}/shaders DESTINATION ${CMAKE_RUNTIME_OUTPUT_DIRECTORY})
 endif()
 
-#mdspan
-add_library(mdspan INTERFACE)
-target_include_directories(mdspan INTERFACE 
-    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/mdspan/include>
-    $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
-
-# Include subdirectories
-add_subdirectory(numericaltoolbox)
-add_subdirectory(src)
-
-# matplotlib-cpp integration
-option(ENABLE_MATPLOTLIB_CPP "Enables matplotlib-cpp" OFF)
-if(ENABLE_MATPLOTLIB_CPP)
+  # === Third Party Library matplotlib-cpp ===
+if(ICEICLE_USE_MATPLOTPLUSPLUS)
   FetchContent_Declare(
     matplotplusplus
     GIT_REPOSITORY https://github.com/alandefreitas/matplotplusplus
@@ -119,8 +137,14 @@ if(ENABLE_MATPLOTLIB_CPP)
   endif()
 endif()
 
+# Include subdirectories
+add_subdirectory(numericaltoolbox)
+add_subdirectory(src)
 
-#TESTING
+# ===========
+# = TESTING =
+# ===========
+
 option(ENABLE_TESTING_ICEICLE "Enables testing and downlod gtest for ICEicle" ON)
 IF(ENABLE_TESTING_ICEICLE)
   enable_testing()
@@ -136,5 +160,4 @@ IF(ENABLE_TESTING_ICEICLE)
   set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
   FetchContent_MakeAvailable(googletest)
   add_subdirectory(test)
-
 ENDIF()

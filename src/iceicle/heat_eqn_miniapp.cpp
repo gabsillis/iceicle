@@ -53,7 +53,7 @@ int main(int argc, char *argv[]){
     // = create a uniform mesh =
     // =========================
 
-    IDX nx=20, ny=20;
+    IDX nx=10, ny=10;
     const IDX nelem_arr[ndim] = {nx, ny};
     // bottom left corner
     T xmin[ndim] = {0.0, 0.0};
@@ -82,7 +82,7 @@ int main(int argc, char *argv[]){
     // = create the finite element space =
     // ===================================
 
-    static constexpr int basis_order = 1;
+    static constexpr int basis_order = 5;
 
     FE::FESpace<T, IDX, ndim> fespace{
         &mesh, 
