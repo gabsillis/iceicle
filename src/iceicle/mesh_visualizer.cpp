@@ -154,8 +154,7 @@ int main(int argc, char**argv){
                 int directional_nelem[2] = {nx, ny};
 
                 mesh = new MESH::AbstractMesh<double, int, 2>(
-                    corner1, corner2, directional_nelem,
-                    1
+                    {xmin, ymin}, {xmax, ymax}, {nx, ny}, 1
                 );
 
                 face_drawer.clear();

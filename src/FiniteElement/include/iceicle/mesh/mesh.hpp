@@ -106,9 +106,9 @@ namespace MESH {
             const T xmin[ndim], 
             const T xmax[ndim],
             const IDX directional_nelem[ndim],
-            int order = 1,
-            NUMTOOL::TENSOR::FIXED_SIZE::Tensor<ELEMENT::BOUNDARY_CONDITIONS, 2 * ndim> bctypes = all_periodic, 
-            const int bcflags[2 * ndim] = 0
+            int order,
+            NUMTOOL::TENSOR::FIXED_SIZE::Tensor<ELEMENT::BOUNDARY_CONDITIONS, 2 * ndim> bctypes,
+            const int bcflags[2 * ndim]
         ) : nodes{}, elements{}, faces{} {
             using namespace NUMTOOL::TENSOR::FIXED_SIZE;
 
