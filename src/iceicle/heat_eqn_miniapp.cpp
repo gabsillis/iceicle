@@ -3,7 +3,6 @@
  *
  * @author Gianni Absillis (gabsill@ncsu.edu)
  */
-#include <limits>
 #ifdef ICEICLE_USE_PETSC 
 #include "iceicle/petsc_newton.hpp"
 #endif
@@ -23,9 +22,11 @@
 #include <iceicle/solvers/element_linear_solve.hpp>
 #include <iceicle/build_config.hpp>
 #include <iceicle/pvd_writer.hpp>
-#include <string>
+#include <iceicle/mesh/mesh_lua_interface.hpp>
 #include <type_traits>
 #include <fenv.h>
+
+#include <sol/sol.hpp>
 
 int main(int argc, char *argv[]){
 #ifdef ICEICLE_USE_PETSC
@@ -35,8 +36,17 @@ int main(int argc, char *argv[]){
    MPI_Init(&argc, &argv);
 #endif
 
+//    feenableexcept(FE_ALL_EXCEPT & ~FE_INEXACT);
 
-    feenableexcept(FE_ALL_EXCEPT & ~FE_INEXACT);
+    // The default file to read as input deck
+    // TODO: add command line arg parsing for specifying other file names as input deck
+    const char *default_input_deck_filename = "iceicle.lua";
+
+    // Parse the input deck 
+    sol::state lua_state;
+    lua_state.open_libraries(sol::lib::base);
+    lua_state.script_file(default_input_deck_filename);
+
 
     // using declarations
     using namespace NUMTOOL::TENSOR::FIXED_SIZE;
@@ -60,7 +70,7 @@ int main(int argc, char *argv[]){
     // top right corner
     T xmax[ndim] = {1.0, 1.0};
     // boundary conditions
-    Tensor<ELEMENT::BOUNDARY_CONDITIONS, 2 * ndim> bctypes = {{
+    Tensor<ELEMENT::BOUNDARY_CONDITIONS, 2 * ndim> bctypes{{
         ELEMENT::BOUNDARY_CONDITIONS::DIRICHLET, // left side 
         ELEMENT::BOUNDARY_CONDITIONS::DIRICHLET,   // bottom side 
         ELEMENT::BOUNDARY_CONDITIONS::DIRICHLET, // right side 
@@ -75,8 +85,10 @@ int main(int argc, char *argv[]){
     };
     int geometry_order = 1;
 
-    MESH::AbstractMesh<T, IDX, ndim> mesh{xmin, xmax, 
-        nelem_arr, geometry_order, bctypes, bcflags};
+//    MESH::AbstractMesh<T, IDX, ndim> mesh{xmin, xmax, 
+//        nelem_arr, geometry_order, bctypes, bcflags};
+
+    MESH::AbstractMesh<T, IDX, ndim> mesh = MESH::lua_uniform_mesh<T, IDX, ndim>(lua_state);
 
     // ===================================
     // = create the finite element space =

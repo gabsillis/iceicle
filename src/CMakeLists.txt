@@ -1,5 +1,7 @@
+# Subdirectory src 
 add_library(iceicle_lib INTERFACE)
 
+# add subdirectories of code in order of dependency
 add_subdirectory(util)
 add_subdirectory(math)
 add_subdirectory(FiniteElement)

@@ -35,6 +35,8 @@ endif()
 # = TPL OPTIONS =
 # ===============
 option(ICEICLE_USE_PETSC "Builds ICEicle with Petsc integration" OFF)
+option(ICEICLE_USE_LUA "Builds ICEicle with Lua integration integration provided through sol3" OFF)
+#option(ICEICLE_USE_IREP "Builds ICEicle with the irep library for Lua mixed-language" OFF)
 option(ICEICLE_USE_HYPRE "Builds ICEicle with Hypre integration" OFF)
 option(ICEICLE_USE_MFEM  "Enables MFEM as a third party library" OFF)
 option(ICEICLE_USE_OPENGL "Enables OpenGL visualization with imgui" OFF)
@@ -92,6 +94,23 @@ else()
   if(ICEICLE_USE_PETSC)
     message(SEND_ERROR "ICEICLE_USE_PETSC requires MPI_FOUND")
   endif()
+endif()
+
+# === Third Party Library: Lua ===
+if(ICEICLE_USE_LUA)
+  # first get the base lua library
+  find_package(Lua REQUIRED)
+  message("Using Lua version: ${LUA_VERSION_STRING}")
+
+  # sol3 
+  FetchContent_Declare(
+    sol2
+    GIT_REPOSITORY https://github.com/ThePhD/sol2.git 
+    GIT_TAG origin/main
+  )
+  FetchContent_GetProperties(sol2)
+  FetchContent_MakeAvailable(sol2)
+
 endif()
 
 # ==== Third Party Library: MFEM ===
