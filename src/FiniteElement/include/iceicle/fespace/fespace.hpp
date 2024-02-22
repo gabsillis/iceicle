@@ -147,6 +147,17 @@ namespace FE {
 
         public:
 
+        // default constructor
+        FESpace() = default;
+
+        // delete copy semantics
+        FESpace(const FESpace &other) = delete;
+        FESpace<T, IDX, ndim>& operator=(const FESpace &other) = delete;
+
+        // keep move semantics
+        FESpace(FESpace &&other) = default;
+        FESpace<T, IDX, ndim>& operator=(FESpace &&other) = default;
+
         /**
          * @brief construct an FESpace with uniform 
          * quadrature rules, and basis functions over all elements 

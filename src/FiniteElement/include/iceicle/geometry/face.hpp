@@ -5,11 +5,11 @@
  */
 #pragma once
 #include "iceicle/fe_function/nodal_fe_function.hpp"
-#include <cctype>
 #include <iceicle/geometry/geometry_enums.hpp>
 #include <Numtool/point.hpp>
 #include <Numtool/MathUtils.hpp>
 #include <iceicle/fe_enums.hpp>
+#include <iceicle/lua_utils.hpp>
 #include <Numtool/fixed_size_tensor.hpp>
 #include <string>
 #include <string_view>
@@ -53,18 +53,13 @@ namespace ELEMENT {
     }
 
     constexpr const inline BOUNDARY_CONDITIONS get_bc_from_name(std::string_view bcname){
-        auto case_insensitive_cp = [](char a, char b) -> bool {
-            return std::tolower(static_cast<unsigned char>(a)) ==
-                std::tolower(static_cast<unsigned char> (b));
-        };
+        using namespace ICEICLE::UTIL;
 
-        std::string_view dirichlet_name = "dirichlet";
-        if(std::ranges::equal(bcname, dirichlet_name, case_insensitive_cp)){
+        if(eq_icase(bcname, "dirichlet")){
             return DIRICHLET;
         }
-            
-        std::string_view neumann_name = "neumann";
-        if(std::ranges::equal(bcname, neumann_name, case_insensitive_cp)){
+
+        if(eq_icase(bcname, "neumann")){
             return NEUMANN;
         }
 

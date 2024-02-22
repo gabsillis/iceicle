@@ -3,6 +3,7 @@
  *
  * @author Gianni Absillis (gabsill@ncsu.edu)
  */
+#include "iceicle/fespace/fespace_lua_interface.hpp"
 #ifdef ICEICLE_USE_PETSC 
 #include "iceicle/petsc_newton.hpp"
 #endif
@@ -16,7 +17,6 @@
 #include "iceicle/fe_function/dglayout.hpp"
 #include "iceicle/fe_function/fespan.hpp"
 #include "iceicle/fespace/fespace.hpp"
-#include "iceicle/geometry/face.hpp"
 #include "iceicle/mesh/mesh.hpp"
 #include <iceicle/explicit_euler.hpp>
 #include <iceicle/solvers/element_linear_solve.hpp>
@@ -63,45 +63,13 @@ int main(int argc, char *argv[]){
     // = create a uniform mesh =
     // =========================
 
-    IDX nx=10, ny=10;
-    const IDX nelem_arr[ndim] = {nx, ny};
-    // bottom left corner
-    T xmin[ndim] = {0.0, 0.0};
-    // top right corner
-    T xmax[ndim] = {1.0, 1.0};
-    // boundary conditions
-    Tensor<ELEMENT::BOUNDARY_CONDITIONS, 2 * ndim> bctypes{{
-        ELEMENT::BOUNDARY_CONDITIONS::DIRICHLET, // left side 
-        ELEMENT::BOUNDARY_CONDITIONS::DIRICHLET,   // bottom side 
-        ELEMENT::BOUNDARY_CONDITIONS::DIRICHLET, // right side 
-        ELEMENT::BOUNDARY_CONDITIONS::DIRICHLET    // top side
-    }};
-
-    int bcflags[2 * ndim] = {
-        1, // left side 
-        1, // bottom side 
-        -1, // right side
-        1  // top side
-    };
-    int geometry_order = 1;
-
-//    MESH::AbstractMesh<T, IDX, ndim> mesh{xmin, xmax, 
-//        nelem_arr, geometry_order, bctypes, bcflags};
-
     MESH::AbstractMesh<T, IDX, ndim> mesh = MESH::lua_uniform_mesh<T, IDX, ndim>(lua_state);
 
     // ===================================
     // = create the finite element space =
     // ===================================
 
-    static constexpr int basis_order = 5;
-
-    FE::FESpace<T, IDX, ndim> fespace{
-        &mesh, 
-        FE::FESPACE_ENUMS::FESPACE_BASIS_TYPE::LAGRANGE, 
-        FE::FESPACE_ENUMS::FESPACE_QUADRATURE::GAUSS_LEGENDRE, 
-        std::integral_constant<int, basis_order>{}
-    };
+    auto fespace = FE::lua_fespace(&mesh, lua_state);
 
     // =============================
     // = set up the discretization =
@@ -154,7 +122,7 @@ int main(int argc, char *argv[]){
     heat_equation.dirichlet_callbacks[1] = dirichlet_func;
 
 
-    DISC::Projection<T, IDX, ndim, neq> projection{analytic_sol};
+    DISC::Projection<T, IDX, ndim, neq> projection{ic};
     // TODO: extract into LinearFormSolver
     std::vector<T> u_local_data(fespace.dg_offsets.max_el_size_reqirement(neq));
     std::vector<T> res_local_data(fespace.dg_offsets.max_el_size_reqirement(neq));

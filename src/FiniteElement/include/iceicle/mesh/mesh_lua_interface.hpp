@@ -1,3 +1,4 @@
+#pragma once
 #include "Numtool/fixed_size_tensor.hpp"
 #include "iceicle/geometry/face.hpp"
 #include <iceicle/mesh/mesh.hpp>
@@ -44,11 +45,10 @@ namespace MESH {
 
         // optional geometry order input
         int geometry_order = 1;
-        // TODO: figure out why optional isn't working
-//        std::optional<int> geo_order_input = lua_state["uniform_mesh"]["geometry_order"];
-//        if(geo_order_input){
-//            geometry_order = geo_order_input.value();
-//        }
+        sol::optional<int> geo_order_input = lua_state["uniform_mesh"]["geometry_order"];
+        if(geo_order_input){
+            geometry_order = geo_order_input.value();
+        }
 
         return AbstractMesh<T, IDX, ndim>{xmin, xmax, nelem, geometry_order, bctypes, bcflags};
     }
