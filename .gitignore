@@ -40,6 +40,9 @@ output/*
 *.core
 .cache/
 
+# output
+iceicle_data/
+
 #pybind install
 pycicle.egg-info
 

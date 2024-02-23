@@ -6,11 +6,13 @@
 #pragma once
 #include "iceicle/fe_function/nodal_fe_function.hpp"
 #include <iceicle/geometry/geometry_enums.hpp>
+#include <iceicle/string_utils.hpp>
 #include <Numtool/point.hpp>
 #include <Numtool/MathUtils.hpp>
 #include <iceicle/fe_enums.hpp>
 #include <Numtool/fixed_size_tensor.hpp>
 #include <string>
+#include <string_view>
 
 namespace ELEMENT {
     
@@ -48,6 +50,20 @@ namespace ELEMENT {
             "Interior face (NO BC)"
         };
         return names[(int) bc];
+    }
+
+    constexpr const inline BOUNDARY_CONDITIONS get_bc_from_name(std::string_view bcname){
+        using namespace ICEICLE::UTIL;
+
+        if(eq_icase(bcname, "dirichlet")){
+            return DIRICHLET;
+        }
+
+        if(eq_icase(bcname, "neumann")){
+            return NEUMANN;
+        }
+
+        return INTERIOR;
     }
 
     /// face_info / this gives the face number 

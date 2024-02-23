@@ -67,35 +67,35 @@ namespace FE {
 
         private:
             /// The pointer to the data being accessed
-            pointer __ptr;
+            pointer _ptr;
 
             /// the layout policy
-            LayoutPolicy __layout;
+            LayoutPolicy _layout;
 
             /// the accessor policy
-            AccessorPolicy __accessor;
+            AccessorPolicy _accessor;
 
         public:
 
             template<typename... LayoutArgsT>
             constexpr fespan(pointer data, LayoutArgsT&&... layout_args) 
-            noexcept : __ptr(data), __layout{layout_args...}, __accessor{} 
+            noexcept : _ptr(data), _layout{layout_args...}, _accessor{} 
             {}
 
             template<typename... LayoutArgsT>
-            constexpr fespan(pointer data, LayoutArgsT&&... layout_args, const AccessorPolicy &__accessor) 
-            noexcept : __ptr(data), __layout{layout_args...}, __accessor{__accessor} 
+            constexpr fespan(pointer data, LayoutArgsT&&... layout_args, const AccessorPolicy &_accessor) 
+            noexcept : _ptr(data), _layout{layout_args...}, _accessor{_accessor} 
             {}
 
             /** @brief get the upper bound of the 1D index space */
-            constexpr std::size_t size() const noexcept { return __layout.size(); }
+            constexpr std::size_t size() const noexcept { return _layout.size(); }
 
             /** @brief index into the data using a fe_index 
              * @param fe_index represents the element, dof, and vector component indices 
              * @return a reference to the data 
              */
             constexpr reference operator[](const fe_index &feidx) const {
-                return __accessor.access(__ptr, __layout.operator()(feidx));
+                return _accessor.access(_ptr, _layout.operator()(feidx));
             }
 
             /**
@@ -104,7 +104,7 @@ namespace FE {
              */
             constexpr pointer data() noexcept 
             requires(std::is_same_v<AccessorPolicy, default_accessor<T>>) 
-            { return __ptr; }
+            { return _ptr; }
 
             /**
              * @brief if using the default accessor, allow access to the underlying storage
@@ -112,7 +112,7 @@ namespace FE {
              */
             constexpr const pointer data() const noexcept 
             requires(std::is_same_v<AccessorPolicy, default_accessor<T>>) 
-            { return __ptr; }
+            { return _ptr; }
 
             /**
              * @brief create the element layout that matches the global layout 
@@ -122,7 +122,7 @@ namespace FE {
              * @return the element layout 
              */
             constexpr auto create_element_layout(std::size_t iel){
-                return __layout.create_element_layout(iel);
+                return _layout.create_element_layout(iel);
             }
 
             /**
@@ -135,13 +135,13 @@ namespace FE {
                 // TODO: be more specific about the index space
                 // maybe by delegating to the LayoutPolicy
                 for(int i = 0; i < size(); ++i){
-                    __ptr[i] = value;
+                    _ptr[i] = value;
                 }
                 return *this;
             }
 
             /** @brief get a const reference too the layout policy */
-            constexpr const LayoutPolicy &get_layout() const { return __layout; }
+            constexpr const LayoutPolicy &get_layout() const { return _layout; }
 
             /**
              * @brief get the norm of the vector data components 
@@ -157,7 +157,7 @@ namespace FE {
                 // TODO: be more specific about the index space
                 // maybe by delegating to the LayoutPolicy
                 for(int i = 0; i < size(); ++i){
-                    sum += std::pow(__ptr[i], order);
+                    sum += std::pow(_ptr[i], order);
                 }
                 
                 if constexpr (order == 2){
@@ -167,6 +167,28 @@ namespace FE {
                 }
             }
     };
+
+    /**
+     * @brief cmpute a vector scalar product and add to a vector 
+     * y <= alpha * x + y
+     *
+     * @param [in] alpha the scalar to multiply x by
+     * @param [in] x the fespan to add 
+     * @param [in/out] y the fespan to add to
+     */
+    template<typename T, class LayoutPolicyx, class LayoutPolicyy>
+    void axpy(T alpha, const fespan<T, LayoutPolicyx> &x, fespan<T, LayoutPolicyy> y){
+        if constexpr(std::is_same_v<LayoutPolicyy, LayoutPolicyx>) {
+            // do in a single loop over the 1d index space 
+            T *ydata = y.data();
+            T *xdata = x.data();
+            for(int i = 0; i < x.size(); ++i){
+                ydata[i] += alpha * xdata[i];
+            }
+        } else {
+            // TODO: 
+        }
+    }
 
     // deduction guides
     template<typename T, class LayoutPolicy>
@@ -204,38 +226,38 @@ namespace FE {
 
         private:
             /// The pointer to the data being accessed
-            pointer __ptr;
+            pointer _ptr;
 
             /// the layout policy
-            LayoutPolicy __layout;
+            LayoutPolicy _layout;
 
             /// the accessor policy
-            AccessorPolicy __accessor;
+            AccessorPolicy _accessor;
 
         public:
 
             template<typename... LayoutArgsT>
             constexpr elspan(pointer data, LayoutArgsT&&... layout_args) 
-            noexcept : __ptr(data), __layout{layout_args...}, __accessor{} 
+            noexcept : _ptr(data), _layout{layout_args...}, _accessor{} 
             {}
 
             template<typename... LayoutArgsT>
-            constexpr elspan(pointer data, LayoutArgsT&&... layout_args, const AccessorPolicy &__accessor) 
-            noexcept : __ptr(data), __layout{layout_args...}, __accessor{__accessor} 
+            constexpr elspan(pointer data, LayoutArgsT&&... layout_args, const AccessorPolicy &_accessor) 
+            noexcept : _ptr(data), _layout{layout_args...}, _accessor{_accessor} 
             {}
 
             /** @brief get the upper bound of the 1D index space */
-            constexpr std::size_t size() const noexcept { return __layout.size(); }
+            constexpr std::size_t size() const noexcept { return _layout.size(); }
 
             /** @brief get the extents of the multidimensional index space */
-            constexpr LayoutPolicy::extents_type extents() const noexcept { return __layout.extents(); }
+            constexpr LayoutPolicy::extents_type extents() const noexcept { return _layout.extents(); }
 
             /** @brief index into the data using a compact_index
              * @param idx the compact_index which represents a multidimensional index into element local data
              * @return a reference to the data 
              */
             constexpr reference operator[](const compact_index &idx) const {
-                return __accessor.access(__ptr, __layout.operator()(idx));
+                return _accessor.access(_ptr, _layout.operator()(idx));
             }
 
             /** @brief index into the data using the set order
@@ -244,7 +266,7 @@ namespace FE {
              * @return a reference to the data 
              */
             constexpr reference operator[](std::size_t idof, std::size_t iv){
-                return __accessor.access(__ptr, __layout.operator()(FE::compact_index{.idof = idof, .iv = iv}));
+                return _accessor.access(_ptr, _layout.operator()(FE::compact_index{.idof = idof, .iv = iv}));
             }
 
             /**
@@ -253,7 +275,7 @@ namespace FE {
              */
             constexpr pointer data() noexcept 
             requires(std::is_same_v<AccessorPolicy, default_accessor<T>>) 
-            { return __ptr; }
+            { return _ptr; }
 
             /**
              * @brief if using the default accessor, allow access to the underlying storage
@@ -261,10 +283,10 @@ namespace FE {
              */
             constexpr const pointer data() const noexcept 
             requires(std::is_same_v<AccessorPolicy, default_accessor<T>>) 
-            { return __ptr; }
+            { return _ptr; }
 
             /** @brief get the layout */
-            constexpr inline LayoutPolicy &get_layout() { return __layout; }
+            constexpr inline LayoutPolicy &get_layout() { return _layout; }
 
             /**
              * @brief set the value at every index 
@@ -276,7 +298,7 @@ namespace FE {
                 // TODO: be more specific about the index space
                 // maybe by delegating to the LayoutPolicy
                 for(int i = 0; i < size(); ++i){
-                    __ptr[i] = value;
+                    _ptr[i] = value;
                 }
                 return *this;
             }
@@ -295,7 +317,7 @@ namespace FE {
                 // TODO: be more specific about the index space
                 // maybe by delegating to the LayoutPolicy
                 for(int i = 0; i < size(); ++i){
-                    sum += std::pow(__ptr[i], order);
+                    sum += std::pow(_ptr[i], order);
                 }
                 
                 if constexpr (order == 2){
@@ -314,7 +336,7 @@ namespace FE {
              * WARNING: must be zero'd out
              */
             void contract_dofs(const T *__restrict__ dof_vec, T *__restrict__ eqn_out){
-                compact_index_extents extents = __layout.extents();
+                compact_index_extents extents = _layout.extents();
                 for(std::size_t idof = 0; idof < extents.ndof; ++idof){
                     for(std::size_t iv = 0; iv < extents.nv; ++iv){
                         eqn_out[iv] += this->operator[](compact_index{.idof = idof, .iv = iv}) * dof_vec[idof];
@@ -326,6 +348,8 @@ namespace FE {
              * @brief contract along the first index dimension with the dof index 
              * with an mdspan type object
              *
+             * NOTE: zero's out result_data before use
+             *
              * specialized for rank 2 and 3 mdspan objects
              * Assumes the first index into the mdspan is the dof index 
              *
@@ -334,7 +358,6 @@ namespace FE {
              * @param [in] dof_mdspan
              * @param [out] result_data pointer to memory 
              *      where the result of the contraction will be stored 
-             *      WARNING: must be zero'd out beforehand 
              *
              * @return an mdspan view of the result data with the contraction indices
              *  the first index of the contraction result will be the vector component index from 
@@ -366,6 +389,10 @@ namespace FE {
                 if constexpr(in_mdspan::rank() == 1){
                     std::experimental::extents<int, eq_extent> result_extents{dynamic_extents};
                     std::experimental::mdspan eq_mdspan{result_data, result_extents};
+
+                    // zero fill
+                    std::fill_n(result_data, eq_mdspan.size(), 0.0);
+
                     for(int idof = 0; idof < extents().ndof; ++idof){
                         for(int iv = 0; iv < extents().nv; ++iv){
                             eq_mdspan[iv] +=
@@ -383,6 +410,9 @@ namespace FE {
                         ext_1
                     > result_extents{dynamic_extents};
                     std::experimental::mdspan eq_mdspan{result_data, result_extents};
+
+                    // zero fill
+                    std::fill_n(result_data, eq_mdspan.size(), 0.0);
 
                     // perform the contraction 
                     for(int idof = 0; idof < extents().ndof; ++idof){
@@ -407,6 +437,9 @@ namespace FE {
                         ext_2
                     > result_extents{dynamic_extents};
                     std::experimental::mdspan eq_mdspan{result_data, result_extents};
+
+                    // zero fill
+                    std::fill_n(result_data, eq_mdspan.size(), 0.0);
 
                     // perform the contraction 
                     for(int idof = 0; idof < extents().ndof; ++idof){

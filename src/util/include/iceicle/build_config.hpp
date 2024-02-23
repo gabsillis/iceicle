@@ -34,5 +34,9 @@ namespace BUILD_CONFIG {
      * The maximum polynomial order of basis functions that gets generated at compile time 
      * for fespace 
      */
-    static constexpr int FESPACE_BUILD_PN = 4;
+#ifdef MAX_POLYNOMIAL_ORDER
+    static constexpr int FESPACE_BUILD_PN = MAX_POLYNOMIAL_ORDER
+#else
+    static constexpr int FESPACE_BUILD_PN = 5;
+#endif
 }

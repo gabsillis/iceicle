@@ -8,7 +8,6 @@
 #include "iceicle/element/finite_element.hpp"
 #include "iceicle/fe_function/fespan.hpp"
 #include "iceicle/fespace/fespace.hpp"
-#include <concepts>
 
 namespace ICEICLE::SOLVERS {
 

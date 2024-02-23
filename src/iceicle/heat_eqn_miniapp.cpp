@@ -3,37 +3,56 @@
  *
  * @author Gianni Absillis (gabsill@ncsu.edu)
  */
+#include "iceicle/fespace/fespace_lua_interface.hpp"
+#include "iceicle/lua_utils.hpp"
+#ifdef ICEICLE_USE_PETSC 
+#include "iceicle/petsc_newton.hpp"
+#endif
 #ifdef ICEICLE_USE_MPI
 #include "mpi.h"
 #endif
 
 #include "iceicle/disc/heat_eqn.hpp"
 #include "iceicle/disc/projection.hpp"
-#include "iceicle/element/reference_element.hpp"
+#include "iceicle/lua_utils.hpp"
 #include "iceicle/fe_function/dglayout.hpp"
 #include "iceicle/fe_function/fespan.hpp"
 #include "iceicle/fespace/fespace.hpp"
-#include "iceicle/geometry/face.hpp"
 #include "iceicle/mesh/mesh.hpp"
 #include <iceicle/explicit_euler.hpp>
 #include <iceicle/solvers/element_linear_solve.hpp>
 #include <iceicle/build_config.hpp>
 #include <iceicle/pvd_writer.hpp>
-#include <string>
+#include <iceicle/mesh/mesh_lua_interface.hpp>
 #include <type_traits>
 #include <fenv.h>
 
+#include <sol/sol.hpp>
+
 int main(int argc, char *argv[]){
-#ifdef ICEICLE_USE_MPI
+#ifdef ICEICLE_USE_PETSC
+    PetscInitialize(&argc, &argv, nullptr, nullptr);
+#elifdef ICEICLE_USE_MPI
    /* Initialize MPI */
    MPI_Init(&argc, &argv);
 #endif
 
+//    feenableexcept(FE_ALL_EXCEPT & ~FE_INEXACT);
 
-    feenableexcept(FE_ALL_EXCEPT & ~FE_INEXACT);
+    // The default file to read as input deck
+    // TODO: add command line arg parsing for specifying other file names as input deck
+    const char *default_input_deck_filename = "iceicle.lua";
+
+    // Parse the input deck 
+    sol::state lua_state;
+    lua_state.open_libraries(sol::lib::base);
+    lua_state.open_libraries(sol::lib::math);
+    lua_state.script_file(default_input_deck_filename);
+
 
     // using declarations
     using namespace NUMTOOL::TENSOR::FIXED_SIZE;
+    using namespace ICEICLE::UTIL;
 
     // Get the floating point and index types from 
     // cmake configuration
@@ -47,54 +66,84 @@ int main(int argc, char *argv[]){
     // = create a uniform mesh =
     // =========================
 
-    IDX nx=2, ny=2;
-    const IDX nelem_arr[ndim] = {nx, ny};
-    // bottom left corner
-    T xmin[ndim] = {-1.0, -1.0};
-    // top right corner
-    T xmax[ndim] = {1.0, 1.0};
-    // boundary conditions
-    Tensor<ELEMENT::BOUNDARY_CONDITIONS, 2 * ndim> bctypes = {{
-        ELEMENT::BOUNDARY_CONDITIONS::DIRICHLET, // left side 
-        ELEMENT::BOUNDARY_CONDITIONS::NEUMANN,   // bottom side 
-        ELEMENT::BOUNDARY_CONDITIONS::DIRICHLET, // right side 
-        ELEMENT::BOUNDARY_CONDITIONS::NEUMANN    // top side
-    }};
-    int bcflags[2 * ndim] = {
-        0, // left side 
-        0, // bottom side 
-        1, // right side
-        0  // top side
-    };
-    int geometry_order = 1;
-
-    MESH::AbstractMesh<T, IDX, ndim> mesh{xmin, xmax, 
-        nelem_arr, geometry_order, bctypes, bcflags};
+    MESH::AbstractMesh<T, IDX, ndim> mesh = MESH::lua_uniform_mesh<T, IDX, ndim>(lua_state);
 
     // ===================================
     // = create the finite element space =
     // ===================================
 
-    static constexpr int basis_order = 1;
-
-    FE::FESpace<T, IDX, ndim> fespace{
-        &mesh, 
-        FE::FESPACE_ENUMS::FESPACE_BASIS_TYPE::LAGRANGE, 
-        FE::FESPACE_ENUMS::FESPACE_QUADRATURE::GAUSS_LEGENDRE, 
-        std::integral_constant<int, basis_order>{}
-    };
+    auto fespace = FE::lua_fespace(&mesh, lua_state);
 
     // =============================
     // = set up the discretization =
     // =============================
 
     DISC::HeatEquation<T, IDX, ndim> heat_equation{}; 
-    // Dirichlet BC: Left side = 0
-    heat_equation.dirichlet_values.push_back(1.0); 
-    // Dirichlet BC: Rigght side = 1
-    heat_equation.dirichlet_values.push_back(2.0); 
-    // Neumann BC: Top and bottom have 0 normal gradient 
-    heat_equation.neumann_values.push_back(0.0);
+
+    // Get boundary condition values from input deck 
+    static constexpr int MAX_BC_ENTRIES = 100; // protect from infinite loops
+
+    sol::optional<sol::table> dirichlet_spec_opt = lua_state["boundary_conditions"]["dirichlet"];
+    if(dirichlet_spec_opt){
+        sol::table dirichlet_spec = dirichlet_spec_opt.value();
+
+        // Value arguments
+        // To make indexing consistently 1-indexed 
+        // push a 0 valued boundary condition at index 0
+        // Now values start at 1 and callbacks start at -1 with no overlap on index 0
+        heat_equation.dirichlet_values.push_back(0); 
+        for(int ibc = 1; ibc < MAX_BC_ENTRIES; ++ibc){
+            sol::optional<T> lua_value = dirichlet_spec["values"][ibc];
+            if(lua_value) heat_equation.dirichlet_values.push_back(lua_value.value());
+            else break;
+        }
+
+        // Callbacks
+        // same index 0 trick
+        // actually use the table iterator here
+        heat_equation.dirichlet_callbacks.push_back([](const double*, double *out){ out[0] = 0.0; });
+        sol::table callback_tbl = dirichlet_spec["callbacks"];
+        sol::function testf = callback_tbl[2];
+        for(const auto& key_value : callback_tbl){
+            int index = key_value.first.as<int>();
+            auto dirichlet_func = key_value.second.as<std::function<double(double, double)>>();
+
+            // indexes could be in non-sequential order so manually work with vector capacity
+            if(index >= heat_equation.dirichlet_callbacks.size())
+                heat_equation.dirichlet_callbacks.resize(2 * heat_equation.dirichlet_callbacks.size());
+
+            // add the callback function at the given index
+//            heat_equation.dirichlet_callbacks[index] =
+//                [dirichlet_func](const double *xarr, double *out){
+//                    out[0] = dirichlet_func(xarr[0], xarr[1]);
+//                };
+            heat_equation.dirichlet_callbacks[index] =
+                [&lua_state, index](const double *xarr, double *out){
+                    sol::optional<sol::table> ftbl = lua_state["boundary_conditions"]["dirichlet"]["callbacks"];
+                    if(!ftbl) std::cout << "wtf" << std::endl;
+                    sol::function f = ftbl.value()[index];
+                    out[0] = f(xarr[0], xarr[1]);
+                };
+        }
+    }
+
+
+    sol::optional<sol::table> neumann_spec_opt = lua_state["boundary_conditions"]["neumann"];
+    if(neumann_spec_opt){
+        sol::table neumann_spec = neumann_spec_opt.value();
+
+        // Value arguments
+        // To make indexing consistently 1-indexed 
+        // push a 0 valued boundary condition at index 0
+        // Now values start at 1 and callbacks start at -1 with no overlap on index 0
+        heat_equation.neumann_values.push_back(0); 
+        int ilua_value = 1;
+        sol::optional<T> lua_value;
+        while((lua_value = neumann_spec["values"][ilua_value++])){
+            heat_equation.neumann_values.push_back(lua_value.value());
+        }
+
+    }
 
     // ============================
     // = set up a solution vector =
@@ -107,17 +156,44 @@ int main(int argc, char *argv[]){
     // ===========================
     // = initialize the solution =
     // ===========================
-    auto ic = [](const double *xarr, double *out) -> void{
+
+    std::cout << "Initializing Solution..." << std::endl;
+
+    std::function<void(const double*, double *)> ic;
+
+    // first check if the initial condiiton is identified by string
+    sol::optional<std::string> ic_string = lua_state["initial_condition"];
+    if(ic_string){
+        if(eq_icase(ic_string.value(), "zero")) {
+            ic = [](const double *, double *out){ out[0] = 0.0; };
+        }
+    } else {
+        // else we take ic as a lua function with
+        // 2 inputs (ndim) and one output (neq)
+        // and wrap in a lambda
+        ic = [&lua_state](const double *xarr, double *out){
+            out[0] = lua_state["initial_condition"](xarr[0], xarr[1]);
+        };
+    }
+
+
+    auto analytic_sol = [](const double *xarr, double *out) -> void{
         double x = xarr[0];
         double y = xarr[1];
 
-        //out[0] = x;
-        out[0] = std::sin(x) * std::cos(y);
+        out[0] = 0.1 * std::sinh(M_PI * x) / std::sinh(M_PI) * std::sin(M_PI * y) + 1.0;
+    };
+
+    auto dirichlet_func = [](const double *xarr, double *out) ->void{
+        double x = xarr[0];
+        double y = xarr[1];
+
+        out[0] = 1 + 0.1 * std::sin(M_PI * y);
     };
     
     // Manufactured solution BC 
     heat_equation.dirichlet_callbacks.resize(2);
-    heat_equation.dirichlet_callbacks[1] = ic;
+    heat_equation.dirichlet_callbacks[1] = dirichlet_func;
 
 
     DISC::Projection<T, IDX, ndim, neq> projection{ic};
@@ -149,14 +225,16 @@ int main(int argc, char *argv[]){
         }
     );
 
+    bool use_explicit = false;
+
+    if(use_explicit){
     // =============================
     // = Solve with Explicit Euler =
     // =============================
     using namespace ICEICLE::SOLVERS;
     ExplicitEuler explicit_euler{fespace, heat_equation};
     explicit_euler.ivis = 10;
-    explicit_euler.tfinal = 2;
-    //explicit_euler.dt_fixed = 0.1;
+    explicit_euler.tfinal = 2000;
     ICEICLE::IO::PVDWriter<T, IDX, ndim> pvd_writer;
     pvd_writer.register_fespace(fespace);
     pvd_writer.register_fields(u, "u");
@@ -176,11 +254,43 @@ int main(int argc, char *argv[]){
     };
     explicit_euler.solve(fespace, heat_equation, u);
 
-    //cleanup
+    } else {
+#ifdef ICEICLE_USE_PETSC
+    // ==============================
+    // = Solve with Newton's Method =
+    // ==============================
+    using namespace ICEICLE::SOLVERS;
+    ConvergenceCriteria<T, IDX> conv_criteria{
+        .tau_abs = std::numeric_limits<T>::epsilon(),
+        .tau_rel = std::numeric_limits<T>::epsilon(),
+        .kmax = 5
+    };
+    PetscNewton solver{fespace, heat_equation, conv_criteria};
+    solver.idiag = -1;
+    solver.ivis = 1;
+    ICEICLE::IO::PVDWriter<T, IDX, ndim> pvd_writer;
+    pvd_writer.register_fespace(fespace);
+    pvd_writer.register_fields(u, "u");
+    pvd_writer.write_vtu(0, 0.0); // print the initial solution
+    solver.vis_callback = [&](decltype(solver) &solver, IDX k, Vec res_data, Vec du_data){
+        T res_norm;
+        PetscCallAbort(solver.comm, VecNorm(res_data, NORM_2, &res_norm));
+        std::cout << std::setprecision(8);
+        std::cout << "itime: " << std::setw(6) << k
+            << " | residual l2: " << std::setw(14) << res_norm
+            << std::endl;
+        // offset by initial solution iteration
+        pvd_writer.write_vtu(k + 1, (T) k + 1);
+    };
+    solver.solve(u);
 
-#ifdef ICEICLE_USE_MPI
+    //cleanup
+    PetscFinalize();
+#elifdef ICEICLE_USE_MPI
+    // cleanup
     MPI_Finalize();
 #endif
+    }
     return 0;
 }
 

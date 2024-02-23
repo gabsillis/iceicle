@@ -1,4 +1,4 @@
-if(ENABLE_MATPLOTLIB_CPP)
+if(ICEICLE_USE_MATPLOTPLUSPLUS)
     add_executable(simplex_trans_ex SimplexTransformExample.cpp)
     target_link_libraries(simplex_trans_ex PUBLIC matplot)
     target_link_libraries(simplex_trans_ex PUBLIC iceicle_fe) 
@@ -59,6 +59,7 @@ gtest_discover_tests(test_felib)
 if(ICEICLE_USE_HYPRE)
 set(SOLVER_TEST_SOURCES
     test_solvers_main.cpp
+    test_petsc_solvers.cpp
     test_hypre_interface.cpp)
 add_executable( test_solvers ${SOLVER_TEST_SOURCES})
 target_link_libraries( test_solvers PUBLIC iceicle_fe )

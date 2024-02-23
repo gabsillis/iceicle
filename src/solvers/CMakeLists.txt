@@ -8,6 +8,7 @@ if(ICEICLE_USE_PETSC)
     message("Using PETSc in solvers")
     target_link_libraries(iceicle_solvers INTERFACE PkgConfig::PETSC)
     target_include_directories(iceicle_solvers INTERFACE ${PETSC_INCLUDE_DIRS})
+    target_compile_definitions(iceicle_solvers INTERFACE -DICEICLE_USE_PETSC)
 endif()
 target_include_directories(iceicle_solvers INTERFACE
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>

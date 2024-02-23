@@ -6,6 +6,7 @@
  */
 
 #pragma once
+#include "iceicle/build_config.hpp"
 #include "iceicle/fe_enums.hpp"
 #include <iceicle/fe_function/nodal_fe_function.hpp>
 #include <Numtool/point.hpp>
@@ -16,7 +17,7 @@
 namespace ELEMENT{
 
     // the maximum dynamic element order that is generated
-    static constexpr int MAX_DYNAMIC_ORDER = 5;
+    static constexpr int MAX_DYNAMIC_ORDER = BUILD_CONFIG::FESPACE_BUILD_PN;
     
     /**
      * @brief A Geometric element

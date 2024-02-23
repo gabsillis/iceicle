@@ -21,7 +21,8 @@ namespace DISC {
     /**
      * @brief a discretization of the heat equation on one variable
      *
-     * \frac{du}{dt} = \mu \Delta u
+     * \frac{du}{dt} = \mu \Delta u + f 
+     * or -\mu\Delta u = f
      *
      * this is a spatial-only discretization (semi-discrete)
      *
@@ -128,7 +129,7 @@ namespace DISC {
                 // loop over the test functions and construct the residual 
                 for(std::size_t itest = 0; itest < el.nbasis(); ++itest){
                     for(std::size_t jdim = 0; jdim < ndim; ++jdim){
-                        res[feidx{.idof = itest, .iv = 0}]
+                        res[itest, 0]
                             -= mu * gradu[jdim] * gradxBi[itest, jdim] * detJ * quadpt.weight;
                     }
                 }
@@ -168,7 +169,7 @@ namespace DISC {
                 T sqrtg = trace.face.rootRiemannMetric(Jfac, quadpt.abscisse);
 
                 // get the function values
-                std::vector<T> bi_dataL(elL.nbasis());
+                std::vector<T> bi_dataL(elL.nbasis()); //TODO: move storage declaration out of loop
                 std::vector<T> bi_dataR(elR.nbasis());
                 trace.evalBasisQPL(iqp, bi_dataL.data());
                 trace.evalBasisQPR(iqp, bi_dataR.data());
@@ -245,10 +246,10 @@ namespace DISC {
 
                 // contribution to the residual 
                 for(std::size_t itest = 0; itest < elL.nbasis(); ++itest){
-                    resL[feidx{.idof = itest, .iv = 0}] += flux * bi_dataL[itest];
+                    resL[itest, 0] += flux * bi_dataL[itest];
                 }
                 for(std::size_t itest = 0; itest < elR.nbasis(); ++itest){
-                    resR[feidx{.idof = itest, .iv = 0}] -= flux * bi_dataR[itest];
+                    resR[itest, 0] -= flux * bi_dataR[itest];
                 }
             }
 
@@ -362,7 +363,7 @@ namespace DISC {
                         ) * quadpt.weight * sqrtg;
 
                         for(std::size_t itest = 0; itest < elL.nbasis(); ++itest){
-                            resL[feidx{.idof = itest, .iv = 0}] += flux * bi_dataL[itest];
+                            resL[itest, 0] += flux * bi_dataL[itest];
                         }
                     }
                 }
