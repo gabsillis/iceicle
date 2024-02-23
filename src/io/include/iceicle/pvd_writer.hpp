@@ -87,6 +87,36 @@ namespace ICEICLE::IO {
             .vtk_id = 9
         };
 
+        template<typename T>
+        static VTKElement<T, 2> VTK_QUADRATIC_QUAD = {
+            .nodes = {
+                {-1.0, -1.0},
+                { 1.0, -1.0},
+                { 1.0,  1.0},
+                {-1.0,  1.0},
+                { 0.0, -1.0},
+                { 1.0,  0.0},
+                { 0.0,  1.0},
+                {-1.0,  0.0}
+            },
+            .vtk_id = 23
+        };
+
+        template<typename T>
+        static VTKElement<T, 2> VTK_BIQUADRATIC_QUAD = {
+            .nodes = {
+                {-1.0, -1.0},
+                { 1.0, -1.0},
+                { 1.0,  1.0},
+                {-1.0,  1.0},
+                { 0.0, -1.0},
+                { 1.0,  0.0},
+                { 0.0,  1.0},
+                {-1.0,  0.0},
+                { 0.0,  0.0}
+            },
+            .vtk_id = 28
+        };
         // === Linear 3D ===
 
         template<typename T>
@@ -140,10 +170,13 @@ namespace ICEICLE::IO {
                     // Quad type elements 
                     case FE::DOMAIN_TYPE::HYPERCUBE:
                         switch (max_order) {
+                            case 0: // use case 1
                             case 1:
                                 return VTK_QUAD<T>;
+                            case 2:
+                                return VTK_BIQUADRATIC_QUAD<T>;
                             default:
-                                return VTK_QUAD<T>;
+                                return VTK_QUADRATIC_QUAD<T>;
                         }
                     // default case
                     default:
