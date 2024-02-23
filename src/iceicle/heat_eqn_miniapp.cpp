@@ -4,6 +4,7 @@
  * @author Gianni Absillis (gabsill@ncsu.edu)
  */
 #include "iceicle/fespace/fespace_lua_interface.hpp"
+#include "iceicle/lua_utils.hpp"
 #ifdef ICEICLE_USE_PETSC 
 #include "iceicle/petsc_newton.hpp"
 #endif
@@ -13,7 +14,7 @@
 
 #include "iceicle/disc/heat_eqn.hpp"
 #include "iceicle/disc/projection.hpp"
-#include "iceicle/element/reference_element.hpp"
+#include "iceicle/lua_utils.hpp"
 #include "iceicle/fe_function/dglayout.hpp"
 #include "iceicle/fe_function/fespan.hpp"
 #include "iceicle/fespace/fespace.hpp"
@@ -45,11 +46,13 @@ int main(int argc, char *argv[]){
     // Parse the input deck 
     sol::state lua_state;
     lua_state.open_libraries(sol::lib::base);
+    lua_state.open_libraries(sol::lib::math);
     lua_state.script_file(default_input_deck_filename);
 
 
     // using declarations
     using namespace NUMTOOL::TENSOR::FIXED_SIZE;
+    using namespace ICEICLE::UTIL;
 
     // Get the floating point and index types from 
     // cmake configuration
@@ -76,12 +79,71 @@ int main(int argc, char *argv[]){
     // =============================
 
     DISC::HeatEquation<T, IDX, ndim> heat_equation{}; 
-    // Dirichlet BC: set to 0
-    heat_equation.dirichlet_values.push_back(0.0); 
-    // Dirichlet BC: set to 1
-    heat_equation.dirichlet_values.push_back(1.0); 
-    // Neumann BC: Top and bottom have 0 normal gradient 
-    heat_equation.neumann_values.push_back(0.0);
+
+    // Get boundary condition values from input deck 
+    static constexpr int MAX_BC_ENTRIES = 100; // protect from infinite loops
+
+    sol::optional<sol::table> dirichlet_spec_opt = lua_state["boundary_conditions"]["dirichlet"];
+    if(dirichlet_spec_opt){
+        sol::table dirichlet_spec = dirichlet_spec_opt.value();
+
+        // Value arguments
+        // To make indexing consistently 1-indexed 
+        // push a 0 valued boundary condition at index 0
+        // Now values start at 1 and callbacks start at -1 with no overlap on index 0
+        heat_equation.dirichlet_values.push_back(0); 
+        for(int ibc = 1; ibc < MAX_BC_ENTRIES; ++ibc){
+            sol::optional<T> lua_value = dirichlet_spec["values"][ibc];
+            if(lua_value) heat_equation.dirichlet_values.push_back(lua_value.value());
+            else break;
+        }
+
+        // Callbacks
+        // same index 0 trick
+        // actually use the table iterator here
+        heat_equation.dirichlet_callbacks.push_back([](const double*, double *out){ out[0] = 0.0; });
+        sol::table callback_tbl = dirichlet_spec["callbacks"];
+        sol::function testf = callback_tbl[2];
+        for(const auto& key_value : callback_tbl){
+            int index = key_value.first.as<int>();
+            auto dirichlet_func = key_value.second.as<std::function<double(double, double)>>();
+
+            // indexes could be in non-sequential order so manually work with vector capacity
+            if(index >= heat_equation.dirichlet_callbacks.size())
+                heat_equation.dirichlet_callbacks.resize(2 * heat_equation.dirichlet_callbacks.size());
+
+            // add the callback function at the given index
+//            heat_equation.dirichlet_callbacks[index] =
+//                [dirichlet_func](const double *xarr, double *out){
+//                    out[0] = dirichlet_func(xarr[0], xarr[1]);
+//                };
+            heat_equation.dirichlet_callbacks[index] =
+                [&lua_state, index](const double *xarr, double *out){
+                    sol::optional<sol::table> ftbl = lua_state["boundary_conditions"]["dirichlet"]["callbacks"];
+                    if(!ftbl) std::cout << "wtf" << std::endl;
+                    sol::function f = ftbl.value()[index];
+                    out[0] = f(xarr[0], xarr[1]);
+                };
+        }
+    }
+
+
+    sol::optional<sol::table> neumann_spec_opt = lua_state["boundary_conditions"]["neumann"];
+    if(neumann_spec_opt){
+        sol::table neumann_spec = neumann_spec_opt.value();
+
+        // Value arguments
+        // To make indexing consistently 1-indexed 
+        // push a 0 valued boundary condition at index 0
+        // Now values start at 1 and callbacks start at -1 with no overlap on index 0
+        heat_equation.neumann_values.push_back(0); 
+        int ilua_value = 1;
+        sol::optional<T> lua_value;
+        while((lua_value = neumann_spec["values"][ilua_value++])){
+            heat_equation.neumann_values.push_back(lua_value.value());
+        }
+
+    }
 
     // ============================
     // = set up a solution vector =
@@ -94,14 +156,26 @@ int main(int argc, char *argv[]){
     // ===========================
     // = initialize the solution =
     // ===========================
-    auto ic = [](const double *xarr, double *out) -> void{
-        double x = xarr[0];
-        double y = xarr[1];
 
-        //out[0] = x;
-        // out[0] = std::sin(x) * std::cos(y);
-        out[0] = 1;
-    };
+    std::cout << "Initializing Solution..." << std::endl;
+
+    std::function<void(const double*, double *)> ic;
+
+    // first check if the initial condiiton is identified by string
+    sol::optional<std::string> ic_string = lua_state["initial_condition"];
+    if(ic_string){
+        if(eq_icase(ic_string.value(), "zero")) {
+            ic = [](const double *, double *out){ out[0] = 0.0; };
+        }
+    } else {
+        // else we take ic as a lua function with
+        // 2 inputs (ndim) and one output (neq)
+        // and wrap in a lambda
+        ic = [&lua_state](const double *xarr, double *out){
+            out[0] = lua_state["initial_condition"](xarr[0], xarr[1]);
+        };
+    }
+
 
     auto analytic_sol = [](const double *xarr, double *out) -> void{
         double x = xarr[0];

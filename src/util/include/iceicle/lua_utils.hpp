@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <string_view>
 #include <cctype>
+#include <sol/sol.hpp>
 namespace ICEICLE::UTIL {
 
     /**
