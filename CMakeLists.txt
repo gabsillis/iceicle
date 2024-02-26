@@ -106,7 +106,8 @@ if(ICEICLE_USE_LUA)
   FetchContent_Declare(
     sol2
     GIT_REPOSITORY https://github.com/ThePhD/sol2.git 
-    GIT_TAG origin/main
+    GIT_TAG origin/develop # main didnt work with Lua 5.4.4 fedora but develop did
+    GIT_PROGRESS TRUE
   )
   FetchContent_GetProperties(sol2)
   FetchContent_MakeAvailable(sol2)

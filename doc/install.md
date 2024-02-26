@@ -28,3 +28,19 @@ dnf install lua-devel
 
 The sol2 dependency is resolved through a FetchContent call
 
+## Miniapps
+Similar to MFEM several mini-apps provide standalone functionality and are built upon the ICEicle library. These mini-apps are built when all of their third party library dependencies are met.
+
+### Heat Equation Miniapp
+This mini-app solves the heat equation in 2D.
+$$
+\begin{split}
+\Delta u = 0 \quad \text{in } \Omega  \\
+\nabla u \cdot \mathbf{n} = g_N \quad \text{on } \Gamma_N \\
+u = g_D \quad \text{on } \Gamma_D
+\end{split}
+$$
+The mesh, initial conditions, and boundary conditions are configurable in a lua input_deck.
+#### Dependencies 
+- `ICEICLE_USE_LUA` : Required
+- `ICEICLE_USE_PETSC` : Optional (needed for implicit solver)
