@@ -3,8 +3,10 @@
  *
  * @author Gianni Absillis (gabsill@ncsu.edu)
  */
+#include "iceicle/disc/l2_error.hpp"
 #include "iceicle/fespace/fespace_lua_interface.hpp"
 #include "iceicle/lua_utils.hpp"
+#include <iomanip>
 #ifdef ICEICLE_USE_PETSC 
 #include "iceicle/petsc_newton.hpp"
 #endif
@@ -120,7 +122,6 @@ int main(int argc, char *argv[]){
             heat_equation.dirichlet_callbacks[index] =
                 [&lua_state, index](const double *xarr, double *out){
                     sol::optional<sol::table> ftbl = lua_state["boundary_conditions"]["dirichlet"]["callbacks"];
-                    if(!ftbl) std::cout << "wtf" << std::endl;
                     sol::function f = ftbl.value()[index];
                     out[0] = f(xarr[0], xarr[1]);
                 };
@@ -283,6 +284,21 @@ int main(int argc, char *argv[]){
         pvd_writer.write_vtu(k + 1, (T) k + 1);
     };
     solver.solve(u);
+
+    // ========================
+    // = Compute the L2 Error =
+    // =   (if applicable)    =
+    // ========================
+    sol::optional<sol::function> exact_sol = lua_state["exact_sol"];
+    if(exact_sol){
+        std::function<void(T*, T*)> exactfunc = 
+            [&lua_state](T *x, T *out) -> void {
+                sol::function fexact = lua_state["exact_sol"];
+                out[0] = fexact(x[0], x[1]);
+            };
+        T l2_error = DISC::l2_error(exactfunc, fespace, u);
+        std::cout << "L2 error: " << std::setprecision(9) << l2_error << std::endl;
+    }
 
     //cleanup
     PetscFinalize();

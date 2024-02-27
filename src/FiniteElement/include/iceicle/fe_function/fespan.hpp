@@ -166,6 +166,13 @@ namespace FE {
                     return std::pow(sum, 1.0 / order);
                 }
             }
+
+            /**
+             * @brief get the number of vector components for a single dof 
+             */
+            constexpr std::size_t get_ncomp() const {
+                return _layout.get_ncomp();
+            }
     };
 
     /**

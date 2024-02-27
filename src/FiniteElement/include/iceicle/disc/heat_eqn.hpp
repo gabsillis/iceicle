@@ -37,7 +37,6 @@ namespace DISC {
      */
     template<typename T, typename IDX, int ndim>
     class HeatEquation final {
-        using feidx = FE::compact_index;
 
     public:
 
@@ -176,9 +175,9 @@ namespace DISC {
 
                 T value_uL = 0.0, value_uR = 0.0;
                 for(std::size_t ibasis = 0; ibasis < elL.nbasis(); ++ibasis)
-                { value_uL += uL[feidx{.idof = ibasis, .iv = 0}] * bi_dataL[ibasis]; }
+                { value_uL += uL[ibasis, 0] * bi_dataL[ibasis]; }
                 for(std::size_t ibasis = 0; ibasis < elR.nbasis(); ++ibasis)
-                { value_uR += uR[feidx{.idof = ibasis, .iv = 0}] * bi_dataR[ibasis]; }
+                { value_uR += uR[ibasis, 0] * bi_dataR[ibasis]; }
 
                 // get the gradients the physical domain
                 std::vector<T> grad_dataL(elL.nbasis() * ndim);
@@ -228,6 +227,10 @@ namespace DISC {
                 // Danis and Yan reccomended for NS
                 T beta0 = std::pow(max_basis_order + 1, 2);
                 T beta1 = 1 / std::max((T) (2 * max_basis_order * (max_basis_order + 1)), 1.0);
+
+//                // WARNING: TESTING ONLY (turn into IP method)
+//                beta1 = 0.0;
+
                 T jumpu = value_uR - value_uL;
                 for(int idim = 0; idim < ndim; ++idim){
                     grad_ddg[idim] = beta0 * jumpu / h_ddg * unit_normal[idim]
@@ -315,7 +318,7 @@ namespace DISC {
 
                         T value_uL = 0.0;
                         for(std::size_t ibasis = 0; ibasis < elL.nbasis(); ++ibasis)
-                        { value_uL += uL[feidx{.idof = ibasis, .iv = 0}] * bi_dataL[ibasis]; }
+                        { value_uL += uL[ibasis, 0] * bi_dataL[ibasis]; }
 
                         // Get the value at the boundary 
                         T dirichlet_val;
@@ -390,7 +393,7 @@ namespace DISC {
                             * quadpt.weight * sqrtg;
 
                         for(std::size_t itest = 0; itest < elL.nbasis(); ++itest){
-                            resL[feidx{.idof = itest, .iv = 0}] += bi_dataL[itest] * flux;
+                            resL[itest, 0] += bi_dataL[itest] * flux;
                         }
                     }
                 }
