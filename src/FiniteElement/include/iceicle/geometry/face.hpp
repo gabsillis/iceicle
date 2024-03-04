@@ -27,8 +27,8 @@ namespace ELEMENT {
         WALL_GENERAL, /// General Wall BC, up to the implementation of the pde
         INLET,
         OUTLET,
-        INITIAL_CONDITION,
-        TIME_UPWIND, /// used for the top of a time slab
+        SPACETIME_PAST, /// used for the bottom of a time slab
+        SPACETIME_FUTURE, /// used for the top of a time slab
         INTERIOR // default condition that does nothing
     };
 
@@ -45,14 +45,14 @@ namespace ELEMENT {
             "General Wall",
             "Inlet",
             "Outlet",
-            "Initial condition",
-            "Time upwind",
+            "spacetime past",
+            "spacetime future",
             "Interior face (NO BC)"
         };
         return names[(int) bc];
     }
 
-    constexpr const inline BOUNDARY_CONDITIONS get_bc_from_name(std::string_view bcname){
+    constexpr inline BOUNDARY_CONDITIONS get_bc_from_name(std::string_view bcname){
         using namespace ICEICLE::UTIL;
 
         if(eq_icase(bcname, "dirichlet")){
@@ -109,7 +109,7 @@ namespace ELEMENT {
         /// Face info for the right element 
         unsigned int face_infoR;
         BOUNDARY_CONDITIONS bctype; /// the boundary condition type
-        int bcflag; /// an integer flag to attach to the boundary condition
+        IDX bcflag; /// an integer flag to attach to the boundary condition
 
         explicit
         Face(
@@ -125,6 +125,10 @@ namespace ELEMENT {
         /** @brief get the shape that defines the reference domain */
         virtual 
         constexpr FE::DOMAIN_TYPE domain_type() const = 0;
+
+        /** @brief get the geometry polynomial order */
+        virtual 
+        constexpr int geometry_order() const noexcept = 0;
 
         /**
          * @brief Get the area of the face

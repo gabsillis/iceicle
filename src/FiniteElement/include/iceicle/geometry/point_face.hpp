@@ -52,6 +52,8 @@ namespace ELEMENT {
 
         constexpr FE::DOMAIN_TYPE domain_type() const override { return FE::DOMAIN_TYPE::HYPERCUBE; }
 
+        constexpr int geometry_order() const noexcept override { return 1; }
+
         T getArea() const override { return area; }
 
         void transform(

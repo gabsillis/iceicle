@@ -35,7 +35,7 @@ namespace ICEICLE::IO {
 
         struct XMLTag {
             std::string name;
-            std::vector<XMLField> fields; 
+            std::vector<XMLField> fields{}; 
         };
 
         /** @brief write an opening XML tag <tagname fields...>*/

@@ -177,8 +177,8 @@ TEST(test_hypercube_orient_transform, test_transform){
             int ijk_r[3] = {i, j, k};
             // other side for the right element (element 2)
             ijk_r[face_coord] = Pn - ijk_r[face_coord];
-            nodes_el2[domain_trans.convert_indices_helper(ijk_r)] =
-              nodes_el1[domain_trans.convert_indices_helper(ijk_l)];
+            nodes_el2[domain_trans.tensor_prod.convert_ijk(ijk_r)] =
+              nodes_el1[domain_trans.tensor_prod.convert_ijk(ijk_l)];
           }
         }
       }
@@ -920,7 +920,7 @@ TEST( test_hypercube_transform, test_hessian ) {
           double hessfd[ndim][ndim][ndim];
           auto hess = trans1.Hessian(node_coords, node_indices, xi);
 
-          Point<double, ndim> unpeturb_x;
+//          Point<double, ndim> unpeturb_x;
 
           for(int ixi = 0; ixi < ndim; ++ixi){
             for(int jxi = 0; jxi < ndim; ++jxi){
@@ -1012,19 +1012,19 @@ TEST( test_hypercube_transform, test_hessian ) {
           }
 
           // print the hessians 
-          auto print_hess = []<class hess_type>(const hess_type &hess){
-            std::cout << std::setprecision(5);
-            for(int ix = 0; ix < ndim; ++ix){
-              for(int ixi = 0; ixi < ndim; ++ixi){
-                std::cout << "| ";
-                for(int jxi = 0; jxi < ndim; ++jxi){
-                  std::cout << std::setw(7) << hess[ix][ixi][jxi] << " ";
-                }
-                std::cout << "|" << std::endl;
-              }
-              std::cout << std::endl;
-            }
-          };
+//          auto print_hess = []<class hess_type>(const hess_type &hess){
+//            std::cout << std::setprecision(5);
+//            for(int ix = 0; ix < ndim; ++ix){
+//              for(int ixi = 0; ixi < ndim; ++ixi){
+//                std::cout << "| ";
+//                for(int jxi = 0; jxi < ndim; ++jxi){
+//                  std::cout << std::setw(7) << hess[ix][ixi][jxi] << " ";
+//                }
+//                std::cout << "|" << std::endl;
+//              }
+//              std::cout << std::endl;
+//            }
+//          };
 //          std::cout << "Calculated Hessian" << std::endl;
 //          print_hess(hess);
 //          std::cout << std::endl;

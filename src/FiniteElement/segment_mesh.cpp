@@ -26,7 +26,7 @@ namespace MESH {
     ) : AbstractMesh<T, IDX, 1>(nelem + 1) {
         // namespaces used and type aliases
         using namespace ELEMENT;
-        using Point = MATH::GEOMETRY::Point<T, 1>;
+        // using Point = MATH::GEOMETRY::Point<T, 1>;
         static constexpr int ndim = 1;
 
         // Generate the nodes and elements
@@ -128,7 +128,7 @@ namespace MESH {
 
         // namespaces used and type aliases
         using namespace ELEMENT;
-        using Point = MATH::GEOMETRY::Point<T, 1>;
+        // using Point = MATH::GEOMETRY::Point<T, 1>;
         static constexpr int ndim = 1;
 
         // Generate the nodes and elements
@@ -178,7 +178,7 @@ namespace MESH {
             IDX facenode = 0;
             faces.push_back(new PointFace<T, IDX>(
                 elemL, elemR, faceNrL, faceNrR,
-                facenode, false, bcleft, bcflagR
+                facenode, false, bcleft, bcflagL
             ));
             // right boundary face
             elemL = nelem - 1; // real element is left

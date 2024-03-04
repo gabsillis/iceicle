@@ -64,6 +64,7 @@ namespace ELEMENT {
 
         constexpr FE::DOMAIN_TYPE domain_type() const override { return FE::DOMAIN_TYPE::HYPERCUBE; }
 
+        constexpr int geometry_order() const noexcept override { return Pn; }
         void transform(
             const FacePoint &s,
             FE::NodalFEFunction<T, ndim> &coord,

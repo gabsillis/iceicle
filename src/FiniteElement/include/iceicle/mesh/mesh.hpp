@@ -65,8 +65,8 @@ namespace MESH {
 
         /** @brief construct an empty mesh */
         AbstractMesh() 
-        : nodes{}, elements{}, interiorFaceStart(0), interiorFaceEnd(0), 
-          bdyFaceStart(0), bdyFaceEnd(0), faces{} {}
+        : nodes{}, elements{}, faces{}, interiorFaceStart(0), interiorFaceEnd(0), 
+          bdyFaceStart(0), bdyFaceEnd(0) {}
         
         AbstractMesh(std::size_t nnode) 
         : nodes{nnode}, elements{}, faces{}, interiorFaceStart(0), interiorFaceEnd(0), 
@@ -209,7 +209,7 @@ namespace MESH {
 
                         // increment
                         ++ijk[0];
-                        for(int idim = 0; idim < ndim; ++idim){
+                        for(int idim = 0; idim < ndim - 1; ++idim){
                             if(ijk[idim] == directional_nelem[idim]){
                                 ijk[idim] = 0;
                                 ++ijk[idim + 1];

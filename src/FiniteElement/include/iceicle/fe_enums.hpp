@@ -13,7 +13,7 @@ namespace FE {
      */
     enum DOMAIN_TYPE {
         HYPERCUBE = 0, // maps to a [-1.0, 1.0]^d reference hypercube domain 
-        SIMPLEX = 1, // maps to the reference simplex with nodes at  the origin and 1.0 in each coordinate direction
+        SIMPLEX = 1, // maps to the reference simplex with nodes at the origin and 1.0 in each coordinate direction
         DYNAMIC = 2, // other domain types that will not output cleanly
         N_DOMAIN_TYPES = 3
     };
