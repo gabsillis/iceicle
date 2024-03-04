@@ -12,7 +12,6 @@
 #include <iceicle/geometry/hypercube_element.hpp>
 #include <ostream>
 #include <iceicle/fe_function/nodal_fe_function.hpp>
-#include <iomanip>
 namespace MESH {
 
     /**
@@ -187,7 +186,7 @@ namespace MESH {
                             IDX iglobal = 0;
                             IDX ijk_gnode[ndim];
                             for(int idim = 0; idim < ndim; ++idim){
-                                ijk_gnode[idim] = ijk[idim] * order + trans.ijk_poin[inode][idim];
+                                ijk_gnode[idim] = ijk[idim] * order + trans.tensor_prod.ijk_poin[inode][idim];
                             }
 
                             for(int idim = 0; idim < ndim; ++idim){

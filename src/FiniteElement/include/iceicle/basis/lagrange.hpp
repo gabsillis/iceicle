@@ -9,8 +9,9 @@
  * 
  */
 #pragma once
+#include "iceicle/basis/lagrange_1d.hpp"
+#include "iceicle/basis/tensor_product.hpp"
 #include "iceicle/fe_enums.hpp"
-#include "iceicle/transformations/HypercubeElementTransformation.hpp"
 #include <algorithm>
 #include <iceicle/basis/basis.hpp>
 #include <iceicle/transformations/SimplexElementTransformation.hpp>
@@ -19,6 +20,8 @@ namespace BASIS {
     
     /**
      * @brief Lagrange Basis functions on simplex elements
+     * TODO: go to tensor product structure like Hyprecube
+     *
      * @tparam T the floating point type
      * @tparam IDX the index type
      * @tparam ndim the number of dimensions
@@ -66,7 +69,11 @@ namespace BASIS {
 
     template<typename T, typename IDX, int ndim, int Pn>
     class HypercubeLagrangeBasis final: public Basis<T, ndim> {
-        static inline ELEMENT::TRANSFORMATIONS::HypercubeElementTransformation<T, IDX, ndim, Pn> transform{};
+
+        static inline BASIS::UniformLagrangeInterpolation<T, Pn> lagrange_1d;
+        using Basis1DType = decltype(lagrange_1d);
+        static inline BASIS::QTypeProduct<T, ndim, Basis1DType::nbasis> tensor_prod;
+        using TensorProdType = decltype(tensor_prod);
 
         using Point = MATH::GEOMETRY::Point<T, ndim>;
         public:
@@ -75,27 +82,27 @@ namespace BASIS {
         // = Basis Impl =
         // ==============
 
-        int nbasis() const override { return transform.n_nodes(); }
+        int nbasis() const override { return TensorProdType::nvalues; }
 
         constexpr FE::DOMAIN_TYPE domain_type() const noexcept override { return FE::DOMAIN_TYPE::HYPERCUBE; }
 
         void evalBasis(const T*xi, T *Bi) const override {
             Point xipt{};
             std::copy_n(xi, ndim, xipt.data());
-            transform.fill_shp(xipt, Bi);
+            tensor_prod.fill_shp(lagrange_1d, xipt, Bi);
         }
 
         void evalGradBasis(const T *xi, T *dBidxj) const override {
             Point xipt{};
             std::copy_n(xi, ndim, xipt.data());
-            NUMTOOL::TENSOR::FIXED_SIZE::Tensor<T, transform.n_nodes(), ndim> dBi; 
-            transform.fill_deriv(xipt, dBi);
+            NUMTOOL::TENSOR::FIXED_SIZE::Tensor<T, TensorProdType::nvalues, ndim> dBi; 
+            tensor_prod.fill_deriv(lagrange_1d, xipt, dBi);
             // TODO: get rid of memmove called here
-            std::copy_n(dBi.ptr(), ndim * transform.n_nodes(), dBidxj);
+            std::copy_n(dBi.ptr(), ndim * TensorProdType::nvalues, dBidxj);
         }
         
         void evalHessBasis(const T *xi, T *HessianData) const override {
-            transform.fill_hess(xi, HessianData);
+            (void) tensor_prod.fill_hess(lagrange_1d, xi, HessianData);
         }
 
         bool isOrthonormal() const override { return false; }
