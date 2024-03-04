@@ -11,6 +11,7 @@
 #include <iceicle/geometry/geo_element.hpp>
 #include <iceicle/geometry/hypercube_element.hpp>
 #include <ostream>
+#include <iomanip>
 #include <iceicle/fe_function/nodal_fe_function.hpp>
 namespace MESH {
 

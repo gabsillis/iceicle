@@ -10,10 +10,8 @@
 #include <iceicle/geometry/hypercube_element.hpp>
 #include <string>
 #include <map>
-#include <sstream>
 #include <fstream>
 #include <iostream>
-#include <exception>
 #include <stdexcept>
 #ifdef ICEICLE_USE_MPI
 #include "mpi.h"
