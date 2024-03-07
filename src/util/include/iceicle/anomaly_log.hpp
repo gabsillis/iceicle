@@ -110,13 +110,14 @@ namespace ICEICLE::UTIL {
                 anomalies.push_back(std::make_unique<Anomaly<Data>>(std::move(anomaly)));
             }
 
-            template<class... anomaly_argsT>
-            static void log_anomaly(anomaly_argsT&&... args){
-                Anomaly anomaly{std::forward<anomaly_argsT>(args)...};
-                using anomalyT = decltype(anomaly);
-                auto anomalyptr = std::make_unique<anomalyT>(anomaly);
-                anomalies.push_back(std::move(anomalyptr));
-            }
+            // can't get forwarding and source location to play nice
+//            template<class... anomaly_argsT>
+//            static void log_anomaly(anomaly_argsT&&... args, std::source_location loc = std::source_location::current()){
+//                Anomaly anomaly{std::forward<anomaly_argsT>(args)..., loc};
+//                using anomalyT = decltype(anomaly);
+//                auto anomalyptr = std::make_unique<anomalyT>(anomaly);
+//                anomalies.push_back(std::move(anomalyptr));
+//            }
 
             static void handle_anomalies(std::ostream &os = std::cerr){
                 for(auto &anomaly : anomalies){

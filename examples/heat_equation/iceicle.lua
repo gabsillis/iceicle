@@ -116,5 +116,5 @@ end
 solver = {
 	type = "explicit_euler",
 	cfl = 0.3,
-	tfinal = 200,
+	--	tfinal = 200,
 }

@@ -269,41 +269,41 @@ int main(int argc, char *argv[]){
             std::optional<TimestepVariant<T, IDX>> timestep;
 
             if(sol::optional<T>{solver_params["fixed_dt"]}){
-                if(timestep.has_value()) AnomalyLog::log_anomaly(
+                if(timestep.has_value()) AnomalyLog::log_anomaly(Anomaly{
                         "Cannot set fixed timestep criterion: other timestep criterion already set",
-                        general_anomaly_tag{});
+                        general_anomaly_tag{}});
                 T fixed_dt = solver_params["fixed_dt"];
                 timestep = FixedTimestep<T, IDX>{fixed_dt};
             }
             if(sol::optional<T>{solver_params["cfl"]}){
-                if(timestep.has_value()) AnomalyLog::log_anomaly(
+                if(timestep.has_value()) AnomalyLog::log_anomaly(Anomaly{
                         "Cannot set cfl timestep criterion: other timestep criterion already set",
-                        general_anomaly_tag{});
+                        general_anomaly_tag{}});
                 T cfl = solver_params["cfl"];
                 timestep = CFLTimestep<T, IDX>{cfl};
             } 
             if(!timestep.has_value()){
-                AnomalyLog::log_anomaly("No timestep criterion set", general_anomaly_tag{});
+                AnomalyLog::log_anomaly(Anomaly{"No timestep criterion set", general_anomaly_tag{}});
             }
 
             // determine the termination criterion 
             std::optional<TerminationVariant<T, IDX>> stop_condition;
             if(sol::optional<T>{solver_params["tfinal"]}){
-                if(stop_condition.has_value()) AnomalyLog::log_anomaly(
+                if(stop_condition.has_value()) AnomalyLog::log_anomaly(Anomaly{
                         "Cannot set tfinal termination criterion: other termination criterion already set",
-                        general_anomaly_tag{});
+                        general_anomaly_tag{}});
                 T tfinal = solver_params["tfinal"];
                 stop_condition = TfinalTermination<T, IDX>{tfinal};
             }
             if(sol::optional<IDX>{solver_params["ntime"]}){
-                if(stop_condition.has_value()) AnomalyLog::log_anomaly(
+                if(stop_condition.has_value()) AnomalyLog::log_anomaly(Anomaly{
                         "Cannot set ntime termination criterion: other termination criterion already set",
-                        general_anomaly_tag{});
+                        general_anomaly_tag{}});
                 IDX ntime = solver_params["ntime"];
                 stop_condition = TimestepTermination<T, IDX>{ntime};
             }
             if(!stop_condition.has_value()){
-                AnomalyLog::log_anomaly("No termination criterion set", general_anomaly_tag{});
+                AnomalyLog::log_anomaly(Anomaly{"No termination criterion set", general_anomaly_tag{}});
             }
 
             if(timestep.has_value() && stop_condition.has_value()){
