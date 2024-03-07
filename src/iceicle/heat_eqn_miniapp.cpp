@@ -5,7 +5,10 @@
  */
 #include "iceicle/disc/l2_error.hpp"
 #include "iceicle/fespace/fespace_lua_interface.hpp"
+#include "iceicle/anomaly_log.hpp"
 #include "iceicle/lua_utils.hpp"
+#include "iceicle/string_utils.hpp"
+#include "iceicle/tmp_utils.hpp"
 #include <iomanip>
 #ifdef ICEICLE_USE_PETSC 
 #include "iceicle/petsc_newton.hpp"
@@ -28,7 +31,7 @@
 #include <iceicle/mesh/mesh_lua_interface.hpp>
 #include <type_traits>
 #include <fenv.h>
-
+#include <any>
 #include <sol/sol.hpp>
 
 int main(int argc, char *argv[]){
@@ -228,33 +231,101 @@ int main(int argc, char *argv[]){
 
     bool use_explicit = false;
 
-    if(use_explicit){
-    // =============================
-    // = Solve with Explicit Euler =
-    // =============================
-    using namespace ICEICLE::SOLVERS;
-    ExplicitEuler explicit_euler{fespace, heat_equation};
-    explicit_euler.ivis = 10;
-    explicit_euler.tfinal = 2000;
-    ICEICLE::IO::PVDWriter<T, IDX, ndim> pvd_writer;
-    pvd_writer.register_fespace(fespace);
-    pvd_writer.register_fields(u, "u");
-    explicit_euler.vis_callback = [&](ExplicitEuler<T, IDX> &solver){
-        T sum = 0.0;
-        for(int i = 0; i < solver.res_data.size(); ++i){
-            sum += SQUARED(solver.res_data[i]);
+    sol::optional<sol::table> solver_params_opt = lua_state["solver"];
+    if(solver_params_opt){
+        sol::table solver_params = solver_params_opt.value();
+        // ====================================
+        // = Solve with Explicit Timestepping =
+        // ====================================
+        using namespace ICEICLE::SOLVERS;
+        using namespace ICEICLE::UTIL;
+        using namespace ICEICLE::TMP;
+
+        auto setup_and_solve = [&]<class ExplicitSolverType>(ExplicitSolverType &solver){
+            solver.ivis = 10;
+            ICEICLE::IO::PVDWriter<T, IDX, ndim> pvd_writer;
+            pvd_writer.register_fespace(fespace);
+            pvd_writer.register_fields(u, "u");
+            solver.vis_callback = [&](decltype(solver) &solver){
+                T sum = 0.0;
+                for(int i = 0; i < solver.res_data.size(); ++i){
+                    sum += SQUARED(solver.res_data[i]);
+                }
+                std::cout << std::setprecision(8);
+                std::cout << "itime: " << std::setw(6) << solver.itime 
+                    << " | t: " << std::setw(14) << solver.time
+                    << " | residual l2: " << std::setw(14) << std::sqrt(sum) 
+                    << std::endl;
+
+                pvd_writer.write_vtu(solver.itime, solver.time);
+
+            };
+            solver.solve(fespace, heat_equation, u);
+        };
+
+        std::string solver_type = solver_params["type"];
+        if(eq_icase(solver_type, "explicit_euler")){
+            // determine timestep criterion
+            std::optional<TimestepVariant<T, IDX>> timestep;
+
+            if(sol::optional<T>{solver_params["fixed_dt"]}){
+                if(timestep.has_value()) AnomalyLog::log_anomaly(
+                        "Cannot set fixed timestep criterion: other timestep criterion already set",
+                        general_anomaly_tag{});
+                T fixed_dt = solver_params["fixed_dt"];
+                timestep = FixedTimestep<T, IDX>{fixed_dt};
+            }
+            if(sol::optional<T>{solver_params["cfl"]}){
+                if(timestep.has_value()) AnomalyLog::log_anomaly(
+                        "Cannot set cfl timestep criterion: other timestep criterion already set",
+                        general_anomaly_tag{});
+                T cfl = solver_params["cfl"];
+                timestep = CFLTimestep<T, IDX>{cfl};
+            } 
+            if(!timestep.has_value()){
+                AnomalyLog::log_anomaly("No timestep criterion set", general_anomaly_tag{});
+            }
+
+            // determine the termination criterion 
+            std::optional<TerminationVariant<T, IDX>> stop_condition;
+            if(sol::optional<T>{solver_params["tfinal"]}){
+                if(stop_condition.has_value()) AnomalyLog::log_anomaly(
+                        "Cannot set tfinal termination criterion: other termination criterion already set",
+                        general_anomaly_tag{});
+                T tfinal = solver_params["tfinal"];
+                stop_condition = TfinalTermination<T, IDX>{tfinal};
+            }
+            if(sol::optional<IDX>{solver_params["ntime"]}){
+                if(stop_condition.has_value()) AnomalyLog::log_anomaly(
+                        "Cannot set ntime termination criterion: other termination criterion already set",
+                        general_anomaly_tag{});
+                IDX ntime = solver_params["ntime"];
+                stop_condition = TimestepTermination<T, IDX>{ntime};
+            }
+            if(!stop_condition.has_value()){
+                AnomalyLog::log_anomaly("No termination criterion set", general_anomaly_tag{});
+            }
+
+            if(timestep.has_value() && stop_condition.has_value()){
+
+                // Option A
+                TimestepVariant<T, IDX> a { timestep.value()};
+                TerminationVariant<T, IDX> b {stop_condition.value()};
+                std::visit(select_fcn{
+                    [&](const auto &ts, const auto &sc){
+                        ExplicitEuler solver{fespace, heat_equation, ts, sc};
+                    }
+                }, a, b);
+
+                // Option B
+                std::tuple{timestep.value(), stop_condition.value()} >> select_fcn{
+                    [&](const auto &ts, const auto &sc){
+                        ExplicitEuler solver{fespace, heat_equation, ts, sc};
+                        setup_and_solve(solver);
+                    }
+                };
+            }
         }
-        std::cout << std::setprecision(8);
-        std::cout << "itime: " << std::setw(6) << solver.itime 
-            << " | t: " << std::setw(14) << solver.time
-            << " | residual l2: " << std::setw(14) << std::sqrt(sum) 
-            << std::endl;
-
-        pvd_writer.write_vtu(solver.itime, solver.time);
-
-    };
-    explicit_euler.solve(fespace, heat_equation, u);
-
     } else {
 #ifdef ICEICLE_USE_PETSC
     // ==============================
@@ -307,6 +378,7 @@ int main(int argc, char *argv[]){
     MPI_Finalize();
 #endif
     }
+    AnomalyLog::handle_anomalies();
     return 0;
 }
 

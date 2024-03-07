@@ -10,29 +10,22 @@
 #include "iceicle/element/finite_element.hpp"
 #include "iceicle/fespace/fespace.hpp"
 #include "iceicle/form_residual.hpp"
+#include "iceicle/explicit_utils.hpp"
 
 #include <iostream>
 #include <iomanip>
 namespace ICEICLE::SOLVERS {
 
-template< class T, class IDX >
+template< class T, class IDX, class TimestepClass, class StopCondition>
 class ExplicitEuler {
 
 public: 
 
-    /// @brief the cfl condition number to determine the timestep
-    T cfl;
+    /** The timestep determination */
+    TimestepClass timestep;
 
-    /// @brief the number of timesteps to run if calling solve()
-    /// if this is negative, then tfinal is used
-    IDX ntime;
-
-    /// @brief the final time to terminate solve()
-    T tfinal;
-
-    /// @brief a constant timestep value set to a non-negative number to use 
-    /// a set timestep instead of computing it
-    T dt_fixed;
+    /** The termination criteria */
+    StopCondition stop_condition;
 
     /// @brief the residual data array
     std::vector<T> res_data;
@@ -69,17 +62,17 @@ public:
      *
      * @param fespace the finite element space 
      * @param disc the discretization
-     * @param cfl the cfl condition 
-     * @param ntime the number of timesteps or -1 to use tfinal instead
-     * @tparam tfinal the final time to reach
-     * @param dt if non-negative, this is the fixed timestep to use
+     * @param timestep the class that determines the 
      */
     template<int ndim, class disc_class>
-    ExplicitEuler(FE::FESpace<T, IDX, ndim> &fespace, disc_class &disc,
-        T cfl = 0.3, IDX ntime = -1, T tfinal = 1.0, T dt = -1.0)
-    requires specifies_ncomp<disc_class>
-    : cfl(cfl), ntime(ntime), tfinal(tfinal), dt_fixed(dt),
-      res_data(fespace.dg_offsets.calculate_size_requirement(disc_class::dnv_comp))
+    ExplicitEuler(
+        FE::FESpace<T, IDX, ndim> &fespace,
+        disc_class &disc,
+        const TimestepClass &timestep,
+        const StopCondition &stop_condition
+    )
+    requires specifies_ncomp<disc_class> && TerminationCondition<StopCondition>
+    : res_data(fespace.dg_offsets.calculate_size_requirement(disc_class::dnv_comp))
     {}
 
     /**
@@ -91,36 +84,15 @@ public:
      * @param [in/out] u the solution as an fespan view
      */
     template<int ndim, class disc_class, class LayoutPolicy, class uAccessorPolicy>
-    void step(FE::FESpace<T, IDX, ndim> &fespace, disc_class &disc, FE::fespan<T, LayoutPolicy, uAccessorPolicy> u){
+    void step(FE::FESpace<T, IDX, ndim> &fespace, disc_class &disc, FE::fespan<T, LayoutPolicy, uAccessorPolicy> u)
+    requires TimestepT<TimestepClass, T, IDX, ndim, disc_class, LayoutPolicy, uAccessorPolicy>
+    {
        
         // calculate the timestep 
-        T dt;
-        if(dt_fixed > 0){
-            dt = dt_fixed;
-        } else {
-            // get timestep from cfl condition 
+        T dt = timestep(fespace, disc, u);
 
-            // first: reference length is the minimum diagonal entry of the jacobian at the cell center
-            T reflen = 1e8;
-            int Pn_max = 1;
-            for(const ELEMENT::FiniteElement<T, IDX, ndim> &el : fespace.elements){
-                MATH::GEOMETRY::Point<T, ndim> center_xi = el.geo_el->centroid_ref();
-                auto J = el.geo_el->Jacobian(fespace.meshptr->nodes, center_xi);
-                for(int idim = 0; idim < ndim; ++idim){
-                    reflen = std::min(reflen, J[idim][idim]);
-                }
-
-                Pn_max = std::max(Pn_max, el.basis->getPolynomialOrder());
-            }
-
-            // calculate the timestep from the CFL condition 
-            dt = disc.dt_from_cfl(cfl, reflen) / (2 * (Pn_max + 1));
-        }
-
-        // if final time is non-negative make sure we don't go over the final time 
-        if(tfinal > 0){
-            dt = std::min(dt, tfinal - time);
-        }
+        // Termination Condiditon restrictions on dt 
+        dt = stop_condition.limit_dt(dt, time);
 
         // create view of the residual using the same Layout as u 
         FE::fespan res{res_data.data(), u.get_layout()};
@@ -178,20 +150,11 @@ public:
     template<int ndim, class disc_class, class LayoutPolicy, class uAccessorPolicy>
     void solve(FE::FESpace<T, IDX, ndim> &fespace, disc_class &disc, FE::fespan<T, LayoutPolicy, uAccessorPolicy> u) {
 
-        // stop conditions
-        auto done = [&]() -> bool {
-            if(ntime > 0){
-                return itime >= ntime;
-            } else {
-                return time >= tfinal;
-            }
-        };
-
         // visualization callback on initial state (0 % anything == 0) 
         vis_callback(*this);
 
         // timestep loop
-        while(!done()){
+        while(!stop_condition(itime, time)){
             step(fespace, disc, u);
             if(itime % ivis == 0){
                 vis_callback(*this);
@@ -201,8 +164,8 @@ public:
 };
 
 // template argument deduction
-template<class T, class IDX, int ndim, class disc_class>
-ExplicitEuler(FE::FESpace<T, IDX, ndim> &fespace, disc_class &disc,
-    T cfl, IDX ntime, T tfinal, T dt) -> ExplicitEuler<T, IDX>;
+template<class T, class IDX, int ndim, class disc_class, class TimestepClass, class StopCondition>
+ExplicitEuler(FE::FESpace<T, IDX, ndim> &, disc_class &,
+    const TimestepClass &, const StopCondition &) -> ExplicitEuler<T, IDX, TimestepClass, StopCondition>;
 
 }

@@ -6,13 +6,13 @@
  *
  * @author Gianni Absillis (gabsill@ncsu.edu)
  */
+#include <algorithm>
 #include <cstddef>
 #include <iostream>
 #include <vector>
 #include <memory>
 #include <ostream>
 #include <source_location>
-#include <stacktrace>
 #include <string>
 namespace ICEICLE::UTIL {
 
@@ -32,20 +32,17 @@ namespace ICEICLE::UTIL {
         std::string desc;
         Data user_data;
         std::source_location loc;
-        std::stacktrace trace;
 
     public:
         Anomaly(
             std::string_view desc, 
             const Data &data,
-            const std::source_location &loc = std::source_location::current(),
-            const std::stacktrace &trace = std::stacktrace::current()
-        ) : desc{desc}, user_data{data}, loc{loc}, trace{trace}
+            const std::source_location &loc = std::source_location::current()
+        ) : desc{desc}, user_data{data}, loc{loc}
         {}
 
         const std::string &what() const noexcept { return desc; }
         const std::source_location &where() const noexcept { return loc; }
-        const std::stacktrace &stack() const noexcept { return trace; }
         const Data &data() const noexcept { return data; }
 
         void handle_self (std::ostream &log_out) override;
@@ -55,8 +52,6 @@ namespace ICEICLE::UTIL {
     Anomaly(std::string_view, const Data&) -> Anomaly<Data>;
     template<class Data>
     Anomaly(std::string_view, const Data &, std::source_location) -> Anomaly<Data>;
-    template<class Data>
-    Anomaly(std::string_view, const Data &, std::source_location, std::stacktrace) -> Anomaly<Data>;
 
     /** @brief overload for stream out of std::source_location */
     inline std::ostream& operator<<(std::ostream& os, const std::source_location &loc){
@@ -67,14 +62,14 @@ namespace ICEICLE::UTIL {
         return os;
     }
 
-    /** @brief overload for stream out of std::stacktrace */
-    inline std::ostream& operator<<(std::ostream& os, const std::stacktrace& backtrace){
-        for(auto &trace_item : backtrace){
-            os << trace_item.source_file() << "(" << trace_item.source_line()
-               << "):" << trace_item.description() << std::endl;
-        }
-        return os;
-    } 
+//    /** @brief overload for stream out of std::stacktrace */
+//    inline std::ostream& operator<<(std::ostream& os, const std::stacktrace& backtrace){
+//        for(auto &trace_item : backtrace){
+//            os << trace_item.source_file() << "(" << trace_item.source_line()
+//               << "):" << trace_item.description() << std::endl;
+//        }
+//        return os;
+//    } 
 
     /**
      * @brief default way to handle an anomaly 
@@ -85,8 +80,8 @@ namespace ICEICLE::UTIL {
     template<class Data>
     void handle_anomaly(const Anomaly<Data> &anomaly, std::ostream &log_out) {
         log_out << "Error: " << anomaly.what() << std::endl 
-                << anomaly.where() << std::endl 
-                << anomaly.stack() << std::endl << std::endl;
+                << anomaly.where() << std::endl << std::endl;
+//                << anomaly.stack() << std::endl << std::endl;
     }
 
     template<class Data>
@@ -96,9 +91,8 @@ namespace ICEICLE::UTIL {
 
     class AnomalyLog {
         private: 
-            static std::vector<std::unique_ptr<AbstractAnomaly>> anomalies;
+            inline static std::vector<std::unique_ptr<AbstractAnomaly>> anomalies;
             AnomalyLog() = default;
-            ~AnomalyLog() = default;
             AnomalyLog(const AnomalyLog&) = delete;
             AnomalyLog& operator=(const AnomalyLog&) = delete;
         public:
@@ -116,15 +110,35 @@ namespace ICEICLE::UTIL {
                 anomalies.push_back(std::make_unique<Anomaly<Data>>(std::move(anomaly)));
             }
 
+            template<class... anomaly_argsT>
+            static void log_anomaly(anomaly_argsT&&... args){
+                Anomaly anomaly{std::forward<anomaly_argsT>(args)...};
+                using anomalyT = decltype(anomaly);
+                auto anomalyptr = std::make_unique<anomalyT>(anomaly);
+                anomalies.push_back(std::move(anomalyptr));
+            }
+
             static void handle_anomalies(std::ostream &os = std::cerr){
                 for(auto &anomaly : anomalies){
                     anomaly->handle_self(os);
                 }
+                anomalies.clear();
+            }
+
+            ~AnomalyLog(){
+                // Log any remaining anommalies in the error stream
+                for(auto &anomaly : anomalies){
+                    anomaly->handle_self(std::cerr);
+                }
+                anomalies.clear();
             }
     };
 
-
+    /** @brief anomaly tag to mark a failed expect() statement */
     struct expectation_anomaly_tag{ using anomaly_tag = expectation_anomaly_tag; };
+
+    /** @brief tag to mark general anomalies */
+    struct general_anomaly_tag{ using anomaly_tag = general_anomaly_tag; };
 
     /**
      * @brief expect an expression to be true 
@@ -136,11 +150,10 @@ namespace ICEICLE::UTIL {
     inline static void expect(
         bool expect_true,
         std::string_view message_if_false,
-        std::source_location loc = std::source_location::current(),
-        std::stacktrace trace = std::stacktrace::current()
+        std::source_location loc = std::source_location::current()
     ){
         if(!expect_true){
-            AnomalyLog::log_anomaly(Anomaly{"Expectation failed", expectation_anomaly_tag{}, loc, trace});
+            AnomalyLog::log_anomaly(Anomaly{"Expectation failed", expectation_anomaly_tag{}, loc});
         }
     }
 

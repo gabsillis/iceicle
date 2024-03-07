@@ -43,7 +43,7 @@ fespace = {
 	quadrature = "gauss",
 
 	-- the basis function order
-	order = 4,
+	order = 1,
 }
 
 -- initial condition
@@ -112,3 +112,9 @@ end
 exact_sol = function(x, y)
 	return 0.1 * sinh(math.pi * x) / sinh(math.pi) * math.sin(math.pi * y) + 1.0;
 end
+
+solver = {
+	type = "explicit_euler",
+	cfl = 0.3,
+	tfinal = 200,
+}
