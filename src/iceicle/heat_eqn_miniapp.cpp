@@ -242,7 +242,9 @@ int main(int argc, char *argv[]){
         using namespace ICEICLE::TMP;
 
         auto setup_and_solve = [&]<class ExplicitSolverType>(ExplicitSolverType &solver){
-            solver.ivis = 10;
+            solver.ivis = 1;
+            sol::optional<IDX> ivis_input = solver_params["ivis"];
+            if(ivis_input) solver.ivis = ivis_input.value();
             ICEICLE::IO::PVDWriter<T, IDX, ndim> pvd_writer;
             pvd_writer.register_fespace(fespace);
             pvd_writer.register_fields(u, "u");
@@ -309,19 +311,35 @@ int main(int argc, char *argv[]){
             if(timestep.has_value() && stop_condition.has_value()){
 
                 // Option A
-                TimestepVariant<T, IDX> a { timestep.value()};
-                TerminationVariant<T, IDX> b {stop_condition.value()};
-                std::visit(select_fcn{
-                    [&](const auto &ts, const auto &sc){
-                        ExplicitEuler solver{fespace, heat_equation, ts, sc};
-                    }
-                }, a, b);
+//                TimestepVariant<T, IDX> a { timestep.value()};
+//                TerminationVariant<T, IDX> b {stop_condition.value()};
+//                std::visit(select_fcn{
+//                    [&](const auto &ts, const auto &sc){
+//                        ExplicitEuler solver{fespace, heat_equation, ts, sc};
+//                    }
+//                }, a, b);
 
                 // Option B
                 std::tuple{timestep.value(), stop_condition.value()} >> select_fcn{
                     [&](const auto &ts, const auto &sc){
                         ExplicitEuler solver{fespace, heat_equation, ts, sc};
                         setup_and_solve(solver);
+                        T t_final = solver.time;
+
+                        // ========================
+                        // = Compute the L2 Error =
+                        // =   (if applicable)    =
+                        // ========================
+                        sol::optional<sol::function> exact_sol = lua_state["exact_sol"];
+                        if(exact_sol){
+                            std::function<void(T*, T*)> exactfunc = 
+                                [&lua_state, t_final](T *x, T *out) -> void {
+                                    sol::function fexact = lua_state["exact_sol"];
+                                    out[0] = fexact(x[0], x[1], t_final);
+                                };
+                            T l2_error = DISC::l2_error(exactfunc, fespace, u);
+                            std::cout << "L2 error: " << std::setprecision(9) << l2_error << std::endl;
+                        }
                     }
                 };
             }
