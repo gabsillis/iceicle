@@ -13,6 +13,10 @@
 #include <string_view>
 #include "iceicle/anomaly_log.hpp"
 
+#ifdef ICEICLE_USE_PETSC
+#include "petscsys.h"
+#endif
+
 namespace ICEICLE::UTIL::PROGRAM_ARGS {
 
     /// @brief a variant of all the types that can be parsed to
@@ -163,6 +167,11 @@ namespace ICEICLE::UTIL::PROGRAM_ARGS {
          * as that contains the program name
          */
         cli_parser(int argc, char* argv[]) : argc(argc), argv(argv) {
+#ifdef ICEICLE_USE_PETSC
+            // suppress petsc unused argument warnings
+            // we have our own argument parser 
+            PetscOptionsSetValue(NULL, "-options_left", "false");
+#endif
             using namespace ICEICLE::UTIL;
             // fill the in_options map
             for(int i = 1; i < argc; ++i){
@@ -201,6 +210,7 @@ namespace ICEICLE::UTIL::PROGRAM_ARGS {
             return options[key];
         }
 
+        /** @brief print the options with their provided descriptions */
         inline void print_options(std::ostream &os) const {
             os << "Available options (use --<option_name> to use):" << std::endl;
             for(auto &kvpair : descriptions){

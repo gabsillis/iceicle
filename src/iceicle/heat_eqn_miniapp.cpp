@@ -43,7 +43,25 @@ int main(int argc, char *argv[]){
    MPI_Init(&argc, &argv);
 #endif
 
+    // using declarations
+    using namespace NUMTOOL::TENSOR::FIXED_SIZE;
+    using namespace ICEICLE::UTIL;
+
+    // Get the floating point and index types from 
+    // cmake configuration
+    using T = BUILD_CONFIG::T;
+    using IDX = BUILD_CONFIG::IDX;
     using namespace ICEICLE::UTIL::PROGRAM_ARGS;
+
+    // ===============================
+    // = Command line argument setup =
+    // ===============================
+#ifdef ICEICLE_USE_PETSC
+    // suppress petsc unused argument warnings
+    // we have our own argument parser 
+//    PetscOptionsSetValue(NULL, "-nox", NULL);
+//    PetscOptionsSetValue(NULL, "-options_left", "false");
+#endif
     cli_parser cli_args{argc, argv};
     
     cli_args.add_options(
@@ -72,14 +90,6 @@ int main(int argc, char *argv[]){
     }
 
 
-    // using declarations
-    using namespace NUMTOOL::TENSOR::FIXED_SIZE;
-    using namespace ICEICLE::UTIL;
-
-    // Get the floating point and index types from 
-    // cmake configuration
-    using T = BUILD_CONFIG::T;
-    using IDX = BUILD_CONFIG::IDX;
 
     // 2 dimensional simulation
     static constexpr int ndim = 2;
