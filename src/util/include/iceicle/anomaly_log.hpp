@@ -6,6 +6,7 @@
  *
  * @author Gianni Absillis (gabsill@ncsu.edu)
  */
+#pragma once
 #include <algorithm>
 #include <cstddef>
 #include <iostream>
@@ -71,6 +72,15 @@ namespace ICEICLE::UTIL {
 //        return os;
 //    } 
 
+    /** @brief anomaly tag to mark a failed expect() statement */
+    struct expectation_anomaly_tag{ using anomaly_tag = expectation_anomaly_tag; };
+
+    /** @brief tag to mark general anomalies */
+    struct general_anomaly_tag{ using anomaly_tag = general_anomaly_tag; };
+
+    /** @brief anomaly tag to mark an anomaly that can be communicated as a warning */
+    struct warning_anomaly_tag{ using anomaly_tag = warning_anomaly_tag; };
+
     /**
      * @brief default way to handle an anomaly 
      * log to output for every type of anomaly
@@ -82,6 +92,12 @@ namespace ICEICLE::UTIL {
         log_out << "Error: " << anomaly.what() << std::endl 
                 << anomaly.where() << std::endl << std::endl;
 //                << anomaly.stack() << std::endl << std::endl;
+    }
+
+    template<>
+    inline void handle_anomaly(const Anomaly<warning_anomaly_tag> &anomaly, std::ostream &log_out) {
+        log_out << "Warning: " << anomaly.what() << std::endl 
+                << anomaly.where() << std::endl << std::endl;
     }
 
     template<class Data>
@@ -135,11 +151,6 @@ namespace ICEICLE::UTIL {
             }
     };
 
-    /** @brief anomaly tag to mark a failed expect() statement */
-    struct expectation_anomaly_tag{ using anomaly_tag = expectation_anomaly_tag; };
-
-    /** @brief tag to mark general anomalies */
-    struct general_anomaly_tag{ using anomaly_tag = general_anomaly_tag; };
 
     /**
      * @brief expect an expression to be true 

@@ -7,6 +7,7 @@
 #include "iceicle/fespace/fespace_lua_interface.hpp"
 #include "iceicle/anomaly_log.hpp"
 #include "iceicle/lua_utils.hpp"
+#include "iceicle/program_args.hpp"
 #include "iceicle/string_utils.hpp"
 #include "iceicle/tmp_utils.hpp"
 #include <iomanip>
@@ -42,6 +43,18 @@ int main(int argc, char *argv[]){
    MPI_Init(&argc, &argv);
 #endif
 
+    using namespace ICEICLE::UTIL::PROGRAM_ARGS;
+    cli_parser cli_args{argc, argv};
+    
+    cli_args.add_options(
+        cli_flag{"help", "print the help text and quit."},
+        cli_option{"scriptfile", "The file name for the lua script to run", parse_type<std::string_view>{}}
+    );
+    if(cli_args["help"]){
+        cli_args.print_options(std::cout);
+        return 0;
+    }
+
 //    feenableexcept(FE_ALL_EXCEPT & ~FE_INEXACT);
 
     // The default file to read as input deck
@@ -52,7 +65,11 @@ int main(int argc, char *argv[]){
     sol::state lua_state;
     lua_state.open_libraries(sol::lib::base);
     lua_state.open_libraries(sol::lib::math);
-    lua_state.script_file(default_input_deck_filename);
+    if(cli_args["scriptfile"]){
+        lua_state.script_file(cli_args["scriptfile"].as<std::string>());
+    } else {
+        lua_state.script_file(default_input_deck_filename);
+    }
 
 
     // using declarations
