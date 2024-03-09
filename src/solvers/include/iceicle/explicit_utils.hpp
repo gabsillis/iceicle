@@ -82,7 +82,7 @@ namespace ICEICLE::SOLVERS{
             }
 
             // calculate the timestep from the CFL condition 
-            return disc.dt_from_cfl(cfl, reflen) / (2 * (Pn_max + 1));
+            return disc.dt_from_cfl(cfl, reflen) / (2 * Pn_max + 1);
         }
     };
 

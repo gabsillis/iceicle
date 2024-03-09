@@ -56,27 +56,26 @@ int main(int argc, char *argv[]){
     // ===============================
     // = Command line argument setup =
     // ===============================
-#ifdef ICEICLE_USE_PETSC
-    // suppress petsc unused argument warnings
-    // we have our own argument parser 
-//    PetscOptionsSetValue(NULL, "-nox", NULL);
-//    PetscOptionsSetValue(NULL, "-options_left", "false");
-#endif
     cli_parser cli_args{argc, argv};
     
     cli_args.add_options(
         cli_flag{"help", "print the help text and quit."},
+        cli_flag{"enable_fp_except", "enable floating point exceptions (ignoring FE_INEXACT)"},
         cli_option{"scriptfile", "The file name for the lua script to run", parse_type<std::string_view>{}}
     );
     if(cli_args["help"]){
         cli_args.print_options(std::cout);
         return 0;
     }
+    if(cli_args["enable_fp_except"]){
+        feenableexcept(FE_ALL_EXCEPT & ~FE_INEXACT);
+    }
 
-//    feenableexcept(FE_ALL_EXCEPT & ~FE_INEXACT);
+    // =============
+    // = Lua Setup =
+    // =============
 
     // The default file to read as input deck
-    // TODO: add command line arg parsing for specifying other file names as input deck
     const char *default_input_deck_filename = "iceicle.lua";
 
     // Parse the input deck 
@@ -88,8 +87,6 @@ int main(int argc, char *argv[]){
     } else {
         lua_state.script_file(default_input_deck_filename);
     }
-
-
 
     // 2 dimensional simulation
     static constexpr int ndim = 2;
@@ -111,8 +108,10 @@ int main(int argc, char *argv[]){
     // =============================
 
     DISC::HeatEquation<T, IDX, ndim> heat_equation{}; 
+    sol::optional<T> mu_input = lua_state["mu"];
+    if(mu_input) heat_equation.mu = mu_input.value();
 
-    // Get boundary condition values from input deck 
+    // Get boundary condition values from input deck  TODO: get rid of 
     static constexpr int MAX_BC_ENTRIES = 100; // protect from infinite loops
 
     sol::optional<sol::table> dirichlet_spec_opt = lua_state["boundary_conditions"]["dirichlet"];
@@ -134,27 +133,30 @@ int main(int argc, char *argv[]){
         // same index 0 trick
         // actually use the table iterator here
         heat_equation.dirichlet_callbacks.push_back([](const double*, double *out){ out[0] = 0.0; });
-        sol::table callback_tbl = dirichlet_spec["callbacks"];
-        sol::function testf = callback_tbl[2];
-        for(const auto& key_value : callback_tbl){
-            int index = key_value.first.as<int>();
-            auto dirichlet_func = key_value.second.as<std::function<double(double, double)>>();
+        sol::optional<sol::table> dirichlet_callbacks_opt = dirichlet_spec["callbacks"];
+        if(dirichlet_callbacks_opt){
+            sol::table callback_tbl = dirichlet_callbacks_opt.value();
+            sol::function testf = callback_tbl[2];
+            for(const auto& key_value : callback_tbl){
+                int index = key_value.first.as<int>();
+                auto dirichlet_func = key_value.second.as<std::function<double(double, double)>>();
 
-            // indexes could be in non-sequential order so manually work with vector capacity
-            if(index >= heat_equation.dirichlet_callbacks.size())
-                heat_equation.dirichlet_callbacks.resize(2 * heat_equation.dirichlet_callbacks.size());
+                // indexes could be in non-sequential order so manually work with vector capacity
+                if(index >= heat_equation.dirichlet_callbacks.size())
+                    heat_equation.dirichlet_callbacks.resize(2 * heat_equation.dirichlet_callbacks.size());
 
-            // add the callback function at the given index
-//            heat_equation.dirichlet_callbacks[index] =
-//                [dirichlet_func](const double *xarr, double *out){
-//                    out[0] = dirichlet_func(xarr[0], xarr[1]);
-//                };
-            heat_equation.dirichlet_callbacks[index] =
-                [&lua_state, index](const double *xarr, double *out){
-                    sol::optional<sol::table> ftbl = lua_state["boundary_conditions"]["dirichlet"]["callbacks"];
-                    sol::function f = ftbl.value()[index];
-                    out[0] = f(xarr[0], xarr[1]);
-                };
+                // add the callback function at the given index
+    //            heat_equation.dirichlet_callbacks[index] =
+    //                [dirichlet_func](const double *xarr, double *out){
+    //                    out[0] = dirichlet_func(xarr[0], xarr[1]);
+    //                };
+                heat_equation.dirichlet_callbacks[index] =
+                    [&lua_state, index](const double *xarr, double *out){
+                        sol::optional<sol::table> ftbl = lua_state["boundary_conditions"]["dirichlet"]["callbacks"];
+                        sol::function f = ftbl.value()[index];
+                        out[0] = f(xarr[0], xarr[1]);
+                    };
+            }
         }
     }
 
@@ -168,10 +170,10 @@ int main(int argc, char *argv[]){
         // push a 0 valued boundary condition at index 0
         // Now values start at 1 and callbacks start at -1 with no overlap on index 0
         heat_equation.neumann_values.push_back(0); 
-        int ilua_value = 1;
-        sol::optional<T> lua_value;
-        while((lua_value = neumann_spec["values"][ilua_value++])){
-            heat_equation.neumann_values.push_back(lua_value.value());
+        for(int ibc = 1; ibc < MAX_BC_ENTRIES; ++ibc){
+            sol::optional<T> lua_value = neumann_spec["values"][ibc];
+            if(lua_value) heat_equation.neumann_values.push_back(lua_value.value());
+            else break;
         }
 
     }
@@ -297,11 +299,11 @@ int main(int argc, char *argv[]){
             // determine timestep criterion
             std::optional<TimestepVariant<T, IDX>> timestep;
 
-            if(sol::optional<T>{solver_params["fixed_dt"]}){
+            if(sol::optional<T>{solver_params["dt"]}){
                 if(timestep.has_value()) AnomalyLog::log_anomaly(Anomaly{
                         "Cannot set fixed timestep criterion: other timestep criterion already set",
                         general_anomaly_tag{}});
-                T fixed_dt = solver_params["fixed_dt"];
+                T fixed_dt = solver_params["dt"];
                 timestep = FixedTimestep<T, IDX>{fixed_dt};
             }
             if(sol::optional<T>{solver_params["cfl"]}){
@@ -377,9 +379,12 @@ int main(int argc, char *argv[]){
     // = Solve with Newton's Method =
     // ==============================
     using namespace ICEICLE::SOLVERS;
+
+    // default is machine zero convergence 
+    // with maximum of 5 nonlinear iterations
     ConvergenceCriteria<T, IDX> conv_criteria{
         .tau_abs = std::numeric_limits<T>::epsilon(),
-        .tau_rel = std::numeric_limits<T>::epsilon(),
+        .tau_rel = 0,
         .kmax = 5
     };
     PetscNewton solver{fespace, heat_equation, conv_criteria};
