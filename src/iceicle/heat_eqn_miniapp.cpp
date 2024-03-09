@@ -8,9 +8,11 @@
 #include "iceicle/anomaly_log.hpp"
 #include "iceicle/lua_utils.hpp"
 #include "iceicle/program_args.hpp"
+#include "iceicle/ssp_rk3.hpp"
 #include "iceicle/string_utils.hpp"
 #include "iceicle/tmp_utils.hpp"
 #include <iomanip>
+#include <limits>
 #ifdef ICEICLE_USE_PETSC 
 #include "iceicle/petsc_newton.hpp"
 #endif
@@ -295,7 +297,7 @@ int main(int argc, char *argv[]){
         };
 
         std::string solver_type = solver_params["type"];
-        if(eq_icase(solver_type, "explicit_euler")){
+        if(eq_icase(solver_type, "explicit_euler") || eq_icase(solver_type, "rk3-ssp")){
             // determine timestep criterion
             std::optional<TimestepVariant<T, IDX>> timestep;
 
@@ -351,9 +353,17 @@ int main(int argc, char *argv[]){
                 // Option B
                 std::tuple{timestep.value(), stop_condition.value()} >> select_fcn{
                     [&](const auto &ts, const auto &sc){
-                        ExplicitEuler solver{fespace, heat_equation, ts, sc};
-                        setup_and_solve(solver);
-                        T t_final = solver.time;
+
+                        T t_final;
+                        if(eq_icase(solver_type, "explicit_euler")){
+                            ExplicitEuler solver{fespace, heat_equation, ts, sc};
+                            setup_and_solve(solver);
+                            t_final = solver.time;
+                        } else if(eq_icase(solver_type, "rk3-ssp")){
+                            RK3SSP solver{fespace, heat_equation, ts, sc};
+                            setup_and_solve(solver);
+                            t_final = solver.time;
+                        }
 
                         // ========================
                         // = Compute the L2 Error =

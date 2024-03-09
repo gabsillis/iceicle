@@ -3,7 +3,7 @@
  *
  * @author Gianni Absillis (gabsill@ncsu.edu)
  */
-
+#pragma once
 #include "iceicle/fe_function/fespan.hpp"
 #include "iceicle/fespace/fespace.hpp"
 #include <variant>

@@ -3,7 +3,7 @@
 -- define the mesh as a uniform quad mesh
 uniform_mesh = {
 	-- specify the number of elements in each direction
-	nelem = { 8, 8 },
+	nelem = { 2, 2 },
 
 	-- specify the bounding box of the uniform mesh domain
 	bounding_box = {
@@ -43,10 +43,10 @@ fespace = {
 	quadrature = "gauss",
 
 	-- the basis function order
-	order = 5,
+	order = 4,
 }
 
-mu = 1.0;
+mu = 0.1;
 
 -- initial condition
 -- initial_condition = "zero"
@@ -56,7 +56,7 @@ end
 
 -- exact solution (transient)
 exact_sol = function(x, y, t)
-	return math.sin(x) * math.exp(-mu * t);
+	return math.sin(x) * math.exp(-0.1);
 end
 
 -- boundary condition state to be used by the
@@ -78,7 +78,7 @@ boundary_conditions = {
 }
 
 solver = {
-	type = "explicit_euler",
+	type = "rk3-ssp",
 	cfl = 0.01,
-	tfinal = 1,
+	tfinal = 1
 }

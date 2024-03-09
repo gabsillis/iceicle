@@ -175,6 +175,10 @@ namespace FE {
             }
     };
 
+    // deduction guides
+    template<typename T, class LayoutPolicy>
+    fespan(T *data, const LayoutPolicy &) -> fespan<T, LayoutPolicy>;
+
     /**
      * @brief cmpute a vector scalar product and add to a vector 
      * y <= alpha * x + y
@@ -197,9 +201,21 @@ namespace FE {
         }
     }
 
-    // deduction guides
-    template<typename T, class LayoutPolicy>
-    fespan(T *data, const LayoutPolicy &) -> fespan<T, LayoutPolicy>;
+    /**
+     * @brief copy the data from fespan x to fespan y
+     *
+     * @param [in] x the fespan to copy from
+     * @param [out] y the fespan to copy to
+     */
+    template<typename T, class LayoutPolicyx, class LayoutPolicyy>
+    void copy_fespan(const fespan<T, LayoutPolicyx> &x, fespan<T, LayoutPolicyy> y){
+        if constexpr(std::is_same_v<LayoutPolicyy, LayoutPolicyx>) {
+            // do in a single loop over the 1d index space 
+            std::copy_n(x.data(), x.size(), y.data());
+        } else {
+            // TODO: 
+        }
+    }
 
     /**
      * @brief elspan represents a non-owning view for the data of a single element

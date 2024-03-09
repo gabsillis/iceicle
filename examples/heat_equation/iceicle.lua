@@ -3,7 +3,7 @@
 -- define the mesh as a uniform quad mesh
 uniform_mesh = {
 	-- specify the number of elements in each direction
-	nelem = { 8, 8 },
+	nelem = { 4, 4 },
 
 	-- specify the bounding box of the uniform mesh domain
 	bounding_box = {
@@ -16,7 +16,7 @@ uniform_mesh = {
 		-- the boundary condition types
 		-- in order of direction and side
 		types = {
-			"dirichlet", -- left side
+			"neumann", -- left side
 			"dirichlet", -- bottom side
 			"dirichlet", -- right side
 			"dirichlet", -- top side
@@ -66,7 +66,7 @@ end
 -- types and flags set in the mesh
 boundary_conditions = {
 	dirichlet = {
-		-- constant values (integ)
+		-- constant values
 		values = {
 			1.0, -- flag 1
 			2.0, -- flag 2
@@ -87,6 +87,11 @@ boundary_conditions = {
 			bc4,
 		},
 	},
+	neumann = {
+		values = {
+			0.0, -- flag 1
+		}
+	}
 }
 function sinh(x)
 	if x == 0 then
