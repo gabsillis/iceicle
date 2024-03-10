@@ -6,7 +6,6 @@
 #include "iceicle/disc/l2_error.hpp"
 #include "iceicle/fespace/fespace_lua_interface.hpp"
 #include "iceicle/anomaly_log.hpp"
-#include "iceicle/lua_utils.hpp"
 #include "iceicle/program_args.hpp"
 #include "iceicle/ssp_rk3.hpp"
 #include "iceicle/string_utils.hpp"
@@ -22,7 +21,6 @@
 
 #include "iceicle/disc/heat_eqn.hpp"
 #include "iceicle/disc/projection.hpp"
-#include "iceicle/lua_utils.hpp"
 #include "iceicle/fe_function/dglayout.hpp"
 #include "iceicle/fe_function/fespan.hpp"
 #include "iceicle/fespace/fespace.hpp"
@@ -32,9 +30,7 @@
 #include <iceicle/build_config.hpp>
 #include <iceicle/pvd_writer.hpp>
 #include <iceicle/mesh/mesh_lua_interface.hpp>
-#include <type_traits>
 #include <fenv.h>
-#include <any>
 #include <sol/sol.hpp>
 
 int main(int argc, char *argv[]){

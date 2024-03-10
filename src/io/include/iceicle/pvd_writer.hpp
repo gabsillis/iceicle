@@ -11,7 +11,6 @@
 #include <algorithm>
 #include <ostream>
 #include <stdexcept>
-#include <type_traits>
 #include <vector>
 #include <string>
 #include <iceicle/mesh/mesh.hpp>

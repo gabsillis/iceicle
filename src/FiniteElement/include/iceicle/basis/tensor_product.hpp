@@ -172,47 +172,51 @@ namespace BASIS {
         ) const noexcept {
             using namespace NUMTOOL::TENSOR::FIXED_SIZE;
 
-            // run-time precompute the lagrange polynomial evaluations 
-            // for each coordinate
-            Tensor<T, ndim, nbasis_1d> lagrange_evals{};
-            for(int idim = 0; idim < ndim; ++idim){
-                lagrange_evals[idim] = basis_1d.eval_all(xi[idim]);
-            }
+            if constexpr(ndim == 0){
+                Bi[0] = 1;
+            } else {
+                // run-time precompute the lagrange polynomial evaluations 
+                // for each coordinate
+                Tensor<T, ndim, nbasis_1d> lagrange_evals{};
+                for(int idim = 0; idim < ndim; ++idim){
+                    lagrange_evals[idim] = basis_1d.eval_all(xi[idim]);
+                }
 
-            // for the first dimension (fencepost)
-            NUMTOOL::TMP::constexpr_for_range<0, nbasis_1d>(
-                [&]<int ibasis>(T xi_dim) {
-                    static constexpr int nfill = MATH::power_T<nbasis_1d, ndim - 1>::value;
-                    T Bi_idim = lagrange_evals[0][ibasis];
-                    std::fill_n(Bi + nfill * ibasis, nfill, Bi_idim);
-                },
-                xi[0]
-            );
+                // for the first dimension (fencepost)
+                NUMTOOL::TMP::constexpr_for_range<0, nbasis_1d>(
+                    [&]<int ibasis>(T xi_dim) {
+                        static constexpr int nfill = MATH::power_T<nbasis_1d, ndim - 1>::value;
+                        T Bi_idim = lagrange_evals[0][ibasis];
+                        std::fill_n(Bi + nfill * ibasis, nfill, Bi_idim);
+                    },
+                    xi[0]
+                );
 
-            for (int idim = 1; idim < ndim; ++idim) {
-                T xi_dim = xi[idim];
+                for (int idim = 1; idim < ndim; ++idim) {
+                    T xi_dim = xi[idim];
 
-                // number of times to repeat the loop over basis functions
-                int nrepeat = std::pow(nbasis_1d, idim);
-                // the size that one loop through the basis function indices gives
-                const int cyclesize = std::pow(nbasis_1d, ndim - idim);
-                for (int irep = 0; irep < nrepeat; ++irep) {
-                    NUMTOOL::TMP::constexpr_for_range<0, nbasis_1d>(
-                        [&]<int ibasis>(int idim, T xi_dim, T *Bi) {
-                        // evaluate the 1d basis function at the idimth coordinate
-                        T Bi_idim = lagrange_evals[idim][ibasis];
-                        const int nfill = std::pow(nbasis_1d, ndim - idim - 1);
+                    // number of times to repeat the loop over basis functions
+                    int nrepeat = std::pow(nbasis_1d, idim);
+                    // the size that one loop through the basis function indices gives
+                    const int cyclesize = std::pow(nbasis_1d, ndim - idim);
+                    for (int irep = 0; irep < nrepeat; ++irep) {
+                        NUMTOOL::TMP::constexpr_for_range<0, nbasis_1d>(
+                            [&]<int ibasis>(int idim, T xi_dim, T *Bi) {
+                            // evaluate the 1d basis function at the idimth coordinate
+                            T Bi_idim = lagrange_evals[idim][ibasis];
+                            const int nfill = std::pow(nbasis_1d, ndim - idim - 1);
 
-                        // offset for multiplying by this ibasis
-                        const int start_offset = ibasis * nfill;
+                            // offset for multiplying by this ibasis
+                            const int start_offset = ibasis * nfill;
 
-                        // multiply the next nfill by the current basis function
-                        for (int ifill = 0; ifill < nfill; ++ifill) {
-                                Bi[start_offset + ifill] *= Bi_idim;
-                            }
-                        },
-                        idim, xi_dim, Bi + irep * cyclesize
-                    );
+                            // multiply the next nfill by the current basis function
+                            for (int ifill = 0; ifill < nfill; ++ifill) {
+                                    Bi[start_offset + ifill] *= Bi_idim;
+                                }
+                            },
+                            idim, xi_dim, Bi + irep * cyclesize
+                        );
+                    }
                 }
             }
         }

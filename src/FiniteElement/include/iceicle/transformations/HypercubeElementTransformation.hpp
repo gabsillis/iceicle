@@ -754,7 +754,7 @@ class HypercubeTraceTransformation {
    * @brief transform from the trace space reference domain to the 
    * reference element domain 
    *
-   * @param [in] node_indices the global node indices for the element 
+   * @param [in] node_indices the global node indices for the trace space 
    * @param [in] faceNr the trace number 
    * @param [in] s the location in the reference trace domain 
    * @param [out] xi the position in the reference element domain 
@@ -899,6 +899,104 @@ class HypercubeTraceTransformation {
       }
     }
     return J;
+  }
+};
+
+template<typename T, typename IDX, int Pn>
+class HypercubeTraceTransformation<T, IDX, 1, Pn>{
+  static constexpr int ndim = 1;
+  static constexpr int trace_ndim = 0;
+  static constexpr int n_trace = 2;
+
+  using ElPointView = MATH::GEOMETRY::PointView<T, ndim>;
+  using TracePointView = MATH::GEOMETRY::PointView<T, trace_ndim>;
+  public:
+
+  static constexpr int n_nodes = 1;
+  /**
+   * @brief transform from the trace space reference domain to the 
+   * reference element domain 
+   *
+   * @param [in] node_indices the global node indices for the face 
+   * @param [in] faceNr the trace number 
+   * @param [in] s the location in the reference trace domain 
+   * @param [out] xi the position in the reference element domain 
+   */
+  void transform(
+    const IDX *node_indices,
+    int traceNr,
+    const T *s,
+    ElPointView xi
+  ) const {
+    if(traceNr == 0){
+      xi[0] = -1.0;
+    } else {
+      xi[0] = 1.0;
+    }
+  }
+
+  void transform_physical(
+      const IDX *node_indices,
+      int traceNr,
+      const MATH::GEOMETRY::Point<T, ndim - 1> &s,
+      FE::NodalFEFunction<T, ndim> &coord,
+      ElPointView x
+  ) const {
+    x[0] = coord[node_indices[0]][0];
+  }
+
+  /**
+   * @brief get the Jacobian dx ds 
+   * @param coord the global node coordinates 
+   * @param face_node_indices the global node indices of the nodes on the face 
+   * in order so that the orientation matches the transform function 
+   * @param traceNr the face number 
+   * @param s the point in the reference trace space 
+   */
+  NUMTOOL::TENSOR::FIXED_SIZE::Tensor<T, ndim, trace_ndim> Jacobian(
+      FE::NodalFEFunction<T, ndim> &coord,
+      const IDX *face_node_indices,
+      int traceNr,
+      const MATH::GEOMETRY::Point<T, trace_ndim> &s
+  ) const {
+    using namespace NUMTOOL::TENSOR::FIXED_SIZE;
+    Tensor<T, ndim, trace_ndim> J{};
+    if(traceNr == 0){
+      // negative normal
+      J[0][0] = -1.0;
+      return J;
+    } else {
+      J[0][0] = 1.0;
+      return J;
+    }
+  }
+
+
+  /**
+   * @brief Given the Jacobian dx dxi 
+   * get the Jacobian dx ds 
+   * @param node_indices the global node index array 
+   * @param traceNr the face number 
+   * @param s the point in the reference trace space 
+   * @param elJacobian dx dxi 
+   * @return dx ds Jacobian 
+   */
+  NUMTOOL::TENSOR::FIXED_SIZE::Tensor<T, ndim, trace_ndim> Jacobian(
+      IDX *node_indices,
+      int traceNr,
+      const TracePointView &s,
+      const NUMTOOL::TENSOR::FIXED_SIZE::Tensor<T, ndim, ndim> &elJacobian
+  ) const {
+    using namespace NUMTOOL::TENSOR::FIXED_SIZE;
+    Tensor<T, ndim, trace_ndim> J{};
+    if(traceNr == 0){
+      // negative normal
+      J[0][0] = -1.0;
+      return J;
+    } else {
+      J[0][0] = 1.0;
+      return J;
+    }
   }
 };
 
