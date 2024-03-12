@@ -128,7 +128,7 @@ namespace ICEICLE::IO {
                 auto &field = *(fields[i]);
                 std::filesystem::path field_path = data_directory;
                 field_path /= ("fieldset" + std::to_string(i) +"_i" + std::to_string(itime)
-                        + "_t" + std::to_string(time) + ".dat");
+                        /* + "_t" + std::to_string(time)*/ + ".dat");
 
                 
                 std::ofstream out{field_path};

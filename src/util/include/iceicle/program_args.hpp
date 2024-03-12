@@ -4,6 +4,7 @@
  * @author Gianni Absillis (gabsill@ncsu.edu)
  */
 #pragma once
+#include <charconv>
 #include <iomanip>
 #include <ostream>
 #include <variant>
@@ -20,7 +21,8 @@
 namespace ICEICLE::UTIL::PROGRAM_ARGS {
 
     /// @brief a variant of all the types that can be parsed to
-    using arg_variant = std::variant<std::monostate, std::string_view>;
+    using arg_variant = std::variant<std::monostate, std::string_view, std::string, 
+          int, std::size_t, float, double, long double>;
 
     /**
      * @brief the stored value after parsing
@@ -54,12 +56,14 @@ namespace ICEICLE::UTIL::PROGRAM_ARGS {
         T as(){
             arg_variant& value = val.value();
             return std::visit([](auto &data){
+//                if constexpr( std::convertible_to<T, decltype(data)>){
+ //                   return T{static_cast<T>(data)};
                 if constexpr( std::constructible_from<T, decltype(data)>){
-                    return T{data};
+                    return T(data);
                 } else {
                     using namespace ICEICLE::UTIL;
                     std::string err_msg = std::string{"Cannot convert from "} + typeid(decltype(data)).name() 
-                        + "to" + typeid(T).name();
+                        + " to " + typeid(T).name();
                     AnomalyLog::log_anomaly(Anomaly{err_msg, general_anomaly_tag{} });
                     return T{};
                 }
@@ -101,7 +105,12 @@ namespace ICEICLE::UTIL::PROGRAM_ARGS {
         parse_type<optT> expected_type{};
 
         /** @brief parse the value given the text */
-        constexpr parsed_value parse(std::string_view text) const noexcept;
+        constexpr parsed_value parse(std::string_view text) const noexcept {
+            // default implementation use std::from_char
+            value_type value = 0;
+            std::from_chars(text.data(), text.data() + text.size(), value);
+            return parsed_value{value};
+        };
 
     };
 
@@ -119,6 +128,11 @@ namespace ICEICLE::UTIL::PROGRAM_ARGS {
         std::string_view text) const noexcept
     { return parsed_value{text}; }
 
+    template<>
+    inline constexpr parsed_value cli_option<std::string>::parse(
+        std::string_view text) const noexcept
+    { return parsed_value{std::string{text}}; }
+
     /**
      * @brief parser for command line arguments 
      */
@@ -128,8 +142,13 @@ namespace ICEICLE::UTIL::PROGRAM_ARGS {
         /** @brief map of the options by name to their parsed values */
         std::map<std::string, parsed_value> options;
 
-        /** @brief map of option form (--<name>) strings in argv to their respective indices */
+        /** 
+         * @brief map of option form (--<name>) strings in argv to their respective indices 
+         **/
         std::map<std::string, int> in_options;
+
+        /** @brief map from option names to values assigned by '=' in the input */
+        std::map<std::string, std::string_view> assigned_vals;
 
         /** @brief the descriptions of each option */
         std::map<std::string, std::string> descriptions;
@@ -146,8 +165,11 @@ namespace ICEICLE::UTIL::PROGRAM_ARGS {
             // otherwise: put it in the map but give no value 
             // so has_value() or bool() evaluate to false
             if(in_options.contains(opt.name)){
-                // if this is a flag then there is no text to parse
-                std::string_view to_parse = (std::same_as<optT, void>) ? "" : argv[in_options[opt.name] + 1];
+                // if this is a flag then there is no text to parse 
+                // if the value was assigned using '=' then use that 
+                // otherwise use the next argument in argv
+                std::string_view to_parse = (std::same_as<optT, void>) ? "" : 
+                    ( (assigned_vals.contains(opt.name)) ? assigned_vals[opt.name] : argv[in_options[opt.name] + 1] ) ;
                 options[opt.name] = opt.parse(to_parse);
             } else {
                 // value remains unfilled (evaluates to fase)
@@ -177,13 +199,24 @@ namespace ICEICLE::UTIL::PROGRAM_ARGS {
             for(int i = 1; i < argc; ++i){
                 std::string_view arg_view = argv[i];
                 if(arg_view.starts_with("--")){
-                    std::string key{arg_view.substr(2)};
+
+                    // check if the <option>=<value> syntax was used
+                    auto eq_loc = arg_view.find('=');
+                    static constexpr int dash_offset = 2;
+                    auto substr_len = (eq_loc == std::string_view::npos) ? eq_loc : eq_loc - dash_offset;
+                    std::string key{arg_view.substr(dash_offset, substr_len)};
                     if(in_options.contains(key)){
                         std::string err_str = "option: " + key + " is already specified";
                         AnomalyLog::log_anomaly(Anomaly{err_str, warning_anomaly_tag{}});
                     } else {
                         in_options[key] = i;
                     }
+
+                    // handle the '=' syntax
+                    if(eq_loc != std::string_view::npos){
+                        // syntax: <option>=<value>
+                        assigned_vals[key] = arg_view.substr(eq_loc + 1);
+                    } 
                 }
             }
         }
