@@ -40,7 +40,8 @@ int main(int argc, char *argv[]){
         cli_option{"nelem", "The number of elements", parse_type<IDX>{}},
         cli_option{"order", "The polynomial order of the basis functions", parse_type<int>{}},
         cli_option{"ivis", "the number of timesteps between outputs", parse_type<IDX>{}},
-        cli_option{"dt", "the timestep", parse_type<T>{}}
+        cli_option{"dt", "the timestep", parse_type<T>{}}, 
+        cli_option{"ddgic_mult", "multiplier for ddgic", parse_type<T>{}}
     );
     if(cli_args["help"]){
         cli_args.print_options(std::cout);
@@ -61,6 +62,7 @@ int main(int argc, char *argv[]){
 
         DISC::HeatEquation<T, IDX, ndim> disc{};
         disc.mu = (cli_args["mu"]) ? cli_args["mu"].as<T>() : 1.0;
+        disc.sigma_ic = (cli_args["ddgic_mult"]) ? cli_args["ddgic_mult"].as<T>() : 0.0;
         disc.dirichlet_values.push_back(0.0);
 
         std::vector<T> u_data(fespace.dg_offsets.calculate_size_requirement(neq));

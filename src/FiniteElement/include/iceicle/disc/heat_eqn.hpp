@@ -8,6 +8,7 @@
 
 #include "Numtool/fixed_size_tensor.hpp"
 #include "Numtool/matrixT.hpp"
+#include "iceicle/anomaly_log.hpp"
 #include "iceicle/fe_function/fespan.hpp"
 #include "iceicle/fe_function/nodal_fe_function.hpp"
 #include "iceicle/geometry/face.hpp"
@@ -46,6 +47,9 @@ namespace DISC {
         /// @brief the dynamic number of vector components
         static const int dnv_comp = 1;
 
+        /// @brief switch to use the interior penalty method instead of ddg 
+        bool interior_penalty = false;
+
         /// @brief the diffusion coefficient (positive)
         T mu = 0.001;
 
@@ -57,6 +61,12 @@ namespace DISC {
         //
         // also: https://mooseframework.inl.gov/source/bcs/PenaltyDirichletBC.html
         T penalty = 0.0;
+
+        /// @brief IC multiplier to get DDGIC
+        /// see Danis Yan 2023 Journal of Scientific Computing
+        /// DDGIC (sigma = 1)
+        /// Default: Standard DDG (sigma = 0)
+        T sigma_ic = 0.0;
 
         /// @brief the value for each bcflag (index into this list) 
         /// for dirichlet bc
@@ -228,8 +238,8 @@ namespace DISC {
                 T beta0 = std::pow(max_basis_order + 1, 2);
                 T beta1 = 1 / std::max((T) (2 * max_basis_order * (max_basis_order + 1)), 1.0);
 
-//                // WARNING: TESTING ONLY (turn into IP method)
-//                beta1 = 0.0;
+                // switch to interior penalty if set
+                if(interior_penalty) beta1 = 0.0;
 
                 T jumpu = value_uR - value_uL;
                 for(int idim = 0; idim < ndim; ++idim){
@@ -253,6 +263,29 @@ namespace DISC {
                 }
                 for(std::size_t itest = 0; itest < elR.nbasis(); ++itest){
                     resR[itest, 0] -= flux * bi_dataR[itest];
+                }
+
+                // apply the interface correction 
+                // NOTE: only works for uniform basis order ?
+                if( elL.nbasis() == elR.nbasis() ){
+
+                    T average_gradv[ndim];
+                    for(std::size_t itest = 0; itest < elL.nbasis(); ++itest){
+                        for(int idim = 0; idim < ndim; ++idim){
+                            average_gradv[idim] = 0.5 * ( gradBiL[itest, idim] + gradBiR[itest, idim] );
+                            T interface_correction = sigma_ic * jumpu * mu * 
+                                MATH::MATRIX_T::dotprod<T, ndim>(average_gradv, unit_normal.data())
+                                * quadpt.weight * sqrtg;
+                            resL[itest, 0] -= interface_correction;
+                            resR[itest, 0] -= interface_correction;
+                        }
+                    }
+                } else if(sigma_ic != 0) {
+                    ICEICLE::UTIL::AnomalyLog::log_anomaly(
+                        ICEICLE::UTIL::Anomaly{
+                            "DDGIC only works for same basis order throughout",
+                            ICEICLE::UTIL::general_anomaly_tag{}}
+                    );
                 }
             }
 
