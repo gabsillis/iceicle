@@ -12,6 +12,7 @@
 #include "iceicle/explicit_euler.hpp"
 #include "iceicle/program_args.hpp"
 #include "iceicle/disc/l2_error.hpp"
+#include "iceicle/ssp_rk3.hpp"
 #include <cmath>
 #include <fenv.h>
 
@@ -41,7 +42,9 @@ int main(int argc, char *argv[]){
         cli_option{"order", "The polynomial order of the basis functions", parse_type<int>{}},
         cli_option{"ivis", "the number of timesteps between outputs", parse_type<IDX>{}},
         cli_option{"dt", "the timestep", parse_type<T>{}}, 
-        cli_option{"ddgic_mult", "multiplier for ddgic", parse_type<T>{}}
+        cli_option{"ddgic_mult", "multiplier for ddgic", parse_type<T>{}}, 
+        cli_option{"fo", "fourier number", parse_type<T>{}},
+        cli_flag{"interior_penalty", "enable interior penalty instead of ddg"}
     );
     if(cli_args["help"]){
         cli_args.print_options(std::cout);
@@ -64,6 +67,7 @@ int main(int argc, char *argv[]){
         disc.mu = (cli_args["mu"]) ? cli_args["mu"].as<T>() : 1.0;
         disc.sigma_ic = (cli_args["ddgic_mult"]) ? cli_args["ddgic_mult"].as<T>() : 0.0;
         disc.dirichlet_values.push_back(0.0);
+        disc.interior_penalty = cli_args["interior_penalty"];
 
         std::vector<T> u_data(fespace.dg_offsets.calculate_size_requirement(neq));
         FE::dg_layout<T, neq> u_layout{fespace.dg_offsets};
@@ -108,9 +112,11 @@ int main(int argc, char *argv[]){
 
         ICEICLE::SOLVERS::CFLTimestep<T, IDX> cfl{0.1};
         ICEICLE::SOLVERS::FixedTimestep<T, IDX> dt{(cli_args["dt"]) ? cli_args["dt"].as<T>() : 1e-5};
+        // fourier number as an option 
+        if(cli_args["fo"]) dt.dt = cli_args["fo"].as<T>() * SQUARED(2 * M_PI / (T) nelem);
         ICEICLE::SOLVERS::TfinalTermination<T, IDX> stop_condition{1.0};
 
-        ICEICLE::SOLVERS::ExplicitEuler solver{fespace, disc, dt, stop_condition};
+        ICEICLE::SOLVERS::RK3SSP solver{fespace, disc, dt, stop_condition};
         solver.ivis = (cli_args["ivis"].has_value()) ? cli_args["ivis"].as<IDX>() : 100;
         ICEICLE::IO::DatWriter<T, IDX, ndim> writer{fespace};
         writer.register_fields(u, "u");

@@ -143,5 +143,10 @@ namespace ICEICLE::SOLVERS {
 
             FE::scatter_elspan(el.elidx, 1.0, res_el, 1.0, res);
         }
+
+        delete[] uL_data;
+        delete[] uR_data;
+        delete[] resL_data;
+        delete[] resR_data;
     }
 }
