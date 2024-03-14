@@ -8,9 +8,7 @@
 #include "iceicle/geometry/face.hpp"
 #include "iceicle/geometry/geo_element.hpp"
 #include "iceicle/quadrature/QuadratureRule.hpp"
-#include "iceicle/quadrature/SimplexQuadrature.hpp"
 #include "iceicle/quadrature/HypercubeGaussLegendre.hpp"
-#include "iceicle/quadrature/quadrules_1d.hpp"
 #include <iceicle/element/finite_element.hpp>
 #include <iceicle/element/TraceSpace.hpp>
 #include <iceicle/tmp_utils.hpp>
@@ -97,27 +95,27 @@ namespace ELEMENT {
                     break;
                 }
                 case FE::SIMPLEX:
-                    // construct the basis 
-                    switch(basis_type){
-                        case LAGRANGE:
-                            basis = std::make_unique<BASIS::SimplexLagrangeBasis<
-                                T, IDX, ndim, basis_order>>();
-                            break;
-                        default:
-                            break;
-                    }
-
-                    // construct the quadrature rule
-                    switch(quadrature_type){
-                        case FE::FESPACE_ENUMS::GAUSS_LEGENDRE:
-                            quadrule = std::make_unique<QUADRATURE::GrundmannMollerSimplexQuadrature<T, IDX, ndim, basis_order+1>>();
-                            break;
-                        default:
-                            break;
-                    }
-
-                    // construct the evaluation
-                    eval = FEEvalType(basis.get(), quadrule.get());
+//                    // construct the basis 
+//                    switch(basis_type){
+//                        case LAGRANGE:
+//                            basis = std::make_unique<BASIS::SimplexLagrangeBasis<
+//                                T, IDX, ndim, basis_order>>();
+//                            break;
+//                        default:
+//                            break;
+//                    }
+//
+//                    // construct the quadrature rule
+//                    switch(quadrature_type){
+//                        case FE::FESPACE_ENUMS::GAUSS_LEGENDRE:
+//                            quadrule = std::make_unique<QUADRATURE::GrundmannMollerSimplexQuadrature<T, IDX, ndim, basis_order+1>>();
+//                            break;
+//                        default:
+//                            break;
+//                    }
+//
+//                    // construct the evaluation
+//                    eval = FEEvalType(basis.get(), quadrule.get());
 
                     break;
                 default: 

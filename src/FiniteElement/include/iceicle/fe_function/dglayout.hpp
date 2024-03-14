@@ -69,7 +69,7 @@ namespace FE {
          */
         constexpr std::size_t max_el_size_reqirement( int nv_comp ){
             std::size_t max_offset = 0;
-            for(int i = 1; i < offsets.size(); ++i){
+            for(std::size_t i = 1; i < offsets.size(); ++i){
                 max_offset = std::max(max_offset, offsets[i] - offsets[i - 1]);
             }
             return nv_comp * max_offset;

@@ -11,7 +11,6 @@
 #include <algorithm>
 #include <ostream>
 #include <stdexcept>
-#include <type_traits>
 #include <vector>
 #include <string>
 #include <iceicle/mesh/mesh.hpp>
@@ -35,7 +34,7 @@ namespace ICEICLE::IO {
 
         struct XMLTag {
             std::string name;
-            std::vector<XMLField> fields; 
+            std::vector<XMLField> fields{}; 
         };
 
         /** @brief write an opening XML tag <tagname fields...>*/

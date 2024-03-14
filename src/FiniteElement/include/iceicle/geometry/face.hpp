@@ -12,6 +12,7 @@
 #include <iceicle/fe_enums.hpp>
 #include <Numtool/fixed_size_tensor.hpp>
 #include <string>
+#include <span>
 #include <string_view>
 
 namespace ELEMENT {
@@ -27,8 +28,8 @@ namespace ELEMENT {
         WALL_GENERAL, /// General Wall BC, up to the implementation of the pde
         INLET,
         OUTLET,
-        INITIAL_CONDITION,
-        TIME_UPWIND, /// used for the top of a time slab
+        SPACETIME_PAST, /// used for the bottom of a time slab
+        SPACETIME_FUTURE, /// used for the top of a time slab
         INTERIOR // default condition that does nothing
     };
 
@@ -45,14 +46,14 @@ namespace ELEMENT {
             "General Wall",
             "Inlet",
             "Outlet",
-            "Initial condition",
-            "Time upwind",
+            "spacetime past",
+            "spacetime future",
             "Interior face (NO BC)"
         };
         return names[(int) bc];
     }
 
-    constexpr const inline BOUNDARY_CONDITIONS get_bc_from_name(std::string_view bcname){
+    constexpr inline BOUNDARY_CONDITIONS get_bc_from_name(std::string_view bcname){
         using namespace ICEICLE::UTIL;
 
         if(eq_icase(bcname, "dirichlet")){
@@ -69,6 +70,57 @@ namespace ELEMENT {
     /// face_info / this gives the face number 
     /// face_info % this gives the orientation
     static constexpr unsigned int FACE_INFO_MOD = 512;
+
+    /**
+     * Provides an interface to the face type specific 
+     * bookkeeping utilities in a generic interface 
+     */
+    template<class T, class IDX, int ndim>
+    struct FaceInfoUtils {
+
+        /**
+         * @brief get the number of vertices 
+         * A vertex is an extreme point on the face
+         * WARNING: This does not necesarily include all nodes 
+         * which can be on interior features
+         */
+        virtual
+        int n_face_vertices() = 0;
+
+        /**
+         * @brief get the global indices of the vertices in order
+         * given a face number and element vertices
+         *
+         * A vertex is an extreme point on the face
+         * WARNING: This does not necesarily include all nodes 
+         * which can be on interior features
+         *
+         * @param [in] face_nr the face number
+         * @param [in] element_nodes the global node numbers for the element nodes
+         * @param [out] face_vertices the vertex global indices for the face
+         */
+        virtual
+        void get_face_vertices(
+            int face_nr,
+            IDX *element_nodes,
+            std::span<IDX> face_vertices
+        ) = 0;
+
+        /**
+         * @brief get the orientation of the right face given the vertices 
+         * of the left and right face 
+         * 
+         * @param face_vertices_l the vertices of the face in order on the left
+         * @param face_vertices_r the vertices of the face in order on the right 
+         * @return the orientation of the right face 
+         */
+        virtual 
+        int get_orientation(
+            std::span<IDX> face_vertices_l,
+            std::span<IDX> face_vertices_r
+        ) = 0;
+
+    };
 
      /**
      * @brief An interface between two geometric elements
@@ -89,6 +141,8 @@ namespace ELEMENT {
      */
     template<typename T, typename IDX, int ndim>
     class Face{
+        template<typename T1, std::size_t... sizes>
+        using Tensor = NUMTOOL::TENSOR::FIXED_SIZE::Tensor<T1, sizes...>;
        
         protected:
 
@@ -109,7 +163,7 @@ namespace ELEMENT {
         /// Face info for the right element 
         unsigned int face_infoR;
         BOUNDARY_CONDITIONS bctype; /// the boundary condition type
-        int bcflag; /// an integer flag to attach to the boundary condition
+        IDX bcflag; /// an integer flag to attach to the boundary condition
 
         explicit
         Face(
@@ -125,6 +179,10 @@ namespace ELEMENT {
         /** @brief get the shape that defines the reference domain */
         virtual 
         constexpr FE::DOMAIN_TYPE domain_type() const = 0;
+
+        /** @brief get the geometry polynomial order */
+        virtual 
+        constexpr int geometry_order() const noexcept = 0;
 
         /**
          * @brief Get the area of the face

@@ -1,13 +1,14 @@
 /**
- * @brief Explicit Euler (1-stage Runge Kutta) time integration
- *
+ * @brief strong stability preserving Runge-Kutta scheme
  * @author Gianni Absillis (gabsill@ncsu.edu)
  */
+#pragma once
 
 #include "Numtool/matrix/decomposition/decomp_lu.hpp"
 #include "Numtool/matrix/dense_matrix.hpp"
 #include "Numtool/matrix/permutation_matrix.hpp"
 #include "iceicle/element/finite_element.hpp"
+#include "iceicle/fe_function/fespan.hpp"
 #include "iceicle/fespace/fespace.hpp"
 #include "iceicle/form_residual.hpp"
 #include "iceicle/explicit_utils.hpp"
@@ -16,8 +17,19 @@
 #include <iomanip>
 namespace ICEICLE::SOLVERS {
 
+/**
+ * @brief Explicit 3-stage Strong Stability Preserving Runge-Kutta
+ *
+ * Butcher tableau
+ *
+ * 0   | 0    0    0
+ * 1   | 1    0    0
+ * 1/2 | 1/4  1/4  0
+ * ----+---------------
+ *     | 1/6  1/6  2/3
+ */
 template< class T, class IDX, class TimestepClass, class StopCondition>
-class ExplicitEuler {
+class RK3SSP {
 
 public: 
 
@@ -30,6 +42,9 @@ public:
     /// @brief the residual data array
     std::vector<T> res_data;
 
+    /// @brief intermediate step data arrays
+    std::vector<T> res1_data, res2_data, res3_data, u_stage_data;
+
     /// @brief the current timestep 
     IDX itime = 0;
 
@@ -39,7 +54,7 @@ public:
     /// @brief the callback function for visualization during solve()
     /// is given a reference to this when called 
     /// default is to print out a l2 norm of the residual data array
-    std::function<void(ExplicitEuler &)> vis_callback = [](ExplicitEuler &disc){
+    std::function<void(RK3SSP &)> vis_callback = [](RK3SSP &disc){
         T sum = 0.0;
         for(int i = 0; i < disc.res_data.size(); ++i){
             sum += SQUARED(disc.res_data[i]);
@@ -57,7 +72,7 @@ public:
     IDX ivis = -1;
 
     /**
-     * @brief create a ExplicitEuler solver 
+     * @brief create a RK3SSP solver 
      * initializes the residual data vector
      *
      * @param fespace the finite element space 
@@ -65,7 +80,7 @@ public:
      * @param timestep the class that determines the 
      */
     template<int ndim, class disc_class>
-    ExplicitEuler(
+    RK3SSP(
         FE::FESpace<T, IDX, ndim> &fespace,
         disc_class &disc,
         const TimestepClass &timestep,
@@ -73,6 +88,10 @@ public:
     )
     requires specifies_ncomp<disc_class> && TerminationCondition<StopCondition>
     : res_data(fespace.dg_offsets.calculate_size_requirement(disc_class::dnv_comp)),
+      res1_data(fespace.dg_offsets.calculate_size_requirement(disc_class::dnv_comp)),
+      res2_data(fespace.dg_offsets.calculate_size_requirement(disc_class::dnv_comp)),
+      res3_data(fespace.dg_offsets.calculate_size_requirement(disc_class::dnv_comp)),
+      u_stage_data(fespace.dg_offsets.calculate_size_requirement(disc_class::dnv_comp)),
       timestep{timestep}, stop_condition{stop_condition}
     {}
 
@@ -98,39 +117,72 @@ public:
         // create view of the residual using the same Layout as u 
         FE::fespan res{res_data.data(), u.get_layout()};
 
-        // get the rhs
-        form_residual(fespace, disc, u, res);
-
         // storage for rhs of mass matrix equation
         int max_ndof = fespace.dg_offsets.max_el_size_reqirement(1);
         std::vector<T> b(max_ndof);
         std::vector<T> du(max_ndof);
 
-        // TODO: prestore mass matrix with the reference element 
-        // TODO: need to build a global mass matrix if doing CG (but not for DG)
-        for(ELEMENT::FiniteElement<T, IDX, ndim> &el : fespace.elements){
-            using namespace MATH::MATRIX;
-            using namespace MATH::MATRIX::SOLVERS;
-            DenseMatrix<T> mass = ELEMENT::calculate_mass_matrix(el, fespace.meshptr->nodes);
-            PermutationMatrix<unsigned int> pi = decompose_lu(mass);
+        // function to get the residual for a single stage
+        auto stage_residual = [&](FE::fespan<T, LayoutPolicy> u_stage, FE::fespan<T, LayoutPolicy> res_stage){
+            // zero out
+            res_stage = 0;
 
-            const std::size_t ndof = el.nbasis();
-            for(std::size_t ieqn = 0; ieqn < disc_class::dnv_comp; ++ieqn){
+            // get the rhs
+            form_residual(fespace, disc, u, res);
 
-                // copy the residual for each degree of freedom to the rhs 
-                for(std::size_t idof = 0; idof < el.nbasis(); ++idof){
-                    b[idof] = res[FE::fe_index{(std::size_t) el.elidx, idof, ieqn}];
-                }
+            // invert mass matrices
+            // TODO: prestore mass matrix with the reference element 
+            // TODO: need to build a global mass matrix if doing CG (but not for DG)
+            for(ELEMENT::FiniteElement<T, IDX, ndim> &el : fespace.elements){
+                using namespace MATH::MATRIX;
+                using namespace MATH::MATRIX::SOLVERS;
+                DenseMatrix<T> mass = ELEMENT::calculate_mass_matrix(el, fespace.meshptr->nodes);
+                PermutationMatrix<unsigned int> pi = decompose_lu(mass);
 
-                // solve the matrix equation 
-                sub_lu(mass, pi, b.data(), du.data());
+                const std::size_t ndof = el.nbasis();
+                for(std::size_t ieqn = 0; ieqn < disc_class::dnv_comp; ++ieqn){
 
-                // TODO: add to u 
-                for(std::size_t idof = 0; idof < el.nbasis(); ++idof){
-                    u[FE::fe_index{(std::size_t) el.elidx, idof, ieqn}] += dt * du[idof];
+                    // copy the residual for each degree of freedom to the rhs 
+                    for(std::size_t idof = 0; idof < el.nbasis(); ++idof){
+                        b[idof] = res[FE::fe_index{(std::size_t) el.elidx, idof, ieqn}];
+                    }
+
+                    // solve the matrix equation 
+                    sub_lu(mass, pi, b.data(), du.data());
+
+                    // TODO: add to u 
+                    for(std::size_t idof = 0; idof < el.nbasis(); ++idof){
+                        res_stage[FE::fe_index{(std::size_t) el.elidx, idof, ieqn}] += du[idof];
+                    }
                 }
             }
-        }
+        };
+
+        // describe fespans for intermediate states 
+        FE::fespan res1{res1_data.data(), u.get_layout()};
+        FE::fespan res2{res2_data.data(), u.get_layout()};
+        FE::fespan res3{res3_data.data(), u.get_layout()};
+        FE::fespan u_stage{u_stage_data.data(), u.get_layout()};
+
+
+        // stage 1 
+        stage_residual(u, res1);
+
+        // stage 2 
+        FE::copy_fespan(u, u_stage);
+        FE::axpy(dt, res1, u_stage);
+        stage_residual(u_stage, res2);
+
+        // stage 3
+        FE::copy_fespan(u, u_stage);
+        FE::axpy(0.25 * dt, res1, u_stage);
+        FE::axpy(0.25 * dt, res2, u_stage);
+        stage_residual(u_stage, res3);
+
+        // update u 
+        FE::axpy(1.0 / 6.0 * dt, res1, u);
+        FE::axpy(1.0 / 6.0 * dt, res2, u);
+        FE::axpy(2.0 / 3.0 * dt, res3, u);
 
         // update the timestep and time
         itime++;
@@ -166,7 +218,7 @@ public:
 
 // template argument deduction
 template<class T, class IDX, int ndim, class disc_class, class TimestepClass, class StopCondition>
-ExplicitEuler(FE::FESpace<T, IDX, ndim> &, disc_class &,
-    const TimestepClass &, const StopCondition &) -> ExplicitEuler<T, IDX, TimestepClass, StopCondition>;
+RK3SSP(FE::FESpace<T, IDX, ndim> &, disc_class &,
+    const TimestepClass &, const StopCondition &) -> RK3SSP<T, IDX, TimestepClass, StopCondition>;
 
 }

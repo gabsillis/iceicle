@@ -54,6 +54,12 @@ namespace QUADRATURE {
                     }
                 }
             }
+
+            // special case for 0D faces
+            if constexpr (ndim == 0){
+                qpoints[0].abscisse[0] = 0.0;
+                qpoints[0].weight = 1.0;
+            }
         }
 
         int npoints() const override { return num_poin; }

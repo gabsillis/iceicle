@@ -1,5 +1,7 @@
 #pragma once
 #include "Numtool/point.hpp"
+#include "iceicle/basis/lagrange_1d.hpp"
+#include "iceicle/basis/tensor_product.hpp"
 #include <Numtool/constexpr_math.hpp>
 #include <Numtool/integer_utils.hpp>
 #include <Numtool/polydefs/LagrangePoly.hpp>
@@ -9,13 +11,8 @@
 #include <array>
 #include <cmath>
 #include <iceicle/fe_function/nodal_fe_function.hpp>
-
 #include <mdspan/mdspan.hpp>
-
 #include <algorithm>
-#include <sstream>
-#include <stdexcept>
-#include <string>
 
 namespace ELEMENT::TRANSFORMATIONS {
 // forward declaration for friend 
@@ -42,61 +39,28 @@ private:
   using Point = MATH::GEOMETRY::Point<T, ndim>;
   using PointView = MATH::GEOMETRY::PointView<T, ndim>;
 
+  // === Nodal Basis ===
+public:
+  BASIS::UniformLagrangeInterpolation<T, Pn> interpolation_1d{};
+  using BasisType = decltype(interpolation_1d);
+  BASIS::QTypeProduct<T, ndim, BasisType::nbasis> tensor_prod{};
+  using TensorProdType = decltype(tensor_prod);
+
+private:
   // === Constants ===
   static constexpr int nfac = 2 * ndim;
-  static constexpr int nnode = MATH::power_T<Pn + 1, ndim>::value;
+  static constexpr int nnode = TensorProdType::nvalues;
   static constexpr int nvert = MATH::power_T<2, ndim>::value;
   static constexpr int nfacevert = MATH::power_T<2, ndim - 1>::value;
   static constexpr int nfacenode = MATH::power_T<Pn + 1, ndim -1>::value;
-  static constexpr NUMTOOL::TENSOR::FIXED_SIZE::Tensor<int, ndim> strides = []{
-    NUMTOOL::TENSOR::FIXED_SIZE::Tensor<int, ndim> ret{};
-    NUMTOOL::TMP::constexpr_for_range<0, ndim>([&]<int i>{
-      ret[i] = MATH::power_T<Pn + 1, ndim - i - 1>::value;
-    });
-    return ret;
-  }();
+  static constexpr NUMTOOL::TENSOR::FIXED_SIZE::Tensor<int, ndim> strides = TensorProdType::strides; 
 
   // ==== Friends ===
   // this is the domain for a face in d+1 dimensions
   friend class HypercubeTraceTransformation<T, IDX, ndim + 1, Pn>;
 
 public:
-  int convert_indices_helper(int ijk[ndim]) const {
-    int ret = 0;
-    for(int idim = 0; idim < ndim; ++idim){
-      ret += ijk[idim] * std::pow(Pn + 1, ndim - idim - 1);
-    }
-    return ret;
-  }
 
-  /// Basis function indices by dimension for each node
-  static constexpr std::array<std::array<int, ndim>, nnode> ijk_poin = []() {
-    std::array<std::array<int, ndim>, nnode> ret{};
-
-    NUMTOOL::TMP::constexpr_for_range<0, ndim>([&ret]<int idim>() {
-      // number of times to repeat the loop over basis functions
-      const int nrepeat = MATH::power_T<Pn + 1, idim>::value;
-      // the size that one loop through the basis function indices gives
-      const int cyclesize = MATH::power_T<Pn + 1, ndim - idim>::value;
-      for (int irep = 0; irep < nrepeat; ++irep) {
-        NUMTOOL::TMP::constexpr_for_range<0, Pn + 1>(
-            [irep, &ret]<int ibasis>() {
-              const int nfill = NUMTOOL::TMP::pow(Pn + 1, ndim - idim - 1);
-
-              // offset for multiplying by this ibasis
-              const int start_offset = ibasis * nfill;
-
-              // multiply the next nfill by the current basis function
-              for (int ifill = 0; ifill < nfill; ++ifill) {
-                const int offset = irep * cyclesize + start_offset;
-                ret[offset + ifill][idim] = ibasis;
-              }
-            });
-      }
-    });
-
-    return ret;
-  }();
 
   /// Nodes in the reference domain
   static inline std::array<Point, nnode> xi_poin = [] {
@@ -131,368 +95,6 @@ public:
   }();
 
   /**
-   * @brief Interpolation of a uniform set of Pn + 1 points from -1 to 1 
-   */
-  struct UniformLagrangeInterpolation {
-    template<typename T1, std::size_t... sizes>
-    using Tensor = NUMTOOL::TENSOR::FIXED_SIZE::Tensor<T1, sizes...>;
-
-    /// compile-time precompute the evenly spaced interpolation points
-    static constexpr Tensor<T, Pn + 1> xi_nodes = []{
-      Tensor<T, Pn + 1> ret = {};
-      if constexpr (Pn == 0) {
-        // finite volume should recover cell center
-        // for consistency
-        ret[0] = 0.0; 
-      } else {
-        T dx = 2.0 / Pn;
-        ret[0] = -1.0;
-        for(int j = 1; j < Pn + 1; ++j){
-          // better for numerics than j * dx
-          ret[j] = ret[j - 1] + dx;
-        }
-      }
-      return ret;
-    }();
-
-    /// compile-time precompute the lagrange polynomial denominators
-    /// the barycentric weights
-    static constexpr Tensor<T, Pn + 1> wj = []{
-      Tensor<T, Pn + 1> ret;
-      for(int j = 0; j < Pn + 1; ++j){
-        ret[j] = 1.0;
-        for(int k = 0; k < Pn + 1; ++k) if(k != j) {
-          ret[j] *= (xi_nodes[j] - xi_nodes[k]);
-        }
-        // invert (this is a denominator)
-        // NOTE: Berrut, Trefethen have an optimal way to compute this 
-        // but we don't because its computed at compile time
-        ret[j] = 1.0 / ret[j];
-      }
-      return ret;
-    }();
-
-    /**
-     * @brief Evaluate every interpolating polynomial at the given point 
-     * @param xi the point to evaluate at 
-     * @return an array of all the evaluations
-     */
-    Tensor<T, Pn + 1> eval_all(T xi) const {
-      Tensor<T, Pn + 1> Nj{};
-
-      // finite volume case
-      if constexpr (Pn == 0){
-        Nj[0] = 1.0;
-      }
-
-      // run-time precompute the product of differences
-      T lskip = 1; // this is the product skipping the node closest to xi
-      int k; // this will be used to determine which node to skip
-      for(k = 0; k < Pn; ++k){
-        // make sure k+1 isn't the closest node to xi
-        if( xi >= (xi_nodes[k] + xi_nodes[k+1])/2 ){
-          lskip *= (xi - xi_nodes[k]);
-        } else {
-          break; // k is the closest node to xi
-        }
-      }
-      for(int i = k + 1; i < Pn + 1; ++i){
-        lskip *= (xi - xi_nodes[i]);
-      }
-      T lprod = lskip * (xi - xi_nodes[k]);
-
-      // calculate Nj 
-      int j;
-      for(j = 0; j < k; ++j){
-        Nj[j] = lprod * wj[j] / (xi - xi_nodes[j]);
-      }
-      Nj[k] = lskip * wj[k];
-      for(++j; j < Pn + 1; ++j){
-        Nj[j] = lprod * wj[j] / (xi - xi_nodes[j]);
-      }
-
-      return Nj;
-    }
-
-    /**
-     * @brief Get the value and derivative of 
-     * every interpolating polynomial at the given point 
-     * @param xi the point to evaluate at 
-     * @return an array of all the evaluations
-     */
-    void deriv_all(
-        T xi,
-        Tensor<T, Pn+1> &Nj,
-        Tensor<T, Pn+1> &dNj
-      ) const {
-
-      // finite volume case
-      if constexpr (Pn == 0){
-        Nj[0] = 1.0;
-        dNj[0] = 0.0;
-      }
-
-      // run-time precompute the product of differences
-      T lskip = 1; // this is the product skipping the node closest to xi
-      int k; // this will be used to determine which node to skip
-      for(k = 0; k < Pn; ++k){
-        // make sure k+1 isn't the closest node to xi
-        if( xi >= (xi_nodes[k] + xi_nodes[k+1])/2 ){
-          lskip *= (xi - xi_nodes[k]);
-        } else {
-          break; // k is the closest node to xi
-        }
-      }
-      for(int i = k + 1; i < Pn + 1; ++i){
-        lskip *= (xi - xi_nodes[i]);
-      }
-      T lprod = lskip * (xi - xi_nodes[k]);
-
-      // calculate the sum of inverse differences
-      // neglecting the skipped node
-      // And calculate Nj in the same loops
-      T s = 0.0;
-      int j;
-      for(j = 0; j < k; ++j){
-        T inv_diff = 1.0 / (xi - xi_nodes[j]);
-        s += inv_diff;
-        Nj[j] = lprod * inv_diff * wj[j];
-      }
-      Nj[k] = lskip * wj[k];
-      for(++j; j < Pn + 1; ++j){
-        T inv_diff = 1.0 / (xi - xi_nodes[j]);
-        s += inv_diff;
-        Nj[j] = lprod * inv_diff * wj[j];
-      }
-
-      // run-time precompute the derivative of the l-product 
-      T lprime = lprod * s + lskip;
-
-      // evaluate the derivatives
-      for(j = 0; j < k; ++j){
-        // quotient rule
-        dNj[j] = (lprime * wj[j] - Nj[j]) / (xi - xi_nodes[j]);
-      }
-      dNj[k] = s * Nj[k];
-      for(++j; j < Pn + 1; ++j){
-        // quotient rule
-        dNj[j] = (lprime * wj[j] - Nj[j]) / (xi - xi_nodes[j]);
-      }
-    }
-  };
-
-  UniformLagrangeInterpolation interpolation_1d{};
-
-  /**
-   * @brief fill the array with shape functions at the given point
-   * @param [in] xi the point in the reference domain to evaluate the basis at
-   * @param [out] Bi the shape function evaluations
-   */
-  inline void fill_shp(const Point &xi, T *Bi) const {
-    using namespace NUMTOOL::TENSOR::FIXED_SIZE;
-
-    // run-time precompute the lagrange polynomial evaluations 
-    // for each coordinate
-    Tensor<T, ndim, Pn + 1> lagrange_evals{};
-    for(int idim = 0; idim < ndim; ++idim){
-      lagrange_evals[idim] = interpolation_1d.eval_all(xi[idim]);
-    }
-
-    // for the first dimension (fencepost)
-    NUMTOOL::TMP::constexpr_for_range<0, Pn + 1>(
-        [&]<int ibasis>(T xi_dim) {
-          static constexpr int nfill = MATH::power_T<Pn + 1, ndim - 1>::value;
-          T Bi_idim = lagrange_evals[0][ibasis];
-          std::fill_n(Bi + nfill * ibasis, nfill, Bi_idim);
-        },
-        xi[0]);
-
-    for (int idim = 1; idim < ndim; ++idim) {
-      T xi_dim = xi[idim];
-
-      // number of times to repeat the loop over basis functions
-      int nrepeat = std::pow(Pn + 1, idim);
-      // the size that one loop through the basis function indices gives
-      const int cyclesize = std::pow(Pn + 1, ndim - idim);
-      for (int irep = 0; irep < nrepeat; ++irep) {
-        NUMTOOL::TMP::constexpr_for_range<0, Pn + 1>(
-            [&]<int ibasis>(int idim, T xi_dim, T *Bi) {
-              // evaluate the 1d basis function at the idimth coordinate
-              T Bi_idim = lagrange_evals[idim][ibasis];
-              const int nfill = std::pow(Pn + 1, ndim - idim - 1);
-
-              // offset for multiplying by this ibasis
-              const int start_offset = ibasis * nfill;
-
-              // multiply the next nfill by the current basis function
-              for (int ifill = 0; ifill < nfill; ++ifill) {
-                Bi[start_offset + ifill] *= Bi_idim;
-              }
-            },
-            idim, xi_dim, Bi + irep * cyclesize);
-      }
-    }
-  }
-
-  void fill_deriv_alt(const Point &xi, T dBidxj[nnode][ndim]) const {
-    std::fill_n(*dBidxj, nnode * ndim, 1.0);
-    for(int inode = 0; inode < nnode; ++inode){
-      for(int idim = 0; idim < ndim; ++idim){
-        for(int jdim = 0; jdim < ndim; ++jdim){
-          if(idim == jdim){
-            dBidxj[inode][jdim] *= POLYNOMIAL::dlagrange1d<T, Pn>(ijk_poin[inode][idim], xi[idim]);
-          } else {
-            dBidxj[inode][jdim] *= POLYNOMIAL::lagrange1d<T, Pn>(ijk_poin[inode][idim], xi[idim]);
-          }
-        }
-      }
-    }
-  }
-
-  /**
-   * @brief fill the given 2d array with the derivatives of each basis function 
-   * @param [in] xi the point in the reference domain to evaluate the derivative at 
-   * @param [out] dBidxj the derivatives of the basis functions 
-   */
-  void fill_deriv(const Point &xi, NUMTOOL::TENSOR::FIXED_SIZE::Tensor<T, nnode, ndim> &dBidxj) const {
-    using namespace NUMTOOL::TENSOR::FIXED_SIZE;
-
-    // run-time precompute the lagrange polynomial evaluations 
-    // and derivatives for each coordinate
-    Tensor<T, ndim, Pn + 1> lagrange_evals{};
-    Tensor<T, ndim, Pn + 1> lagrange_derivs{};
-    for(int idim = 0; idim < ndim; ++idim){
-      interpolation_1d.deriv_all(
-          xi[idim], lagrange_evals[idim], lagrange_derivs[idim]);
-    }
-    // fencepost the loop at idim = 0
-    NUMTOOL::TMP::constexpr_for_range<0, Pn + 1>(
-      [&]<int ibasis>(const Point &xi) {
-        static constexpr int nfill = MATH::power_T<Pn + 1, ndim - 1>::value;
-        T Bi_idim = lagrange_evals[0][ibasis];
-        T dBi_idim = lagrange_derivs[0][ibasis];
-        for(int ifill = 0; ifill < nfill; ++ifill){
-            dBidxj[nfill * ibasis + ifill][0] = dBi_idim;
-            for(int jdim = 1; jdim < ndim; ++jdim){
-                dBidxj[nfill * ibasis + ifill][jdim] = Bi_idim;
-            }
-        }
-      },
-      xi);
-    
-    NUMTOOL::TMP::constexpr_for_range<1, ndim>(
-        [&]<int idim>(const Point &xi){
-            // number of times to repeat the loop over basis functions
-            const int nrepeat = std::pow(Pn + 1, idim);
-            // the size that one loop through the basis function indices gives 
-            const int cyclesize = std::pow(Pn + 1, ndim - idim);
-
-            for(int irep = 0; irep < nrepeat; ++irep) {
-
-              for(int ibasis = 0; ibasis < Pn + 1; ++ibasis){
-                T dBi_idim = lagrange_derivs[idim][ibasis];
-                const int nfill = std::pow(Pn + 1, ndim - idim - 1);
-
-                // offset for multiplying by this ibasis
-                const int start_offset = ibasis * nfill;
-
-                // multiply the next nfill by the current basis function
-                for (int ifill = 0; ifill < nfill; ++ifill) {
-                    const int offset = irep * cyclesize + start_offset;
-                    NUMTOOL::TMP::constexpr_for_range<0, ndim>([&]<int jdim>(){
-                        if constexpr(jdim == idim){
-                            dBidxj[offset + ifill][jdim] *= dBi_idim;
-                        } else {
-                            dBidxj[offset + ifill][jdim] *= lagrange_evals[idim][ibasis];
-                        }
-                    });
-                }
-              }
-            }
-        },
-        xi
-    );
-  }
-
-  /**
-   * @brief fill the provided 1d array with the hessian of each basis function 
-   * \frac{ d^2Bi }{ dx_j dx_k}
-   * in C row major order this corresponds to [i][j][k]
-   * and is symmetric in the last two indices 
-   *
-   * @param [in] xi the point in the reference domain to evaluate at 
-   * @param [out] nodal_hessian_data the pointer to fill with the hessian 
-   * must be preallocated to n_nodes() * ndim * ndim 
-   * (this get's zero'd out by this function before use)
-   *
-   * @return an mdspan view of nodal_hessian_data
-   */
-  auto fill_hess(const T *xi, T *nodal_hessian_data) const noexcept{
-    using namespace std::experimental;
-    using namespace NUMTOOL::TENSOR::FIXED_SIZE;
-
-    // view the hessian output array by an mdspan 
-    mdspan hess{nodal_hessian_data, extents{nnode, ndim, ndim}};
-
-    // fill with ones for multiplicative identity
-    std::fill_n(nodal_hessian_data, nnode*ndim*ndim, 1.0);
-    
-    // run-time precompute the lagrange polynomial evaluations 
-    // and derivatives for each coordinate
-    Tensor<T, ndim, Pn + 1> lagrange_evals{};
-    Tensor<T, ndim, Pn + 1> lagrange_derivs{};
-    for(int idim = 0; idim < ndim; ++idim){
-      interpolation_1d.deriv_all(
-          xi[idim], lagrange_evals[idim], lagrange_derivs[idim]);
-    }
-
-    // TODO: optimize using the fill strategy like fill_deriv 
-
-    for(int ibasis = 0; ibasis < nnode; ++ibasis){
-
-      for(int ideriv = 0; ideriv < ndim; ++ideriv){
-          for(int jderiv = ideriv; jderiv < ndim; ++jderiv){
-            // handle diagonal terms 
-            if(ideriv == jderiv){
-              for(int idim = 0; idim < ndim; ++idim){
-                if(idim == ideriv){
-                  hess[ibasis, ideriv, jderiv] *= POLYNOMIAL::dNlagrange1d<T, Pn>(
-                    ijk_poin[ibasis][idim], 2, xi[ideriv]);
-                } else {
-                  hess[ibasis, ideriv, jderiv] *= lagrange_evals[idim][ijk_poin[ibasis][idim]];
-                }
-              }
-            } else {
-              // loop over the 1d basis functions for each dimension
-              for(int idim = 0; idim < ndim; ++idim){
-                if(idim == ideriv){
-                  hess[ibasis, ideriv, jderiv] *= 
-                    lagrange_derivs[ideriv][ijk_poin[ibasis][idim]];
-                } else if(idim == jderiv){
-                  hess[ibasis, ideriv, jderiv] *= 
-                    lagrange_derivs[jderiv][ijk_poin[ibasis][idim]];
-                } else {
-                  // not a derivative so just the 1d function 
-                  hess[ibasis, ideriv, jderiv] *=
-                    lagrange_evals[idim][ijk_poin[ibasis][idim]];
-                }
-              }
-            }
-          }
-      }
-
-      // copy symmetric part 
-      for(int ideriv = 0; ideriv < ndim; ++ideriv){
-        for(int jderiv = 0; jderiv < ideriv; ++jderiv){
-            hess[ibasis, ideriv, jderiv] = hess[ibasis, jderiv, ideriv];
-        }
-      }
-    }
-
-    return hess;
-  }
-
-  /**
    * @brief transform from the reference domain to the physcial domain
    * T(s): s -> x
    * @param [in] node_coords the coordinates of all the nodes
@@ -508,7 +110,7 @@ public:
 
     // Calculate all of the nodal basis functions at xi
     std::array<T, nnode> Bi;
-    fill_shp(xi, Bi.data());
+    tensor_prod.fill_shp(interpolation_1d, xi, Bi.data());
 
     // multiply node coordinates by basis function evaluations
     for (int inode = 0; inode < nnode; ++inode) {
@@ -539,7 +141,7 @@ public:
 
       // compute Jacobian per basis function
       Tensor<T, nnode, ndim> dBidxj;
-      fill_deriv(xi, dBidxj);
+      tensor_prod.fill_deriv(interpolation_1d, xi, dBidxj);
 
       for(int inode = 0; inode < nnode; ++inode){
           IDX global_inode = node_indices[inode];
@@ -577,7 +179,7 @@ public:
 
     // Get the hessian at each node 
     std::vector<T> nodal_hessian_data(nnode * ndim * ndim);
-    auto nodal_hessian = fill_hess(xi, nodal_hessian_data.data());
+    auto nodal_hessian = tensor_prod.fill_hess(interpolation_1d, xi, nodal_hessian_data.data());
 
     for(int inode = 0; inode < nnode; ++inode){
       // get view to the node coordinates from the node coordinate array
@@ -620,41 +222,42 @@ public:
     */
   const Point *reference_nodes() const { return xi_poin.data(); }
 
-  // ===================
-  // = Domai Utilities =
-  // ===================
+  // ====================
+  // = Domain Utilities =
+  // ====================
 
-  /**
-   * @brief get the global vertex array from the global node indices 
-   * @param [in] nodes_el the global indices of the element nodes 
-   * @param [out] vert_el the global indices of the element vertices 
-   */
-  void get_element_vert(const IDX nodes_el[nnode], IDX vert_el[nvert]){
-    int ivert = 0;
-
-    std::function<void(int, int, int)> getvertex = [&](int istart1, int istart2, int idim)-> void {
+  private:
+  auto get_vertex_helper(const IDX nodes_el[nnode], IDX vert_el[nvert], int istart1, int istart2, int idim, int ivert) -> int {
       if(idim == 2){
         vert_el[ivert++] = nodes_el[istart1];
         vert_el[ivert++] = nodes_el[istart1 + Pn];
 
         vert_el[ivert++] = nodes_el[istart2];
         vert_el[ivert++] = nodes_el[istart2 + Pn];
+        return ivert;
       } else {
         const int block = std::pow(Pn + 1, ndim - idim - 1);
-        getvertex(istart1, istart1 + Pn * block, idim + 1);
-        getvertex(istart2, istart2 + Pn * block, idim + 1);
-
+        ivert = get_vertex_helper(nodes_el, vert_el, istart1, istart1 + Pn * block, idim + 1, ivert);
+        ivert = get_vertex_helper(nodes_el, vert_el, istart2, istart2 + Pn * block, idim + 1, ivert);
+        return ivert;
       }
-    };
-    getvertex(0, Pn * std::pow(Pn + 1, ndim - 1), 0);
+  }
+
+  public:
+  /**
+   * @brief get the global vertex array from the global node indices 
+   * @param [in] nodes_el the global indices of the element nodes 
+   * @param [out] vert_el the global indices of the element vertices 
+   */
+  void get_element_vert(const IDX nodes_el[nnode], IDX vert_el[nvert]){
+    (void) get_vertex_helper(nodes_el, vert_el, 0, Pn * std::pow(Pn + 1, ndim - 1), 0, 0);
   }
 
   /** @brief rotates the node indices 
    * 90 degrees ccw about the x axis 
    * WARNING: only defined for 3D 
    */
-  void rotate_x(IDX gnodes[nnode]){
-    if constexpr (ndim != 3) throw std::logic_error("only implemented for 3D right now.");
+  void rotate_x(IDX gnodes[nnode]) requires (ndim == 3) {
 
     IDX gnodes_old[nnode];
     std::copy_n(gnodes, nnode, gnodes_old);
@@ -664,8 +267,8 @@ public:
         for(int k =0; k < Pn + 1; ++k){
           int ijk_old[ndim] = {i, j, k};
           int ijk_new[ndim] = {i, Pn - k, j};
-          gnodes[convert_indices_helper(ijk_new)] = 
-            gnodes_old[convert_indices_helper(ijk_old)];
+          gnodes[TensorProdType::convert_ijk(ijk_new)] = 
+            gnodes_old[TensorProdType::convert_ijk(ijk_old)];
         }
       }
     }
@@ -675,8 +278,7 @@ public:
    * 90 degrees ccw about the y axis 
    * WARNING: only defined for 3D 
    */
-  void rotate_y(IDX gnodes[nnode]){
-    if constexpr (ndim != 3) throw std::logic_error("only implemented for 3D right now.");
+  void rotate_y(IDX gnodes[nnode]) requires (ndim == 3) {
 
     IDX gnodes_old[nnode];
     std::copy_n(gnodes, nnode, gnodes_old);
@@ -686,8 +288,8 @@ public:
         for(int k = 0; k < Pn + 1; ++k){
           int ijk_old[ndim] = {i, j, k};
           int ijk_new[ndim] = {k, j, Pn - i};
-          gnodes[convert_indices_helper(ijk_new)] = 
-            gnodes_old[convert_indices_helper(ijk_old)];
+          gnodes[TensorProdType::convert_ijk(ijk_new)] = 
+            gnodes_old[TensorProdType::convert_ijk(ijk_old)];
         }
       }
     }
@@ -697,8 +299,7 @@ public:
    * 90 degrees ccw about the z axis 
    * WARNING: only defined for 3D 
    */
-  void rotate_z(IDX gnodes[nnode]){
-    if constexpr (ndim != 3) throw std::logic_error("only implemented for 3D right now.");
+  void rotate_z(IDX gnodes[nnode]) requires(ndim == 3) {
 
     IDX gnodes_old[nnode];
     std::copy_n(gnodes, nnode, gnodes_old);
@@ -708,8 +309,8 @@ public:
         for(int k =0; k < Pn + 1; ++k){
           int ijk_old[ndim] = {i, j, k};
           int ijk_new[ndim] = {Pn - j, i, k};
-          gnodes[convert_indices_helper(ijk_new)] = 
-            gnodes_old[convert_indices_helper(ijk_old)];
+          gnodes[TensorProdType::convert_ijk(ijk_new)] = 
+            gnodes_old[TensorProdType::convert_ijk(ijk_old)];
         }
       }
     }
@@ -789,7 +390,7 @@ public:
     int trace_first_dim = (trace_coord == 0) ? 1 : 0;
     
     // the node that corresponds to the origin of the TraceTransformation
-    IDX anchor_vertex = (first_dim_sign[faceNr] < 0) ? (Pn) * strides[trace_first_dim]: 0;
+    // IDX anchor_vertex = (first_dim_sign[faceNr] < 0) ? (Pn) * strides[trace_first_dim]: 0;
 
     IDX face_node_idx = 0;
 
@@ -826,7 +427,7 @@ public:
 
     int inode = 0;
     do {
-      face_nodes[inode] = nodes_el[convert_indices_helper(ijk)];
+      face_nodes[inode] = nodes_el[TensorProdType::convert_ijk(ijk)];
       inode++;
     } while(next_ijk(ijk));
   }
@@ -886,10 +487,10 @@ public:
       ijk[trace_first_dim] = Pn;
     }
     ijk[face_coord] = (is_negative_xi) ? 0 : Pn;
-    vert_fac[0] = nodes_el[convert_indices_helper(ijk)];
+    vert_fac[0] = nodes_el[TensorProdType::convert_ijk(ijk)];
     for(int i = 1; i < nfacevert; ++i){
       next_ijk(ijk);
-      vert_fac[i] = nodes_el[convert_indices_helper(ijk)];
+      vert_fac[i] = nodes_el[TensorProdType::convert_ijk(ijk)];
     }
   }
 
@@ -929,20 +530,6 @@ public:
     return -1;
   }
 
-  /** @brief print the 1d lagrange basis function indices for each dimension for
-   * each node */
-  std::string print_ijk_poin() {
-    using namespace std;
-    std::ostringstream ijk_string;
-    for (int inode = 0; inode < nnode; ++inode) {
-      ijk_string << "[";
-      for (int idim = 0; idim < ndim; ++idim) {
-        ijk_string << " " << ijk_poin[inode][idim];
-      }
-      ijk_string << " ]\n";
-    }
-    return ijk_string.str();
-  }
 };
 
 
@@ -1167,7 +754,7 @@ class HypercubeTraceTransformation {
    * @brief transform from the trace space reference domain to the 
    * reference element domain 
    *
-   * @param [in] node_indices the global node indices for the element 
+   * @param [in] node_indices the global node indices for the trace space 
    * @param [in] faceNr the trace number 
    * @param [in] s the location in the reference trace domain 
    * @param [out] xi the position in the reference element domain 
@@ -1206,7 +793,9 @@ class HypercubeTraceTransformation {
     std::fill_n(x.data(), ndim, 0.0);
     using namespace NUMTOOL::TENSOR::FIXED_SIZE;
     Tensor<T, n_nodes> Bi{};
-    trace_domain_trans.fill_shp(s, Bi.data());
+    trace_domain_trans.tensor_prod.fill_shp(
+        trace_domain_trans.interpolation_1d, s, Bi.data());
+
     for(int inode = 0; inode < n_nodes; ++inode) {
       for(int idim = 0; idim < ndim; ++idim) {
         const auto &node = coord[node_indices[inode]];
@@ -1237,7 +826,8 @@ class HypercubeTraceTransformation {
 
     // Get the gradient per basis function
     Tensor<T, trace_domain_trans.nnode, trace_ndim> dBidxj;
-    trace_domain_trans.fill_deriv(s, dBidxj);
+    trace_domain_trans.tensor_prod.fill_deriv(
+        trace_domain_trans.interpolation_1d, s, dBidxj);
 
     // add contributions from each node 
     for(int inode = 0; inode < trace_domain_trans.nnode; ++inode){
@@ -1309,6 +899,104 @@ class HypercubeTraceTransformation {
       }
     }
     return J;
+  }
+};
+
+template<typename T, typename IDX, int Pn>
+class HypercubeTraceTransformation<T, IDX, 1, Pn>{
+  static constexpr int ndim = 1;
+  static constexpr int trace_ndim = 0;
+  static constexpr int n_trace = 2;
+
+  using ElPointView = MATH::GEOMETRY::PointView<T, ndim>;
+  using TracePointView = MATH::GEOMETRY::PointView<T, trace_ndim>;
+  public:
+
+  static constexpr int n_nodes = 1;
+  /**
+   * @brief transform from the trace space reference domain to the 
+   * reference element domain 
+   *
+   * @param [in] node_indices the global node indices for the face 
+   * @param [in] faceNr the trace number 
+   * @param [in] s the location in the reference trace domain 
+   * @param [out] xi the position in the reference element domain 
+   */
+  void transform(
+    const IDX *node_indices,
+    int traceNr,
+    const T *s,
+    ElPointView xi
+  ) const {
+    if(traceNr == 0){
+      xi[0] = -1.0;
+    } else {
+      xi[0] = 1.0;
+    }
+  }
+
+  void transform_physical(
+      const IDX *node_indices,
+      int traceNr,
+      const MATH::GEOMETRY::Point<T, ndim - 1> &s,
+      FE::NodalFEFunction<T, ndim> &coord,
+      ElPointView x
+  ) const {
+    x[0] = coord[node_indices[0]][0];
+  }
+
+  /**
+   * @brief get the Jacobian dx ds 
+   * @param coord the global node coordinates 
+   * @param face_node_indices the global node indices of the nodes on the face 
+   * in order so that the orientation matches the transform function 
+   * @param traceNr the face number 
+   * @param s the point in the reference trace space 
+   */
+  NUMTOOL::TENSOR::FIXED_SIZE::Tensor<T, ndim, trace_ndim> Jacobian(
+      FE::NodalFEFunction<T, ndim> &coord,
+      const IDX *face_node_indices,
+      int traceNr,
+      const MATH::GEOMETRY::Point<T, trace_ndim> &s
+  ) const {
+    using namespace NUMTOOL::TENSOR::FIXED_SIZE;
+    Tensor<T, ndim, trace_ndim> J{};
+    if(traceNr == 0){
+      // negative normal
+      J[0][0] = -1.0;
+      return J;
+    } else {
+      J[0][0] = 1.0;
+      return J;
+    }
+  }
+
+
+  /**
+   * @brief Given the Jacobian dx dxi 
+   * get the Jacobian dx ds 
+   * @param node_indices the global node index array 
+   * @param traceNr the face number 
+   * @param s the point in the reference trace space 
+   * @param elJacobian dx dxi 
+   * @return dx ds Jacobian 
+   */
+  NUMTOOL::TENSOR::FIXED_SIZE::Tensor<T, ndim, trace_ndim> Jacobian(
+      IDX *node_indices,
+      int traceNr,
+      const TracePointView &s,
+      const NUMTOOL::TENSOR::FIXED_SIZE::Tensor<T, ndim, ndim> &elJacobian
+  ) const {
+    using namespace NUMTOOL::TENSOR::FIXED_SIZE;
+    Tensor<T, ndim, trace_ndim> J{};
+    if(traceNr == 0){
+      // negative normal
+      J[0][0] = -1.0;
+      return J;
+    } else {
+      J[0][0] = 1.0;
+      return J;
+    }
   }
 };
 

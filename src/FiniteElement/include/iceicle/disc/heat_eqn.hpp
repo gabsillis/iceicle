@@ -8,6 +8,7 @@
 
 #include "Numtool/fixed_size_tensor.hpp"
 #include "Numtool/matrixT.hpp"
+#include "iceicle/anomaly_log.hpp"
 #include "iceicle/fe_function/fespan.hpp"
 #include "iceicle/fe_function/nodal_fe_function.hpp"
 #include "iceicle/geometry/face.hpp"
@@ -37,7 +38,6 @@ namespace DISC {
      */
     template<typename T, typename IDX, int ndim>
     class HeatEquation final {
-        using feidx = FE::compact_index;
 
     public:
 
@@ -46,6 +46,9 @@ namespace DISC {
 
         /// @brief the dynamic number of vector components
         static const int dnv_comp = 1;
+
+        /// @brief switch to use the interior penalty method instead of ddg 
+        bool interior_penalty = false;
 
         /// @brief the diffusion coefficient (positive)
         T mu = 0.001;
@@ -58,6 +61,12 @@ namespace DISC {
         //
         // also: https://mooseframework.inl.gov/source/bcs/PenaltyDirichletBC.html
         T penalty = 0.0;
+
+        /// @brief IC multiplier to get DDGIC
+        /// see Danis Yan 2023 Journal of Scientific Computing
+        /// DDGIC (sigma = 1)
+        /// Default: Standard DDG (sigma = 0)
+        T sigma_ic = 0.0;
 
         /// @brief the value for each bcflag (index into this list) 
         /// for dirichlet bc
@@ -176,9 +185,9 @@ namespace DISC {
 
                 T value_uL = 0.0, value_uR = 0.0;
                 for(std::size_t ibasis = 0; ibasis < elL.nbasis(); ++ibasis)
-                { value_uL += uL[feidx{.idof = ibasis, .iv = 0}] * bi_dataL[ibasis]; }
+                { value_uL += uL[ibasis, 0] * bi_dataL[ibasis]; }
                 for(std::size_t ibasis = 0; ibasis < elR.nbasis(); ++ibasis)
-                { value_uR += uR[feidx{.idof = ibasis, .iv = 0}] * bi_dataR[ibasis]; }
+                { value_uR += uR[ibasis, 0] * bi_dataR[ibasis]; }
 
                 // get the gradients the physical domain
                 std::vector<T> grad_dataL(elL.nbasis() * ndim);
@@ -228,6 +237,10 @@ namespace DISC {
                 // Danis and Yan reccomended for NS
                 T beta0 = std::pow(max_basis_order + 1, 2);
                 T beta1 = 1 / std::max((T) (2 * max_basis_order * (max_basis_order + 1)), 1.0);
+
+                // switch to interior penalty if set
+                if(interior_penalty) beta1 = 0.0;
+
                 T jumpu = value_uR - value_uL;
                 for(int idim = 0; idim < ndim; ++idim){
                     grad_ddg[idim] = beta0 * jumpu / h_ddg * unit_normal[idim]
@@ -250,6 +263,29 @@ namespace DISC {
                 }
                 for(std::size_t itest = 0; itest < elR.nbasis(); ++itest){
                     resR[itest, 0] -= flux * bi_dataR[itest];
+                }
+
+                // apply the interface correction 
+                // NOTE: only works for uniform basis order ?
+                if( elL.nbasis() == elR.nbasis() ){
+
+                    T average_gradv[ndim];
+                    for(std::size_t itest = 0; itest < elL.nbasis(); ++itest){
+                        for(int idim = 0; idim < ndim; ++idim){
+                            average_gradv[idim] = 0.5 * ( gradBiL[itest, idim] + gradBiR[itest, idim] );
+                            T interface_correction = sigma_ic * jumpu * mu * 
+                                MATH::MATRIX_T::dotprod<T, ndim>(average_gradv, unit_normal.data())
+                                * quadpt.weight * sqrtg;
+                            resL[itest, 0] -= interface_correction;
+                            resR[itest, 0] -= interface_correction;
+                        }
+                    }
+                } else if(sigma_ic != 0) {
+                    ICEICLE::UTIL::AnomalyLog::log_anomaly(
+                        ICEICLE::UTIL::Anomaly{
+                            "DDGIC only works for same basis order throughout",
+                            ICEICLE::UTIL::general_anomaly_tag{}}
+                    );
                 }
             }
 
@@ -315,7 +351,7 @@ namespace DISC {
 
                         T value_uL = 0.0;
                         for(std::size_t ibasis = 0; ibasis < elL.nbasis(); ++ibasis)
-                        { value_uL += uL[feidx{.idof = ibasis, .iv = 0}] * bi_dataL[ibasis]; }
+                        { value_uL += uL[ibasis, 0] * bi_dataL[ibasis]; }
 
                         // Get the value at the boundary 
                         T dirichlet_val;
@@ -390,7 +426,7 @@ namespace DISC {
                             * quadpt.weight * sqrtg;
 
                         for(std::size_t itest = 0; itest < elL.nbasis(); ++itest){
-                            resL[feidx{.idof = itest, .iv = 0}] += bi_dataL[itest] * flux;
+                            resL[itest, 0] += bi_dataL[itest] * flux;
                         }
                     }
                 }

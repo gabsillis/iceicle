@@ -1,5 +1,4 @@
 #include "Numtool/fixed_size_tensor.hpp"
-#include "Numtool/matrix/dense_matrix.hpp"
 #include "Numtool/polydefs/LagrangePoly.hpp"
 #include <Numtool/tmp_flow_control.hpp>
 #include <Numtool/matrixT.hpp>
@@ -7,8 +6,6 @@
 #include <iceicle/transformations/HypercubeElementTransformation.hpp>
 #include "gtest/gtest.h"
 #include <random>
-#include <limits>
-#include <iomanip>
 
 using namespace ELEMENT::TRANSFORMATIONS;
 
@@ -177,8 +174,8 @@ TEST(test_hypercube_orient_transform, test_transform){
             int ijk_r[3] = {i, j, k};
             // other side for the right element (element 2)
             ijk_r[face_coord] = Pn - ijk_r[face_coord];
-            nodes_el2[domain_trans.convert_indices_helper(ijk_r)] =
-              nodes_el1[domain_trans.convert_indices_helper(ijk_l)];
+            nodes_el2[domain_trans.tensor_prod.convert_ijk(ijk_r)] =
+              nodes_el1[domain_trans.tensor_prod.convert_ijk(ijk_l)];
           }
         }
       }
@@ -401,7 +398,7 @@ TEST(test_hypercube_transform, test_ijk_poin){
       "[ 2 ]\n"
       "[ 3 ]\n"
       "[ 4 ]\n",
-      trans1.print_ijk_poin()
+      trans1.tensor_prod.print_ijk_poin()
       );
 
   HypercubeElementTransformation<double, int, 3, 3> trans2{};
@@ -470,7 +467,7 @@ TEST(test_hypercube_transform, test_ijk_poin){
       "[ 3 3 1 ]\n"
       "[ 3 3 2 ]\n"
       "[ 3 3 3 ]\n"
-      , trans2.print_ijk_poin()
+      , trans2.tensor_prod.print_ijk_poin()
       );
 }
 
@@ -480,13 +477,13 @@ TEST(test_hypercube_transform, test_fill_shp){
   constexpr int nnode1 = trans1.n_nodes();
   std::array<double, nnode1> shp;
   MATH::GEOMETRY::Point<double, 4> xi = {0.3, 0.2, 0.1, 0.4};
-  trans1.fill_shp(xi, shp.data());
+  trans1.tensor_prod.fill_shp(trans1.interpolation_1d, xi, shp.data());
   for(int inode = 0; inode < nnode1; ++inode){
     ASSERT_NEAR(
-        (POLYNOMIAL::lagrange1d<double, Pn>(trans1.ijk_poin[inode][0], xi[0]) 
-        * POLYNOMIAL::lagrange1d<double, Pn>(trans1.ijk_poin[inode][1], xi[1])  
-        * POLYNOMIAL::lagrange1d<double, Pn>(trans1.ijk_poin[inode][2], xi[2])  
-        * POLYNOMIAL::lagrange1d<double, Pn>(trans1.ijk_poin[inode][3], xi[3])),
+        (POLYNOMIAL::lagrange1d<double, Pn>(trans1.tensor_prod.ijk_poin[inode][0], xi[0]) 
+        * POLYNOMIAL::lagrange1d<double, Pn>(trans1.tensor_prod.ijk_poin[inode][1], xi[1])  
+        * POLYNOMIAL::lagrange1d<double, Pn>(trans1.tensor_prod.ijk_poin[inode][2], xi[2])  
+        * POLYNOMIAL::lagrange1d<double, Pn>(trans1.tensor_prod.ijk_poin[inode][3], xi[3])),
       shp[inode], 1e-13
     );
   }
@@ -527,7 +524,7 @@ TEST( test_hypercube_transform, test_ref_coordinates ){
   std::array<double, nnode2> shp;
 
   for(int inode = 0; inode < nnode2; ++inode){
-    trans2.fill_shp(trans2.reference_nodes()[inode], shp.data());
+    trans2.tensor_prod.fill_shp(trans2.interpolation_1d, trans2.reference_nodes()[inode], shp.data());
     for(int jnode = 0; jnode < nnode2; ++jnode){
       if(inode == jnode) ASSERT_DOUBLE_EQ(1.0, shp[jnode]);
       else ASSERT_DOUBLE_EQ(0.0, shp[jnode]);
@@ -618,8 +615,8 @@ TEST( test_hypercube_transform, test_fill_deriv ){
   NUMTOOL::TENSOR::FIXED_SIZE::Tensor<double, 4, 2> dBidxj;
   NUMTOOL::TENSOR::FIXED_SIZE::Tensor<double, 4, 2> dBidxj_2;
   MATH::GEOMETRY::Point<double, 2> xi = {0.3, -0.3};
-  trans.fill_deriv(xi, dBidxj);
-  trans.fill_deriv(xi, dBidxj_2);
+  trans.tensor_prod.fill_deriv(trans.interpolation_1d, xi, dBidxj);
+  trans.tensor_prod.fill_deriv(trans.interpolation_1d, xi, dBidxj_2);
 
   for(int inode = 0; inode < 4; ++inode) for(int idim = 0; idim < 2; ++idim) ASSERT_DOUBLE_EQ(dBidxj[inode][idim], dBidxj_2[inode][idim]);
 
@@ -656,7 +653,7 @@ TEST( test_hypercube_transform, test_fill_hess){
   MATH::GEOMETRY::Point<double, 2> xi = {0.3, -0.4};
 
   std::vector<double> hess_data(ndim * ndim * trans.n_nodes());
-  auto hess = trans.fill_hess(xi, hess_data.data());
+  auto hess = trans.tensor_prod.fill_hess(trans.interpolation_1d, xi, hess_data.data());
 
   ASSERT_DOUBLE_EQ( d2lagrange0(xi[0]) *   lagrange0(xi[1]), (hess[0, 0, 0]));
   ASSERT_DOUBLE_EQ(  dlagrange0(xi[0]) *  dlagrange0(xi[1]), (hess[0, 0, 1]));
@@ -726,7 +723,7 @@ TEST( test_hypercube_transform, test_fill_hess_3d){
   MATH::GEOMETRY::Point<double, ndim> xi = {0.3, -0.4, 0.1};
 
   std::vector<double> hess_data(ndim * ndim * trans.n_nodes());
-  auto hess = trans.fill_hess(xi, hess_data.data());
+  auto hess = trans.tensor_prod.fill_hess(trans.interpolation_1d, xi, hess_data.data());
 
   ASSERT_DOUBLE_EQ( d2lagrange0(xi[0]) *   lagrange0(xi[1]) *   lagrange0(xi[2]), (hess[0, 0, 0]));
   ASSERT_DOUBLE_EQ(  dlagrange0(xi[0]) *  dlagrange0(xi[1]) *   lagrange0(xi[2]), (hess[0, 0, 1]));
@@ -920,7 +917,7 @@ TEST( test_hypercube_transform, test_hessian ) {
           double hessfd[ndim][ndim][ndim];
           auto hess = trans1.Hessian(node_coords, node_indices, xi);
 
-          Point<double, ndim> unpeturb_x;
+//          Point<double, ndim> unpeturb_x;
 
           for(int ixi = 0; ixi < ndim; ++ixi){
             for(int jxi = 0; jxi < ndim; ++jxi){
@@ -1012,19 +1009,19 @@ TEST( test_hypercube_transform, test_hessian ) {
           }
 
           // print the hessians 
-          auto print_hess = []<class hess_type>(const hess_type &hess){
-            std::cout << std::setprecision(5);
-            for(int ix = 0; ix < ndim; ++ix){
-              for(int ixi = 0; ixi < ndim; ++ixi){
-                std::cout << "| ";
-                for(int jxi = 0; jxi < ndim; ++jxi){
-                  std::cout << std::setw(7) << hess[ix][ixi][jxi] << " ";
-                }
-                std::cout << "|" << std::endl;
-              }
-              std::cout << std::endl;
-            }
-          };
+//          auto print_hess = []<class hess_type>(const hess_type &hess){
+//            std::cout << std::setprecision(5);
+//            for(int ix = 0; ix < ndim; ++ix){
+//              for(int ixi = 0; ixi < ndim; ++ixi){
+//                std::cout << "| ";
+//                for(int jxi = 0; jxi < ndim; ++jxi){
+//                  std::cout << std::setw(7) << hess[ix][ixi][jxi] << " ";
+//                }
+//                std::cout << "|" << std::endl;
+//              }
+//              std::cout << std::endl;
+//            }
+//          };
 //          std::cout << "Calculated Hessian" << std::endl;
 //          print_hess(hess);
 //          std::cout << std::endl;

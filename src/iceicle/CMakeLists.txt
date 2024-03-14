@@ -28,3 +28,6 @@ if(ICEICLE_USE_LUA)
     target_link_libraries(heat_eqn_miniapp iceicle_lib)
     target_link_libraries(heat_eqn_miniapp ${MPI_CXX_LIBRARIES})
 endif()
+
+add_executable(sine_diffusion_1d sine_diffusion_1d.cpp)
+target_link_libraries(sine_diffusion_1d iceicle_lib)
