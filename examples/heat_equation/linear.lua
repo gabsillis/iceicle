@@ -17,9 +17,9 @@ uniform_mesh = {
 		-- in order of direction and side
 		types = {
 			"dirichlet", -- left side
-			"dirichlet", -- bottom side
+			"neumann", -- bottom side
 			"dirichlet", -- right side
-			"dirichlet", -- top side
+			"neumann", -- top side
 		},
 
 		-- the boundary condition flags
@@ -27,7 +27,7 @@ uniform_mesh = {
 		flags = {
 			1, -- left
 			1, -- bottom
-			-1, -- right
+			2, -- right
 			1, -- top
 		},
 	},
@@ -45,7 +45,7 @@ fespace = {
 	quadrature = "gauss",
 
 	-- the basis function order
-	order = 2,
+	order = 4,
 }
 
 
@@ -74,7 +74,7 @@ boundary_conditions = {
 		callbacks = {
 			-- flag -1
 			function(x, y)
-				return 1 + 0.1 * math.sin(math.pi * y)
+				return x * x - y * y
 			end,
 			-- flag -2
 			bc2,
@@ -119,7 +119,7 @@ function sinh(x)
 end
 
 exact_sol = function(x, y)
-	return 0.1 * sinh(math.pi * x) / sinh(math.pi) * math.sin(math.pi * y) + 1.0
+	return 1 + x
 end
 
 -- initial condition

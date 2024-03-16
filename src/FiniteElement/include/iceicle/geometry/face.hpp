@@ -316,6 +316,19 @@ namespace ELEMENT {
         virtual
         IDX *nodes() = 0;
 
+        /**
+         * @brief get the array of node indices as a span 
+         *
+         * This array should be garuanteed to be in the same order as the reference degres of freedom
+         * for the reference domain corresponding to this face
+         * This is so nodal basis functions can be mapped to the global node dofs
+         *
+         * @return the node indices in the mesh nodes array
+         */
+        std::span<IDX> nodes_span(){
+            return std::span{nodes(), static_cast<std::size_t>(n_nodes())};
+        }
+
         virtual
         std::string printNodes(){
             std::string output = std::to_string(nodes()[0]);

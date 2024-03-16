@@ -6,6 +6,7 @@
 #include "iceicle/disc/l2_error.hpp"
 #include "iceicle/fespace/fespace_lua_interface.hpp"
 #include "iceicle/anomaly_log.hpp"
+#include "iceicle/mesh/mesh_utils.hpp"
 #include "iceicle/program_args.hpp"
 #include "iceicle/ssp_rk3.hpp"
 #include "iceicle/string_utils.hpp"
@@ -94,6 +95,31 @@ int main(int argc, char *argv[]){
     // =========================
 
     MESH::AbstractMesh<T, IDX, ndim> mesh = MESH::lua_uniform_mesh<T, IDX, ndim>(lua_state);
+
+    // perturb nodes if applicable 
+    sol::optional<std::string> perturb_fcn_name = lua_state["mesh_perturbation"];
+    if(perturb_fcn_name){
+        std::vector<bool> fixed_nodes = MESH::flag_boundary_nodes(mesh);
+
+        std::function< void(std::span<T, ndim>, std::span<T, ndim>) > perturb_fcn;
+        if(eq_icase(perturb_fcn_name.value(), "taylor-green")){
+            perturb_fcn = MESH::PERTURBATION_FUNCTIONS::TaylorGreenVortex<T, ndim>{
+                .v0 = 0.5,
+                .xmin = {
+                    lua_state["uniform_mesh"]["bounding_box"]["min"][1],
+                    lua_state["uniform_mesh"]["bounding_box"]["min"][2],
+                },
+
+                .xmax = {
+                    lua_state["uniform_mesh"]["bounding_box"]["max"][1],
+                    lua_state["uniform_mesh"]["bounding_box"]["max"][2],
+                },
+                .L = 1
+            };
+        }
+
+        MESH::perturb_nodes(mesh, perturb_fcn, fixed_nodes);
+    }
 
     // ===================================
     // = create the finite element space =

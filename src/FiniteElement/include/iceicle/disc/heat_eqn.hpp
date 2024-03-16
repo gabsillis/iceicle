@@ -165,6 +165,19 @@ namespace DISC {
             auto centroidL = elL.geo_el->centroid(coord);
             auto centroidR = elR.geo_el->centroid(coord);
 
+            // Storage for Basis function and solution values
+            std::vector<T> bi_dataL(elL.nbasis()); //TODO: move storage declaration out of loop
+            std::vector<T> bi_dataR(elR.nbasis());
+            std::vector<T> grad_dataL(elL.nbasis() * ndim);
+            std::vector<T> grad_dataR(elR.nbasis() * ndim);
+            std::vector<T> gradu_dataL(ndim);
+            std::vector<T> gradu_dataR(ndim);
+            std::vector<T> hess_dataL(elL.nbasis() * ndim * ndim);
+            std::vector<T> hess_dataR(elR.nbasis() * ndim * ndim);
+            std::vector<T> hessu_dataL(ndim * ndim);
+            std::vector<T> hessu_dataR(ndim * ndim);
+
+
             // loop over the quadrature points 
             for(int iqp = 0; iqp < trace.nQP(); ++iqp){
                 const QUADRATURE::QuadraturePoint<T, ndim - 1> &quadpt = trace.getQP(iqp);
@@ -178,8 +191,6 @@ namespace DISC {
                 T sqrtg = trace.face.rootRiemannMetric(Jfac, quadpt.abscisse);
 
                 // get the function values
-                std::vector<T> bi_dataL(elL.nbasis()); //TODO: move storage declaration out of loop
-                std::vector<T> bi_dataR(elR.nbasis());
                 trace.evalBasisQPL(iqp, bi_dataL.data());
                 trace.evalBasisQPR(iqp, bi_dataR.data());
 
@@ -190,24 +201,16 @@ namespace DISC {
                 { value_uR += uR[ibasis, 0] * bi_dataR[ibasis]; }
 
                 // get the gradients the physical domain
-                std::vector<T> grad_dataL(elL.nbasis() * ndim);
-                std::vector<T> grad_dataR(elR.nbasis() * ndim);
                 auto gradBiL = trace.evalPhysGradBasisQPL(iqp, coord, grad_dataL.data());
                 auto gradBiR = trace.evalPhysGradBasisQPR(iqp, coord, grad_dataR.data());
 
-                std::vector<T> gradu_dataL(ndim);
-                std::vector<T> gradu_dataR(ndim);
                 auto graduL = uL.contract_mdspan(gradBiL, gradu_dataL.data());
                 auto graduR = uR.contract_mdspan(gradBiR, gradu_dataR.data());
 
                 // get the hessians in the physical domain 
-                std::vector<T> hess_dataL(elL.nbasis() * ndim * ndim);
-                std::vector<T> hess_dataR(elR.nbasis() * ndim * ndim);
                 auto hessBiL = trace.evalPhysHessBasisQPL(iqp, coord, hess_dataL.data());
                 auto hessBiR = trace.evalPhysHessBasisQPR(iqp, coord, hess_dataR.data());
 
-                std::vector<T> hessu_dataL(ndim * ndim);
-                std::vector<T> hessu_dataR(ndim * ndim);
                 auto hessuL = uL.contract_mdspan(hessBiL, hessu_dataL.data());
                 auto hessuR = uR.contract_mdspan(hessBiR, hessu_dataR.data());
 
@@ -271,14 +274,17 @@ namespace DISC {
 
                     T average_gradv[ndim];
                     for(std::size_t itest = 0; itest < elL.nbasis(); ++itest){
+                        // get the average test function gradient
                         for(int idim = 0; idim < ndim; ++idim){
                             average_gradv[idim] = 0.5 * ( gradBiL[itest, idim] + gradBiR[itest, idim] );
-                            T interface_correction = sigma_ic * jumpu * mu * 
-                                MATH::MATRIX_T::dotprod<T, ndim>(average_gradv, unit_normal.data())
-                                * quadpt.weight * sqrtg;
-                            resL[itest, 0] -= interface_correction;
-                            resR[itest, 0] -= interface_correction;
                         }
+
+                        // calcualate the interface correction integral contribution
+                        T interface_correction = sigma_ic * jumpu * mu * 
+                            MATH::MATRIX_T::dotprod<T, ndim>(average_gradv, unit_normal.data())
+                            * quadpt.weight * sqrtg;
+                        resL[itest, 0] -= interface_correction;
+                        resR[itest, 0] -= interface_correction;
                     }
                 } else if(sigma_ic != 0) {
                     ICEICLE::UTIL::AnomalyLog::log_anomaly(
