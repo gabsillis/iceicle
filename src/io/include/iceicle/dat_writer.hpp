@@ -1,6 +1,7 @@
 #pragma once
 
 #include "iceicle/fespace/fespace.hpp"
+#include "iceicle/fe_function/fespan.hpp"
 #include <fstream>
 #include <format>
 #include <filesystem>
@@ -56,11 +57,11 @@ namespace ICEICLE::IO {
                             el.transform(fespace.meshptr->nodes, refnode, physnode);
                             out << std::format("{:{}.{}e}", physnode[0], field_width, precision);
 
-                            for(std::size_t ifield = 0; ifield < field_names.size(); ++ifield){
+                            for(IDX ifield = 0; ifield < field_names.size(); ++ifield){
                                 el.evalBasis(refnode, basis_data.data());
                                 T field_value = 0;
                                 for(std::size_t idof = 0; idof < el.nbasis(); ++idof){
-                                    field_value += fedata[FE::fe_index{(std::size_t) el.elidx, idof, ifield}] 
+                                    field_value += fedata[el.elidx, idof, ifield] 
                                         * basis_data[idof];
                                 }
                                 out << " " << std::format("{:>{}.{}e}", field_value, field_width, precision);
@@ -107,7 +108,7 @@ namespace ICEICLE::IO {
         template< class LayoutPolicy, class AccessorPolicy, class... FieldNameTs >
         void register_fields(FE::fespan<T, LayoutPolicy, AccessorPolicy> &fedata, FieldNameTs&&... field_names){
             // make sure the size matches
-            assert(fedata.get_layout().get_ncomp() == sizeof...(field_names));
+            assert(fedata.nv() == sizeof...(field_names));
 
             // create the field handle and add it to the list
             auto field_ptr = std::make_unique<DataField<LayoutPolicy, AccessorPolicy>>(

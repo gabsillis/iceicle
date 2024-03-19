@@ -67,7 +67,7 @@ namespace ICEICLE::SOLVERS {
 
         // preallocate storage for compact views of u and res 
         const std::size_t max_local_size =
-            fespace.dg_offsets.max_el_size_reqirement(disc_class::dnv_comp);
+            fespace.dg_map.max_el_size_reqirement(disc_class::dnv_comp);
         T *uL_data = new T[max_local_size];
         T *uR_data = new T[max_local_size];
         T *resL_data = new T[max_local_size];

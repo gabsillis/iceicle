@@ -13,6 +13,7 @@
 #include "iceicle/tmp_utils.hpp"
 #include <iomanip>
 #include <limits>
+#include <type_traits>
 #ifdef ICEICLE_USE_PETSC 
 #include "iceicle/petsc_newton.hpp"
 #endif
@@ -24,6 +25,7 @@
 #include "iceicle/disc/projection.hpp"
 #include "iceicle/fe_function/dglayout.hpp"
 #include "iceicle/fe_function/fespan.hpp"
+#include "iceicle/fe_function/layout_right.hpp"
 #include "iceicle/fespace/fespace.hpp"
 #include "iceicle/mesh/mesh.hpp"
 #include <iceicle/explicit_euler.hpp>
@@ -206,8 +208,8 @@ int main(int argc, char *argv[]){
     // = set up a solution vector =
     // ============================
     constexpr int neq = decltype(heat_equation)::nv_comp;
-    std::vector<T> u_data(fespace.dg_offsets.calculate_size_requirement(neq));
-    FE::dg_layout<T, neq> u_layout{fespace.dg_offsets};
+    FE::dg_layout u_layout{fespace.dg_map, std::integral_constant<std::size_t, neq>{}};
+    std::vector<T> u_data(u_layout.size());
     FE::fespan u{u_data.data(), u_layout};
 
     // ===========================
@@ -255,8 +257,8 @@ int main(int argc, char *argv[]){
 
     DISC::Projection<T, IDX, ndim, neq> projection{ic};
     // TODO: extract into LinearFormSolver
-    std::vector<T> u_local_data(fespace.dg_offsets.max_el_size_reqirement(neq));
-    std::vector<T> res_local_data(fespace.dg_offsets.max_el_size_reqirement(neq));
+    std::vector<T> u_local_data(fespace.dg_map.max_el_size_reqirement(neq));
+    std::vector<T> res_local_data(fespace.dg_map.max_el_size_reqirement(neq));
     std::for_each(fespace.elements.begin(), fespace.elements.end(), 
         [&](const ELEMENT::FiniteElement<T, IDX, ndim> &el){
             // form the element local views

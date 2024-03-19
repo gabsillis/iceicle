@@ -13,8 +13,10 @@
 #include "iceicle/program_args.hpp"
 #include "iceicle/disc/l2_error.hpp"
 #include "iceicle/ssp_rk3.hpp"
+#include "iceicle/fe_function/layout_right.hpp"
 #include <cmath>
 #include <fenv.h>
+#include <type_traits>
 
 int main(int argc, char *argv[]){
 
@@ -69,8 +71,8 @@ int main(int argc, char *argv[]){
         disc.dirichlet_values.push_back(0.0);
         disc.interior_penalty = cli_args["interior_penalty"];
 
-        std::vector<T> u_data(fespace.dg_offsets.calculate_size_requirement(neq));
-        FE::dg_layout<T, neq> u_layout{fespace.dg_offsets};
+        FE::dg_layout u_layout{fespace.dg_map, std::integral_constant<std::size_t, neq>{}};
+        std::vector<T> u_data(u_layout.size());
         FE::fespan u{u_data.data(), u_layout};
 
         // ===========================
@@ -83,8 +85,8 @@ int main(int argc, char *argv[]){
 
         DISC::Projection<T, IDX, ndim, neq> projection{ic};
         // TODO: extract into LinearFormSolver
-        std::vector<T> u_local_data(fespace.dg_offsets.max_el_size_reqirement(neq));
-        std::vector<T> res_local_data(fespace.dg_offsets.max_el_size_reqirement(neq));
+        std::vector<T> u_local_data(fespace.dg_map.max_el_size_reqirement(neq));
+        std::vector<T> res_local_data(fespace.dg_map.max_el_size_reqirement(neq));
         std::for_each(fespace.elements.begin(), fespace.elements.end(), 
             [&](const ELEMENT::FiniteElement<T, IDX, ndim> &el){
                 // form the element local views

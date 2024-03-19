@@ -134,7 +134,7 @@ namespace ICEICLE::SOLVERS {
             MPI_Comm comm = MPI_COMM_WORLD
         ) : fespace(fespace), disc(disc), comm(comm), conv_criteria{conv_criteria}, jac{jac}
         {
-            PetscInt local_res_size = fespace.dg_offsets.calculate_size_requirement(disc_class::dnv_comp);
+            PetscInt local_res_size = fespace.dg_map.calculate_size_requirement(disc_class::dnv_comp);
             PetscInt local_u_size = local_res_size;
             // Create and set up the matrix if not given 
             if(jac == nullptr){

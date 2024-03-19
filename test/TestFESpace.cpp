@@ -4,6 +4,7 @@
 #include "iceicle/fe_enums.hpp"
 #include "iceicle/fe_function/dglayout.hpp"
 #include "iceicle/fe_function/el_layout.hpp"
+#include "iceicle/fe_function/layout_right.hpp"
 #include "iceicle/geometry/geo_element.hpp"
 #include "iceicle/mesh/mesh.hpp"
 #include "iceicle/quadrature/HypercubeGaussLegendre.hpp"
@@ -35,7 +36,7 @@ TEST(test_fespace, test_element_construction){
 
     ASSERT_EQ(fespace.elements.size(), 4);
 
-    ASSERT_EQ(fespace.dg_offsets.calculate_size_requirement(2), 4 * 2 * std::pow(pn_basis + 1, pn_geo));
+    ASSERT_EQ(fespace.dg_map.calculate_size_requirement(2), 4 * 2 * std::pow(pn_basis + 1, pn_geo));
 }
 
 class test_geo_el : public ELEMENT::GeometricElement<double, int, 2>{
@@ -230,17 +231,18 @@ TEST(test_fespace, test_dg_projection){
     DISC::Projection<double, int, ndim, neq> projection{projfunc};
 
     T *u = new T[fespace.ndof_dg() * neq](); // 0 initialized
-    FE::fespan<T, FE::dg_layout<T, 1>> u_span(u, fespace.dg_offsets);
+    FE::dg_layout<IDX, neq> felayout{fespace.dg_map};
+    FE::fespan u_span{u, felayout};
 
     // solve the projection 
     std::for_each(fespace.elements.begin(), fespace.elements.end(),
         [&](const ELEMENT::FiniteElement<T, IDX, ndim> &el){
-            FE::compact_layout<double, 1> el_layout{el};
+            FE::compact_layout_right<IDX, 1> el_layout{el};
             T *u_local = new T[el_layout.size()](); // 0 initialized 
-            FE::elspan<T, FE::compact_layout<double, 1>> u_local_span(u_local, el_layout);
+            FE::elspan<T, FE::compact_layout_right<IDX, 1>> u_local_span(u_local, el_layout);
 
             T *res_local = new T[el_layout.size()](); // 0 initialized 
-            FE::elspan<T, FE::compact_layout<double, 1>> res_local_span(res_local, el_layout);
+            FE::elspan<T, FE::compact_layout_right<IDX, 1>> res_local_span(res_local, el_layout);
             
             // projection residual
             projection.domainIntegral(el, fespace.meshptr->nodes, res_local_span);

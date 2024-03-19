@@ -45,7 +45,7 @@ fespace = {
 	quadrature = "gauss",
 
 	-- the basis function order
-	order = 4,
+	order = 2,
 }
 
 

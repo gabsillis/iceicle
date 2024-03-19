@@ -96,8 +96,7 @@ namespace DISC {
                 // loop over the equations and test functions and construct the residual
                 for(std::size_t b = 0; b < el.nbasis(); b++){
                     for(std::size_t eq = 0; eq < neq; eq++){
-                        res[FE::compact_index{.idof = b, .iv = eq}] 
-                            += feval[eq] * quadpt.weight * el.basisQP(ig, b) * detJ;
+                        res[b, eq] += feval[eq] * quadpt.weight * el.basisQP(ig, b) * detJ;
                     }          
                 }
             }

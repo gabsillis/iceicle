@@ -4,7 +4,6 @@
  */
 
 #pragma once
-#include "iceicle/fe_function/layout_enums.hpp"
 #include "iceicle/fespace/fespace.hpp"
 #include "iceicle/fe_function/fespan.hpp"
 #include "iceicle/petsc_interface.hpp"
@@ -67,7 +66,7 @@ namespace ICEICLE::SOLVERS {
 
         // preallocate storage for compact views of u and res 
         const std::size_t max_local_size =
-            fespace.dg_offsets.max_el_size_reqirement(disc_class::dnv_comp);
+            fespace.dg_map.max_el_size_reqirement(disc_class::dnv_comp);
         const std::size_t ncomp = disc_class::dnv_comp;
 
         // get the start indices for the petsc matrix on this processor
@@ -116,13 +115,13 @@ namespace ICEICLE::SOLVERS {
             // set up the perturbation amount scaled by unperturbed residual 
             T eps_scaled = std::max(epsilon, resL.vector_norm() * epsilon);
 
-            std::size_t glob_index_L = u.get_layout()(FE::fe_index{(std::size_t) trace.elL.elidx, 0, 0});
+            std::size_t glob_index_L = u.get_layout()[trace.elL.elidx, 0, 0];
 
             // perturb and form jacobian 
-            for(std::size_t idofu = 0; idofu < trace.elL.nbasis(); ++idofu){
-                for(std::size_t iequ = 0; iequ < ncomp; ++iequ){
+            for(IDX idofu = 0; idofu < trace.elL.nbasis(); ++idofu){
+                for(IDX iequ = 0; iequ < ncomp; ++iequ){
                     // get the compact column index for this dof and component 
-                    std::size_t jcol = uL.get_layout()(FE::compact_index{idofu, iequ});
+                    IDX jcol = uL.get_layout()[idofu, iequ];
 
                     // perturb
                     T old_val = uL[idofu, iequ];
@@ -135,9 +134,9 @@ namespace ICEICLE::SOLVERS {
                     disc.boundaryIntegral(trace, fespace.meshptr->nodes, uL, uR, resLp);
 
                     // fill jacobian for this perturbation
-                    for(std::size_t idoff = 0; idoff < trace.elL.nbasis(); ++idoff) {
-                        for(std::size_t ieqf = 0; ieqf < ncomp; ++ieqf){
-                            std::size_t irow = uL.get_layout()(FE::compact_index{idoff, ieqf});
+                    for(IDX idoff = 0; idoff < trace.elL.nbasis(); ++idoff) {
+                        for(IDX ieqf = 0; ieqf < ncomp; ++ieqf){
+                            IDX irow = uL.get_layout()[idoff, ieqf];
                             jacL[irow, jcol] += (resLp[idoff, ieqf] - resL[idoff, ieqf]) / eps_scaled;
                         }
                     }
@@ -179,8 +178,8 @@ namespace ICEICLE::SOLVERS {
             FE::scatter_elspan(trace.elR.elidx, 1.0, resR, 1.0, res);
 
             // get the global index to the start of the contiguous component x dof range for L/R elem
-            std::size_t glob_index_L = u.get_layout()(FE::fe_index{(std::size_t) trace.elL.elidx, 0, 0});
-            std::size_t glob_index_R = u.get_layout()(FE::fe_index{(std::size_t) trace.elR.elidx, 0, 0});
+            std::size_t glob_index_L = u.get_layout()[trace.elL.elidx, 0, 0];
+            std::size_t glob_index_R = u.get_layout()[trace.elR.elidx, 0, 0];
 
             // set up the perturbation amount scaled by unperturbed residual 
             T eps_scaled = std::max(epsilon, std::max(resL.vector_norm(), resR.vector_norm()) * epsilon);
@@ -191,10 +190,10 @@ namespace ICEICLE::SOLVERS {
             mdspan jacR{jacR_data.data(), extents{resR.size(), uL.size()}};
             std::fill_n(jacL_data.begin(), jacL.size(), 0);
             std::fill_n(jacR_data.begin(), jacR.size(), 0);
-            for(std::size_t idofu = 0; idofu < trace.elL.nbasis(); ++idofu){
-                for(std::size_t iequ = 0; iequ < ncomp; ++iequ){
+            for(IDX idofu = 0; idofu < trace.elL.nbasis(); ++idofu){
+                for(IDX iequ = 0; iequ < ncomp; ++iequ){
                     // get the compact column index for this dof and component 
-                    std::size_t jcol = uL.get_layout()(FE::compact_index{idofu, iequ});
+                    IDX jcol = uL.get_layout()[idofu, iequ];
 
                     // perturb
                     T old_val = uL[idofu, iequ];
@@ -208,15 +207,15 @@ namespace ICEICLE::SOLVERS {
                     disc.traceIntegral(trace, fespace.meshptr->nodes, uL, uR, resLp, resRp);
 
                     // fill jacobian for this perturbation
-                    for(std::size_t idoff = 0; idoff < trace.elL.nbasis(); ++idoff) {
-                        for(std::size_t ieqf = 0; ieqf < ncomp; ++ieqf){
-                            std::size_t irow = uL.get_layout()(FE::compact_index{idoff, ieqf});
+                    for(IDX idoff = 0; idoff < trace.elL.nbasis(); ++idoff) {
+                        for(IDX ieqf = 0; ieqf < ncomp; ++ieqf){
+                            IDX irow = uL.get_layout()[idoff, ieqf];
                             jacL[irow, jcol] += (resLp[idoff, ieqf] - resL[idoff, ieqf]) / eps_scaled;
                         }
                     }
-                    for(std::size_t idoff = 0; idoff < trace.elR.nbasis(); ++idoff) {
-                        for(std::size_t ieqf = 0; ieqf < ncomp; ++ieqf){
-                            std::size_t irow = uR.get_layout()(FE::compact_index{idoff, ieqf});
+                    for(IDX idoff = 0; idoff < trace.elR.nbasis(); ++idoff) {
+                        for(IDX ieqf = 0; ieqf < ncomp; ++ieqf){
+                            IDX irow = uR.get_layout()[idoff, ieqf];
                             jacR[irow, jcol] += (resRp[idoff, ieqf] - resR[idoff, ieqf]) / eps_scaled;
                         }
                     }
@@ -238,10 +237,10 @@ namespace ICEICLE::SOLVERS {
             jacR = mdspan{jacR_data.data(), extents{resR.size(), uR.size()}};
             std::fill_n(jacL_data.begin(), jacL.size(), 0);
             std::fill_n(jacR_data.begin(), jacR.size(), 0);
-            for(std::size_t idofu = 0; idofu < trace.elR.nbasis(); ++idofu){
-                for(std::size_t iequ = 0; iequ < ncomp; ++iequ){
+            for(IDX idofu = 0; idofu < trace.elR.nbasis(); ++idofu){
+                for(IDX iequ = 0; iequ < ncomp; ++iequ){
                     // get the compact column index for this dof and component 
-                    std::size_t jcol = uR.get_layout()(FE::compact_index{idofu, iequ});
+                    IDX jcol = uR.get_layout()[idofu, iequ];
 
                     // perturb
                     T old_val = uR[idofu, iequ];
@@ -255,15 +254,15 @@ namespace ICEICLE::SOLVERS {
                     disc.traceIntegral(trace, fespace.meshptr->nodes, uL, uR, resLp, resRp);
 
                     // fill jacobian for this perturbation
-                    for(std::size_t idoff = 0; idoff < trace.elL.nbasis(); ++idoff) {
-                        for(std::size_t ieqf = 0; ieqf < ncomp; ++ieqf){
-                            std::size_t irow = uL.get_layout()(FE::compact_index{idoff, ieqf});
+                    for(IDX idoff = 0; idoff < trace.elL.nbasis(); ++idoff) {
+                        for(IDX ieqf = 0; ieqf < ncomp; ++ieqf){
+                            IDX irow = uL.get_layout()[idoff, ieqf];
                             jacL[irow, jcol] += (resLp[idoff, ieqf] - resL[idoff, ieqf]) / eps_scaled;
                         }
                     }
-                    for(std::size_t idoff = 0; idoff < trace.elR.nbasis(); ++idoff) {
-                        for(std::size_t ieqf = 0; ieqf < ncomp; ++ieqf){
-                            std::size_t irow = uR.get_layout()(FE::compact_index{idoff, ieqf});
+                    for(IDX idoff = 0; idoff < trace.elR.nbasis(); ++idoff) {
+                        for(IDX ieqf = 0; ieqf < ncomp; ++ieqf){
+                            IDX irow = uR.get_layout()[idoff, ieqf];
                             jacR[irow, jcol] += (resRp[idoff, ieqf] - resR[idoff, ieqf]) / eps_scaled;
                         }
                     }
@@ -299,7 +298,7 @@ namespace ICEICLE::SOLVERS {
             disc.domainIntegral(el, fespace.meshptr->nodes, u_el, res_el);
 
             // get the global index to the start of the contiguous component x dof range for L/R elem
-            std::size_t glob_index_el = u.get_layout()(FE::fe_index{(std::size_t) el.elidx, 0, 0});
+            std::size_t glob_index_el = u.get_layout()[el.elidx, 0, 0];
             // send residual to global residual 
             FE::scatter_elspan(el.elidx, 1.0, res_el, 1.0, res);
 
@@ -307,10 +306,10 @@ namespace ICEICLE::SOLVERS {
             T eps_scaled = std::max(epsilon, res_el.vector_norm() * epsilon);
 
             // perturb and form jacobian wrt u_el
-            for(std::size_t idofu = 0; idofu < el.nbasis(); ++idofu){
-                for(std::size_t iequ = 0; iequ < ncomp; ++iequ){
+            for(IDX idofu = 0; idofu < el.nbasis(); ++idofu){
+                for(IDX iequ = 0; iequ < ncomp; ++iequ){
                     // get the compact column index for this dof and component 
-                    std::size_t jcol = u_el.get_layout()(FE::compact_index{idofu, iequ});
+                    IDX jcol = u_el.get_layout()[idofu, iequ];
 
                     // perturb
                     T old_val = u_el[idofu, iequ];
@@ -323,9 +322,9 @@ namespace ICEICLE::SOLVERS {
                     disc.domainIntegral(el, fespace.meshptr->nodes, u_el, resp_el);
 
                     // fill jacobian for this perturbation
-                    for(std::size_t idoff = 0; idoff < el.nbasis(); ++idoff) {
-                        for(std::size_t ieqf = 0; ieqf < ncomp; ++ieqf){
-                            std::size_t irow = u_el.get_layout()(FE::compact_index{idoff, ieqf});
+                    for(IDX idoff = 0; idoff < el.nbasis(); ++idoff) {
+                        for(IDX ieqf = 0; ieqf < ncomp; ++ieqf){
+                            IDX irow = u_el.get_layout()[idoff, ieqf];
                             jac_el[irow, jcol] += (resp_el[idoff, ieqf] - res_el[idoff, ieqf]) / eps_scaled;
                         }
                     }

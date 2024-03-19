@@ -5,7 +5,6 @@
 #pragma once
 #include <cstdlib>
 #include <span>
-#include <type_traits>
 
 namespace FE {
 
@@ -28,10 +27,10 @@ namespace FE {
     static constexpr std::size_t dynamic_ncomp = std::dynamic_extent;
 
     /**
-     * @brief determine if the number of vector components represents a dynamic number 
+     * @brief determine if a size field represents a dynamic extent
      */
     template<std::size_t ncomp>
-    struct is_dynamic_ncomp {
+    struct is_dynamic_size {
 
         /// the boolean value
         inline static constexpr bool value = (ncomp == std::dynamic_extent);
@@ -75,7 +74,7 @@ namespace FE {
     struct compact_index_extents {
         std::size_t ndof = 0;
 
-        std::size_t nv = (is_dynamic_ncomp<ncomp>::value) ?
+        std::size_t nv = (is_dynamic_size<ncomp>::value) ?
             0 : ncomp;
 
         /// get the ncomp template argument

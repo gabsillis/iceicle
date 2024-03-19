@@ -4,8 +4,9 @@
  * reminiscent of mdspan
  */
 #pragma once
-#include "Numtool/tmp_flow_control.hpp"
+#include "iceicle/fe_function/el_layout.hpp"
 #include <cstdlib>
+#include <ostream>
 #include <span>
 #include <cmath>
 #include <type_traits>
@@ -60,10 +61,15 @@ namespace FE {
     >
     class fespan {
         public:
-            using pointer = T*;
-            using const_pointer = const T*;
+            // ============
+            // = Typedefs =
+            // ============
+            using value_type = T;
+            using pointer = AccessorPolicy::data_handle_type;
             using reference = AccessorPolicy::reference;
-            using const_reference = const reference;
+            using index_type = LayoutPolicy::index_type;
+            using size_type = std::make_unsigned_t<index_type>;
+            using dof_mapping_type = LayoutPolicy::dof_mapping_type;
 
         private:
             /// The pointer to the data being accessed
@@ -77,25 +83,44 @@ namespace FE {
 
         public:
 
+            constexpr fespan(pointer data, const dof_mapping_type &dof_map) 
+            noexcept : _ptr(data), _layout{dof_map}, _accessor{} 
+            {}
+
+            constexpr fespan(pointer data, const dof_mapping_type &dof_map, const AccessorPolicy &_accessor) 
+            noexcept : _ptr(data), _layout{dof_map}, _accessor{_accessor} 
+            {}
+
             template<typename... LayoutArgsT>
             constexpr fespan(pointer data, LayoutArgsT&&... layout_args) 
-            noexcept : _ptr(data), _layout{layout_args...}, _accessor{} 
+            noexcept : _ptr(data), _layout{std::forward<LayoutArgsT>(layout_args)...}, _accessor{} 
             {}
-
-            template<typename... LayoutArgsT>
-            constexpr fespan(pointer data, LayoutArgsT&&... layout_args, const AccessorPolicy &_accessor) 
-            noexcept : _ptr(data), _layout{layout_args...}, _accessor{_accessor} 
-            {}
+            // ===================
+            // = Size Operations =
+            // ===================
 
             /** @brief get the upper bound of the 1D index space */
-            constexpr std::size_t size() const noexcept { return _layout.size(); }
+            constexpr size_type size() const noexcept { return _layout.size(); }
+
+            /** @brief get the number of elements represented in the layout */
+            [[nodiscard]] constexpr size_type nelem() const noexcept { return _layout.nelem(); }
+
+            /** @brief get the number of degrees of freedom for a given element represented in the layout */
+            [[nodiscard]] constexpr size_type ndof(index_type ielem) const noexcept { return _layout.ndof(ielem); }
+
+            /** @brief get the number of vector components */
+            [[nodiscard]] constexpr size_type nv() const noexcept { return _layout.nv(); }
+
+            // ===============
+            // = Data Access =
+            // ===============
 
             /** @brief index into the data using a fe_index 
              * @param fe_index represents the element, dof, and vector component indices 
              * @return a reference to the data 
              */
-            constexpr reference operator[](const fe_index &feidx) const {
-                return _accessor.access(_ptr, _layout.operator()(feidx));
+            constexpr reference operator[](index_type ielem, index_type idof, index_type iv) const {
+                return _accessor.access(_ptr, _layout.operator[](ielem, idof, iv));
             }
 
             /**
@@ -114,15 +139,31 @@ namespace FE {
             requires(std::is_same_v<AccessorPolicy, default_accessor<T>>) 
             { return _ptr; }
 
+            // ===========
+            // = Utility =
+            // ===========
+
             /**
-             * @brief create the element layout that matches the global layout 
-             * will pick the most efficient layout for 
-             * gather/scatter operations and data extraction
+             * @brief create an element local layout 
+             * from the global layout and element index 
+             * This can be used for gather and scatter operations
              * @param iel the element index 
              * @return the element layout 
              */
             constexpr auto create_element_layout(std::size_t iel){
-                return _layout.create_element_layout(iel);
+                constexpr int nv_static = LayoutPolicy::static_extent();
+                if constexpr (is_dynamic_size<nv_static>::value){
+                    return compact_layout_right{
+                        static_cast<decltype(LayoutPolicy::index_type)>(_layout.ndof()),
+                        static_cast<decltype(LayoutPolicy::index_type)>(_layout.nv())
+                    };
+                } else {
+                    return compact_layout_right{ 
+                        static_cast<index_type>(_layout.ndof(iel)),
+                        std::integral_constant<std::size_t, nv_static>{}
+                    };
+
+                }
             }
 
             /**
@@ -132,8 +173,6 @@ namespace FE {
              */
             constexpr fespan<T, LayoutPolicy, AccessorPolicy> &operator=( T value )
             {
-                // TODO: be more specific about the index space
-                // maybe by delegating to the LayoutPolicy
                 for(int i = 0; i < size(); ++i){
                     _ptr[i] = value;
                 }
@@ -167,17 +206,17 @@ namespace FE {
                 }
             }
 
-            /**
-             * @brief get the number of vector components for a single dof 
-             */
-            constexpr std::size_t get_ncomp() const {
-                return _layout.get_ncomp();
-            }
+            friend std::ostream& operator<<( std::ostream& os, const fespan<T, LayoutPolicy, AccessorPolicy>& fedata );
     };
 
     // deduction guides
     template<typename T, class LayoutPolicy>
     fespan(T *data, const LayoutPolicy &) -> fespan<T, LayoutPolicy>;
+
+    template<class T, class LayoutPolicy, class AccessorPolicy>
+    std::ostream& operator<<(std::ostream& os, const fespan<T, LayoutPolicy, AccessorPolicy>& fedata){
+
+    }
 
     /**
      * @brief cmpute a vector scalar product and add to a vector 
@@ -197,7 +236,13 @@ namespace FE {
                 ydata[i] += alpha * xdata[i];
             }
         } else {
-            // TODO: 
+            for(int ielem = 0; ielem < x.nelem(); ++ielem){
+                for(int idof = 0; idof < x.ndof(ielem); ++idof){
+                    for(int iv = 0; iv < x.nv(); ++iv){
+                        y[ielem, idof, iv] += alpha * x[ielem, idof, iv];
+                    }
+                }
+            }
         }
     }
 
@@ -213,7 +258,14 @@ namespace FE {
             // do in a single loop over the 1d index space 
             std::copy_n(x.data(), x.size(), y.data());
         } else {
-            // TODO: 
+            // TODO: more assurances that x and y still share a space
+            for(int ielem = 0; ielem < x.nelem(); ++ielem){
+                for(int idof = 0; idof < x.ndof(ielem); ++idof){
+                    for(int iv = 0; iv < x.nv(); ++iv){
+                        y[ielem, idof, iv] = x[ielem, idof, iv];
+                    }
+                }
+            }
         }
     }
 
@@ -242,10 +294,14 @@ namespace FE {
     >
     class elspan{
         public:
-            using pointer = T*;
-            using const_pointer = const T*;
+            // ============
+            // = Typedefs =
+            // ============
+            using value_type = T;
+            using pointer = AccessorPolicy::data_handle_type;
             using reference = AccessorPolicy::reference;
-            using const_reference = const reference;
+            using index_type = LayoutPolicy::index_type;
+            using size_type = std::make_unsigned_t<index_type>;
 
         private:
             /// The pointer to the data being accessed
@@ -269,27 +325,30 @@ namespace FE {
             noexcept : _ptr(data), _layout{layout_args...}, _accessor{_accessor} 
             {}
 
+            // ===================
+            // = Size Operations =
+            // ===================
+
             /** @brief get the upper bound of the 1D index space */
-            constexpr std::size_t size() const noexcept { return _layout.size(); }
+            constexpr size_type size() const noexcept { return _layout.size(); }
 
-            /** @brief get the extents of the multidimensional index space */
-            constexpr LayoutPolicy::extents_type extents() const noexcept { return _layout.extents(); }
+            /** @brief get the number of degrees of freedom for a given element represented in the layout */
+            [[nodiscard]] constexpr size_type ndof() const noexcept { return _layout.ndof(); }
 
-            /** @brief index into the data using a compact_index
-             * @param idx the compact_index which represents a multidimensional index into element local data
-             * @return a reference to the data 
-             */
-            constexpr reference operator[](const compact_index &idx) const {
-                return _accessor.access(_ptr, _layout.operator()(idx));
-            }
+            /** @brief get the number of vector components */
+            [[nodiscard]] constexpr size_type nv() const noexcept { return _layout.nv(); }
+
+            // ===============
+            // = Data Access =
+            // ===============
 
             /** @brief index into the data using the set order
              * @param idof the degree of freedom index 
              * @param iv the vector index
              * @return a reference to the data 
              */
-            constexpr reference operator[](std::size_t idof, std::size_t iv){
-                return _accessor.access(_ptr, _layout.operator()(FE::compact_index{.idof = idof, .iv = iv}));
+            constexpr reference operator[](index_type idof, index_type iv){
+                return _accessor.access(_ptr, _layout[idof, iv]);
             }
 
             /**
@@ -307,6 +366,11 @@ namespace FE {
             constexpr const pointer data() const noexcept 
             requires(std::is_same_v<AccessorPolicy, default_accessor<T>>) 
             { return _ptr; }
+
+
+            // ===========
+            // = Utility =
+            // ===========
 
             /** @brief get the layout */
             constexpr inline LayoutPolicy &get_layout() { return _layout; }
@@ -359,10 +423,9 @@ namespace FE {
              * WARNING: must be zero'd out
              */
             void contract_dofs(const T *__restrict__ dof_vec, T *__restrict__ eqn_out){
-                compact_index_extents extents = _layout.extents();
-                for(std::size_t idof = 0; idof < extents.ndof; ++idof){
-                    for(std::size_t iv = 0; iv < extents.nv; ++iv){
-                        eqn_out[iv] += this->operator[](compact_index{.idof = idof, .iv = iv}) * dof_vec[idof];
+                for(std::size_t idof = 0; idof < ndof(); ++idof){
+                    for(std::size_t iv = 0; iv < nv(); ++iv){
+                        eqn_out[iv] += this->operator[](idof, iv) * dof_vec[idof];
                     }
                 }
             }
@@ -395,14 +458,12 @@ namespace FE {
                     || in_mdspan::rank() == 3, 
                 "only defined for ranks 2 and 3");
                 // get the equation extent
-                static constexpr std::size_t eq_extent = (is_dynamic_ncomp<LayoutPolicy::extents_type::get_ncomp()>::value)
-                ? std::dynamic_extent : LayoutPolicy::extents_type::get_ncomp();
-
-                static constexpr std::size_t rank_dynamic = ((eq_extent == std::dynamic_extent) ? 1 : 0);
+                static constexpr std::size_t eq_static_extent = LayoutPolicy::static_extent();
+                static constexpr std::size_t rank_dynamic = ((eq_static_extent == std::dynamic_extent) ? 1 : 0);
 
                 // build up the array of dynamic extents
                 std::array<int, rank_dynamic> dynamic_extents{};
-                if constexpr(eq_extent == std::dynamic_extent) dynamic_extents[0] = extents().nv;
+                if constexpr(eq_static_extent == std::dynamic_extent) dynamic_extents[0] = nv();
 //                int iarr = 1;
 //                NUMTOOL::TMP::constexpr_for_range<1, dof_mdspan.rank()>([&]<int iextent>{
 //                    if constexpr (dof_mdspan.static_extent(iextent) == std::dynamic_extent){
@@ -410,14 +471,14 @@ namespace FE {
 //                    }
 //                });
                 if constexpr(in_mdspan::rank() == 1){
-                    std::experimental::extents<int, eq_extent> result_extents{dynamic_extents};
+                    std::experimental::extents<int, eq_static_extent> result_extents{dynamic_extents};
                     std::experimental::mdspan eq_mdspan{result_data, result_extents};
 
                     // zero fill
                     std::fill_n(result_data, eq_mdspan.size(), 0.0);
 
-                    for(int idof = 0; idof < extents().ndof; ++idof){
-                        for(int iv = 0; iv < extents().nv; ++iv){
+                    for(int idof = 0; idof < ndof(); ++idof){
+                        for(int iv = 0; iv < nv(); ++iv){
                             eq_mdspan[iv] +=
                                 operator[](idof, iv) * dof_mdspan[idof];
                         }
@@ -429,7 +490,7 @@ namespace FE {
                     // set up the extents and construc the mdspan
                     std::experimental::extents<
                         int,
-                        eq_extent,
+                        eq_static_extent,
                         ext_1
                     > result_extents{dynamic_extents};
                     std::experimental::mdspan eq_mdspan{result_data, result_extents};
@@ -438,8 +499,8 @@ namespace FE {
                     std::fill_n(result_data, eq_mdspan.size(), 0.0);
 
                     // perform the contraction 
-                    for(int idof = 0; idof < extents().ndof; ++idof){
-                        for(int iv = 0; iv < extents().nv; ++iv){
+                    for(int idof = 0; idof < ndof(); ++idof){
+                        for(int iv = 0; iv < nv(); ++iv){
                             for(int iext1 = 0; iext1 < ext_1; ++iext1){
                                 eq_mdspan[iv, iext1] += 
                                     operator[](idof, iv) * dof_mdspan[idof, iext1];
@@ -455,7 +516,7 @@ namespace FE {
                     // set up the extents and construc the mdspan
                     std::experimental::extents<
                         int,
-                        eq_extent,
+                        eq_static_extent,
                         ext_1,
                         ext_2
                     > result_extents{dynamic_extents};
@@ -465,8 +526,8 @@ namespace FE {
                     std::fill_n(result_data, eq_mdspan.size(), 0.0);
 
                     // perform the contraction 
-                    for(int idof = 0; idof < extents().ndof; ++idof){
-                        for(int iv = 0; iv < extents().nv; ++iv){
+                    for(int idof = 0; idof < ndof(); ++idof){
+                        for(int iv = 0; iv < nv(); ++iv){
                             for(int iext1 = 0; iext1 < ext_1; ++iext1){
                                 for(int iext2 = 0; iext2 < ext_2; ++iext2){
                                     eq_mdspan[iv, iext1, iext2] += 
@@ -518,13 +579,13 @@ namespace FE {
             // memcopy/memmove poggers
             std::copy_n(
                 &( fedata[fe_index{iel, 0, 0}] ),
-                eldata.extents().ndof * eldata.extents().nv,
+                eldata.ndof() * eldata.nv(),
                 eldata.data());
         } else {
             // NOTE: assuming extents are equivalent
-            for(std::size_t idof = 0; idof < eldata.extents().ndof; ++idof){
-                for(std::size_t iv = 0; iv < eldata.extents().nv; ++iv){
-                    eldata[compact_index{idof, iv}] = fedata[fe_index{iel, idof, iv}];
+            for(std::size_t idof = 0; idof < eldata.ndof(); ++idof){
+                for(std::size_t iv = 0; iv < eldata.nv(); ++iv){
+                    eldata[idof, iv] = fedata[iel, idof, iv];
                 }
             }
         }
@@ -551,10 +612,11 @@ namespace FE {
     > inline void scatter_elspan(
         std::size_t iel,
         T alpha,
-        const elspan<T, LocalLayoutPolicy, LocalAccessorPolicy> eldata,
+        elspan<T, LocalLayoutPolicy, LocalAccessorPolicy> eldata,
         T beta,
         fespan<T, GlobalLayoutPolicy> fedata
     ) {
+        using index_type = LocalLayoutPolicy::index_type;
 
         if constexpr (
             is_equivalent_el_layout<LocalLayoutPolicy, GlobalLayoutPolicy>::value 
@@ -568,11 +630,11 @@ namespace FE {
             }
         } else {
             // NOTE: assuming extents are equivalent 
-            for(std::size_t idof = 0; idof < eldata.extents().ndof; ++idof){
-                for(std::size_t iv = 0; iv < eldata.extents().nv; ++iv){
-                    fedata[fe_index{iel, idof, iv}] = 
-                        alpha * eldata[compact_index{idof, iv}]
-                        + beta * fedata[fe_index{iel, idof, iv}];
+            for(index_type idof = 0; idof < eldata.ndof(); ++idof){
+                for(index_type iv = 0; iv < eldata.nv(); ++iv){
+                    fedata[iel, idof, iv] = 
+                        alpha * eldata[idof, iv]
+                        + beta * fedata[iel, idof, iv];
                 }
             }
         }

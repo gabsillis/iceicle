@@ -87,11 +87,11 @@ public:
         const StopCondition &stop_condition
     )
     requires specifies_ncomp<disc_class> && TerminationCondition<StopCondition>
-    : res_data(fespace.dg_offsets.calculate_size_requirement(disc_class::dnv_comp)),
-      res1_data(fespace.dg_offsets.calculate_size_requirement(disc_class::dnv_comp)),
-      res2_data(fespace.dg_offsets.calculate_size_requirement(disc_class::dnv_comp)),
-      res3_data(fespace.dg_offsets.calculate_size_requirement(disc_class::dnv_comp)),
-      u_stage_data(fespace.dg_offsets.calculate_size_requirement(disc_class::dnv_comp)),
+    : res_data(fespace.dg_map.calculate_size_requirement(disc_class::dnv_comp)),
+      res1_data(fespace.dg_map.calculate_size_requirement(disc_class::dnv_comp)),
+      res2_data(fespace.dg_map.calculate_size_requirement(disc_class::dnv_comp)),
+      res3_data(fespace.dg_map.calculate_size_requirement(disc_class::dnv_comp)),
+      u_stage_data(fespace.dg_map.calculate_size_requirement(disc_class::dnv_comp)),
       timestep{timestep}, stop_condition{stop_condition}
     {}
 
@@ -118,7 +118,7 @@ public:
         FE::fespan res{res_data.data(), u.get_layout()};
 
         // storage for rhs of mass matrix equation
-        int max_ndof = fespace.dg_offsets.max_el_size_reqirement(1);
+        int max_ndof = fespace.dg_map.max_el_size_reqirement(1);
         std::vector<T> b(max_ndof);
         std::vector<T> du(max_ndof);
 
@@ -140,19 +140,19 @@ public:
                 PermutationMatrix<unsigned int> pi = decompose_lu(mass);
 
                 const std::size_t ndof = el.nbasis();
-                for(std::size_t ieqn = 0; ieqn < disc_class::dnv_comp; ++ieqn){
+                for(IDX ieqn = 0; ieqn < disc_class::dnv_comp; ++ieqn){
 
                     // copy the residual for each degree of freedom to the rhs 
-                    for(std::size_t idof = 0; idof < el.nbasis(); ++idof){
-                        b[idof] = res[FE::fe_index{(std::size_t) el.elidx, idof, ieqn}];
+                    for(IDX idof = 0; idof < el.nbasis(); ++idof){
+                        b[idof] = res[el.elidx, idof, ieqn];
                     }
 
                     // solve the matrix equation 
                     sub_lu(mass, pi, b.data(), du.data());
 
                     // TODO: add to u 
-                    for(std::size_t idof = 0; idof < el.nbasis(); ++idof){
-                        res_stage[FE::fe_index{(std::size_t) el.elidx, idof, ieqn}] += du[idof];
+                    for(IDX idof = 0; idof < el.nbasis(); ++idof){
+                        res_stage[el.elidx, idof, ieqn] += du[idof];
                     }
                 }
             }

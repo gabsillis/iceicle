@@ -6,111 +6,173 @@
 #pragma once
 #include "iceicle/element/finite_element.hpp"
 #include "iceicle/fe_function/layout_enums.hpp"
+#include <span>
 #include <type_traits>
 namespace FE {
 
     /**
      * @brief memory layout for data that is compact to a single element 
+     * with vector-component fastest access
      *
      * This functions as a LayoutPolicy for elspan
-     * TODO: figure out how to have this double as a layoutpolicy for fespan
-     * might need to remove size calculations from layout policy
      *
-     * @tparam T the data type 
-     * @tparam ncomp the number of vector components
-     * @tparam order the order of the dofs vs vector components in memory 
-     *               LEFT corresponds to the left index in C-style indexing
+     * @tparam IDX the index type 
+     * @tparam vextent the number of vector components per dof
      */
-    template<
-        typename T,
-        std::size_t ncomp = dynamic_ncomp,
-        LAYOUT_VECTOR_ORDER order = DOF_LEFT 
-    >
-    class compact_layout {
+    template<typename IDX, std::size_t vextent>
+    struct compact_layout_right {
+
+        // ============
+        // = Typedefs =
+        // ============
+        using index_type = IDX;
+        using size_type = std::make_unsigned_t<IDX>;
+
+        // ===========
+        // = Members =
+        // ===========
 
         /// dynamic number of vector components 
-        std::enable_if<is_dynamic_ncomp<ncomp>::value, int> ncomp_d;
+        std::enable_if<is_dynamic_size<vextent>::value, index_type> nv_d;
 
         // the number of degrees of freedom
-        std::size_t ndof;
+        std::size_t _ndof;
 
-        /** @brief accessor for the number of components that abstracts compile_time vs dynamic */
-        inline constexpr std::size_t get_ncomp() const noexcept {
-            if constexpr(is_dynamic_ncomp<ncomp>::value){
-                return ncomp_d;
-            } else {
-                return ncomp;
-            }
-        }
-
-        public:
-
-        using extents_type = compact_index_extents<ncomp>;
+        // ================
+        // = Constructors =
+        // ================
 
         /**
          * @brief Constructor 
          * @param el the element this will represent compact data for 
-         * @param ncomp_d (enabled if dynamic ncomponents) the number of vector components
+         * @param nv_d the number of vector components per dof
          */
-        template<typename IDX, int ndim>
-        constexpr compact_layout(
+        template<class T, int ndim>
+        constexpr compact_layout_right(
             const ELEMENT::FiniteElement<T, IDX, ndim> &el,
-            std::enable_if<is_dynamic_ncomp<ncomp>::value, std::size_t> ncomp_d
-        ) : ncomp_d(ncomp_d), ndof(el.nbasis()){}
+            index_type nv_d
+        ) noexcept requires(is_dynamic_size<vextent>::value) 
+        : nv_d(nv_d), _ndof{el.nbasis()}{}
 
         /**
          * @brief Constructor 
          * @param el the element this will represent compact data for 
          */
-        template<typename IDX, int ndim>
-        constexpr compact_layout(
+        template<typename T, int ndim>
+        constexpr compact_layout_right(
             const ELEMENT::FiniteElement<T, IDX, ndim> &el
-        ) requires(!is_dynamic_ncomp<ncomp>::value) : ndof(el.nbasis()){}
+        ) noexcept requires(!is_dynamic_size<vextent>::value)
+        : _ndof{el.nbasis()}{}
 
         /**
          * @brief Constructor
          * @param ndof the number of degrees of freedom in this element 
-         * @param ncomp_d (enabled if dynamic ncomponents) the number of vector components
+         * @param nv_d the number of vector components per dof
          */
-        constexpr compact_layout(
-            int ndof,
-            std::enable_if<is_dynamic_ncomp<ncomp>::value, std::size_t> ncomp_d
-        ) : ncomp_d(ncomp_d), ndof(ndof) {}
+        constexpr compact_layout_right(index_type ndof, index_type nv_d) 
+        noexcept requires(is_dynamic_size<vextent>::value)
+        : nv_d(nv_d), _ndof{ndof} {}
 
         /**
          * @brief Constructor
          * @param ndof the number of degrees of freedom in this element 
-         * @param ncomp_d (enabled if dynamic ncomponents) the number of vector components
          */
-        constexpr compact_layout(
-            int ndof
-        ) requires(!is_dynamic_ncomp<ncomp>::value): ndof(ndof) {}
+        constexpr compact_layout_right( index_type ndof ) noexcept
+        requires(!is_dynamic_size<vextent>::value)
+        : _ndof{ndof} {}
 
         /**
-         * @brief convert a multidimensional index to a single offset 
-         * @brief idx the compact multidimensional index 
-         * @return a 1d index offset into the element compact data
+         * @brief Constructor
+         * @param ndof the number of degrees of freedom in this element 
+         * @param the extent for argument deduction
          */
-        constexpr std::size_t operator()(const compact_index &idx) const noexcept {
-            if constexpr (order == DOF_LEFT) {
-                return idx.idof * get_ncomp() + idx.iv;
-            } else {
-                return ndof * idx.iv + idx.idof;
-            }
+        constexpr compact_layout_right( index_type ndof, std::integral_constant<std::size_t, vextent>) noexcept
+        requires(!is_dynamic_size<vextent>::value)
+        : _ndof{ndof} {}
+
+        compact_layout_right(const compact_layout_right<IDX, vextent>& other) noexcept = default;
+        compact_layout_right(compact_layout_right<IDX, vextent>&& other) noexcept = default;
+
+        compact_layout_right<IDX, vextent>& operator=(
+                const compact_layout_right<IDX, vextent>& other) noexcept = default;
+        compact_layout_right<IDX, vextent>& operator=(
+                compact_layout_right<IDX, vextent>&& other) noexcept = default;
+
+        // ==============
+        // = Properties =
+        // ==============
+
+        /**
+         * @brief consecutive local degrees of freedom (ignoring vector components)
+         * are contiguous in the layout
+         * meaning that the data for a an element can be block copied 
+         * to a elspan provided the layout parameters are the same
+         */
+        inline static constexpr bool local_dof_contiguous() noexcept { return true; }
+
+        /// @brief static access to the extents 
+        inline static constexpr std::size_t static_extent() noexcept {
+            return vextent;
         }
 
+        // =========
+        // = Sizes =
+        // =========
+
+        /// @brief get the number of degrees of freedom
+        [[nodiscard]] constexpr size_type ndof() const noexcept { 
+            return _ndof;
+        }
+
+        /// @brief get the number of vector components
+        [[nodiscard]] inline constexpr std::size_t nv() const noexcept {
+            if constexpr(is_dynamic_size<vextent>::value){
+                return nv_d;
+            } else {
+                return vextent;
+            }
+        }
         /**
          * @brief get the size of the compact index space 
          * @return the size of the compact index space 
          */
-        constexpr std::size_t size() const noexcept { return ndof * get_ncomp(); }
+        constexpr std::size_t size() const noexcept { return ndof() * nv(); }
+
+
+        // ============
+        // = Indexing =
+        // ============
+#ifndef NDEBUG 
+        inline static constexpr bool index_noexcept = false;
+#else 
+        inline static constexpr bool index_noexcept = true;
+#endif
 
         /**
-         * @brief get the extents of the compact index space 
+         * Get the result of the mapping from an index double
+         * to the one dimensional index of the elment 
+         * @param idof the degree of freedom index 
+         * @param iv the vector component index
          */
-        constexpr extents_type extents() const noexcept {
-            return extents_type{.ndof = ndof, .nv = (std::size_t) get_ncomp()};
+        [[nodiscard]] constexpr index_type operator[](
+            index_type idof,
+            index_type iv
+        ) const noexcept(index_noexcept) {
+#ifndef NDEBUG
+            // Bounds checking version in debug
+            if(idof < 0  || idof >= ndof()  ) throw std::out_of_range("Dof index out of range");
+            if(iv < 0    || iv >= nv()      ) throw std::out_of_range("Vector compoenent index out of range");
+#endif
+           return idof * nv() + iv; 
         }
-
     };
+
+    // Deduction Guides
+    template<class T, class IDX, int ndim>
+    compact_layout_right(const ELEMENT::FiniteElement<T, IDX, ndim> &, IDX) -> compact_layout_right<IDX, std::dynamic_extent>;
+    template<class index_type>
+    compact_layout_right( index_type )  -> compact_layout_right<index_type, std::dynamic_extent> ;
+
+    template<class index_type, std::size_t vextent>
+    compact_layout_right( index_type , std::integral_constant<std::size_t, vextent>) -> compact_layout_right<index_type, vextent> ;
 }
