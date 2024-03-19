@@ -142,15 +142,17 @@ namespace FE {
 
     template<class MapT, std::size_t vextent>
     fe_layout_right(const MapT&, std::integral_constant<std::size_t, vextent>)
-        -> fe_layout_right<typename MapT::size_type, MapT, vextent>; 
+        -> fe_layout_right<typename MapT::index_type, MapT, vextent>; 
 
     // === Type Aliases for clarity ===
 
-    // layout right using dg map
-    template<class IDX, std::size_t vextent>
-    using dg_layout_right = fe_layout_right<IDX, dg_dof_map<IDX>, vextent>;
-
-    // default dg layout is layout right
-    template<class IDX, std::size_t vextent>
-    using dg_layout = dg_layout_right<IDX, vextent>;
+    // Insert explicative laden rant about clang not supporting a c++20 feature in 2024
+//
+//    // layout right using dg map
+//    template<class IDX, std::size_t vextent>
+//    using dg_layout_right = fe_layout_right<IDX, dg_dof_map<IDX>, vextent>;
+//
+//    // default dg layout is layout right
+//    template<class IDX, std::size_t vextent>
+//    using dg_layout = dg_layout_right<IDX, vextent>;
 }

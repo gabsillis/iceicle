@@ -8,6 +8,7 @@
 #include <cstdlib>
 #include <ostream>
 #include <span>
+#include <format>
 #include <cmath>
 #include <type_traits>
 #include <iceicle/fe_function/layout_enums.hpp>
@@ -205,18 +206,32 @@ namespace FE {
                     return std::pow(sum, 1.0 / order);
                 }
             }
-
-            friend std::ostream& operator<<( std::ostream& os, const fespan<T, LayoutPolicy, AccessorPolicy>& fedata );
+           
+            /// @brief output to a stream all of the data 
+            /// donote each element 
+            /// each basis function gets its own row 
+            /// vector components for each column
+            friend std::ostream& operator<< ( std::ostream& os, const fespan<T, LayoutPolicy, AccessorPolicy>& fedata ) {
+                constexpr int field_width = 20;
+                constexpr int precision = 10;
+                os << "=== Fespan Output ===" << std::endl;
+                using index_type = LayoutPolicy::index_type;
+                for(index_type ielem = 0; ielem < fedata.nelem(); ++ielem){
+                    os << " - Element " << ielem << ":" << std::endl;
+                    for(index_type idof = 0; idof < fedata.ndof(); ++idof){
+                        for(index_type iv = 0; iv < fedata.nv(); ++iv){
+                            os << std::format("{:{}.{}e}", fedata[ielem, idof, iv], field_width, precision);
+                        }
+                        os << std::endl;
+                    }
+                }
+                return os;
+            }
     };
 
     // deduction guides
     template<typename T, class LayoutPolicy>
     fespan(T *data, const LayoutPolicy &) -> fespan<T, LayoutPolicy>;
-
-    template<class T, class LayoutPolicy, class AccessorPolicy>
-    std::ostream& operator<<(std::ostream& os, const fespan<T, LayoutPolicy, AccessorPolicy>& fedata){
-
-    }
 
     /**
      * @brief cmpute a vector scalar product and add to a vector 

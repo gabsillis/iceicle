@@ -47,6 +47,7 @@ int main(int argc, char *argv[]){
     // using declarations
     using namespace NUMTOOL::TENSOR::FIXED_SIZE;
     using namespace ICEICLE::UTIL;
+    using namespace ICEICLE::TMP;
 
     // Get the floating point and index types from 
     // cmake configuration
@@ -208,7 +209,7 @@ int main(int argc, char *argv[]){
     // = set up a solution vector =
     // ============================
     constexpr int neq = decltype(heat_equation)::nv_comp;
-    FE::dg_layout u_layout{fespace.dg_map, std::integral_constant<std::size_t, neq>{}};
+    FE::fe_layout_right u_layout{fespace.dg_map, to_size<neq>{}};
     std::vector<T> u_data(u_layout.size());
     FE::fespan u{u_data.data(), u_layout};
 

@@ -231,7 +231,7 @@ TEST(test_fespace, test_dg_projection){
     DISC::Projection<double, int, ndim, neq> projection{projfunc};
 
     T *u = new T[fespace.ndof_dg() * neq](); // 0 initialized
-    FE::dg_layout<IDX, neq> felayout{fespace.dg_map};
+    FE::fe_layout_right felayout{fespace.dg_map, ICEICLE::TMP::to_size<neq>{}};
     FE::fespan u_span{u, felayout};
 
     // solve the projection 

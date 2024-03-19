@@ -71,7 +71,7 @@ int main(int argc, char *argv[]){
         disc.dirichlet_values.push_back(0.0);
         disc.interior_penalty = cli_args["interior_penalty"];
 
-        FE::dg_layout u_layout{fespace.dg_map, std::integral_constant<std::size_t, neq>{}};
+        FE::fe_layout_right u_layout{fespace.dg_map, std::integral_constant<std::size_t, neq>{}};
         std::vector<T> u_data(u_layout.size());
         FE::fespan u{u_data.data(), u_layout};
 

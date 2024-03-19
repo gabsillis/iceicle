@@ -4,7 +4,6 @@
  * @author Gianni Absillis (gabsill@ncsu.edu)
  */
 #pragma once
-#include <concepts>
 #include <type_traits>
 #include <variant>
 #include <tuple>
@@ -14,6 +13,12 @@ namespace ICEICLE::TMP{
      * for template argument deduction */
     template<int ival>
     using compile_int = std::integral_constant<int, ival>;
+
+    /// @brief template that takes any integral value and 
+    /// converts to a size_t integral_constant
+    /// this will still warn if you put a negative (in clang at least)
+    template<auto value>
+    using to_size = std::integral_constant<std::size_t, static_cast<std::size_t>(value)>;
 
 
     // =====================

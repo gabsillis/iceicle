@@ -6,7 +6,6 @@
 #include <format>
 #include <filesystem>
 #include <string>
-#include <fstream>
 namespace ICEICLE::IO {
 
     template<class T, class IDX, int ndim>

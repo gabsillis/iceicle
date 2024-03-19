@@ -36,7 +36,7 @@ namespace FE {
         std::enable_if<is_dynamic_size<vextent>::value, index_type> nv_d;
 
         // the number of degrees of freedom
-        std::size_t _ndof;
+        index_type _ndof;
 
         // ================
         // = Constructors =

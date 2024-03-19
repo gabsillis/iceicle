@@ -9,7 +9,6 @@
 #include <iceicle/basis/basis.hpp>
 #include <iceicle/element/finite_element.hpp>
 
-#include <stdexcept>
 #include <type_traits>
 #include <algorithm>
 namespace FE {
@@ -30,9 +29,9 @@ namespace FE {
         using size_type = std::make_unsigned_t<index_type>;
 
     private:
-        std::size_t calculate_max_dof_size(std::vector<std::size_t> &offsets_arg){
-            std::size_t max_dof_sz = 0;
-            for(std::size_t i = 1; i < offsets_arg.size(); ++i){
+        index_type calculate_max_dof_size(std::vector<index_type> &offsets_arg){
+            index_type max_dof_sz = 0;
+            for(index_type i = 1; i < offsets_arg.size(); ++i){
                 max_dof_sz = std::max(max_dof_sz , offsets_arg[i] - offsets_arg[i - 1]);
             }
             return max_dof_sz;
@@ -41,7 +40,7 @@ namespace FE {
         /// @brief offsets of the start of each element 
         ///        the dofs for each element are in the range 
         ///        [ offsets[ielem], offsets[ielem + 1] )
-        std::vector<std::size_t> offsets;
+        std::vector<index_type> offsets;
 
         /// @brief the max size in number of degrees of freedom for an element
         std::size_t max_dof_size;

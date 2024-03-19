@@ -1,5 +1,6 @@
 #include "iceicle/basis/lagrange.hpp"
 #include "iceicle/geometry/hypercube_element.hpp"
+#include "iceicle/tmp_utils.hpp"
 #include <iceicle/quadrature/HypercubeGaussLegendre.hpp>
 #include <iceicle/fe_function/fespan.hpp>
 #include <iceicle/fe_function/dglayout.hpp>
@@ -49,8 +50,12 @@ TEST(test_fespan, test_dglayout){
 
     std::vector<T> data(offsets.calculate_size_requirement(2));
     std::iota(data.begin(), data.end(), 0.0);
-    FE::dg_layout<IDX, 2> test(offsets);
-    FE::fespan<T, FE::dg_layout<IDX, 2> > fespan1(data.data(), offsets);
+    FE::fe_layout_right<IDX, decltype(offsets), 2> layout(offsets);
+    // alternate layout syntax
+    using namespace ICEICLE::TMP;
+    FE::fe_layout_right layout2{offsets, to_size<2>{}};
+
+    FE::fespan fespan1(data.data(), layout);
 
     static constexpr int ndof_per_elem = ndim * (Pn + 1);
    
