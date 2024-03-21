@@ -36,7 +36,7 @@ namespace ICEICLE::IO {
                 using Element = ELEMENT::FiniteElement<T, IDX, ndim>;
                 constexpr int field_width = 18;
                 constexpr int precision = 10;
-                constexpr int npoin = 100;
+                constexpr int npoin = 30;
                 if constexpr(ndim == 1){
                     // headers
                     out << std::format("{:>{}}", "x", field_width);
@@ -68,11 +68,10 @@ namespace ICEICLE::IO {
 
                             out << std::endl;
                         }
+                        // add an extra linebreak after each element 
+                        // so that gnuplot can plot in line segments per element
+                        out << std::endl;
                     }
-
-                    // add an extra linebreak after each element 
-                    // so that gnuplot can plot in line segments per element
-                    out << std::endl;
                 }
             }
         };

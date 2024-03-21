@@ -6,6 +6,7 @@
 
 #pragma once
 
+#include "Numtool/MathUtils.hpp"
 #include "Numtool/fixed_size_tensor.hpp"
 #include "Numtool/matrixT.hpp"
 #include "iceicle/anomaly_log.hpp"
@@ -39,6 +40,10 @@ namespace DISC {
     template<typename T, typename IDX, int ndim>
     class HeatEquation final {
 
+    private:
+        template<class T2, std::size_t... sizes>
+        using Tensor = NUMTOOL::TENSOR::FIXED_SIZE::Tensor<T2, sizes...>;
+
     public:
 
         /// @brief the number of vector components
@@ -52,6 +57,20 @@ namespace DISC {
 
         /// @brief the diffusion coefficient (positive)
         T mu = 0.001;
+
+        /// @brief advection coefficient 
+        Tensor<T, ndim> a = []{
+            Tensor<T, ndim> ret{};
+            for(int idim = 0; idim < ndim; ++idim) ret[idim] = 0;
+            return ret;
+        }();
+
+        /// @brief nonlinear advection coefficient
+        Tensor<T, ndim> b = []{
+            Tensor<T, ndim> ret{};
+            for(int idim = 0; idim < ndim; ++idim) ret[idim] = 0;
+            return ret;
+        }();
 
         /// @brief the interior penalty coefficient for 
         /// Dirichlet boundary conditions 
@@ -119,6 +138,9 @@ namespace DISC {
             FE::elspan<T, ResLayoutPolicy> &res
         ) const {
 
+            std::vector<T> gradx_data(el.nbasis() * ndim);
+            std::vector<T> bi(el.nbasis());
+
             // loop over the quadrature points
             for(int iqp = 0; iqp < el.nQP(); ++iqp){
                 const QUADRATURE::QuadraturePoint<T, ndim> &quadpt = el.getQP(iqp);
@@ -128,8 +150,19 @@ namespace DISC {
                 T detJ = NUMTOOL::TENSOR::FIXED_SIZE::determinant(J);
 
                 // get the gradients in the physical domain
-                std::vector<T> gradx_data(el.nbasis() * ndim);
                 auto gradxBi = el.evalPhysGradBasisQP(iqp, coord, J, gradx_data.data());
+                el.evalBasisQP(iqp, bi.data());
+
+                // construct the value of u at the quadrature point
+                T u_qp = 0;
+                for(IDX ibasis = 0; ibasis < el.nbasis(); ++ibasis){
+                    u_qp += u[ibasis, 0] * bi[ibasis];
+                }
+
+                Tensor<T, ndim> flux_adv{};
+                for(int idim = 0; idim < ndim; ++idim){
+                    flux_adv[idim] = a[idim] * u_qp + 0.5 * b[idim] * SQUARED(u_qp);
+                }
 
                 // construct the gradient of u
                 T gradu[ndim] = {0};
@@ -139,7 +172,8 @@ namespace DISC {
                 for(std::size_t itest = 0; itest < el.nbasis(); ++itest){
                     for(std::size_t jdim = 0; jdim < ndim; ++jdim){
                         res[itest, 0]
-                            -= mu * gradu[jdim] * gradxBi[itest, jdim] * detJ * quadpt.weight;
+                            += (flux_adv[jdim] - mu * gradu[jdim])
+                                * gradxBi[itest, jdim] * detJ * quadpt.weight;
                     }
                 }
             }
@@ -218,6 +252,21 @@ namespace DISC {
                 auto normal = calc_ortho(Jfac);
                 auto unit_normal = normalize(normal);
 
+                // calculate inviscid fluxes
+                Tensor<T, ndim> fadv{};
+                for(int idim = 0; idim < ndim; ++idim){
+                    T fadvL = a[idim] * value_uL + b[idim] * SQUARED(value_uL);
+                    T fadvR = a[idim] * value_uR + b[idim] * SQUARED(value_uR);
+
+                    // flux vector splitting
+                    T lambdaL = unit_normal[idim] * (a[idim] * 0.5 * b[idim] * value_uL);
+                    T lambdaR = unit_normal[idim] * (a[idim] * 0.5 * b[idim] * value_uR);
+                    T lambda_l_plus = 0.5 * (lambdaL + std::abs(lambdaL));
+                    T lambda_r_plus = 0.5 * (lambdaR + std::abs(lambdaR));
+
+                    fadv[idim] = value_uL * lambda_l_plus + value_uR * lambda_r_plus;
+                }
+
                 // calculate the DDG distance
                 MATH::GEOMETRY::Point<T, ndim> phys_pt;
                 trace.face.transform(quadpt.abscisse, coord, phys_pt.data());
@@ -256,16 +305,20 @@ namespace DISC {
                     grad_ddg[idim] += beta1 * h_ddg * hessTerm;
                 }
 
+                using namespace MATH::MATRIX_T;
                 // calculate the flux weighted by the quadrature and face metric
-                T flux = mu * MATH::MATRIX_T::dotprod<T, ndim>(grad_ddg, unit_normal.data()) 
+                T fvisc = mu * dotprod<T, ndim>(grad_ddg, unit_normal.data()) 
+                    * quadpt.weight * sqrtg;
+
+                T fadvn = dotprod<T, ndim>(fadv.data(), unit_normal.data())
                     * quadpt.weight * sqrtg;
 
                 // contribution to the residual 
                 for(std::size_t itest = 0; itest < elL.nbasis(); ++itest){
-                    resL[itest, 0] += flux * bi_dataL[itest];
+                    resL[itest, 0] += (fvisc - fadvn) * bi_dataL[itest];
                 }
                 for(std::size_t itest = 0; itest < elR.nbasis(); ++itest){
-                    resR[itest, 0] -= flux * bi_dataR[itest];
+                    resR[itest, 0] -= (fvisc - fadvn) * bi_dataR[itest];
                 }
 
                 // apply the interface correction 
@@ -374,6 +427,18 @@ namespace DISC {
                             dirichlet_val = dirichlet_values[trace.face.bcflag];
                         }
 
+                        // calculate inviscid fluxes
+                        Tensor<T, ndim> fadv{};
+                        for(int idim = 0; idim < ndim; ++idim){
+                            // flux vector splitting
+                            T lambdaL = unit_normal[idim] * (a[idim] * 0.5 * b[idim] * value_uL);
+                            T lambdaR = unit_normal[idim] * (a[idim] * 0.5 * b[idim] * dirichlet_val);
+                            T lambda_l_plus = 0.5 * (lambdaL + std::abs(lambdaL));
+                            T lambda_r_plus = 0.5 * (lambdaR + std::abs(lambdaR));
+
+                            fadv[idim] = value_uL * lambda_l_plus + dirichlet_val * lambda_r_plus;
+                        }
+
                         // calculate the DDG distance
                         MATH::GEOMETRY::Point<T, ndim> phys_pt;
                         trace.face.transform(quadpt.abscisse, coord, phys_pt.data());
@@ -399,13 +464,17 @@ namespace DISC {
                         }
 
                         // calculate the flux weighted by the quadrature and face metric
-                        T flux = (
+                        T fvisc = (
                             mu * grad_ddg_n
                             + penalty * jumpu
                         ) * quadpt.weight * sqrtg;
 
+                        using namespace MATH::MATRIX_T;
+                        T fadvn = dotprod<T, ndim>(fadv.data(), unit_normal.data())
+                            * quadpt.weight * sqrtg;
+
                         for(std::size_t itest = 0; itest < elL.nbasis(); ++itest){
-                            resL[itest, 0] += flux * bi_dataL[itest];
+                            resL[itest, 0] += (fvisc - fadvn) * bi_dataL[itest];
                         }
                     }
                 }

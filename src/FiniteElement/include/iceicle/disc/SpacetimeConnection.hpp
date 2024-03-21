@@ -49,7 +49,7 @@ namespace DISC {
                 }
             }
 
-            for(TraceSpace &current_trace : fespace_current) {
+            for(TraceSpace &current_trace : fespace_current.get_boundary_traces()) {
                 
             }
 
