@@ -218,13 +218,14 @@ namespace FE {
                 using index_type = LayoutPolicy::index_type;
                 for(index_type ielem = 0; ielem < fedata.nelem(); ++ielem){
                     os << " - Element " << ielem << ":" << std::endl;
-                    for(index_type idof = 0; idof < fedata.ndof(); ++idof){
+                    for(index_type idof = 0; idof < fedata.ndof(ielem); ++idof){
                         for(index_type iv = 0; iv < fedata.nv(); ++iv){
                             os << std::format("{:{}.{}e}", fedata[ielem, idof, iv], field_width, precision);
                         }
                         os << std::endl;
                     }
                 }
+                os << std::endl;
                 return os;
             }
     };

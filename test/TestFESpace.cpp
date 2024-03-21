@@ -7,6 +7,7 @@
 #include "iceicle/fe_function/layout_right.hpp"
 #include "iceicle/geometry/geo_element.hpp"
 #include "iceicle/mesh/mesh.hpp"
+#include "iceicle/mesh/mesh_utils.hpp"
 #include "iceicle/quadrature/HypercubeGaussLegendre.hpp"
 #include "iceicle/quadrature/quadrules_1d.hpp"
 #include "iceicle/solvers/element_linear_solve.hpp"
@@ -175,7 +176,7 @@ TEST(test_fespace, test_dg_projection){
 
     static constexpr int ndim = 2;
     static constexpr int pn_geo = 1;
-    static constexpr int pn_basis = 4;
+    static constexpr int pn_basis = 2;
     static constexpr int neq = 1;
 
     // create a uniform mesh
@@ -183,6 +184,23 @@ TEST(test_fespace, test_dg_projection){
     int ny = 10;
     MESH::AbstractMesh<T, IDX, ndim> mesh({-1.0, -1.0}, {1.0, 1.0}, {nx, ny}, pn_geo);
     mesh.nodes.random_perturb(-0.4 * 1.0 / std::max(nx, ny), 0.4*1.0/std::max(nx, ny));
+
+//    // taylor vortex warped mesh
+//    TODO: investigate hessian accuracy with this case 
+//
+//    int nx = 8;
+//    int ny = 8;
+//    MESH::AbstractMesh<T, IDX, ndim> mesh({0.0, 0.0}, {1.0, 1.0}, {nx, ny}, pn_geo);
+//    std::function< void(std::span<T, ndim>, std::span<T, ndim>) > perturb_fcn;
+//    perturb_fcn = MESH::PERTURBATION_FUNCTIONS::TaylorGreenVortex<T, ndim>{
+//        .v0 = 0.5,
+//        .xmin = { 0.0, 0.0 },
+//        .xmax = { 1.0, 1.0 },
+//        .L = 1
+//    };
+//    std::vector<bool> fixed_nodes = MESH::flag_boundary_nodes(mesh);
+//    MESH::perturb_nodes(mesh, perturb_fcn, fixed_nodes);
+
 
     FE::FESpace<T, IDX, ndim> fespace{
         &mesh, FE::FESPACE_ENUMS::LAGRANGE,
@@ -279,8 +297,8 @@ TEST(test_fespace, test_dg_projection){
                 auto grad_eq = u_local_span.contract_mdspan(grad_basis, grad_eq_data.data());
 
                 auto dproj = dprojfunc(phys_pt);
-                ASSERT_NEAR(dproj[0], (grad_eq[0, 0]), 1e-8);
-                ASSERT_NEAR(dproj[1], (grad_eq[0, 1]), 1e-8);
+                ASSERT_NEAR(dproj[0], (grad_eq[0, 0]), 1e-10);
+                ASSERT_NEAR(dproj[1], (grad_eq[0, 1]), 1e-10);
 
                 // test hessian
                 std::vector<double> hess_basis_data(el.nbasis() * ndim * ndim);

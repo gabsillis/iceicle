@@ -3,7 +3,7 @@
 -- define the mesh as a uniform quad mesh
 uniform_mesh = {
 	-- specify the number of elements in each direction
-	nelem = { 8, 8 },
+	nelem = { 3, 3 },
 
 	-- specify the bounding box of the uniform mesh domain
 	bounding_box = {
@@ -45,7 +45,7 @@ fespace = {
 	quadrature = "gauss",
 
 	-- the basis function order
-	order = 2,
+	order = 4,
 }
 
 
@@ -123,7 +123,7 @@ exact_sol = function(x, y)
 end
 
 -- initial condition
--- initial_condition = "zero"
-initial_condition = function(x, y)
-	return exact_sol(x, y);
-end
+initial_condition = "zero"
+--initial_condition = function(x, y)
+--	return exact_sol(x, y);
+--end

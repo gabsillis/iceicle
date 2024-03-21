@@ -185,6 +185,8 @@ namespace ICEICLE::SOLVERS {
                 PETSC::VecSpan res_view{res_data};
                 FE::fespan res{res_view.data(), u.get_layout()};
                 form_petsc_jacobian_fd(fespace, disc, u, res, jac);
+                std::cout << "res_initial" << std::endl;
+                std::cout << res;
             } // end scope of res_view
 
             // set the initial residual norm

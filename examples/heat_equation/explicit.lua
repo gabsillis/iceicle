@@ -43,7 +43,7 @@ fespace = {
 	quadrature = "gauss",
 
 	-- the basis function order
-	order = 4,
+	order = 2,
 }
 
 mu = 0.1;
@@ -79,6 +79,6 @@ boundary_conditions = {
 
 solver = {
 	type = "rk3-ssp",
-	cfl = 0.01,
-	tfinal = 1
+	cfl = 0.001,
+	ntime = 1
 }
