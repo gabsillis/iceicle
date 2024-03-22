@@ -82,8 +82,8 @@ int main(int argc, char *argv[]){
 
         /// set discretization parameters (default to Peclet Nr = 100)
         disc.mu = (cli_args["mu"]) ? cli_args["mu"].as<T>() : 0.01;
-        disc.a[0] = (cli_args["a"]) ? cli_args["a"].as<T>() : 1.0;
-        disc.b[0] = (cli_args["b"]) ? cli_args["b"].as<T>() : 0.0;
+        disc.a[0] = (cli_args["a-adv"]) ? cli_args["a-adv"].as<T>() : 1.0;
+        disc.b[0] = (cli_args["b-adv"]) ? cli_args["b-adv"].as<T>() : 0.0;
         disc.sigma_ic = (cli_args["ddgic_mult"]) ? cli_args["ddgic_mult"].as<T>() : 0.0;
         disc.interior_penalty = cli_args["interior_penalty"];
 
@@ -156,11 +156,26 @@ int main(int argc, char *argv[]){
         solver.solve(u);
 
         // compute L2 error
-        std::function<void(T*, T*)> exactfunc = [mu = disc.mu](T *x, T *out) -> void {
-            out[0] = std::exp(-mu) * std::sin(x[0]);
+        T Pe = disc.a[0] / disc.mu;
+        std::function<void(T*, T*)> exactfunc = [Pe](T *x, T *out) -> void {
+            out[0] = ( 1 - std::exp(x[0] * Pe) ) / (1 - std::exp(Pe));
         };
         T l2_error = DISC::l2_error(exactfunc, fespace, u);
         std::cout << "L2 error: " << std::setprecision(9) << l2_error << std::endl;
+
+        // print the exact solution in dat format
+        std::ofstream outexact{"iceicle_data/exact.dat"};
+        int npoin = 1000;
+        constexpr int field_width = 18;
+        constexpr int precision = 10;
+        for(int ipoin = 0; ipoin < npoin; ++ipoin){
+            T dx = 1.0 / (npoin - 1);
+            T x = ipoin * dx;
+            outexact << std::format("{:>{}.{}e}", x, field_width, precision);
+            T f;
+            exactfunc(&x, &f);
+            outexact << " " << std::format("{:>{}.{}e}", f, field_width, precision) << std::endl;
+        }
 
         AnomalyLog::handle_anomalies();
         return 0;

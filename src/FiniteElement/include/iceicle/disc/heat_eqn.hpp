@@ -43,6 +43,8 @@ namespace DISC {
     private:
         template<class T2, std::size_t... sizes>
         using Tensor = NUMTOOL::TENSOR::FIXED_SIZE::Tensor<T2, sizes...>;
+        using FiniteElement = ELEMENT::FiniteElement<T, IDX, ndim>;
+        using Trace = ELEMENT::TraceSpace<T, IDX, ndim>;
 
     public:
 
@@ -509,9 +511,104 @@ namespace DISC {
 
                 default:
                     // assume essential
-                    std::cerr << "Warning: assuming essential BC." << std::endl;;
+                    std::cerr << "Warning: assuming essential BC." << std::endl;
                     break;
             }
+        }
+
+        template<class ULayoutPolicy, class UAccessorPolicy, class ResLayoutPolicy>
+        void interface_conservation(
+            Trace &trace,
+            FE::NodalFEFunction<T, ndim> &coord,
+            FE::elspan<T, ULayoutPolicy, UAccessorPolicy> &unkelL,
+            FE::elspan<T, ULayoutPolicy, UAccessorPolicy> &unkelR,
+            FE::facspan<T, ResLayoutPolicy> &res
+        ) const {
+            using namespace MATH::MATRIX_T;
+
+            // calculate the centroids of the left and right elements
+            // in the physical domain
+            const FiniteElement &elL = trace.elL;
+            const FiniteElement &elR = trace.elR;
+
+            // Storage for Basis function and solution values
+            std::vector<T> bi_dataL(elL.nbasis()); //TODO: move storage declaration out of loop
+            std::vector<T> bi_dataR(elR.nbasis());
+            std::vector<T> bi_trace(trace.nbasis_trace());
+            std::vector<T> grad_dataL(elL.nbasis() * ndim);
+            std::vector<T> grad_dataR(elR.nbasis() * ndim);
+            std::vector<T> gradu_dataL(ndim);
+            std::vector<T> gradu_dataR(ndim);
+            std::vector<T> hess_dataL(elL.nbasis() * ndim * ndim);
+            std::vector<T> hess_dataR(elR.nbasis() * ndim * ndim);
+            std::vector<T> hessu_dataL(ndim * ndim);
+            std::vector<T> hessu_dataR(ndim * ndim);
+            for(int iqp = 0; iqp < trace.nQP(); ++iqp){
+                const QUADRATURE::QuadraturePoint<T, ndim - 1> &quadpt = trace.getQP(iqp);
+
+                // calcualate Jacobian and metric
+                auto Jfac = trace.face.Jacobian(coord, quadpt.abscisse);
+                T sqrtg = trace.face.rootRiemannMetric(Jfac, quadpt.abscisse);
+
+                // calculate the normal vector 
+                auto normal = calc_ortho(Jfac);
+                auto unit_normal = normalize(normal);
+
+                // get the function values
+                trace.evalBasisQPL(iqp, bi_dataL.data());
+                trace.evalBasisQPR(iqp, bi_dataR.data());
+
+                T uL = 0.0, uR = 0.0;
+                for(std::size_t ibasis = 0; ibasis < elL.nbasis(); ++ibasis)
+                { uL += unkelL[ibasis, 0] * bi_dataL[ibasis]; }
+                for(std::size_t ibasis = 0; ibasis < elR.nbasis(); ++ibasis)
+                { uR += unkelR[ibasis, 0] * bi_dataR[ibasis]; }
+
+                // get the gradients the physical domain
+                auto gradBiL = trace.evalPhysGradBasisQPL(iqp, coord, grad_dataL.data());
+                auto gradBiR = trace.evalPhysGradBasisQPR(iqp, coord, grad_dataR.data());
+
+                auto graduL = unkelL.contract_mdspan(gradBiL, gradu_dataL.data());
+                auto graduR = unkelR.contract_mdspan(gradBiR, gradu_dataR.data());
+
+                // get the test functions 
+                trace.eval_trace_basis_qp(iqp, bi_trace.data());
+
+                // viscous fluxes
+                T fvisc_nL = -mu * dotprod<T, ndim>(graduL.data(), unit_normal.data());
+                T fvisc_nR = -mu * dotprod<T, ndim>(graduR.data(), unit_normal.data());
+
+                // inviscid fluxes 
+                Tensor<T, ndim> fadvL;
+                Tensor<T, ndim> fadvR;
+                for(int idim = 0; idim < ndim; ++idim){
+                    T fadvL[idim] = a[idim] * uL + b[idim] * SQUARED(uL);
+                    T fadvR[idim] = a[idim] * uR + b[idim] * SQUARED(uR);
+                }
+
+                T fadv_nL = dotprod<T, ndim>(fadvL.data(), unit_normal.data());
+                T fadv_nR = dotprod<T, ndim>(fadvR.data(), unit_normal.data());
+
+                // calculate the flux jump
+                T jumpF = (fvisc_nR - fvisc_nL) + (fadv_nR - fadv_nL);
+
+                for(int itest = 0; itest < trace.nbasis_trace(); ++itest){
+                    // integral contribution of interface conservation
+                    T ic_res = jumpF * bi_trace[itest] * sqrtg * quadpt.weight;
+
+                    if constexpr(ResLayoutPolicy::static_extent() == ndim){
+                        // take the norm of the residual (scalar value in this case)
+                        // and multiply by normal vector components 
+                        for(IDX idim = 0; idim < ndim; ++idim){
+                            res[itest, idim] += ic_res * unit_normal[idim];
+                        }
+                    } else {
+                        // assume there is only one component 
+                        res[itest, 0] += ic_res;
+                    }
+                }
+            }
+
         }
     };
 }

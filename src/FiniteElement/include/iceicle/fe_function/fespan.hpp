@@ -4,7 +4,9 @@
  * reminiscent of mdspan
  */
 #pragma once
+#include "iceicle/element/TraceSpace.hpp"
 #include "iceicle/fe_function/el_layout.hpp"
+#include "iceicle/fe_function/nodal_fe_function.hpp"
 #include <cstdlib>
 #include <ostream>
 #include <span>
@@ -652,6 +654,186 @@ namespace FE {
                         alpha * eldata[idof, iv]
                         + beta * fedata[iel, idof, iv];
                 }
+            }
+        }
+    }
+
+    /**
+     * @brief facspan represents a non-owning view for the data over a single face 
+     *
+     * This partitions the data with a 2 dimensional index space: the indices are 
+     * idof - the index of the local degree of freedom of the trace space 
+     * iv - the index of the vector component 
+     *
+     * @tparam T the dat atype being stored 
+     * @tparam LayoutPolicy the policy for how the data is laid out in memeory 
+     * @tparam AccessorPolicy the policy to dispatch when accessing data 
+     */
+    template<
+        class T,
+        class LayoutPolicy,
+        class AccessorPolicy = default_accessor<T>
+    >
+    class facspan {
+
+    public:
+        // ============
+        // = Typedefs =
+        // ============
+        using value_type = T;
+        using pointer = AccessorPolicy::data_handle_type;
+        using reference = AccessorPolicy::reference;
+        using index_type = LayoutPolicy::index_type;
+        using size_type = std::make_unsigned_t<index_type>;
+
+    private:
+        /// The pointer to the data being accessed
+        pointer _ptr;
+
+        /// the layout policy
+        LayoutPolicy _layout;
+
+        /// the accessor policy
+        AccessorPolicy _accessor;
+
+    public:
+
+        template<typename... LayoutArgsT>
+        constexpr facspan(pointer data, LayoutArgsT&&... layout_args) 
+        noexcept : _ptr(data), _layout{layout_args...}, _accessor{} 
+        {}
+
+        template<typename... LayoutArgsT>
+        constexpr facspan(pointer data, LayoutArgsT&&... layout_args, const AccessorPolicy &_accessor) 
+        noexcept : _ptr(data), _layout{layout_args...}, _accessor{_accessor} 
+        {}
+
+        // ===================
+        // = Size Operations =
+        // ===================
+
+        /** @brief get the upper bound of the 1D index space */
+        constexpr size_type size() const noexcept { return _layout.size(); }
+
+        /** @brief get the number of degrees of freedom for a given element represented in the layout */
+        [[nodiscard]] constexpr size_type ndof() const noexcept { return _layout.ndof(); }
+
+        /** @brief get the number of vector components */
+        [[nodiscard]] constexpr size_type nv() const noexcept { return _layout.nv(); }
+
+        // ===============
+        // = Data Access =
+        // ===============
+
+        /** @brief index into the data using the set order
+            * @param idof the degree of freedom index 
+            * @param iv the vector index
+            * @return a reference to the data 
+            */
+        constexpr reference operator[](index_type idof, index_type iv){
+            return _accessor.access(_ptr, _layout[idof, iv]);
+        }
+
+        /**
+            * @brief if using the default accessor, allow access to the underlying storage
+            * @return the underlying storage 
+            */
+        constexpr pointer data() noexcept 
+        requires(std::is_same_v<AccessorPolicy, default_accessor<T>>) 
+        { return _ptr; }
+
+        /**
+            * @brief if using the default accessor, allow access to the underlying storage
+            * @return the underlying storage 
+            */
+        constexpr const pointer data() const noexcept 
+        requires(std::is_same_v<AccessorPolicy, default_accessor<T>>) 
+        { return _ptr; }
+
+
+        // ===========
+        // = Utility =
+        // ===========
+
+        /** @brief get the layout */
+        constexpr inline LayoutPolicy &get_layout() { return _layout; }
+
+        /**
+            * @brief set the value at every index 
+            * in the index space to the value 
+            * @return reference to this
+            */
+        constexpr facspan<T, LayoutPolicy, AccessorPolicy> &operator=( T value )
+        {
+            // TODO: be more specific about the index space
+            // maybe by delegating to the LayoutPolicy
+            for(int i = 0; i < size(); ++i){
+                _ptr[i] = value;
+            }
+            return *this;
+        }
+    };
+
+    // deduction guides
+    template<typename T, class LayoutPolicy>
+    facspan(T * data, LayoutPolicy &) -> facspan<T, LayoutPolicy>;
+    template<typename T, class LayoutPolicy>
+    facspan(T * data, const LayoutPolicy &) -> facspan<T, LayoutPolicy>;
+
+    /**
+        * @brief extract the data from a trace 
+        * into a facspan from a global nodal data structure 
+        * @param trace the trace to extract from 
+        * @param global_data the data to extract from 
+        * @param facdata the span to extract to 
+        */
+    template<
+        class T,
+        class LocalLayoutPolicy
+    > inline void extract_facspan(
+        ELEMENT::TraceSpace<T, typename LocalLayoutPolicy::index_type, LocalLayoutPolicy::static_extent()> &trace,
+        FE::NodalFEFunction<T, LocalLayoutPolicy::static_extent()> &global_data,
+        facspan<T, LocalLayoutPolicy> facdata
+    ){
+        using index_type = LocalLayoutPolicy::index_type;
+        for(index_type inode = 0; inode < trace.face->n_nodes();  ++inode){
+            index_type ignode = trace.face->nodes()[inode];
+            for(index_type iv = 0; iv < LocalLayoutPolicy::static_extent(); ++iv){
+                facdata[inode, iv] = global_data[ignode][iv];
+            }
+        }
+    }
+
+    /**
+    * @brief perform a scatter operation to incorporate face data 
+    * back into the global data array 
+    *
+    * follows the y = alpha * x + beta * y convention
+    * inspired by BLAS interface 
+    *
+    * @param [in] iel the element index of the element data 
+    * @param [in] alpha the multiplier for element data 
+    * @param [in] facdata the fac local data 
+    * @param [in] beta the multiplier for values in the global data array 
+    * @param [in/out] global_data the global data array to scatter to 
+    */
+    template<
+        class T,
+        class LocalLayoutPolicy,
+        class LocalAccessorPolicy
+    > inline void scatter_facspan(
+        ELEMENT::TraceSpace<T, typename LocalLayoutPolicy::index_type, LocalLayoutPolicy::static_extent()> &trace,
+        T alpha, 
+        facspan<T, LocalLayoutPolicy, LocalAccessorPolicy> facdata,
+        T beta,
+        FE::NodalFEFunction<T, LocalLayoutPolicy::static_extent()> &global_data 
+    ) {
+        using index_type = LocalLayoutPolicy::index_type;
+        for(index_type inode = 0; inode < trace.face->n_nodes();  ++inode){
+            index_type ignode = trace.face->nodes()[inode];
+            for(index_type iv = 0; iv < LocalLayoutPolicy::static_extent(); ++iv){
+                global_data[ignode][iv] = alpha * facdata[inode, iv]
+                    + beta * global_data[ignode][iv];
             }
         }
     }

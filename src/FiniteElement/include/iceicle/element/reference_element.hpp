@@ -127,11 +127,13 @@ namespace ELEMENT {
     template<typename T, typename IDX, int ndim>
     class ReferenceTraceSpace {
         using Evals = ELEMENT::TraceEvaluation<T, IDX, ndim>;
+        using TraceBasisType = BASIS::Basis<T, ndim-1>;
         using Quadrature = QUADRATURE::QuadratureRule<T, IDX, ndim - 1>;
         using FaceType = ELEMENT::Face<T, IDX, ndim>;
 
         public:
         std::unique_ptr<Quadrature> quadrule;
+        std::unique_ptr<TraceBasisType> trace_basis;
         Evals eval;
 
         ReferenceTraceSpace() = default;
@@ -139,6 +141,7 @@ namespace ELEMENT {
         template<int basis_order, int geo_order>
         ReferenceTraceSpace(
             const FaceType *fac,
+            FE::FESPACE_ENUMS::FESPACE_BASIS_TYPE btype,
             FE::FESPACE_ENUMS::FESPACE_QUADRATURE quadrature_type,
             std::integral_constant<int, basis_order> b_order,
             std::integral_constant<int, geo_order> g_order
@@ -148,6 +151,15 @@ namespace ELEMENT {
 
             switch(fac->domain_type()){
                 case HYPERCUBE:
+
+                    switch(btype){
+                        case LAGRANGE:
+                            trace_basis = std::make_unique<BASIS::HypercubeLagrangeBasis<
+                                T, IDX, ndim - 1, basis_order>>();
+                            break;
+                        default:
+                            break;
+                    }
 
                     switch(quadrature_type){
                         case GAUSS_LEGENDRE:

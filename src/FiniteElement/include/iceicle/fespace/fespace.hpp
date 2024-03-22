@@ -226,18 +226,19 @@ namespace FE {
                     };
 
                     if(ref_trace_map.find(trace_key) == ref_trace_map.end()){
-                        ref_trace_map[trace_key] = ReferenceTraceType(fac, quadrature_type, 
+                        ref_trace_map[trace_key] = ReferenceTraceType(fac,
+                            basis_type, quadrature_type, 
                             std::integral_constant<int, basis_order>{},
                             std::integral_constant<int, geo_order>{});
                     }
                     ReferenceTraceType &ref_trace = ref_trace_map[trace_key];
                     
                     if(is_interior){
-                        TraceType trace{ fac, &elL, &elR, ref_trace.quadrule.get(),
-                            &(ref_trace.eval), (IDX) traces.size() };
+                        TraceType trace{ fac, &elL, &elR, ref_trace.trace_basis.get(),
+                            ref_trace.quadrule.get(), &(ref_trace.eval), (IDX) traces.size() };
                         traces.push_back(trace);
                     } else {
-                        TraceType trace = TraceType::make_bdy_trace_space(fac, &elL,
+                        TraceType trace = TraceType::make_bdy_trace_space(fac, &elL, ref_trace.trace_basis.get(), 
                             ref_trace.quadrule.get(), &(ref_trace.eval), (IDX) traces.size());
                         traces.push_back(trace);
                     }

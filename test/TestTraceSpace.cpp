@@ -21,6 +21,7 @@ TEST(test_trace_space, test_basis_eval){
 
     using BasisTypeL = BASIS::HypercubeLagrangeBasis<T, IDX, ndim, PnL>;
     using BasisTypeR = BASIS::HypercubeLagrangeBasis<T, IDX, ndim, PnR>;
+    using TraceBasisType = BASIS::HypercubeLagrangeBasis<T, IDX, ndim - 1, PnR>;
 
     using QuadTypeL = QUADRATURE::HypercubeGaussLegendre<T, IDX, ndim, PnL>;
     using QuadTypeR = QUADRATURE::HypercubeGaussLegendre<T, IDX, ndim, PnR>;
@@ -65,12 +66,14 @@ TEST(test_trace_space, test_basis_eval){
     };
 
     // create the Trace Space 
+    TraceBasisType trace_basis{};
     TraceQuadrature trace_quadrule{};
     ELEMENT::TraceEvaluation<T, IDX, ndim> trace_eval{};
     TraceSpace trace {
         mesh.faces[mesh.interiorFaceStart],
         &elL,
         &elR,
+        &trace_basis,
         &trace_quadrule,
         &trace_eval,
         mesh.interiorFaceStart
