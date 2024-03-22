@@ -119,6 +119,8 @@ int main(int argc, char *argv[]){
                 },
                 .L = 1
             };
+        } else if(eq_icase(perturb_fcn_name.value(), "zig-zag")){
+            perturb_fcn = MESH::PERTURBATION_FUNCTIONS::ZigZag<T, ndim>{};
         }
 
         MESH::perturb_nodes(mesh, perturb_fcn, fixed_nodes);

@@ -51,7 +51,7 @@ namespace MESH {
         std::vector<bool> &fixed_nodes
     ) {
         for(IDX inode = 0; inode < mesh.nodes.n_nodes(); ++inode){
-            if(!fixed_nodes[inode]){
+            if( true || !fixed_nodes[inode]){
                 // copy current node data to prevent aliasing issues
                 std::array old_node = mesh.nodes[inode].clone();
                 std::span node_view = mesh.nodes[inode].to_span();
@@ -150,6 +150,83 @@ namespace MESH {
                 }
                 
 
+            }
+        };
+
+        template<typename T, int ndim>
+        struct ZigZag {
+            static_assert(ndim >= 2, "Must be at least 2 dimensional.");
+            void operator()(std::span<T, ndim> xin, std::span<T, ndim> xout){
+                T xp = xin[0];
+                T yp = xin[1];
+
+                // keep the x coordinate
+                xout[0] = xin[0];
+
+                // for each end of each segment 
+                // a represents where y = 0.5 ends up
+                T a1 = 0.3;
+                T a2 = 0.3;
+                T yout1, yout2, xref;
+
+                // zig and zag the y coordinate
+                // get ziggy with it
+                if(xp < 0.2){
+                    if(yp < 0.5){
+                        xout[1] = yp * 0.3 / 0.5;
+                    } else {
+                        xref = (xp - 0.0) / 0.2;
+                        xout[1] = ( (1.39 + 0.01 * (xref)) * (yp - 1.0) + 1);
+                    }
+                } else if(xp < 0.4){
+                    a1 = 0.3;
+                    a2 = 0.7;
+                    xref = (xp - 0.2) / 0.2;
+                    if(yp < 0.5){
+                        yout1 = yp * a1 / 0.5;
+                        yout2 = yp * a2 / 0.5;
+                    } else {
+                        yout1 = 2 *(1 - a1) * (yp - 1) + 1;
+                        yout2 = 2 *(1 - a2) * (yp - 1) + 1;
+                    }
+                    xout[1] = xref * yout2 + (1 - xref) * yout1;
+                } else if (xp < 0.6) {
+                    a1 = 0.7;
+                    a2 = 0.3;
+                    xref = (xp - 0.4) / 0.2;
+                    if(yp < 0.5){
+                        yout1 = yp * a1 / 0.5;
+                        yout2 = yp * a2 / 0.5;
+                    } else {
+                        yout1 = 2 *(1 - a1) * (yp - 1) + 1;
+                        yout2 = 2 *(1 - a2) * (yp - 1) + 1;
+                    }
+                    xout[1] = xref * yout2 + (1 - xref) * yout1;
+                } else if (xp < 0.8) {
+                    a1 = 0.3;
+                    a2 = 0.7;
+                    xref = (xp - 0.6) / 0.2;
+                    if(yp < 0.5){
+                        yout1 = yp * a1 / 0.5;
+                        yout2 = yp * a2 / 0.5;
+                    } else {
+                        yout1 = 2 *(1 - a1) * (yp - 1) + 1;
+                        yout2 = 2 *(1 - a2) * (yp - 1) + 1;
+                    }
+                    xout[1] = xref * yout2 + (1 - xref) * yout1;
+                } else {
+                    a1 = 0.7;
+                    a2 = 0.7;
+                    xref = (xp - 0.8) / 0.2;
+                    if(yp < 0.5){
+                        yout1 = yp * a1 / 0.5;
+                        yout2 = yp * (a2 - 0.01) / 0.5;
+                    } else {
+                        yout1 = 2 *(1 - a1) * (yp - 1) + 1;
+                        yout2 = 2 *(1 - a2) * (yp - 1) + 1;
+                    }
+                    xout[1] = xref * yout2 + (1 - xref) * yout1;
+                }
             }
         };
     }
