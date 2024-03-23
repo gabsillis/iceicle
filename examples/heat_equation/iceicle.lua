@@ -7,7 +7,7 @@ uniform_mesh = {
 
 	-- specify the bounding box of the uniform mesh domain
 	bounding_box = {
-		min = { 0.0, 0.0 },
+		min = { -0.5, 0.0 },
 		max = { 1.0, 1.0 },
 	},
 

@@ -12,7 +12,7 @@
 #include "iceicle/explicit_euler.hpp"
 #include "iceicle/program_args.hpp"
 #include "iceicle/disc/l2_error.hpp"
-#include "iceicle/ssp_rk3.hpp"
+#include "iceicle/tvd_rk3.hpp"
 #include "iceicle/fe_function/layout_right.hpp"
 #include <cmath>
 #include <fenv.h>
@@ -118,7 +118,7 @@ int main(int argc, char *argv[]){
         if(cli_args["fo"]) dt.dt = cli_args["fo"].as<T>() * SQUARED(2 * M_PI / (T) nelem);
         ICEICLE::SOLVERS::TfinalTermination<T, IDX> stop_condition{1.0};
 
-        ICEICLE::SOLVERS::RK3SSP solver{fespace, disc, dt, stop_condition};
+        ICEICLE::SOLVERS::RK3TVD solver{fespace, disc, dt, stop_condition};
         solver.ivis = (cli_args["ivis"].has_value()) ? cli_args["ivis"].as<IDX>() : 100;
         ICEICLE::IO::DatWriter<T, IDX, ndim> writer{fespace};
         writer.register_fields(u, "u");
@@ -146,6 +146,19 @@ int main(int argc, char *argv[]){
         T l2_error = DISC::l2_error(exactfunc, fespace, u);
         std::cout << "L2 error: " << std::setprecision(9) << l2_error << std::endl;
 
+        // print the exact solution in dat format
+        std::ofstream outexact{"iceicle_data/exact.dat"};
+        int npoin = 1000;
+        constexpr int field_width = 18;
+        constexpr int precision = 10;
+        for(int ipoin = 0; ipoin < npoin; ++ipoin){
+            T dx = 2 * M_PI / (npoin - 1);
+            T x = ipoin * dx;
+            outexact << std::format("{:>{}.{}e}", x, field_width, precision);
+            T f;
+            exactfunc(&x, &f);
+            outexact << " " << std::format("{:>{}.{}e}", f, field_width, precision) << std::endl;
+        }
         AnomalyLog::handle_anomalies();
         return 0;
     };
