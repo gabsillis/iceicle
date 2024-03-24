@@ -78,6 +78,7 @@ namespace DISC {
             FE::NodalFEFunction<T, ndim> &node_coords,
             FE::elspan<T, LayoutPolicy, AccessorPolicy> &res
         ) {
+            T detJ; // TODO: put back in loop after debuggin for clarity
             for(int ig = 0; ig < el.nQP(); ++ig){ // loop over the quadrature points
                 
                 // convert the quadrature point to the physical domain
@@ -87,7 +88,7 @@ namespace DISC {
 
                 // calculate the jacobian determinant
                 auto J = el.geo_el->Jacobian(node_coords, quadpt.abscisse);
-                T detJ = NUMTOOL::TENSOR::FIXED_SIZE::determinant(J);
+                detJ = NUMTOOL::TENSOR::FIXED_SIZE::determinant(J);
 
                 // evaluate the function at the point in the physical domain
                 T feval[neq];

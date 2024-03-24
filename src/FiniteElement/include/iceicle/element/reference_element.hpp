@@ -80,8 +80,10 @@ namespace ELEMENT {
                     // TODO: change quadrature order based on high order geo elements
                     auto el_order_dispatch = [&]<int geo_order>{
                         switch(quadrature_type){
+                            // number of quadrature points in 1D
+                            static constexpr int nqp = geo_order + basis_order;
                             case FE::FESPACE_ENUMS::GAUSS_LEGENDRE:
-                                quadrule = std::make_unique<QUADRATURE::HypercubeGaussLegendre<T, IDX, ndim, (geo_order+1)+(basis_order+1)>>();
+                                quadrule = std::make_unique<QUADRATURE::HypercubeGaussLegendre<T, IDX, ndim, nqp>>();
                                 break;
                             default:
                                 break;

@@ -132,6 +132,7 @@ int main(int argc, char *argv[]){
             }
         );
 
+#ifdef ICEICLE_USE_PETSC
         using namespace ICEICLE::SOLVERS;
         ConvergenceCriteria<T, IDX> conv_criteria{
             .tau_abs = std::numeric_limits<T>::epsilon(),
@@ -154,7 +155,7 @@ int main(int argc, char *argv[]){
         };
 
         solver.solve(u);
-
+#endif
         // compute L2 error
         T Pe = disc.a[0] / disc.mu;
         std::function<void(T*, T*)> exactfunc = [Pe](T *x, T *out) -> void {

@@ -100,7 +100,7 @@ public:
 private:
   // None
 public:
-  const FaceType &face;
+  const FaceType *face;
   /// @brief the left finite element (WARNING: if vector of elements changes this will probably need to be updated)
   const FEType &elL;
   /// @brief the right finite element
@@ -137,12 +137,12 @@ public:
       const QuadratureType *quadruleptr,
       const TraceEvaluation<T, IDX, ndim> *qp_evals_ptr,
       IDX facidx
-  ) : face(*facptr), elL(*elLptr), elR(*elRptr), trace_basis(*trace_basisptr),
+  ) : face(facptr), elL(*elLptr), elR(*elRptr), trace_basis(*trace_basisptr),
       quadrule(*quadruleptr), qp_evals(*qp_evals_ptr), facidx(facidx) 
   {
     // TODO: can't do assertion because we call from make_bdy_trace_space
  //   assert((facptr->bctype == ELEMENT::BOUNDARY_CONDITIONS::INTERIOR) 
- //       && "The given face is not an interior face.");
+ //       && "The given face is not an interior face->");
   }
 
   /**
@@ -167,7 +167,7 @@ public:
       IDX facidx
   ) {
     assert((facptr->bctype != ELEMENT::BOUNDARY_CONDITIONS::INTERIOR) 
-        && "The given face is not a boundary face.");
+        && "The given face is not a boundary face->");
     return TraceSpace(facptr, elLptr, elLptr, trace_basisptr, quadruleptr, qp_evals_ptr, facidx);
   }
 
@@ -198,7 +198,7 @@ public:
    */
   void evalBasisL(const FacePoint &s, T *Bi) const {
     DomainPoint xi{};
-    face.transform_xiL(s, xi.data());
+    face->transform_xiL(s, xi.data());
     elL.evalBasis(xi, Bi);
   }
 
@@ -214,7 +214,7 @@ public:
    */
   void evalBasisR(const FacePoint &s, T *Bi) const {
     DomainPoint xi{};
-    face.transform_xiR(s, xi.data());
+    face->transform_xiR(s, xi.data());
     elR.evalBasis(xi, Bi);
   }
 
@@ -279,7 +279,7 @@ public:
    */
   auto evalGradBasisL(const FacePoint &s, T *grad_data) const {
     DomainPoint xi{};
-    face.transform_xiL(s, xi.data());
+    face->transform_xiL(s, xi.data());
     return elL.evalGradBasis(xi, grad_data);
   }
 
@@ -301,7 +301,7 @@ public:
    */
   auto evalGradBasisR(const FacePoint &s, T *grad_data) const {
     DomainPoint xi{};
-    face.transform_xiR(s, xi.data());
+    face->transform_xiR(s, xi.data());
     return elR.evalGradBasis(xi, grad_data);
   }
 
@@ -327,7 +327,7 @@ public:
       T *grad_data
   ) const {
     DomainPoint xi{};
-    face.transform_xiL(s, xi.data());
+    face->transform_xiL(s, xi.data());
     return elL.evalPhysGradBasis(xi, node_list, grad_data);
   }
 
@@ -353,7 +353,7 @@ public:
       T *grad_data
   ) const {
     DomainPoint xi{};
-    face.transform_xiR(s, xi.data());
+    face->transform_xiR(s, xi.data());
     return elR.evalPhysGradBasis(xi, node_list, grad_data);
   }
 
@@ -376,7 +376,7 @@ public:
    */
   auto evalGradBasisQPL(int qidx, T *grad_data) const {
     DomainPoint xi{};
-    face.transform_xiL(quadrule[qidx].abscisse, xi.data());
+    face->transform_xiL(quadrule[qidx].abscisse, xi.data());
     return elL.evalGradBasis(xi, grad_data);
   }
 
@@ -398,7 +398,7 @@ public:
    */
   auto evalGradBasisQPR(int qidx, T *grad_data) const {
     DomainPoint xi{};
-    face.transform_xiR(quadrule[qidx].abscisse, xi.data());
+    face->transform_xiR(quadrule[qidx].abscisse, xi.data());
     return elR.evalGradBasis(xi, grad_data);
   }
 
@@ -424,7 +424,7 @@ public:
       T *grad_data
   ) const {
     DomainPoint xi{};
-    face.transform_xiL(quadrule[qidx].abscisse, xi.data());
+    face->transform_xiL(quadrule[qidx].abscisse, xi.data());
     return elL.evalPhysGradBasis(xi, node_list, grad_data);
   }
 
@@ -450,7 +450,7 @@ public:
       T *grad_data
   ) const {
     DomainPoint xi{};
-    face.transform_xiR(quadrule[qidx].abscisse, xi.data());
+    face->transform_xiR(quadrule[qidx].abscisse, xi.data());
     return elR.evalPhysGradBasis(xi, node_list, grad_data);
   }
 
@@ -469,7 +469,7 @@ public:
    */
   auto evalHessBasisL(const FacePoint &s, T *hess_data) const {
     DomainPoint xi{};
-    face.transform_xiL(s, xi.data());
+    face->transform_xiL(s, xi.data());
     return elL.evalHessBasis(xi, hess_data);
   }
 
@@ -486,7 +486,7 @@ public:
    */
   auto evalHessBasisR(const FacePoint &s, T *hess_data) const {
     DomainPoint xi{};
-    face.transform_xiR(s, xi.data());
+    face->transform_xiR(s, xi.data());
     return elR.evalHessBasis(xi, hess_data);
   }
 
@@ -508,7 +508,7 @@ public:
       T *hess_data
   ) const {
     DomainPoint xi{};
-    face.transform_xiL(s, xi.data());
+    face->transform_xiL(s, xi.data());
     return elL.evalPhysHessBasis(xi, node_list, hess_data);
   }
 
@@ -530,7 +530,7 @@ public:
       T *hess_data
   ) const {
     DomainPoint xi{};
-    face.transform_xiR(s, xi.data());
+    face->transform_xiR(s, xi.data());
     return elR.evalPhysHessBasis(xi, node_list, hess_data);
   }
 
@@ -547,7 +547,7 @@ public:
    */
   auto evalHessBasisQPL(int qidx, T *hess_data) const {
     DomainPoint xi{};
-    face.transform_xiL(quadrule[qidx].abscisse, xi.data());
+    face->transform_xiL(quadrule[qidx].abscisse, xi.data());
     return elL.evalHessBasis(xi, hess_data);
   }
 
@@ -564,7 +564,7 @@ public:
    */
   auto evalHessBasisQPR(int qidx, T *hess_data) const {
     DomainPoint xi{};
-    face.transform_xiR(quadrule[qidx].abscisse, xi.data());
+    face->transform_xiR(quadrule[qidx].abscisse, xi.data());
     return elR.evalHessBasis(xi, hess_data);
   }
 
@@ -586,7 +586,7 @@ public:
       T *hess_data
   ) const {
     DomainPoint xi{};
-    face.transform_xiL(quadrule[qidx].abscisse, xi.data());
+    face->transform_xiL(quadrule[qidx].abscisse, xi.data());
     return elL.evalPhysHessBasis(xi, node_list, hess_data);
   }
 
@@ -608,7 +608,7 @@ public:
       T *hess_data
   ) const {
     DomainPoint xi{};
-    face.transform_xiR(quadrule[qidx].abscisse, xi.data());
+    face->transform_xiR(quadrule[qidx].abscisse, xi.data());
     return elR.evalPhysHessBasis(xi, node_list, hess_data);
   }
 

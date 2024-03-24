@@ -223,8 +223,8 @@ namespace DISC {
                 // these are needed for the gradients and hessians in the physical domn 
                 // but we also need Jfac for unit_normal
 
-                auto Jfac = trace.face.Jacobian(coord, quadpt.abscisse);
-                T sqrtg = trace.face.rootRiemannMetric(Jfac, quadpt.abscisse);
+                auto Jfac = trace.face->Jacobian(coord, quadpt.abscisse);
+                T sqrtg = trace.face->rootRiemannMetric(Jfac, quadpt.abscisse);
 
                 // get the function values
                 trace.evalBasisQPL(iqp, bi_dataL.data());
@@ -271,7 +271,7 @@ namespace DISC {
 
                 // calculate the DDG distance
                 MATH::GEOMETRY::Point<T, ndim> phys_pt;
-                trace.face.transform(quadpt.abscisse, coord, phys_pt.data());
+                trace.face->transform(quadpt.abscisse, coord, phys_pt.data());
                 T h_ddg = 0;
                 for(int idim = 0; idim < ndim; ++idim){
                     h_ddg += unit_normal[idim] * (
@@ -382,7 +382,7 @@ namespace DISC {
 
             auto centroidL = elL.geo_el->centroid(coord);
 
-            switch(trace.face.bctype){
+            switch(trace.face->bctype){
                 case ELEMENT::BOUNDARY_CONDITIONS::DIRICHLET: 
                 {
                     // see Huang, Chen, Li, Yan 2016
@@ -392,8 +392,8 @@ namespace DISC {
                         const QUADRATURE::QuadraturePoint<T, ndim - 1> &quadpt = trace.getQP(iqp);
 
                         // calculate the jacobian and riemannian metric root det
-                        auto Jfac = trace.face.Jacobian(coord, quadpt.abscisse);
-                        T sqrtg = trace.face.rootRiemannMetric(Jfac, quadpt.abscisse);
+                        auto Jfac = trace.face->Jacobian(coord, quadpt.abscisse);
+                        T sqrtg = trace.face->rootRiemannMetric(Jfac, quadpt.abscisse);
 
                         // calculate the normal vector 
                         auto normal = calc_ortho(Jfac);
@@ -416,17 +416,17 @@ namespace DISC {
 
                         // Get the value at the boundary 
                         T dirichlet_val;
-                        if(trace.face.bcflag < 0){
+                        if(trace.face->bcflag < 0){
                             // calback using physical domain location
                             MATH::GEOMETRY::Point<T, ndim> ref_pt, phys_pt;
-                            trace.face.transform_xiL(quadpt.abscisse, ref_pt.data());
+                            trace.face->transform_xiL(quadpt.abscisse, ref_pt.data());
                             elL.transform(coord, ref_pt, phys_pt);
                             
-                            dirichlet_callbacks[-trace.face.bcflag](phys_pt.data(), &dirichlet_val);
+                            dirichlet_callbacks[-trace.face->bcflag](phys_pt.data(), &dirichlet_val);
 
                         } else {
                             // just use the value
-                            dirichlet_val = dirichlet_values[trace.face.bcflag];
+                            dirichlet_val = dirichlet_values[trace.face->bcflag];
                         }
 
                         // calculate inviscid fluxes
@@ -443,7 +443,7 @@ namespace DISC {
 
                         // calculate the DDG distance
                         MATH::GEOMETRY::Point<T, ndim> phys_pt;
-                        trace.face.transform(quadpt.abscisse, coord, phys_pt.data());
+                        trace.face->transform(quadpt.abscisse, coord, phys_pt.data());
                         T h_ddg = 0; // uses distance to quadpt on boundary face
                         for(int idim = 0; idim < ndim; ++idim){
                             h_ddg += std::abs(unit_normal[idim] * 
@@ -490,8 +490,8 @@ namespace DISC {
                         const QUADRATURE::QuadraturePoint<T, ndim - 1> &quadpt = trace.getQP(iqp);
 
                         // calculate the jacobian and riemannian metric root det
-                        auto Jfac = trace.face.Jacobian(coord, quadpt.abscisse);
-                        T sqrtg = trace.face.rootRiemannMetric(Jfac, quadpt.abscisse);
+                        auto Jfac = trace.face->Jacobian(coord, quadpt.abscisse);
+                        T sqrtg = trace.face->rootRiemannMetric(Jfac, quadpt.abscisse);
 
                         // get the basis function values
                         std::vector<T> bi_dataL(elL.nbasis());
@@ -499,7 +499,7 @@ namespace DISC {
 
                         // flux contribution weighted by quadrature and face metric 
                         // Li and Tang 2017 sec 9.1.1
-                        T flux = mu * neumann_values[trace.face.bcflag]
+                        T flux = mu * neumann_values[trace.face->bcflag]
                             * quadpt.weight * sqrtg;
 
                         for(std::size_t itest = 0; itest < elL.nbasis(); ++itest){
@@ -547,8 +547,8 @@ namespace DISC {
                 const QUADRATURE::QuadraturePoint<T, ndim - 1> &quadpt = trace.getQP(iqp);
 
                 // calcualate Jacobian and metric
-                auto Jfac = trace.face.Jacobian(coord, quadpt.abscisse);
-                T sqrtg = trace.face.rootRiemannMetric(Jfac, quadpt.abscisse);
+                auto Jfac = trace.face->Jacobian(coord, quadpt.abscisse);
+                T sqrtg = trace.face->rootRiemannMetric(Jfac, quadpt.abscisse);
 
                 // calculate the normal vector 
                 auto normal = calc_ortho(Jfac);

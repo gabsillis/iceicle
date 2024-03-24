@@ -88,11 +88,14 @@ namespace BASIS {
                         + 15 * xi
                     ) / 8.0;
                 case 4:
-                    Nj[4] = (
-                        35 * pow(xi, 4)
-                        - 30 * pow(xi, 2)
-                        + 3
-                    ) / 8.0;
+//                    Nj[4] = (
+//                        35 * pow(xi, 4)
+//                        - 30 * pow(xi, 2)
+//                        + 3
+//                    ) / 8.0;
+
+//                  // floating point match to Dr. Luo's impl
+                    Nj[4] = (35.0 * xi * xi * xi * xi - 30 * xi * xi + 3) * 0.125;
                 case 3:
                     Nj[3] = (
                         5 * pow(xi, 3)
