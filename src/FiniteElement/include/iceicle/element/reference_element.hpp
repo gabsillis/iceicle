@@ -4,6 +4,7 @@
  */
 #pragma once
 #include "iceicle/basis/lagrange.hpp"
+#include "iceicle/basis/legendre.hpp"
 #include "iceicle/fe_enums.hpp"
 #include "iceicle/geometry/face.hpp"
 #include "iceicle/geometry/geo_element.hpp"
@@ -22,6 +23,7 @@ namespace FE {
         enum FESPACE_BASIS_TYPE {
             /// Lagrange polynomials
             LAGRANGE = 0, 
+            LEGENDRE = 1,
             N_BASIS_TYPES,
         };
 
@@ -65,6 +67,9 @@ namespace ELEMENT {
                     switch(basis_type){
                         case LAGRANGE:
                             basis = std::make_unique<BASIS::HypercubeLagrangeBasis<
+                                T, IDX, ndim, basis_order>>();
+                        case LEGENDRE:
+                            basis = std::make_unique<BASIS::HypercubeLegendreBasis<
                                 T, IDX, ndim, basis_order>>();
                             break;
                         default:
@@ -155,6 +160,9 @@ namespace ELEMENT {
                     switch(btype){
                         case LAGRANGE:
                             trace_basis = std::make_unique<BASIS::HypercubeLagrangeBasis<
+                                T, IDX, ndim - 1, basis_order>>();
+                        case LEGENDRE:
+                            trace_basis = std::make_unique<BASIS::HypercubeLegendreBasis<
                                 T, IDX, ndim - 1, basis_order>>();
                             break;
                         default:

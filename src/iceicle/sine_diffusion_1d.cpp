@@ -3,6 +3,7 @@
 #include "iceicle/build_config.hpp"
 #include "iceicle/dat_writer.hpp"
 #include "iceicle/disc/heat_eqn.hpp"
+#include "iceicle/element/reference_element.hpp"
 #include "iceicle/explicit_utils.hpp"
 #include "iceicle/fespace/fespace.hpp"
 #include "iceicle/geometry/face.hpp"
@@ -63,7 +64,7 @@ int main(int argc, char *argv[]){
             Tensor<ELEMENT::BOUNDARY_CONDITIONS, 2>{ELEMENT::BOUNDARY_CONDITIONS::DIRICHLET, ELEMENT::BOUNDARY_CONDITIONS::DIRICHLET},
             Tensor<int, 2>{0, 0}};
 
-        FE::FESpace<T, IDX, ndim> fespace{&mesh, FE::FESPACE_ENUMS::LAGRANGE, FE::FESPACE_ENUMS::GAUSS_LEGENDRE, std::integral_constant<int, order>{}};
+        FE::FESpace<T, IDX, ndim> fespace{&mesh, FE::FESPACE_ENUMS::LEGENDRE, FE::FESPACE_ENUMS::GAUSS_LEGENDRE, std::integral_constant<int, order>{}};
 
         DISC::HeatEquation<T, IDX, ndim> disc{};
         disc.mu = (cli_args["mu"]) ? cli_args["mu"].as<T>() : 1.0;
