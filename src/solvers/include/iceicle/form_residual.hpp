@@ -78,12 +78,12 @@ namespace ICEICLE::SOLVERS {
         for(const Trace &trace : fespace.get_boundary_traces()){
             // set up compact data views
             auto uL_layout = u.create_element_layout(trace.elL.elidx);
-            FE::elspan uL{uL_data, uL_layout};
+            FE::dofspan uL{uL_data, uL_layout};
             auto uR_layout = u.create_element_layout(trace.elR.elidx);
-            FE::elspan uR{uR_data, uR_layout};
+            FE::dofspan uR{uR_data, uR_layout};
 
             auto resL_layout = res.create_element_layout(trace.elL.elidx);
-            FE::elspan resL{resL_data, resL_layout};
+            FE::dofspan resL{resL_data, resL_layout};
 
             // extract the compact values from the global u view
             FE::extract_elspan(trace.elL.elidx, u, uL);
@@ -101,14 +101,14 @@ namespace ICEICLE::SOLVERS {
         for(const Trace &trace : fespace.get_interior_traces()){
             // set up compact data views
             auto uL_layout = u.create_element_layout(trace.elL.elidx);
-            FE::elspan uL{uL_data, uL_layout};
+            FE::dofspan uL{uL_data, uL_layout};
             auto uR_layout = u.create_element_layout(trace.elR.elidx);
-            FE::elspan uR{uR_data, uR_layout};
+            FE::dofspan uR{uR_data, uR_layout};
 
             auto resL_layout = res.create_element_layout(trace.elL.elidx);
-            FE::elspan resL{resL_data, resL_layout};
+            FE::dofspan resL{resL_data, resL_layout};
             auto resR_layout = res.create_element_layout(trace.elR.elidx);
-            FE::elspan resR{resR_data, resR_layout};
+            FE::dofspan resR{resR_data, resR_layout};
 
             // extract the compact values from the global u view
             FE::extract_elspan(trace.elL.elidx, u, uL);
@@ -128,10 +128,10 @@ namespace ICEICLE::SOLVERS {
         for(const Element &el : fespace.elements){
             // set up compact data views (reuse the storage defined for traces)
             auto uel_layout = u.create_element_layout(el.elidx);
-            FE::elspan u_el{uL_data, uel_layout};
+            FE::dofspan u_el{uL_data, uel_layout};
 
             auto ures_layout = res.create_element_layout(el.elidx);
-            FE::elspan res_el{resL_data, ures_layout};
+            FE::dofspan res_el{resL_data, ures_layout};
 
             // extract the compact values from the global u view 
             FE::extract_elspan(el.elidx, u, u_el);

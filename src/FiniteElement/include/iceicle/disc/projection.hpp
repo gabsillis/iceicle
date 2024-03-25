@@ -72,11 +72,10 @@ namespace DISC {
             }
         }
 
-        template<class LayoutPolicy, class AccessorPolicy>
         void domainIntegral(
             const ELEMENT::FiniteElement<T, IDX, ndim> &el,
             FE::NodalFEFunction<T, ndim> &node_coords,
-            FE::elspan<T, LayoutPolicy, AccessorPolicy> &res
+            FE::elspan auto res
         ) {
             T detJ; // TODO: put back in loop after debuggin for clarity
             for(int ig = 0; ig < el.nQP(); ++ig){ // loop over the quadrature points

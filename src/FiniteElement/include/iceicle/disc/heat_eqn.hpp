@@ -132,12 +132,11 @@ namespace DISC {
          * @param [out] res the residuals for each basis function
          *              WARNING: must be zeroed out
          */
-        template<class ULayoutPolicy, class UAccessorPolicy, class ResLayoutPolicy>
         void domainIntegral(
             const ELEMENT::FiniteElement<T, IDX, ndim> &el,
             FE::NodalFEFunction<T, ndim> &coord,
-            FE::elspan<T, ULayoutPolicy, UAccessorPolicy> &u,
-            FE::elspan<T, ResLayoutPolicy> &res
+            FE::elspan auto u,
+            FE::elspan auto res
         ) const {
 
             std::vector<T> gradx_data(el.nbasis() * ndim);
@@ -186,11 +185,16 @@ namespace DISC {
         void traceIntegral(
             const ELEMENT::TraceSpace<T, IDX, ndim> &trace,
             FE::NodalFEFunction<T, ndim> &coord,
-            FE::elspan<T, ULayoutPolicy, UAccessorPolicy> &uL,
-            FE::elspan<T, ULayoutPolicy, UAccessorPolicy> &uR,
-            FE::elspan<T, ResLayoutPolicy> &resL,
-            FE::elspan<T, ResLayoutPolicy> &resR
-        ) const {
+            FE::dofspan<T, ULayoutPolicy, UAccessorPolicy> uL,
+            FE::dofspan<T, ULayoutPolicy, UAccessorPolicy> uR,
+            FE::dofspan<T, ResLayoutPolicy> resL,
+            FE::dofspan<T, ResLayoutPolicy> resR
+        ) const requires ( 
+            FE::elspan<decltype(uL)> && 
+            FE::elspan<decltype(uR)> && 
+            FE::elspan<decltype(resL)> && 
+            FE::elspan<decltype(resL)>
+        ) {
             using namespace NUMTOOL::TENSOR::FIXED_SIZE;
             using FiniteElement = ELEMENT::FiniteElement<T, IDX, ndim>;
 
@@ -372,10 +376,14 @@ namespace DISC {
         void boundaryIntegral(
             const ELEMENT::TraceSpace<T, IDX, ndim> &trace,
             FE::NodalFEFunction<T, ndim> &coord,
-            FE::elspan<T, ULayoutPolicy, UAccessorPolicy> &uL,
-            FE::elspan<T, ULayoutPolicy, UAccessorPolicy> &uR,
-            FE::elspan<T, ResLayoutPolicy> &resL
-        ) const {
+            FE::dofspan<T, ULayoutPolicy, UAccessorPolicy> uL,
+            FE::dofspan<T, ULayoutPolicy, UAccessorPolicy> uR,
+            FE::dofspan<T, ResLayoutPolicy> resL
+        ) const requires(
+            FE::elspan<decltype(uL)> &&
+            FE::elspan<decltype(uR)> &&
+            FE::elspan<decltype(resL)> 
+        ) {
             using namespace NUMTOOL::TENSOR::FIXED_SIZE;
             using FiniteElement = ELEMENT::FiniteElement<T, IDX, ndim>;
             const FiniteElement &elL = trace.elL;
@@ -516,13 +524,12 @@ namespace DISC {
             }
         }
 
-        template<class ULayoutPolicy, class UAccessorPolicy, class ResLayoutPolicy>
         void interface_conservation(
             Trace &trace,
             FE::NodalFEFunction<T, ndim> &coord,
-            FE::elspan<T, ULayoutPolicy, UAccessorPolicy> &unkelL,
-            FE::elspan<T, ULayoutPolicy, UAccessorPolicy> &unkelR,
-            FE::facspan<T, ResLayoutPolicy> &res
+            FE::elspan auto unkelL,
+            FE::elspan auto &unkelR,
+            FE::facspan auto res
         ) const {
             using namespace MATH::MATRIX_T;
 
@@ -596,7 +603,7 @@ namespace DISC {
                     // integral contribution of interface conservation
                     T ic_res = jumpF * bi_trace[itest] * sqrtg * quadpt.weight;
 
-                    if constexpr(ResLayoutPolicy::static_extent() == ndim){
+                    if constexpr(decltype(res)::static_extent() == ndim){
                         // take the norm of the residual (scalar value in this case)
                         // and multiply by normal vector components 
                         for(IDX idim = 0; idim < ndim; ++idim){

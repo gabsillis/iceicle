@@ -257,10 +257,10 @@ TEST(test_fespace, test_dg_projection){
         [&](const ELEMENT::FiniteElement<T, IDX, ndim> &el){
             FE::compact_layout_right<IDX, 1> el_layout{el};
             T *u_local = new T[el_layout.size()](); // 0 initialized 
-            FE::elspan<T, FE::compact_layout_right<IDX, 1>> u_local_span(u_local, el_layout);
+            FE::dofspan<T, FE::compact_layout_right<IDX, 1>> u_local_span(u_local, el_layout);
 
             T *res_local = new T[el_layout.size()](); // 0 initialized 
-            FE::elspan<T, FE::compact_layout_right<IDX, 1>> res_local_span(res_local, el_layout);
+            FE::dofspan<T, FE::compact_layout_right<IDX, 1>> res_local_span(res_local, el_layout);
             
             // projection residual
             projection.domainIntegral(el, fespace.meshptr->nodes, res_local_span);

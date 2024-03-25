@@ -68,7 +68,7 @@ TEST(test_fespan, test_dglayout){
 
     auto local_layout = fespan1.create_element_layout(1);
     std::vector<T> el_memory(local_layout.size());
-    FE::elspan elspan1{el_memory.data(), local_layout};
+    FE::dofspan elspan1{el_memory.data(), local_layout};
     FE::extract_elspan(1, fespan1, elspan1);
 
     iel = 1;

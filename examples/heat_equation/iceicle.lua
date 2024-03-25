@@ -7,7 +7,7 @@ uniform_mesh = {
 
 	-- specify the bounding box of the uniform mesh domain
 	bounding_box = {
-		min = { -0.5, 0.0 },
+		min = { 0.0, 0.0 },
 		max = { 1.0, 1.0 },
 	},
 
@@ -34,7 +34,7 @@ uniform_mesh = {
 	geometry_order = 1,
 }
 
-mesh_perturbation = "zig-zag"
+mesh_perturbation = "taylor-green"
 
 -- define the finite element domain
 fespace = {
@@ -125,5 +125,5 @@ end
 -- initial condition
 -- initial_condition = "zero"
 initial_condition = function(x, y)
-	return exact_sol(x, y);
+	return 0.0
 end

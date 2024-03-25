@@ -27,5 +27,18 @@ Dof Maps are heavy types, so the views keep const references to Dof Maps through
 
 #### `dg_dof_map`
 Maps local DG degrees of freedom to a global index through an internal `std::vector` of index offsets
+
+### `fespan`
+Represents a view over the 3D index space indexed by `ielem`, `idof`, and `iv`.
+
+### `dofspan`
+Represents a view over a 2D index space of a degree of freedom index `idof` and a vector component index `iv`. 
+The context of the interpretation of a degree of freedom is constrained by the layout 
+#### `elspan`
+A `dofspan` that represents contiguous data over the local degrees of freedom of a single element 
+
+#### `facspan` 
+A `dofspan` that represents contiguous data over the local degrees of freedom in the trace space 
+
 ## Usage
 

@@ -113,10 +113,10 @@ int main(int argc, char *argv[]){
                 // TODO: maybe instead of scatter from local view 
                 // we can directly create the view on the subset of u 
                 // for CG this might require a different compact Layout 
-                FE::elspan u_local{u_local_data.data(), u.create_element_layout(el.elidx)};
+                FE::dofspan u_local{u_local_data.data(), u.create_element_layout(el.elidx)};
                 u_local = 0;
 
-                FE::elspan res_local{res_local_data.data(), u.create_element_layout(el.elidx)};
+                FE::dofspan res_local{res_local_data.data(), u.create_element_layout(el.elidx)};
                 res_local = 0;
 
                 // project

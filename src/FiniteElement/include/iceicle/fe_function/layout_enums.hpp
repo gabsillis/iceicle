@@ -103,4 +103,15 @@ namespace FE {
         static constexpr bool value = false;
     };
 
+    /**
+     * @brief struct concept to tell if the data in a dofspan 
+     * can be copied out to the global fespan in a contiguous block 
+     */
+    template< class local_span, class global_span>
+    struct has_equivalent_el_layout 
+    : is_equivalent_el_layout<
+        typename local_span::layout_type,
+        class global_span::layout_type
+    >{};
+
 }

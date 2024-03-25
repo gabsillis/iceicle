@@ -90,12 +90,12 @@ namespace ICEICLE::SOLVERS {
         // boundary faces 
         for(const Trace &trace : fespace.get_boundary_traces()) {
             // compact data views 
-            FE::elspan uL{uL_data.data(), u.create_element_layout(trace.elL.elidx)};
-            FE::elspan uR{uR_data.data(), u.create_element_layout(trace.elR.elidx)};
+            FE::dofspan uL{uL_data.data(), u.create_element_layout(trace.elL.elidx)};
+            FE::dofspan uR{uR_data.data(), u.create_element_layout(trace.elR.elidx)};
 
             // compact residual views
-            FE::elspan resL{resL_data.data(), res.create_element_layout(trace.elL.elidx)};
-            FE::elspan resLp{resLp_data.data(), res.create_element_layout(trace.elL.elidx)};
+            FE::dofspan resL{resL_data.data(), res.create_element_layout(trace.elL.elidx)};
+            FE::dofspan resLp{resLp_data.data(), res.create_element_layout(trace.elL.elidx)};
 
             // compact jacobian views 
             mdspan jacL{jacL_data.data(), extents{resL.size(), uL.size()}};
@@ -154,14 +154,14 @@ namespace ICEICLE::SOLVERS {
         // interior faces 
         for(const Trace &trace : fespace.get_interior_traces()) {
             // compact data views 
-            FE::elspan uL{uL_data.data(), u.create_element_layout(trace.elL.elidx)};
-            FE::elspan uR{uR_data.data(), u.create_element_layout(trace.elR.elidx)};
+            FE::dofspan uL{uL_data.data(), u.create_element_layout(trace.elL.elidx)};
+            FE::dofspan uR{uR_data.data(), u.create_element_layout(trace.elR.elidx)};
 
             // compact residual views
-            FE::elspan resL{resL_data.data(), res.create_element_layout(trace.elL.elidx)};
-            FE::elspan resLp{resLp_data.data(), res.create_element_layout(trace.elL.elidx)};
-            FE::elspan resR{resR_data.data(), res.create_element_layout(trace.elR.elidx)};
-            FE::elspan resRp{resRp_data.data(), res.create_element_layout(trace.elR.elidx)};
+            FE::dofspan resL{resL_data.data(), res.create_element_layout(trace.elL.elidx)};
+            FE::dofspan resLp{resLp_data.data(), res.create_element_layout(trace.elL.elidx)};
+            FE::dofspan resR{resR_data.data(), res.create_element_layout(trace.elR.elidx)};
+            FE::dofspan resRp{resRp_data.data(), res.create_element_layout(trace.elR.elidx)};
 
 
             // extract the compact values from the global u view 
@@ -281,11 +281,11 @@ namespace ICEICLE::SOLVERS {
         // domain integral 
         for(const Element &el : fespace.elements) {
             // compact data views 
-            FE::elspan u_el{uL_data.data(), u.create_element_layout(el.elidx)};
+            FE::dofspan u_el{uL_data.data(), u.create_element_layout(el.elidx)};
 
             // residual data views 
-            FE::elspan res_el{resL_data.data(), res.create_element_layout(el.elidx)};
-            FE::elspan resp_el{resLp_data.data(), res.create_element_layout(el.elidx)};
+            FE::dofspan res_el{resL_data.data(), res.create_element_layout(el.elidx)};
+            FE::dofspan resp_el{resLp_data.data(), res.create_element_layout(el.elidx)};
 
             // jacobian data view
             mdspan jac_el{jacL_data.data(), extents{res_el.size(), u_el.size()}};

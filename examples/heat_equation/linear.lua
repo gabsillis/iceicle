@@ -3,7 +3,7 @@
 -- define the mesh as a uniform quad mesh
 uniform_mesh = {
 	-- specify the number of elements in each direction
-	nelem = { 3, 3 },
+	nelem = { 50, 50 },
 
 	-- specify the bounding box of the uniform mesh domain
 	bounding_box = {
@@ -34,7 +34,7 @@ uniform_mesh = {
 	geometry_order = 1,
 }
 
-mesh_perturbation = "taylor-green"
+mesh_perturbation = "zig-zag"
 
 -- define the finite element domain
 fespace = {
@@ -45,7 +45,7 @@ fespace = {
 	quadrature = "gauss",
 
 	-- the basis function order
-	order = 4,
+	order = 2,
 }
 
 

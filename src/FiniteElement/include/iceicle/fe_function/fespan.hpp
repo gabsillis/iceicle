@@ -7,6 +7,7 @@
 #include "iceicle/element/TraceSpace.hpp"
 #include "iceicle/fe_function/el_layout.hpp"
 #include "iceicle/fe_function/nodal_fe_function.hpp"
+#include "iceicle/fe_function/trace_layout.hpp"
 #include <cstdlib>
 #include <ostream>
 #include <span>
@@ -68,6 +69,8 @@ namespace FE {
             // = Typedefs =
             // ============
             using value_type = T;
+            using layout_type = LayoutPolicy;
+            using accessor_type = AccessorPolicy;
             using pointer = AccessorPolicy::data_handle_type;
             using reference = AccessorPolicy::reference;
             using index_type = LayoutPolicy::index_type;
@@ -316,21 +319,15 @@ namespace FE {
     }
 
     /**
-     * @brief elspan represents a non-owning view for the data of a single element
-     * A Finite Element is a partition of the full domain with compact basis functions
-     *
+     * @brief dofspan represents a non-owning view for the data over a set of degreees of freedom 
+     * and vector components
      * This partitions the data with a 2 dimensional index space: the indices are 
-     * idof - the index of the local degree of freedom to the finite element 
+     * idof - the index of the degree of freedom 
      *        a degree of freedom is a coefficent to a finite element basis function
-     * icomp - the index of the vector component
+     * iv - the index of the vector component
      * 
      * @tparam T the data type being stored 
      * @tparam LayoutPolicy policy for how the data is laid out in memory
-     *         Layout Poicies need to implement the following functions 
-     *         is_global - boolean that determines if this can access all elements data 
-     *         is_nodal - boolean that determines if this is a CG data structure 
-     *         operator()(fe_index) - indexing with the 3 indices above
-     *         size() - the extent of the 1d index space
      * @tparam AccessorPolicy policy to dispatch to when accessing data 
      */
     template<
@@ -338,12 +335,14 @@ namespace FE {
         class LayoutPolicy,
         class AccessorPolicy = default_accessor<T>
     >
-    class elspan{
+    class dofspan{
         public:
             // ============
             // = Typedefs =
             // ============
             using value_type = T;
+            using layout_type = LayoutPolicy;
+            using accessor_type = AccessorPolicy;
             using pointer = AccessorPolicy::data_handle_type;
             using reference = AccessorPolicy::reference;
             using index_type = LayoutPolicy::index_type;
@@ -362,12 +361,12 @@ namespace FE {
         public:
 
             template<typename... LayoutArgsT>
-            constexpr elspan(pointer data, LayoutArgsT&&... layout_args) 
+            constexpr dofspan(pointer data, LayoutArgsT&&... layout_args) 
             noexcept : _ptr(data), _layout{layout_args...}, _accessor{} 
             {}
 
             template<typename... LayoutArgsT>
-            constexpr elspan(pointer data, LayoutArgsT&&... layout_args, const AccessorPolicy &_accessor) 
+            constexpr dofspan(pointer data, LayoutArgsT&&... layout_args, const AccessorPolicy &_accessor) 
             noexcept : _ptr(data), _layout{layout_args...}, _accessor{_accessor} 
             {}
 
@@ -383,6 +382,9 @@ namespace FE {
 
             /** @brief get the number of vector components */
             [[nodiscard]] constexpr size_type nv() const noexcept { return _layout.nv(); }
+
+            /** @brief get the static vector extent */
+            [[nodiscard]] inline static constexpr std::size_t static_extent() noexcept { return LayoutPolicy::static_extent(); }
 
             // ===============
             // = Data Access =
@@ -426,7 +428,7 @@ namespace FE {
              * in the index space to the value 
              * @return reference to this
              */
-            constexpr elspan<T, LayoutPolicy, AccessorPolicy> &operator=( T value )
+            constexpr dofspan<T, LayoutPolicy, AccessorPolicy> &operator=( T value )
             {
                 // TODO: be more specific about the index space
                 // maybe by delegating to the LayoutPolicy
@@ -493,7 +495,7 @@ namespace FE {
              *
              * @return an mdspan view of the result data with the contraction indices
              *  the first index of the contraction result will be the vector component index from 
-             *  this elspan 
+             *  this dofspan 
              *  the rest will be the indices from the dof_mdspan
              */
             template<class in_mdspan>
@@ -593,9 +595,53 @@ namespace FE {
 
     // deduction guides
     template<typename T, class LayoutPolicy>
-    elspan(T * data, LayoutPolicy &) -> elspan<T, LayoutPolicy>;
+    dofspan(T * data, LayoutPolicy &) -> dofspan<T, LayoutPolicy>;
     template<typename T, class LayoutPolicy>
-    elspan(T * data, const LayoutPolicy &) -> elspan<T, LayoutPolicy>;
+    dofspan(T * data, const LayoutPolicy &) -> dofspan<T, LayoutPolicy>;
+
+    // ================================
+    // = dofspan concept restrictions =
+    // ================================
+
+    /**
+     * @brief an elspan represents local dofs in an element in a compact layout.
+     * and constrains the layout policy type to represent this 
+     *
+     * NOTE: This will also work with reference types 
+     * though we discourage passing dofspan as a reference because it is a view
+     */
+    template<class spantype>
+    concept elspan = std::same_as<
+        std::remove_cv_t<std::remove_reference_t<spantype>>,
+        dofspan<
+            typename spantype::value_type,
+            compact_layout_right<typename spantype::index_type, spantype::static_extent()>, 
+            typename spantype::accessor_type 
+        >
+        /* || compact_layout_left dofspan*/
+    >;
+
+    /**
+     * @brief a facspan represents local dofs over a face in a compact layout.
+     * and constrains the layout policy type to represent this 
+     *
+     * NOTE: This will also work with reference types 
+     * though we discourage passing dofspan as a reference because it is a view
+     */
+    template<class spantype>
+    concept facspan = std::same_as<
+        std::remove_cv_t<std::remove_reference_t<spantype>>,
+        dofspan<
+            typename spantype::value_type,
+            trace_layout_right<typename spantype::index_type, spantype::static_extent()>, 
+            typename spantype::accessor_type 
+        >
+        /* || trace_layout_left dofspan*/
+    >;
+
+    // ================
+    // = Span Utility =
+    // ================
 
     /**
      * @brief extract the data for a specific element 
@@ -608,18 +654,17 @@ namespace FE {
     template<
         class T,
         class GlobalLayoutPolicy,
-        class GlobalAccessorPolicy,
-        class LocalLayoutPolicy
+        class GlobalAccessorPolicy
     > inline void extract_elspan(
         std::size_t iel,
         const fespan<T, GlobalLayoutPolicy, GlobalAccessorPolicy> fedata,
-        elspan<T, LocalLayoutPolicy> eldata
+        elspan auto eldata
     ){
         // if the default accessor is used 
         // and the layout is block copyable 
         // this is the most efficient operation
         if constexpr (
-            is_equivalent_el_layout<LocalLayoutPolicy, GlobalLayoutPolicy>::value 
+            has_equivalent_el_layout<decltype(eldata), decltype(fedata)>::value 
             && std::is_same<GlobalAccessorPolicy, default_accessor<T>>::value
         ) {
             // memcopy/memmove poggers
@@ -652,21 +697,20 @@ namespace FE {
      */
     template< 
         class T,
-        class GlobalLayoutPolicy,
-        class LocalLayoutPolicy,
-        class LocalAccessorPolicy
+        class GlobalLayoutPolicy
     > inline void scatter_elspan(
         std::size_t iel,
         T alpha,
-        elspan<T, LocalLayoutPolicy, LocalAccessorPolicy> eldata,
+        elspan auto eldata,
         T beta,
         fespan<T, GlobalLayoutPolicy> fedata
     ) {
-        using index_type = LocalLayoutPolicy::index_type;
+        using index_type = decltype(fedata)::index_type;
+        using local_accessor_policy = decltype(eldata)::accessor_type;
 
         if constexpr (
-            is_equivalent_el_layout<LocalLayoutPolicy, GlobalLayoutPolicy>::value 
-            && std::is_same<LocalAccessorPolicy, default_accessor<T>>::value
+            has_equivalent_el_layout<decltype(eldata), decltype(fedata)>::value 
+            && std::is_same<local_accessor_policy, default_accessor<T>>::value
         ) {
             T *fe_data_block = &( fedata[fe_index{iel, 0, 0}] );
             T *el_data_block = eldata.data();
@@ -687,128 +731,6 @@ namespace FE {
     }
 
     /**
-     * @brief facspan represents a non-owning view for the data over a single face 
-     *
-     * This partitions the data with a 2 dimensional index space: the indices are 
-     * idof - the index of the local degree of freedom of the trace space 
-     * iv - the index of the vector component 
-     *
-     * @tparam T the dat atype being stored 
-     * @tparam LayoutPolicy the policy for how the data is laid out in memeory 
-     * @tparam AccessorPolicy the policy to dispatch when accessing data 
-     */
-    template<
-        class T,
-        class LayoutPolicy,
-        class AccessorPolicy = default_accessor<T>
-    >
-    class facspan {
-
-    public:
-        // ============
-        // = Typedefs =
-        // ============
-        using value_type = T;
-        using pointer = AccessorPolicy::data_handle_type;
-        using reference = AccessorPolicy::reference;
-        using index_type = LayoutPolicy::index_type;
-        using size_type = std::make_unsigned_t<index_type>;
-
-    private:
-        /// The pointer to the data being accessed
-        pointer _ptr;
-
-        /// the layout policy
-        LayoutPolicy _layout;
-
-        /// the accessor policy
-        AccessorPolicy _accessor;
-
-    public:
-
-        template<typename... LayoutArgsT>
-        constexpr facspan(pointer data, LayoutArgsT&&... layout_args) 
-        noexcept : _ptr(data), _layout{layout_args...}, _accessor{} 
-        {}
-
-        template<typename... LayoutArgsT>
-        constexpr facspan(pointer data, LayoutArgsT&&... layout_args, const AccessorPolicy &_accessor) 
-        noexcept : _ptr(data), _layout{layout_args...}, _accessor{_accessor} 
-        {}
-
-        // ===================
-        // = Size Operations =
-        // ===================
-
-        /** @brief get the upper bound of the 1D index space */
-        constexpr size_type size() const noexcept { return _layout.size(); }
-
-        /** @brief get the number of degrees of freedom for a given element represented in the layout */
-        [[nodiscard]] constexpr size_type ndof() const noexcept { return _layout.ndof(); }
-
-        /** @brief get the number of vector components */
-        [[nodiscard]] constexpr size_type nv() const noexcept { return _layout.nv(); }
-
-        // ===============
-        // = Data Access =
-        // ===============
-
-        /** @brief index into the data using the set order
-            * @param idof the degree of freedom index 
-            * @param iv the vector index
-            * @return a reference to the data 
-            */
-        constexpr reference operator[](index_type idof, index_type iv){
-            return _accessor.access(_ptr, _layout[idof, iv]);
-        }
-
-        /**
-            * @brief if using the default accessor, allow access to the underlying storage
-            * @return the underlying storage 
-            */
-        constexpr pointer data() noexcept 
-        requires(std::is_same_v<AccessorPolicy, default_accessor<T>>) 
-        { return _ptr; }
-
-        /**
-            * @brief if using the default accessor, allow access to the underlying storage
-            * @return the underlying storage 
-            */
-        constexpr const pointer data() const noexcept 
-        requires(std::is_same_v<AccessorPolicy, default_accessor<T>>) 
-        { return _ptr; }
-
-
-        // ===========
-        // = Utility =
-        // ===========
-
-        /** @brief get the layout */
-        constexpr inline LayoutPolicy &get_layout() { return _layout; }
-
-        /**
-            * @brief set the value at every index 
-            * in the index space to the value 
-            * @return reference to this
-            */
-        constexpr facspan<T, LayoutPolicy, AccessorPolicy> &operator=( T value )
-        {
-            // TODO: be more specific about the index space
-            // maybe by delegating to the LayoutPolicy
-            for(int i = 0; i < size(); ++i){
-                _ptr[i] = value;
-            }
-            return *this;
-        }
-    };
-
-    // deduction guides
-    template<typename T, class LayoutPolicy>
-    facspan(T * data, LayoutPolicy &) -> facspan<T, LayoutPolicy>;
-    template<typename T, class LayoutPolicy>
-    facspan(T * data, const LayoutPolicy &) -> facspan<T, LayoutPolicy>;
-
-    /**
         * @brief extract the data from a trace 
         * into a facspan from a global nodal data structure 
         * @param trace the trace to extract from 
@@ -821,8 +743,8 @@ namespace FE {
     > inline void extract_facspan(
         ELEMENT::TraceSpace<T, typename LocalLayoutPolicy::index_type, LocalLayoutPolicy::static_extent()> &trace,
         FE::NodalFEFunction<T, LocalLayoutPolicy::static_extent()> &global_data,
-        facspan<T, LocalLayoutPolicy> facdata
-    ){
+        dofspan<T, LocalLayoutPolicy> facdata
+    ) requires facspan<decltype(facdata)> {
         using index_type = LocalLayoutPolicy::index_type;
         for(index_type inode = 0; inode < trace.face->n_nodes();  ++inode){
             index_type ignode = trace.face->nodes()[inode];
@@ -852,10 +774,10 @@ namespace FE {
     > inline void scatter_facspan(
         ELEMENT::TraceSpace<T, typename LocalLayoutPolicy::index_type, LocalLayoutPolicy::static_extent()> &trace,
         T alpha, 
-        facspan<T, LocalLayoutPolicy, LocalAccessorPolicy> facdata,
+        dofspan<T, LocalLayoutPolicy, LocalAccessorPolicy> facdata,
         T beta,
         FE::NodalFEFunction<T, LocalLayoutPolicy::static_extent()> &global_data 
-    ) {
+    ) requires facspan<decltype(facdata)> {
         using index_type = LocalLayoutPolicy::index_type;
         for(index_type inode = 0; inode < trace.face->n_nodes();  ++inode){
             index_type ignode = trace.face->nodes()[inode];
