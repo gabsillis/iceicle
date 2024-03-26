@@ -296,7 +296,7 @@ namespace BASIS {
         // = Basis Impl =
         // ==============
 
-        int nbasis() const override { return TensorProdType::nvalues; }
+        constexpr int nbasis() const override { return TensorProdType::nvalues; }
 
         constexpr FE::DOMAIN_TYPE domain_type() const noexcept override { return FE::DOMAIN_TYPE::HYPERCUBE; }
 

@@ -133,7 +133,7 @@ public:
             // invert mass matrices
             // TODO: prestore mass matrix with the reference element 
             // TODO: need to build a global mass matrix if doing CG (but not for DG)
-            for(ELEMENT::FiniteElement<T, IDX, ndim> &el : fespace.elements){
+            for(const ELEMENT::FiniteElement<T, IDX, ndim> &el : fespace.elements){
                 using namespace MATH::MATRIX;
                 using namespace MATH::MATRIX::SOLVERS;
                 DenseMatrix<T> mass = ELEMENT::calculate_mass_matrix(el, fespace.meshptr->nodes);
@@ -143,15 +143,14 @@ public:
                 for(IDX ieqn = 0; ieqn < disc_class::dnv_comp; ++ieqn){
 
                     // copy the residual for each degree of freedom to the rhs 
-                    for(IDX idof = 0; idof < el.nbasis(); ++idof){
+                    for(IDX idof = 0; idof < ndof; ++idof){
                         b[idof] = res[el.elidx, idof, ieqn];
                     }
 
                     // solve the matrix equation 
                     sub_lu(mass, pi, b.data(), du.data());
 
-                    // TODO: add to u 
-                    for(IDX idof = 0; idof < el.nbasis(); ++idof){
+                    for(IDX idof = 0; idof < ndof; ++idof){
                         res_stage[el.elidx, idof, ieqn] += du[idof];
                     }
                 }

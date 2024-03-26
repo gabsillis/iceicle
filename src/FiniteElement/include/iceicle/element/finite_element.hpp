@@ -255,22 +255,25 @@ public:
   ) const {
     using namespace NUMTOOL::TENSOR::FIXED_SIZE;
 
+    // pull nbasis to variable so its more likely to be put in register
+    int ndof = nbasis();
+
     //  fill with zero
-    std::fill_n(dBidxj, nbasis() * ndim, 0.0);
+    std::fill_n(dBidxj, ndof * ndim, 0.0);
 
     // the inverse of J = adj(J) / det(J)
     auto adjJ = adjugate(J);
     auto detJ = determinant(J);
 
     // Evaluate dBi in reference domain
-    std::vector<T> dBi_data(ndim * nbasis(), 0.0);
+    std::vector<T> dBi_data(ndim * ndof, 0.0);
     auto dBi = evalGradBasis(xi, dBi_data.data());
 
     std::experimental::extents<int, std::dynamic_extent, ndim> extents(
-        nbasis());
+        ndof);
     std::experimental::mdspan gbasis{dBidxj, extents};
     // dBidxj =  Jadj_{jk} * dBidxk
-    for (int i = 0; i < nbasis(); ++i) {
+    for (int i = 0; i < ndof; ++i) {
       for (int j = 0; j < ndim; ++j) {
         // gbasis[i, j] = 0.0;
         for (int k = 0; k < ndim; ++k) {
@@ -280,7 +283,7 @@ public:
     }
 
     // multiply though by the determinant
-    for (int i = 0; i < nbasis() * ndim; ++i) {
+    for (int i = 0; i < ndof * ndim; ++i) {
       dBidxj[i] /= detJ;
     }
 
@@ -377,6 +380,9 @@ public:
   ) const {
     using namespace std::experimental;
 
+    // pull nbasis to variable so its more likely to be put in register
+    int ndof = nbasis();
+
     // Get the Transformation Jacobian and Hessian
     auto trans_jac = geo_el->Jacobian(coord, xi);
     auto trans_hess = geo_el->Hessian(coord, xi);
@@ -384,19 +390,19 @@ public:
     // Evaluate basis function derivatives and second derivatives
 
     // derivatives wrt Physical Coordinates
-    std::vector<T> dBi_data(ndim * nbasis(), 0.0);
+    std::vector<T> dBi_data(ndim * ndof, 0.0);
     auto dBi = evalPhysGradBasis(xi, coord, dBi_data.data());
 
     // Hessian wrt reference coordinates
-    std::vector<T> hess_Bi_data(ndim * ndim * nbasis(), 0.0);
+    std::vector<T> hess_Bi_data(ndim * ndim * ndof, 0.0);
     auto hessBi = evalHessBasis(xi, hess_Bi_data.data());
 
     // multidimensional array view of hessian
-    extents<int, std::dynamic_extent, ndim, ndim> exts{nbasis()};
+    extents<int, std::dynamic_extent, ndim, ndim> exts{ndof};
     mdspan hess_phys{basis_hessian_data, exts};
 
     // fill with zeros
-    std::fill_n(basis_hessian_data, ndim * ndim * nbasis(), 0.0);
+    std::fill_n(basis_hessian_data, ndim * ndim * ndof, 0.0);
 
     // get the adjugate and determinant of the transformation jacobian
     // the inverse of J = adj(J) / det(J)
@@ -409,7 +415,7 @@ public:
 
     // form the rhs of the physical hessian equation
     // (put this result in hessBi overwriting the values)
-    for (idof = 0; idof < nbasis(); ++idof) {
+    for (idof = 0; idof < ndof; ++idof) {
       for (id = 0; id < ndim; ++id) {
         for (jd = 0; jd < ndim; ++jd) {
           for (kd = 0; kd < ndim; ++kd) {
@@ -420,7 +426,7 @@ public:
     }
 
     // compute the hessians
-    for (idof = 0; idof < nbasis(); ++idof) {
+    for (idof = 0; idof < ndof; ++idof) {
       // J transpose inverse times H twice
       for (id = 0; id < ndim; ++id) {
         for (jd = 0; jd < ndim; ++jd) {
@@ -434,7 +440,7 @@ public:
       }
     }
 
-    for (int i = 0; i < ndim * ndim * nbasis(); ++i) {
+    for (int i = 0; i < ndim * ndim * ndof; ++i) {
       basis_hessian_data[i] /= detJ2;
     }
 
@@ -497,9 +503,9 @@ public:
  */
 template<class T, class IDX, int ndim>
 MATH::MATRIX::DenseMatrix<T> calculate_mass_matrix(
-  FiniteElement<T, IDX, ndim> &el,
+  const FiniteElement<T, IDX, ndim> &el,
   FE::NodalFEFunction<T, ndim> &node_coords
-){
+) {
   MATH::MATRIX::DenseMatrix<T> mass(el.nbasis(), el.nbasis());
   mass = 0;
 
@@ -511,8 +517,9 @@ MATH::MATRIX::DenseMatrix<T> calculate_mass_matrix(
     T detJ = NUMTOOL::TENSOR::FIXED_SIZE::determinant(J);
 
     // integrate Bi * Bj
-    for(int ibasis = 0; ibasis < el.nbasis(); ++ibasis){
-      for(int jbasis = 0; jbasis < el.nbasis(); ++jbasis){
+    int nbasis = el.nbasis();
+    for(int ibasis = 0; ibasis < nbasis; ++ibasis){
+      for(int jbasis = 0; jbasis < nbasis; ++jbasis){
         mass[ibasis][jbasis] += el.basisQP(ig, ibasis) * el.basisQP(ig, jbasis) * quadpt.weight * detJ;
       }
     }
