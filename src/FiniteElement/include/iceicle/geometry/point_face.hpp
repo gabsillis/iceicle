@@ -97,6 +97,6 @@ namespace ELEMENT {
 
         int n_nodes() const override { return 1; }
 
-        IDX *nodes() override { return &node; }
+        const IDX *nodes() const override { return &node; }
     };
 }

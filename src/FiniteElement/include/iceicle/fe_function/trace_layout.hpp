@@ -70,10 +70,14 @@ namespace FE {
         }
 
         /// @brief get the number of vector components
-        [[nodiscard]] inline constexpr std::size_t nv() const noexcept {
+        [[nodiscard]] inline constexpr size_type nv() const noexcept {
             return vextent;
         }
 
+        /// @brief get the number of vector components
+        [[nodiscard]] inline constexpr size_type size() const noexcept {
+            return nv() * ndof();
+        }
 
         // ============
         // = Indexing =

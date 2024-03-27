@@ -525,13 +525,14 @@ namespace DISC {
         }
 
         void interface_conservation(
-            Trace &trace,
+            const Trace &trace,
             FE::NodalFEFunction<T, ndim> &coord,
             FE::elspan auto unkelL,
-            FE::elspan auto &unkelR,
+            FE::elspan auto unkelR,
             FE::facspan auto res
         ) const {
             using namespace MATH::MATRIX_T;
+            using namespace NUMTOOL::TENSOR::FIXED_SIZE;
 
             // calculate the centroids of the left and right elements
             // in the physical domain
@@ -582,15 +583,16 @@ namespace DISC {
                 trace.eval_trace_basis_qp(iqp, bi_trace.data());
 
                 // viscous fluxes
-                T fvisc_nL = -mu * dotprod<T, ndim>(graduL.data(), unit_normal.data());
-                T fvisc_nR = -mu * dotprod<T, ndim>(graduR.data(), unit_normal.data());
+                // TODO: dotprod based on mdspan extent
+                T fvisc_nL = -mu * dotprod<T, ndim>(gradu_dataL.data(), unit_normal.data());
+                T fvisc_nR = -mu * dotprod<T, ndim>(gradu_dataR.data(), unit_normal.data());
 
                 // inviscid fluxes 
-                Tensor<T, ndim> fadvL;
-                Tensor<T, ndim> fadvR;
+                NUMTOOL::TENSOR::FIXED_SIZE::Tensor<T, ndim> fadvL{};
+                NUMTOOL::TENSOR::FIXED_SIZE::Tensor<T, ndim> fadvR{};
                 for(int idim = 0; idim < ndim; ++idim){
-                    T fadvL[idim] = a[idim] * uL + b[idim] * SQUARED(uL);
-                    T fadvR[idim] = a[idim] * uR + b[idim] * SQUARED(uR);
+                    fadvL[idim] = a[idim] * uL + b[idim] * SQUARED(uL);
+                    fadvR[idim] = a[idim] * uR + b[idim] * SQUARED(uR);
                 }
 
                 T fadv_nL = dotprod<T, ndim>(fadvL.data(), unit_normal.data());

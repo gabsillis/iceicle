@@ -493,7 +493,7 @@ namespace MESH {
                     out << "normal at s=0: (" <<  normal[0] << ", " << normal[1] << ")\n";
                 }
                 out << "Nodes: { ";
-                IDX *nodeslist = fac.nodes();
+                std::span<const IDX> nodeslist = fac.nodes_span();
                 for(int inode = 0; inode < fac.n_nodes(); ++inode){
                     out << nodeslist[inode] << " ";
                 }

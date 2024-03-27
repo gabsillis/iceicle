@@ -4,6 +4,7 @@
 #include "iceicle/dat_writer.hpp"
 #include "iceicle/disc/heat_eqn.hpp"
 #include "iceicle/explicit_utils.hpp"
+#include "iceicle/fe_function/fespan.hpp"
 #include "iceicle/fespace/fespace.hpp"
 #include "iceicle/geometry/face.hpp"
 #include "iceicle/disc/projection.hpp"
@@ -14,6 +15,7 @@
 #include "iceicle/disc/l2_error.hpp"
 #include "iceicle/ssp_rk3.hpp"
 #include "iceicle/fe_function/layout_right.hpp"
+#include "iceicle/tmp_utils.hpp"
 #include <cmath>
 #include <fenv.h>
 #include <type_traits>
@@ -177,6 +179,10 @@ int main(int argc, char *argv[]){
             exactfunc(&x, &f);
             outexact << " " << std::format("{:>{}.{}e}", f, field_width, precision) << std::endl;
         }
+
+        // mdg selection
+        FE::nodeset_dof_map<IDX> nodeset;
+        FE::select_nodeset(fespace, disc, u, 0.01, ICEICLE::TMP::to_size<ndim>{}, nodeset);
 
         AnomalyLog::handle_anomalies();
         return 0;

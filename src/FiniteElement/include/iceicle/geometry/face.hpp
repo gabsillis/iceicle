@@ -314,7 +314,7 @@ namespace ELEMENT {
          * @return the node indices in the mesh nodes array
          */
         virtual
-        IDX *nodes() = 0;
+        const IDX *nodes() const = 0;
 
         /**
          * @brief get the array of node indices as a span 
@@ -325,12 +325,12 @@ namespace ELEMENT {
          *
          * @return the node indices in the mesh nodes array
          */
-        std::span<IDX> nodes_span(){
+        std::span<const IDX> nodes_span() const {
             return std::span{nodes(), static_cast<std::size_t>(n_nodes())};
         }
 
         virtual
-        std::string printNodes(){
+        std::string printNodes() const {
             std::string output = std::to_string(nodes()[0]);
             for(IDX inode = 1; inode < n_nodes(); ++inode){
                 output += ", " + std::to_string(nodes()[inode]);

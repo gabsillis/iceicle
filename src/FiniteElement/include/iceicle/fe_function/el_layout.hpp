@@ -125,7 +125,7 @@ namespace FE {
         }
 
         /// @brief get the number of vector components
-        [[nodiscard]] inline constexpr std::size_t nv() const noexcept {
+        [[nodiscard]] inline constexpr size_type nv() const noexcept {
             if constexpr(is_dynamic_size<vextent>::value){
                 return nv_d;
             } else {
@@ -136,7 +136,7 @@ namespace FE {
          * @brief get the size of the compact index space 
          * @return the size of the compact index space 
          */
-        constexpr std::size_t size() const noexcept { return ndof() * nv(); }
+        constexpr size_type size() const noexcept { return ndof() * nv(); }
 
 
         // ============
@@ -149,7 +149,7 @@ namespace FE {
 #endif
 
         /**
-         * Get the result of the mapping from an index double
+         * Get the result of the mapping from an index pair 
          * to the one dimensional index of the elment 
          * @param idof the degree of freedom index 
          * @param iv the vector component index
