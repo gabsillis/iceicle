@@ -933,12 +933,12 @@ namespace FE {
 
             disc.interface_conservation(trace, fespace.meshptr->nodes, uL, uR, ic_res);
 
-//            std::cout << "Interface nr: " << trace.facidx; 
-//            std::cout << " | nodes:";
-//            for(index_type inode : trace.face->nodes_span()){
-//                std::cout << " " << inode;
-//            }
-//            std::cout << " | ic residual: " << ic_res.vector_norm() << std::endl; 
+            std::cout << "Interface nr: " << trace.facidx; 
+            std::cout << " | nodes:";
+            for(index_type inode : trace.face->nodes_span()){
+                std::cout << " " << inode;
+            }
+            std::cout << " | ic residual: " << ic_res.vector_norm() << std::endl; 
 
             // if interface conservation residual is high enough,
             // add the trace and nodes of the trace
@@ -947,6 +947,14 @@ namespace FE {
                 for(index_type inode : trace.face->nodes_span()){
                     to_select[inode] = true;
                 }
+            }
+        }
+
+        // loop over the boundary faces and deactivate all boundary nodes 
+        // since some may be connected to an active interior face 
+        for(const trace_type &trace : fespace.get_boundary_traces()){
+            for(index_type inode : trace.face->nodes_span()){
+                to_select[inode] = false;
             }
         }
 

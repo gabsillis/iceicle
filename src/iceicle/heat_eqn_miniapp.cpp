@@ -474,18 +474,19 @@ int main(int argc, char *argv[]){
     // ===============================
     // = move the nodes around a bit =
     // ===============================
-    FE::nodeset_dof_map<IDX> nodeset{FE::select_nodeset(fespace, heat_equation, u, 0.01, ICEICLE::TMP::to_size<ndim>())};
+    FE::nodeset_dof_map<IDX> nodeset{FE::select_nodeset(fespace, heat_equation, u, 0.3, ICEICLE::TMP::to_size<ndim>())};
     FE::node_selection_layout<IDX, ndim> new_coord_layout{nodeset};
     std::vector<T> new_coord_storage(new_coord_layout.size());
     FE::dofspan dx_coord{new_coord_storage.data(), new_coord_layout};
 
     
     std::vector<T> node_radii = FE::node_freedom_radii(fespace);
+    dx_coord = 0;
     for(IDX idof = 0; idof < dx_coord.ndof(); ++idof){
         IDX inode = nodeset.selected_nodes[idof];
 
-        // push to the right a little (increasing farther right)
-        dx_coord[idof, 0] = 0.5 * dx_coord[idof, 0] * node_radii[inode];
+        // push to the right a little 
+        dx_coord[idof, 0] = 0.5 * node_radii[inode];
     }
 
     // apply new nodes 
