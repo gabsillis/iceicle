@@ -127,3 +127,7 @@ end
 initial_condition = function(x, y)
 	return 0.0
 end
+
+solver = {
+	type = "newton"
+}

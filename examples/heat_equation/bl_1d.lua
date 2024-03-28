@@ -76,12 +76,16 @@ boundary_conditions = {
 	}
 }
 
---solver = {
---	ivis = 10,
---	type = "rk3-ssp",
---	cfl = 0.1,
---	ntime = 500
---}
+solver = {
+	type = "newton",
+	kmax = 5,
+	ivis = 1,
+	linesearch = {
+		type = "cubic",
+		alpha_initial = 0.01,
+		alpha_max = 1.0,
+	}
+}
 
 -- initial condition
 initial_condition = function(x, y)

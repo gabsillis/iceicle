@@ -6,6 +6,7 @@
 #pragma once
 
 #include <functional>
+#include <variant>
 #include <cmath>
 
 namespace ICEICLE::SOLVERS {
@@ -208,6 +209,9 @@ namespace ICEICLE::SOLVERS {
         }
 
     };
+
+    template<class T, class IDX>
+    using LinesearchVariant = std::variant<no_linesearch<T, IDX>, wolfe_linesearch<T, IDX>>;
 
 } 
 

@@ -10,16 +10,15 @@
 #include "iceicle/nonlinear_solver_utils.hpp"
 #include "iceicle/program_args.hpp"
 #include "iceicle/ssp_rk3.hpp"
+#include "iceicle/tvd_rk3.hpp"
 #include "iceicle/string_utils.hpp"
 #include "iceicle/tmp_utils.hpp"
 #include "iceicle/mdg_utils.hpp"
 #include <iomanip>
 #include <limits>
-#include <type_traits>
 #ifdef ICEICLE_USE_PETSC 
 #include "iceicle/petsc_newton.hpp"
-#endif
-#ifdef ICEICLE_USE_MPI
+#elifdef ICEICLE_USE_MPI
 #include "mpi.h"
 #endif
 
@@ -338,7 +337,11 @@ int main(int argc, char *argv[]){
         };
 
         std::string solver_type = solver_params["type"];
-        if(eq_icase(solver_type, "explicit_euler") || eq_icase(solver_type, "rk3-ssp")){
+        if(
+            eq_icase(solver_type, "explicit_euler") || 
+            eq_icase(solver_type, "rk3-ssp")        ||
+            eq_icase(solver_type, "rk3-tvd")        
+        ){
             // determine timestep criterion
             std::optional<TimestepVariant<T, IDX>> timestep;
 
@@ -382,16 +385,6 @@ int main(int argc, char *argv[]){
 
             if(timestep.has_value() && stop_condition.has_value()){
 
-                // Option A
-//                TimestepVariant<T, IDX> a { timestep.value()};
-//                TerminationVariant<T, IDX> b {stop_condition.value()};
-//                std::visit(select_fcn{
-//                    [&](const auto &ts, const auto &sc){
-//                        ExplicitEuler solver{fespace, heat_equation, ts, sc};
-//                    }
-//                }, a, b);
-
-                // Option B
                 std::tuple{timestep.value(), stop_condition.value()} >> select_fcn{
                     [&](const auto &ts, const auto &sc){
 
@@ -402,6 +395,10 @@ int main(int argc, char *argv[]){
                             t_final = solver.time;
                         } else if(eq_icase(solver_type, "rk3-ssp")){
                             RK3SSP solver{fespace, heat_equation, ts, sc};
+                            setup_and_solve(solver);
+                            t_final = solver.time;
+                        } else if(eq_icase(solver_type, "rk3-tvd")){
+                            RK3TVD solver{fespace, heat_equation, ts, sc};
                             setup_and_solve(solver);
                             t_final = solver.time;
                         }
@@ -423,81 +420,115 @@ int main(int argc, char *argv[]){
                     }
                 };
             }
+        } else if(
+            eq_icase(solver_type, "newton") ||
+            eq_icase(solver_type, "newton-ls")
+        ) {
+#ifdef ICEICLE_USE_PETSC
+            // ==============================
+            // = Solve with Newton's Method =
+            // ==============================
+            using namespace ICEICLE::SOLVERS;
+
+            // default is machine zero convergence 
+            // with maximum of 5 nonlinear iterations
+            ConvergenceCriteria<T, IDX> conv_criteria{
+                .tau_abs = (sol::optional<T>{solver_params["tau_abs"]}) ? solver_params["tau_abs"].get<T>() : std::numeric_limits<T>::epsilon(),
+                .tau_rel = (sol::optional<T>{solver_params["tau_rel"]}) ? solver_params["tau_rel"].get<T>() : 0.0,
+                .kmax = (sol::optional<IDX>{solver_params["kmax"]}) ? solver_params["kmax"].get<IDX>() : 5 
+            };
+
+            // select the linesearch type
+            LinesearchVariant<T, IDX> linesearch;
+            sol::optional<sol::table> ls_arg_opt = solver_params["linesearch"];
+            if(ls_arg_opt){
+                sol::table ls_arg = ls_arg_opt.value();
+                if(eq_icase(ls_arg["type"].get<std::string>(), "wolfe") 
+                        || eq_icase(ls_arg["type"].get<std::string>(), "cubic"))
+                {
+                    IDX kmax = (sol::optional<IDX>{ls_arg["kmax"]}) ? ls_arg["kmax"].get<IDX>() : 5; 
+                    T alpha_initial = (sol::optional<T>{ls_arg["alpha_initial"]}) ? ls_arg["alpha_initial"].get<T>() : 1; 
+                    T alpha_max = (sol::optional<T>{ls_arg["alpha_max"]}) ? ls_arg["alpha_max"].get<T>() : 10.0; 
+                    T c1 = (sol::optional<T>{ls_arg["c1"]}) ? ls_arg["c1"].get<T>() : 1e-4; 
+                    T c2 = (sol::optional<T>{ls_arg["c2"]}) ? ls_arg["c2"].get<T>() : 0.9; 
+                    linesearch = wolfe_linesearch{kmax, alpha_initial, alpha_max, c1, c2};
+                } else {
+                    linesearch = no_linesearch<T, IDX>{};
+                }
+            } else {
+                linesearch = no_linesearch<T, IDX>{};
+            };
+
+            // dispatch with the set lineset strategy
+            linesearch >> select_fcn{
+                [&](const auto& ls){
+                    PetscNewton solver{fespace, heat_equation, conv_criteria, ls};
+                    solver.idiag = (sol::optional<IDX>{solver_params["idiag"]}) ? solver_params["idiag"].get<IDX>() : -1;
+                    solver.ivis = (sol::optional<IDX>{solver_params["ivis"]}) ? solver_params["ivis"].get<IDX>() : 1;
+                    ICEICLE::IO::PVDWriter<T, IDX, ndim> pvd_writer;
+                    pvd_writer.register_fespace(fespace);
+                    pvd_writer.register_fields(u, "u");
+                    pvd_writer.write_vtu(0, 0.0); // print the initial solution
+                    solver.vis_callback = [&](decltype(solver) &solver, IDX k, Vec res_data, Vec du_data){
+                        T res_norm;
+                        PetscCallAbort(solver.comm, VecNorm(res_data, NORM_2, &res_norm));
+                        std::cout << std::setprecision(8);
+                        std::cout << "itime: " << std::setw(6) << k
+                            << " | residual l2: " << std::setw(14) << res_norm
+                            << std::endl;
+                        // offset by initial solution iteration
+                        pvd_writer.write_vtu(k + 1, (T) k + 1);
+                    };
+                    solver.solve(u);
+
+                    // ========================
+                    // = Compute the L2 Error =
+                    // =   (if applicable)    =
+                    // ========================
+                    sol::optional<sol::function> exact_sol = lua_state["exact_sol"];
+                    if(exact_sol){
+                        std::function<void(T*, T*)> exactfunc = 
+                            [&lua_state](T *x, T *out) -> void {
+                                sol::function fexact = lua_state["exact_sol"];
+                                out[0] = fexact(x[0], x[1]);
+                            };
+                        T l2_error = DISC::l2_error(exactfunc, fespace, u);
+                        std::cout << "L2 error: " << std::setprecision(9) << l2_error << std::endl;
+                    }
+
+                }
+            };
+
+//            // ===============================
+//            // = move the nodes around a bit =
+//            // ===============================
+//            FE::nodeset_dof_map<IDX> nodeset{FE::select_nodeset(fespace, heat_equation, u, 0.003, ICEICLE::TMP::to_size<ndim>())};
+//            FE::node_selection_layout<IDX, ndim> new_coord_layout{nodeset};
+//            std::vector<T> new_coord_storage(new_coord_layout.size());
+//            FE::dofspan dx_coord{new_coord_storage.data(), new_coord_layout};
+//
+//            
+//            std::vector<T> node_radii = FE::node_freedom_radii(fespace);
+//            dx_coord = 0;
+//            for(IDX idof = 0; idof < dx_coord.ndof(); ++idof){
+//                IDX inode = nodeset.selected_nodes[idof];
+//
+//                // push to the right a little 
+//                dx_coord[idof, 0] = 0.5 * node_radii[inode];
+//            }
+//
+//            // apply new nodes 
+//            FE::scatter_node_selection_span(1.0, dx_coord, 1.0, fespace.meshptr->nodes);
+//            // fixup interior nodes 
+//            FE::regularize_interior_nodes(fespace);
+
+#else 
+            AnomalyLog::log_anomaly(Anomaly{"Newton solver requires PETSC!"), general_anomaly_tag{}});
+#endif
         }
     } else {
+
 #ifdef ICEICLE_USE_PETSC
-    // ==============================
-    // = Solve with Newton's Method =
-    // ==============================
-    using namespace ICEICLE::SOLVERS;
-
-    // default is machine zero convergence 
-    // with maximum of 5 nonlinear iterations
-    ConvergenceCriteria<T, IDX> conv_criteria{
-        .tau_abs = std::numeric_limits<T>::epsilon(),
-        .tau_rel = 0,
-        .kmax = 5
-    };
-    wolfe_linesearch<T, IDX> ls{.max_it = 10};
-    PetscNewton solver{fespace, heat_equation, conv_criteria, ls};
-    solver.idiag = -1;
-    solver.ivis = 1;
-    ICEICLE::IO::PVDWriter<T, IDX, ndim> pvd_writer;
-    pvd_writer.register_fespace(fespace);
-    pvd_writer.register_fields(u, "u");
-    pvd_writer.write_vtu(0, 0.0); // print the initial solution
-    solver.vis_callback = [&](decltype(solver) &solver, IDX k, Vec res_data, Vec du_data){
-        T res_norm;
-        PetscCallAbort(solver.comm, VecNorm(res_data, NORM_2, &res_norm));
-        std::cout << std::setprecision(8);
-        std::cout << "itime: " << std::setw(6) << k
-            << " | residual l2: " << std::setw(14) << res_norm
-            << std::endl;
-        // offset by initial solution iteration
-        pvd_writer.write_vtu(k + 1, (T) k + 1);
-    };
-    solver.solve(u);
-
-    // ========================
-    // = Compute the L2 Error =
-    // =   (if applicable)    =
-    // ========================
-    sol::optional<sol::function> exact_sol = lua_state["exact_sol"];
-    if(exact_sol){
-        std::function<void(T*, T*)> exactfunc = 
-            [&lua_state](T *x, T *out) -> void {
-                sol::function fexact = lua_state["exact_sol"];
-                out[0] = fexact(x[0], x[1]);
-            };
-        T l2_error = DISC::l2_error(exactfunc, fespace, u);
-        std::cout << "L2 error: " << std::setprecision(9) << l2_error << std::endl;
-    }
-
-    // ===============================
-    // = move the nodes around a bit =
-    // ===============================
-    FE::nodeset_dof_map<IDX> nodeset{FE::select_nodeset(fespace, heat_equation, u, 0.003, ICEICLE::TMP::to_size<ndim>())};
-    FE::node_selection_layout<IDX, ndim> new_coord_layout{nodeset};
-    std::vector<T> new_coord_storage(new_coord_layout.size());
-    FE::dofspan dx_coord{new_coord_storage.data(), new_coord_layout};
-
-    
-    std::vector<T> node_radii = FE::node_freedom_radii(fespace);
-    dx_coord = 0;
-    for(IDX idof = 0; idof < dx_coord.ndof(); ++idof){
-        IDX inode = nodeset.selected_nodes[idof];
-
-        // push to the right a little 
-        dx_coord[idof, 0] = 0.5 * node_radii[inode];
-    }
-
-    // apply new nodes 
-    FE::scatter_node_selection_span(1.0, dx_coord, 1.0, fespace.meshptr->nodes);
-    // fixup interior nodes 
-    FE::regularize_interior_nodes(fespace);
-
-    pvd_writer.write_mesh();
-
     //cleanup
     PetscFinalize();
 #elifdef ICEICLE_USE_MPI

@@ -127,3 +127,7 @@ initial_condition = "zero"
 --initial_condition = function(x, y)
 --	return exact_sol(x, y);
 --end
+
+solver = {
+	type = "newton"
+}
