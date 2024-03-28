@@ -73,13 +73,9 @@ namespace SOLVERS {
          * @param [out] u the solution of Mu = res
          * @param [in] res the residual
          */
-        template<
-            class LayoutPolicy_u, 
-            class LayoutPolicy_res
-        >
         void solve(
-            FE::elspan<T, LayoutPolicy_u> &u, 
-            const FE::elspan<T, LayoutPolicy_res> &res
+            FE::elspan auto u, 
+            const FE::elspan auto res
         ){
             MATH::MATRIX::SOLVERS::sub_lu(mass, pi, res.data(), u.data());
         }

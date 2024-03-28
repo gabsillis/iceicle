@@ -18,8 +18,9 @@
 namespace ICEICLE::SOLVERS {
 
 /**
- * @brief Explicit 3-stage Strong Stability Preserving Runge-Kutta
+ * @brief Explicit 3-stage Total Variation Diminishing Runge-Kutta
  *
+ * TODO:
  * Butcher tableau
  *
  * 0   | 0    0    0
@@ -29,7 +30,7 @@ namespace ICEICLE::SOLVERS {
  *     | 1/6  1/6  2/3
  */
 template< class T, class IDX, class TimestepClass, class StopCondition>
-class RK3SSP {
+class RK3TVD {
 
 public: 
 
@@ -54,7 +55,7 @@ public:
     /// @brief the callback function for visualization during solve()
     /// is given a reference to this when called 
     /// default is to print out a l2 norm of the residual data array
-    std::function<void(RK3SSP &)> vis_callback = [](RK3SSP &disc){
+    std::function<void(RK3TVD &)> vis_callback = [](RK3TVD &disc){
         T sum = 0.0;
         for(int i = 0; i < disc.res_data.size(); ++i){
             sum += SQUARED(disc.res_data[i]);
@@ -72,7 +73,7 @@ public:
     IDX ivis = -1;
 
     /**
-     * @brief create a RK3SSP solver 
+     * @brief create a RK3TVD solver 
      * initializes the residual data vector
      *
      * @param fespace the finite element space 
@@ -80,7 +81,7 @@ public:
      * @param timestep the class that determines the 
      */
     template<int ndim, class disc_class>
-    RK3SSP(
+    RK3TVD(
         FE::FESpace<T, IDX, ndim> &fespace,
         disc_class &disc,
         const TimestepClass &timestep,
@@ -107,7 +108,32 @@ public:
     void step(FE::FESpace<T, IDX, ndim> &fespace, disc_class &disc, FE::fespan<T, LayoutPolicy, uAccessorPolicy> u)
     requires TimestepT<TimestepClass, T, IDX, ndim, disc_class, LayoutPolicy, uAccessorPolicy>
     {
+       using namespace NUMTOOL::TENSOR::FIXED_SIZE;
+
+       // RK coefficients by number of stages 
+       // [nstage-1, istage]
        
+       // alfa multiplies uold
+       static Tensor<T, 5, 5> valfa{{
+           {0.0,  0.0,       0.0,       0.0, 0.0},
+           {0.0,  0.5,       0.0,       0.0, 0.0},
+           {0.0,  0.75,      1.0 / 3.0, 0.0, 0.0},
+           {0.25, 1.0 / 3.0, 0.5,       1.0, 0.0},
+           {0.25, 1.0 / 6.0, 3.0 / 8.0, 0.5, 1.0}
+       }};
+
+        // beta multiplies current stage u
+        static Tensor<T, 5, 5> vbeta{{
+            {1.0,  0.0,       0.0,       0.0, 0.0},
+            {1.0,  0.5,       0.0,       0.0, 0.0},
+            {1.0,  0.25,      2.0 / 3.0, 0.0, 0.0},
+            {0.25, 1.0 / 3.0, 0.5,       1.0, 0.0},
+            {0.25, 1.0 / 6.0, 0.375,     0.5, 1.0}
+        }};
+
+        // number of TVD Stages
+        static constexpr int nstag = 3;
+
         // calculate the timestep 
         T dt = timestep(fespace, disc, u);
 
@@ -161,27 +187,21 @@ public:
         FE::fespan res1{res1_data.data(), u.get_layout()};
         FE::fespan res2{res2_data.data(), u.get_layout()};
         FE::fespan res3{res3_data.data(), u.get_layout()};
-        FE::fespan u_stage{u_stage_data.data(), u.get_layout()};
+        FE::fespan u_old{u_stage_data.data(), u.get_layout()};
 
 
-        // stage 1 
-        stage_residual(u, res1);
+        FE::copy_fespan(u, u_old);
+       
+        for(int istage = 0; istage < nstag; ++istage){
+            // get Minv * r for the stage u
+            stage_residual(u, res1);
 
-        // stage 2 
-        FE::copy_fespan(u, u_stage);
-        FE::axpy(dt, res1, u_stage);
-        stage_residual(u_stage, res2);
+            // update from coefficients
+            FE::axpby(valfa[nstag-1][istage], u_old, vbeta[nstag-1][istage], u); 
 
-        // stage 3
-        FE::copy_fespan(u, u_stage);
-        FE::axpy(0.25 * dt, res1, u_stage);
-        FE::axpy(0.25 * dt, res2, u_stage);
-        stage_residual(u_stage, res3);
-
-        // update u 
-        FE::axpy(1.0 / 6.0 * dt, res1, u);
-        FE::axpy(1.0 / 6.0 * dt, res2, u);
-        FE::axpy(2.0 / 3.0 * dt, res3, u);
+            // add residual dt contribution
+            FE::axpy(vbeta[nstag-1][istage] * dt, res1, u);
+        }
 
         // update the timestep and time
         itime++;
@@ -217,7 +237,7 @@ public:
 
 // template argument deduction
 template<class T, class IDX, int ndim, class disc_class, class TimestepClass, class StopCondition>
-RK3SSP(FE::FESpace<T, IDX, ndim> &, disc_class &,
-    const TimestepClass &, const StopCondition &) -> RK3SSP<T, IDX, TimestepClass, StopCondition>;
+RK3TVD(FE::FESpace<T, IDX, ndim> &, disc_class &,
+    const TimestepClass &, const StopCondition &) -> RK3TVD<T, IDX, TimestepClass, StopCondition>;
 
 }

@@ -234,60 +234,64 @@ namespace BASIS {
         ) const noexcept {
             using namespace NUMTOOL::TENSOR::FIXED_SIZE;
 
-            // run-time precompute the lagrange polynomial evaluations 
-            // and derivatives for each coordinate
-            Tensor<T, ndim, nbasis_1d> lagrange_evals{};
-            Tensor<T, ndim, nbasis_1d> lagrange_derivs{};
-            for(int idim = 0; idim < ndim; ++idim){
-            basis_1d.deriv_all(
-                xi[idim], lagrange_evals[idim], lagrange_derivs[idim]);
-            }
-            // fencepost the loop at idim = 0
-            NUMTOOL::TMP::constexpr_for_range<0, nbasis_1d>(
-            [&]<int ibasis>(const Point &xi) {
-                static constexpr int nfill = MATH::power_T<nbasis_1d, ndim - 1>::value;
-                T Bi_idim = lagrange_evals[0][ibasis];
-                T dBi_idim = lagrange_derivs[0][ibasis];
-                for(int ifill = 0; ifill < nfill; ++ifill){
-                    dBidxj[nfill * ibasis + ifill][0] = dBi_idim;
-                    for(int jdim = 1; jdim < ndim; ++jdim){
-                        dBidxj[nfill * ibasis + ifill][jdim] = Bi_idim;
-                    }
+            if constexpr(ndim == 0){
+                dBidxj.data()[0] = 0.0;
+            } else {
+                // run-time precompute the lagrange polynomial evaluations 
+                // and derivatives for each coordinate
+                Tensor<T, ndim, nbasis_1d> lagrange_evals{};
+                Tensor<T, ndim, nbasis_1d> lagrange_derivs{};
+                for(int idim = 0; idim < ndim; ++idim){
+                basis_1d.deriv_all(
+                    xi[idim], lagrange_evals[idim], lagrange_derivs[idim]);
                 }
-            },
-            xi);
-            
-            NUMTOOL::TMP::constexpr_for_range<1, ndim>(
-                [&]<int idim>(const Point &xi){
-                    // number of times to repeat the loop over basis functions
-                    const int nrepeat = std::pow(nbasis_1d, idim);
-                    // the size that one loop through the basis function indices gives 
-                    const int cyclesize = std::pow(nbasis_1d, ndim - idim);
-
-                    for(int irep = 0; irep < nrepeat; ++irep) {
-                        for(int ibasis = 0; ibasis < nbasis_1d; ++ibasis){
-                            T dBi_idim = lagrange_derivs[idim][ibasis];
-                            const int nfill = std::pow(nbasis_1d, ndim - idim - 1);
-
-                            // offset for multiplying by this ibasis
-                            const int start_offset = ibasis * nfill;
-
-                            // multiply the next nfill by the current basis function
-                            for (int ifill = 0; ifill < nfill; ++ifill) {
-                                const int offset = irep * cyclesize + start_offset;
-                                NUMTOOL::TMP::constexpr_for_range<0, ndim>([&]<int jdim>(){
-                                    if constexpr(jdim == idim){
-                                        dBidxj[offset + ifill][jdim] *= dBi_idim;
-                                    } else {
-                                        dBidxj[offset + ifill][jdim] *= lagrange_evals[idim][ibasis];
-                                    }
-                                });
-                            }
+                // fencepost the loop at idim = 0
+                NUMTOOL::TMP::constexpr_for_range<0, nbasis_1d>(
+                [&]<int ibasis>(const Point &xi) {
+                    static constexpr int nfill = MATH::power_T<nbasis_1d, ndim - 1>::value;
+                    T Bi_idim = lagrange_evals[0][ibasis];
+                    T dBi_idim = lagrange_derivs[0][ibasis];
+                    for(int ifill = 0; ifill < nfill; ++ifill){
+                        dBidxj[nfill * ibasis + ifill][0] = dBi_idim;
+                        for(int jdim = 1; jdim < ndim; ++jdim){
+                            dBidxj[nfill * ibasis + ifill][jdim] = Bi_idim;
                         }
                     }
                 },
-                xi
-            );
+                xi);
+                
+                NUMTOOL::TMP::constexpr_for_range<1, ndim>(
+                    [&]<int idim>(const Point &xi){
+                        // number of times to repeat the loop over basis functions
+                        const int nrepeat = std::pow(nbasis_1d, idim);
+                        // the size that one loop through the basis function indices gives 
+                        const int cyclesize = std::pow(nbasis_1d, ndim - idim);
+
+                        for(int irep = 0; irep < nrepeat; ++irep) {
+                            for(int ibasis = 0; ibasis < nbasis_1d; ++ibasis){
+                                T dBi_idim = lagrange_derivs[idim][ibasis];
+                                const int nfill = std::pow(nbasis_1d, ndim - idim - 1);
+
+                                // offset for multiplying by this ibasis
+                                const int start_offset = ibasis * nfill;
+
+                                // multiply the next nfill by the current basis function
+                                for (int ifill = 0; ifill < nfill; ++ifill) {
+                                    const int offset = irep * cyclesize + start_offset;
+                                    NUMTOOL::TMP::constexpr_for_range<0, ndim>([&]<int jdim>(){
+                                        if constexpr(jdim == idim){
+                                            dBidxj[offset + ifill][jdim] *= dBi_idim;
+                                        } else {
+                                            dBidxj[offset + ifill][jdim] *= lagrange_evals[idim][ibasis];
+                                        }
+                                    });
+                                }
+                            }
+                        }
+                    },
+                    xi
+                );
+            }
         }
 
         /**
@@ -313,6 +317,12 @@ namespace BASIS {
             // view the hessian output array by an mdspan 
             mdspan hess{nodal_hessian_data, extents{nvalues, ndim, ndim}};
 
+
+            // special case fill
+            if constexpr(ndim == 0){
+                nodal_hessian_data[0] = 0.0;
+                return hess;
+            }
             // fill with ones for multiplicative identity
             std::fill_n(nodal_hessian_data, nvalues*ndim*ndim, 1.0);
             

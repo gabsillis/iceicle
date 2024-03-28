@@ -276,7 +276,7 @@ namespace ICEICLE::IO {
                             el.evalBasis(refnode, basis_data.data());
                             T field_value = 0;
                             for(std::size_t idof = 0; idof < el.nbasis(); ++idof){
-                                field_value += fedata[FE::fe_index{(std::size_t) el.elidx, idof, ifield}] 
+                                field_value += fedata[el.elidx, idof, ifield] 
                                     * basis_data[idof];
                             }
 
@@ -334,7 +334,7 @@ namespace ICEICLE::IO {
         template< class LayoutPolicy, class AccessorPolicy, class... FieldNameTs >
         void register_fields(FE::fespan<T, LayoutPolicy, AccessorPolicy> &fedata, FieldNameTs&&... field_names){
             // make sure the size matches
-            assert(fedata.get_layout().get_ncomp() == sizeof...(field_names));
+            assert(fedata.get_layout().nv() == sizeof...(field_names));
 
             // create the field handle and add it to the list
             auto field_ptr = std::make_unique<PVDDataField<LayoutPolicy, AccessorPolicy>>(

@@ -3,7 +3,7 @@
 -- define the mesh as a uniform quad mesh
 uniform_mesh = {
 	-- specify the number of elements in each direction
-	nelem = { 25, 25 },
+	nelem = { 50, 50 },
 
 	-- specify the bounding box of the uniform mesh domain
 	bounding_box = {
@@ -17,9 +17,9 @@ uniform_mesh = {
 		-- in order of direction and side
 		types = {
 			"dirichlet", -- left side
-			"dirichlet", -- bottom side
+			"neumann", -- bottom side
 			"dirichlet", -- right side
-			"dirichlet", -- top side
+			"neumann", -- top side
 		},
 
 		-- the boundary condition flags
@@ -27,14 +27,14 @@ uniform_mesh = {
 		flags = {
 			1, -- left
 			1, -- bottom
-			-1, -- right
+			2, -- right
 			1, -- top
 		},
 	},
 	geometry_order = 1,
 }
 
-mesh_perturbation = "taylor-green"
+mesh_perturbation = "zig-zag"
 
 -- define the finite element domain
 fespace = {
@@ -74,7 +74,7 @@ boundary_conditions = {
 		callbacks = {
 			-- flag -1
 			function(x, y)
-				return 1 + 0.1 * math.sin(math.pi * y)
+				return x * x - y * y
 			end,
 			-- flag -2
 			bc2,
@@ -119,14 +119,14 @@ function sinh(x)
 end
 
 exact_sol = function(x, y)
-	return 0.1 * sinh(math.pi * x) / sinh(math.pi) * math.sin(math.pi * y) + 1.0
+	return 1 + x
 end
 
 -- initial condition
--- initial_condition = "zero"
-initial_condition = function(x, y)
-	return 0.0
-end
+initial_condition = "zero"
+--initial_condition = function(x, y)
+--	return exact_sol(x, y);
+--end
 
 solver = {
 	type = "newton"

@@ -4,8 +4,10 @@
 #include "iceicle/fe_enums.hpp"
 #include "iceicle/fe_function/dglayout.hpp"
 #include "iceicle/fe_function/el_layout.hpp"
+#include "iceicle/fe_function/layout_right.hpp"
 #include "iceicle/geometry/geo_element.hpp"
 #include "iceicle/mesh/mesh.hpp"
+#include "iceicle/mesh/mesh_utils.hpp"
 #include "iceicle/quadrature/HypercubeGaussLegendre.hpp"
 #include "iceicle/quadrature/quadrules_1d.hpp"
 #include "iceicle/solvers/element_linear_solve.hpp"
@@ -35,7 +37,7 @@ TEST(test_fespace, test_element_construction){
 
     ASSERT_EQ(fespace.elements.size(), 4);
 
-    ASSERT_EQ(fespace.dg_offsets.calculate_size_requirement(2), 4 * 2 * std::pow(pn_basis + 1, pn_geo));
+    ASSERT_EQ(fespace.dg_map.calculate_size_requirement(2), 4 * 2 * std::pow(pn_basis + 1, pn_geo));
 }
 
 class test_geo_el : public ELEMENT::GeometricElement<double, int, 2>{
@@ -95,6 +97,11 @@ public:
         hess[1][1][0] = 0;
         hess[1][1][1] = 0;
         return hess;
+    }
+    auto regularize_interior_nodes(
+        FE::NodalFEFunction<T, ndim>& coord /// [in/out] the node coordinates array 
+    ) const -> void override{
+        // do nothing: no interior nodes
     }
 };
 
@@ -174,7 +181,7 @@ TEST(test_fespace, test_dg_projection){
 
     static constexpr int ndim = 2;
     static constexpr int pn_geo = 1;
-    static constexpr int pn_basis = 4;
+    static constexpr int pn_basis = 2;
     static constexpr int neq = 1;
 
     // create a uniform mesh
@@ -182,6 +189,23 @@ TEST(test_fespace, test_dg_projection){
     int ny = 10;
     MESH::AbstractMesh<T, IDX, ndim> mesh({-1.0, -1.0}, {1.0, 1.0}, {nx, ny}, pn_geo);
     mesh.nodes.random_perturb(-0.4 * 1.0 / std::max(nx, ny), 0.4*1.0/std::max(nx, ny));
+
+//    // taylor vortex warped mesh
+//    TODO: investigate hessian accuracy with this case 
+//
+//    int nx = 8;
+//    int ny = 8;
+//    MESH::AbstractMesh<T, IDX, ndim> mesh({0.0, 0.0}, {1.0, 1.0}, {nx, ny}, pn_geo);
+//    std::function< void(std::span<T, ndim>, std::span<T, ndim>) > perturb_fcn;
+//    perturb_fcn = MESH::PERTURBATION_FUNCTIONS::TaylorGreenVortex<T, ndim>{
+//        .v0 = 0.5,
+//        .xmin = { 0.0, 0.0 },
+//        .xmax = { 1.0, 1.0 },
+//        .L = 1
+//    };
+//    std::vector<bool> fixed_nodes = MESH::flag_boundary_nodes(mesh);
+//    MESH::perturb_nodes(mesh, perturb_fcn, fixed_nodes);
+
 
     FE::FESpace<T, IDX, ndim> fespace{
         &mesh, FE::FESPACE_ENUMS::LAGRANGE,
@@ -230,17 +254,18 @@ TEST(test_fespace, test_dg_projection){
     DISC::Projection<double, int, ndim, neq> projection{projfunc};
 
     T *u = new T[fespace.ndof_dg() * neq](); // 0 initialized
-    FE::fespan<T, FE::dg_layout<T, 1>> u_span(u, fespace.dg_offsets);
+    FE::fe_layout_right felayout{fespace.dg_map, ICEICLE::TMP::to_size<neq>{}};
+    FE::fespan u_span{u, felayout};
 
     // solve the projection 
     std::for_each(fespace.elements.begin(), fespace.elements.end(),
         [&](const ELEMENT::FiniteElement<T, IDX, ndim> &el){
-            FE::compact_layout<double, 1> el_layout{el};
+            FE::compact_layout_right<IDX, 1> el_layout{el};
             T *u_local = new T[el_layout.size()](); // 0 initialized 
-            FE::elspan<T, FE::compact_layout<double, 1>> u_local_span(u_local, el_layout);
+            FE::dofspan<T, FE::compact_layout_right<IDX, 1>> u_local_span(u_local, el_layout);
 
             T *res_local = new T[el_layout.size()](); // 0 initialized 
-            FE::elspan<T, FE::compact_layout<double, 1>> res_local_span(res_local, el_layout);
+            FE::dofspan<T, FE::compact_layout_right<IDX, 1>> res_local_span(res_local, el_layout);
             
             // projection residual
             projection.domainIntegral(el, fespace.meshptr->nodes, res_local_span);
@@ -277,8 +302,8 @@ TEST(test_fespace, test_dg_projection){
                 auto grad_eq = u_local_span.contract_mdspan(grad_basis, grad_eq_data.data());
 
                 auto dproj = dprojfunc(phys_pt);
-                ASSERT_NEAR(dproj[0], (grad_eq[0, 0]), 1e-8);
-                ASSERT_NEAR(dproj[1], (grad_eq[0, 1]), 1e-8);
+                ASSERT_NEAR(dproj[0], (grad_eq[0, 0]), 1e-10);
+                ASSERT_NEAR(dproj[1], (grad_eq[0, 1]), 1e-10);
 
                 // test hessian
                 std::vector<double> hess_basis_data(el.nbasis() * ndim * ndim);

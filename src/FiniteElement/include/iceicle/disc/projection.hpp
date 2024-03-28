@@ -72,12 +72,12 @@ namespace DISC {
             }
         }
 
-        template<class LayoutPolicy, class AccessorPolicy>
         void domainIntegral(
             const ELEMENT::FiniteElement<T, IDX, ndim> &el,
             FE::NodalFEFunction<T, ndim> &node_coords,
-            FE::elspan<T, LayoutPolicy, AccessorPolicy> &res
+            FE::elspan auto res
         ) {
+            T detJ; // TODO: put back in loop after debuggin for clarity
             for(int ig = 0; ig < el.nQP(); ++ig){ // loop over the quadrature points
                 
                 // convert the quadrature point to the physical domain
@@ -87,7 +87,7 @@ namespace DISC {
 
                 // calculate the jacobian determinant
                 auto J = el.geo_el->Jacobian(node_coords, quadpt.abscisse);
-                T detJ = NUMTOOL::TENSOR::FIXED_SIZE::determinant(J);
+                detJ = NUMTOOL::TENSOR::FIXED_SIZE::determinant(J);
 
                 // evaluate the function at the point in the physical domain
                 T feval[neq];
@@ -96,8 +96,7 @@ namespace DISC {
                 // loop over the equations and test functions and construct the residual
                 for(std::size_t b = 0; b < el.nbasis(); b++){
                     for(std::size_t eq = 0; eq < neq; eq++){
-                        res[FE::compact_index{.idof = b, .iv = eq}] 
-                            += feval[eq] * quadpt.weight * el.basisQP(ig, b) * detJ;
+                        res[b, eq] += feval[eq] * quadpt.weight * el.basisQP(ig, b) * detJ;
                     }          
                 }
             }

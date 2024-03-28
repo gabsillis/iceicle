@@ -35,7 +35,7 @@ namespace FE {
 
         // get the basis polynomial order
         sol::optional<int> order = tbl["order"];
-        auto seq = NUMTOOL::TMP::make_range_sequence<int, 1, BUILD_CONFIG::FESPACE_BUILD_PN>{};
+        auto seq = NUMTOOL::TMP::make_range_sequence<int, 0, BUILD_CONFIG::FESPACE_BUILD_PN>{};
         FESpace<T, IDX, ndim> fespace;
         return NUMTOOL::TMP::invoke_at_index(seq, order.value(),
             [&]<int order_comp>{

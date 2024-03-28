@@ -49,11 +49,11 @@ namespace DISC {
         using Point = MATH::GEOMETRY::Point<T, ndim>;
        
         auto coord = fespace.meshptr->nodes;
-        std::vector<T> l2_eq(fedata.get_ncomp(), 0.0);
+        std::vector<T> l2_eq(fedata.nv(), 0.0);
         // reserve data
-        std::vector<T> feval(fedata.get_ncomp());
-        std::vector<T> u(fedata.get_ncomp());
-        std::vector<T> bi_data(fespace.dg_offsets.max_el_size_reqirement(1));
+        std::vector<T> feval(fedata.nv());
+        std::vector<T> u(fedata.nv());
+        std::vector<T> bi_data(fespace.dg_map.max_el_size_reqirement(1));
 
         // loop over quadrature points
         for(const Element &el : fespace.elements) {
@@ -75,21 +75,21 @@ namespace DISC {
 
                 // construct the solution
                 std::fill(u.begin(), u.end(), 0.0);
-                for(std::size_t ibasis = 0; ibasis < el.nbasis(); ++ibasis){
-                    for(std::size_t iv = 0; iv < fedata.get_ncomp(); ++iv){
-                        u[iv] += bi_data[ibasis] * fedata[FE::fe_index{(std::size_t) el.elidx, ibasis, iv}];
+                for(IDX ibasis = 0; ibasis < el.nbasis(); ++ibasis){
+                    for(IDX iv = 0; iv < fedata.nv(); ++iv){
+                        u[iv] += bi_data[ibasis] * fedata[el.elidx, ibasis, iv];
                     }
                 }
 
                 // add the contribution of the squared error
-                for(std::size_t ieq = 0; ieq < fedata.get_ncomp(); ieq++){
+                for(IDX ieq = 0; ieq < fedata.nv(); ieq++){
                     l2_eq[ieq] += std::pow(u[ieq] - feval[ieq], 2) * quadpt.weight * detJ;
                 }
             }
         }
 
         T l2_sum = 0;
-        for(int ieq = 0; ieq < fedata.get_ncomp(); ++ieq){ l2_sum += std::sqrt(l2_eq[ieq]); }
+        for(int ieq = 0; ieq < fedata.nv(); ++ieq){ l2_sum += std::sqrt(l2_eq[ieq]); }
         return l2_sum;
     }
 }

@@ -316,6 +316,78 @@ public:
     }
   }
 
+  /** 
+   * @brief check if the given point is an interior point 
+   * (it is not on any of the facets)
+   */
+  constexpr inline
+  auto is_interior_ijk(
+      const int ijk[ndim] /// [in] the ijk indices
+  ) -> bool {
+    for(int idim = 0; idim < ndim; ++idim){
+      if(ijk[idim] == 0 || ijk[idim] == Pn){
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  /** 
+   * @brief check if the given point is an interior point 
+   * (it is not on any of the facets)
+   */
+  constexpr inline 
+  auto is_interior_inode(
+      int inode /// [in] the local node index
+  ) -> bool {
+    return is_interior_ijk(TensorProdType::ijk_poin[inode].data());
+  }
+
+  /**
+   * @brief given moved surface nodes 
+   * calculate interior nodes based on their barycentric weights
+   */
+  auto regularize_nodes(
+      const IDX gnodes[nnode],            /// [in] global node indices 
+      FE::NodalFEFunction<T, ndim> &coord /// [in/out] node coordinate array
+  ) -> void const {
+
+    // loop  over all interior nodes
+    for(int inode = 0; inode < nnode; ++inode) if(is_interior_inode(inode)) {
+      std::array<int, ndim> ijk = TensorProdType::ijk_poin[inode];
+
+      // get the global node coordinate of the interior node
+      IDX ignode = TensorProdType::convert_ijk(ijk.data());
+
+      // set the coordinate vlaues to 0 to add later
+      for(int jdim = 0; jdim < ndim; ++jdim){
+        coord[ignode][jdim] = 0.0;
+      }
+
+      for(int idim = 0; idim < ndim; ++idim){
+        // endpoints along this line
+        std::array<int, ndim> ijk_0 = ijk;
+        ijk_0[idim] = 0;
+        std::array<int, ndim> ijk_1 = ijk;
+        ijk_1[idim] = Pn;
+
+        // barycentric weights of ijk
+        T w0 = ((T) ijk[idim]) / Pn;
+        T w1 = 1.0 - w0;
+
+        // get the global node coordinates of the endpoints
+        IDX ignode_0 = TensorProdType::convert_ijk(ijk_0.data());
+        IDX ignode_1 = TensorProdType::convert_ijk(ijk_1.data());
+
+        // update the global node coordinate by weighted sum
+        for(int jdim = 0; jdim < ndim; ++jdim){
+          coord[ignode][jdim] += w0 / ndim * coord[ignode_0][jdim] + w1 / ndim * coord[ignode_1][jdim];
+        }
+      }
+    }
+  }
+
   // ==================
   // = Face Utilities =
   // ==================

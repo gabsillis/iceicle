@@ -56,5 +56,11 @@ namespace ELEMENT {
             HessianType ret{{{{0}}}};;
             return ret;
         }
+
+        auto regularize_interior_nodes(
+            FE::NodalFEFunction<T, ndim>& coord /// [in/out] the node coordinates array 
+        ) const -> void override {
+            // do nothing: no interior nodes
+        }
     };
 }

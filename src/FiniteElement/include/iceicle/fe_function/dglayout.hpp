@@ -8,57 +8,110 @@
 #include <iceicle/geometry/geo_element.hpp>
 #include <iceicle/basis/basis.hpp>
 #include <iceicle/element/finite_element.hpp>
-#include <iceicle/fe_function/el_layout.hpp>
 
 #include <type_traits>
 #include <algorithm>
 namespace FE {
 
     /** 
-     * @brief represents the offsets of the degrees of freedom for a set of elements 
+     * @brief represents the map from the pair (ielem, idof) -> to a global dof index
      * NOTE: this is independent of vector components;
      */
-    struct dg_dof_offsets {
-        std::vector<std::size_t> offsets;
+    template< class IndexType = std::size_t >
+    class dg_dof_map {
+    public:
+
+        // =====================
+        // = Integral Typedefs =
+        // =====================
+
+        using index_type = IndexType;
+        using size_type = std::make_unsigned_t<index_type>;
+
+    private:
+        index_type calculate_max_dof_size(std::vector<index_type> &offsets_arg){
+            index_type max_dof_sz = 0;
+            for(index_type i = 1; i < offsets_arg.size(); ++i){
+                max_dof_sz = std::max(max_dof_sz , offsets_arg[i] - offsets_arg[i - 1]);
+            }
+            return max_dof_sz;
+        }
+
+        /// @brief offsets of the start of each element 
+        ///        the dofs for each element are in the range 
+        ///        [ offsets[ielem], offsets[ielem + 1] )
+        std::vector<index_type> offsets;
+
+        /// @brief the max size in number of degrees of freedom for an element
+        std::size_t max_dof_size;
+
+    public:
+
+        // ================
+        // = Constructors =
+        // ================
 
         /** @brief default constructor */
-        constexpr dg_dof_offsets() noexcept : offsets{0} {}
+        constexpr dg_dof_map() noexcept : offsets{0}, max_dof_size{0} {}
 
         /** @brief construct with uniform basis function */
-        template<typename T, typename IDX, int ndim>
-        constexpr dg_dof_offsets(
-            IDX nelem,
+        template<typename T, int ndim>
+        constexpr dg_dof_map(
+            index_type nelem,
             const BASIS::Basis<T, ndim> &basis
         ) noexcept : offsets(nelem + 1) {
             for(int i = 0; i <= nelem; ++i){
                 offsets[i] = i * basis.nbasis();
             }
+            max_dof_size = basis.nbasis();
         }
 
         /** @brief construct with a list of FiniteElements */ 
-        template<class T, class IDX, int ndim>
-        constexpr dg_dof_offsets(
-            const std::vector<ELEMENT::FiniteElement<T, IDX, ndim> > &elements
+        template<class T, int ndim>
+        constexpr dg_dof_map(
+            const std::vector<ELEMENT::FiniteElement<T, index_type, ndim> > &elements
         ) noexcept : offsets(elements.size() + 1) {
             offsets[0] = 0;
-            for(int i = 0; i < elements.size(); ++i){
+            for(index_type i = 0; i < elements.size(); ++i){
                 offsets[i + 1] = offsets[i] + elements[i].nbasis();
             }
+
+            max_dof_size = calculate_max_dof_size(offsets);
         }
 
-        /** get the ith offset */
-        constexpr std::size_t operator[](std::size_t i) 
-            const noexcept { return offsets[i]; }
+        // === Default nothrow copy and nothrow move semantics ===
+        constexpr dg_dof_map(const dg_dof_map<index_type>& other) noexcept = default;
+        constexpr dg_dof_map(dg_dof_map<index_type>&& other) noexcept = default;
 
-        /** get reference to the last offset */ 
+        constexpr dg_dof_map& operator=(const dg_dof_map<index_type>& other) noexcept = default;
+        constexpr dg_dof_map& operator=(dg_dof_map<index_type>&& other) noexcept = default;
+
+        // =============
+        // = Accessors =
+        // =============
+
+        /** 
+         * @brief Convert element index and local degree of freedom index 
+         * to the global degree of freedom index 
+         * @param ielem the element index 
+         * @param idof the local degree of freedom index
+         */
+        constexpr index_type operator[](index_type ielem, index_type idof) 
+            const noexcept { return offsets[ielem] + idof; }
+
+        /** get reference to the last offset which is equivalent to the size of the gdof index space */ 
         constexpr auto back() const noexcept { return offsets.back(); }
+
+        // ===========
+        // = Utility =
+        // ===========
 
         /** @brief get the size requirement for all degrees of freedom given
          * the number of vector components per dof 
          * @param nv_comp th number of vector components per dof 
          * @return the size requirement
          */
-        constexpr std::size_t calculate_size_requirement( int nv_comp ) const noexcept {
+        constexpr size_type calculate_size_requirement( index_type nv_comp ) const noexcept {
             return offsets.back() * nv_comp;
         }
 
@@ -67,122 +120,29 @@ namespace FE {
          * @param nv_comp the number of vector components per dof 
          * @return the maximum size requirement 
          */
-        constexpr std::size_t max_el_size_reqirement( int nv_comp ){
-            std::size_t max_offset = 0;
-            for(std::size_t i = 1; i < offsets.size(); ++i){
-                max_offset = std::max(max_offset, offsets[i] - offsets[i - 1]);
-            }
-            return nv_comp * max_offset;
+        constexpr size_type max_el_size_reqirement( index_type nv_comp ) const noexcept {
+            return nv_comp * max_dof_size;
         }
+
+        /**
+         * @brief get the number of degrees of freedom at the given element index 
+         * @param elidx the index of the element to get the ndofs for 
+         * @return the number of degrees of freedom 
+         */
+        [[nodiscard]] constexpr size_type ndof_el( index_type elidx ) const noexcept {
+            return offsets[elidx + 1] - offsets[elidx];
+        }
+
+        /** @brief get the number of elements represented in the map */
+        [[nodiscard]] constexpr size_type nelem() const noexcept { return offsets.size() - 1; }
+
+        /** @brief get the size of the global degree of freedom index space represented by this map */
+        [[nodiscard]] constexpr size_type gdof_size() const noexcept { return static_cast<size_type>(offsets.back()); }
     };
 
-    /**
-     * @brief LayoutPolicy for the DG representation of a vector-valued fe_function 
-     */
-    template<
-        typename T,                           /// the element type
-        std::size_t ncomp = dynamic_ncomp,             /// the number of vector components  TODO: switch to size_t and std::dymamic_extent
-        LAYOUT_VECTOR_ORDER order = DOF_LEFT /// how dofs are organized wrt vector components
-    >
-    class dg_layout {
-        const dg_dof_offsets &offsets;
-
-        std::enable_if<is_dynamic_ncomp<ncomp>::value, int> ncomp_d;
-
-        public:
-
-        // @brief get the number of vector components
-        inline constexpr std::size_t get_ncomp() const {
-            if constexpr(is_dynamic_ncomp<ncomp>::value){
-                return ncomp_d;
-            } else {
-                return ncomp;
-            }
-        }
-
-        /**
-         * @brief create a dg_layout 
-         * @param offsets the vector component independent dof offsets
-         * @param ncomp_d needed if ncomp is set to dynamic (sets the number of vector components)
-         */
-        constexpr dg_layout(
-            const dg_dof_offsets &offsets,
-            std::size_t ncomp_d
-        ) requires(is_dynamic_ncomp<ncomp>::value)
-        : offsets(offsets), ncomp_d(ncomp_d) {}
-
-        constexpr dg_layout(
-            const dg_dof_offsets &offsets
-        ) requires (!is_dynamic_ncomp<ncomp>::value) 
-        : offsets(offsets) {}
-
-        inline static constexpr bool is_global() { return true;  }
-        inline static constexpr bool is_nodal()  { return false; }
-
-        /**
-         * @brief
-         * consecutive local degrees of freedom (ignoring vector components)
-         * are contiguous in the layout
-         * meaning that the data for a an element can be block copied 
-         * to a elspan provided the layout parameters are the same 
-         */
-        inline static constexpr bool local_dof_contiguous() { return true; }
-
-        /**
-         * @brief convert a multidimensional index to a single offset 
-         * @param idx collection of the element, dof, and component indices
-         *        TODO: ABIs tend to put 8+ byte structs on stack instead of passing
-         *        through registers so maybe go away from this construct
-         */
-        constexpr std::size_t operator()(const fe_index &idx) const {
-            std::size_t iel = idx.iel;
-            std::size_t ildof = idx.idof;
-            std::size_t iv = idx.iv;
-            if constexpr (order == DOF_LEFT) {
-                std::size_t component_mult = get_ncomp();
-                return component_mult * offsets[iel] + component_mult * ildof + iv;
-            } else {
-                return iv * offsets.back() + offsets[iel] + ildof;
-            }
-        }
-
-        /** @brief the upper bound of the index space */
-        constexpr std::size_t size() const noexcept { 
-            std::size_t component_mult = get_ncomp();
-            return offsets.back() * component_mult;
-        }
-
-        /**
-         * @brief create the element layout that matches this layout 
-         * @param iel the element index 
-         * @return the layout to construct 
-         */
-        constexpr auto create_element_layout(std::size_t iel){
-            std::size_t ndof = offsets[iel + 1] - offsets[iel];
-            if constexpr(is_dynamic_ncomp<ncomp>::value){
-                return FE::compact_layout<T, ncomp, order>{ndof, ncomp_d};
-            } else {
-                return FE::compact_layout<T, ncomp, order>(ndof);
-            }
-        }
-        
-    };
-
-    /** 
-     * @brief with equivalent layout parameters 
-     * a DG Layout is block copyable
-     * so specialize the struct
-     */
-    template<
-        typename T,
-        std::size_t ncomp,
-        LAYOUT_VECTOR_ORDER order
-    >
-    struct is_equivalent_el_layout<
-        compact_layout<T, ncomp, order>,
-        dg_layout<T, ncomp, order>
-    > {
-        static constexpr bool value = true;
-    };
-    
+    // Deduction Guides
+    template<class T, class IDX, int ndim>
+    dg_dof_map(IDX, const BASIS::Basis<T, ndim>&) -> dg_dof_map<IDX>;
+    template<class T, class IDX, int ndim>
+    dg_dof_map(const std::vector<ELEMENT::FiniteElement<T, IDX, ndim> > &) -> dg_dof_map<IDX>;
 }

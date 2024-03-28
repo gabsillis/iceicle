@@ -3,12 +3,12 @@
 -- define the mesh as a uniform quad mesh
 uniform_mesh = {
 	-- specify the number of elements in each direction
-	nelem = { 2, 2 },
+	nelem = { 20, 3 },
 
 	-- specify the bounding box of the uniform mesh domain
 	bounding_box = {
 		min = { 0.0, 0.0 },
-		max = { math.pi, math.pi },
+		max = { 1.0, 1.0 },
 	},
 
 	-- set boundary conditions
@@ -27,12 +27,16 @@ uniform_mesh = {
 		flags = {
 			1, -- left
 			1, -- bottom
-			1, -- right
+			2, -- right
 			1, -- top
 		},
 	},
-	geometry_order = 1
+	geometry_order = 1,
 }
+mu = 0.01
+a_adv = { 1.0, 0.0 }
+
+-- mesh_perturbation = "zig-zag"
 
 -- define the finite element domain
 fespace = {
@@ -46,39 +50,44 @@ fespace = {
 	order = 2,
 }
 
-mu = 0.1;
-
--- initial condition
--- initial_condition = "zero"
-initial_condition = function(x, y)
-	return math.sin(x)
-end
-
--- exact solution (transient)
-exact_sol = function(x, y, t)
-	return math.sin(x) * math.exp(-0.1);
-end
-
 -- boundary condition state to be used by the
 -- types and flags set in the mesh
 boundary_conditions = {
 	dirichlet = {
-		-- constant values (integ)
+		-- constant values
 		values = {
-			0.0, -- flag 1
+			1.0, -- flag 1
+			2.0, -- flag 2
+			0.9, -- flag 3
+		},
+
+		-- callback functions
+		callbacks = {
+			-- flag -1
+			function(x, y)
+				return x * x - y * y
+			end,
 		},
 	},
-
 	neumann = {
-		-- constant values (integ)
 		values = {
 			0.0, -- flag 1
-		},
+		}
 	}
 }
 
 solver = {
-	type = "rk3-ssp",
-	cfl = 0.001,
-	ntime = 1
+	type = "newton",
+	kmax = 5,
+	ivis = 1,
+	linesearch = {
+		type = "cubic",
+		alpha_initial = 0.01,
+		alpha_max = 1.0,
+	}
 }
+
+-- initial condition
+initial_condition = function(x, y)
+	return 1 + x;
+end

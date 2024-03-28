@@ -6,6 +6,7 @@
 #include <stdexcept>
 #include <Numtool/point.hpp>
 #include <algorithm>
+#include <span>
 
 namespace FE {
     /** @brief view into a NodalFEFunction at a given node index */
@@ -24,6 +25,24 @@ namespace FE {
         }
 
         operator T *() { return _ptr; }
+
+        /// @brief copy the vlaues into a std::array
+        std::array<T, ndim> clone() const {
+            std::array<T, ndim> values{};
+            std::copy_n(_ptr, ndim, values.begin());
+            return values;
+        }
+
+        auto clone_pt() -> MATH::GEOMETRY::Point<T, ndim> const {
+            MATH::GEOMETRY::Point<T, ndim> pt{};
+            std::copy_n(_ptr, ndim, pt.data());
+            return pt;
+        }
+
+        /// @brief get a span view of the data
+        std::span<T, (std::size_t) ndim> to_span(){
+            return std::span<T, (std::size_t) ndim>{_ptr, _ptr + ndim};
+        }
     };
    
     /**

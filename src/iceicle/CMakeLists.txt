@@ -31,3 +31,7 @@ endif()
 
 add_executable(sine_diffusion_1d sine_diffusion_1d.cpp)
 target_link_libraries(sine_diffusion_1d iceicle_lib)
+
+
+add_executable(mdgbl_1d mdgbl_1d.cpp)
+target_link_libraries(mdgbl_1d iceicle_lib)

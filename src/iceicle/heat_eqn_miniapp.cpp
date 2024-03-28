@@ -6,16 +6,19 @@
 #include "iceicle/disc/l2_error.hpp"
 #include "iceicle/fespace/fespace_lua_interface.hpp"
 #include "iceicle/anomaly_log.hpp"
+#include "iceicle/mesh/mesh_utils.hpp"
+#include "iceicle/nonlinear_solver_utils.hpp"
 #include "iceicle/program_args.hpp"
 #include "iceicle/ssp_rk3.hpp"
+#include "iceicle/tvd_rk3.hpp"
 #include "iceicle/string_utils.hpp"
 #include "iceicle/tmp_utils.hpp"
+#include "iceicle/mdg_utils.hpp"
 #include <iomanip>
 #include <limits>
 #ifdef ICEICLE_USE_PETSC 
 #include "iceicle/petsc_newton.hpp"
-#endif
-#ifdef ICEICLE_USE_MPI
+#elifdef ICEICLE_USE_MPI
 #include "mpi.h"
 #endif
 
@@ -23,6 +26,7 @@
 #include "iceicle/disc/projection.hpp"
 #include "iceicle/fe_function/dglayout.hpp"
 #include "iceicle/fe_function/fespan.hpp"
+#include "iceicle/fe_function/layout_right.hpp"
 #include "iceicle/fespace/fespace.hpp"
 #include "iceicle/mesh/mesh.hpp"
 #include <iceicle/explicit_euler.hpp>
@@ -44,6 +48,7 @@ int main(int argc, char *argv[]){
     // using declarations
     using namespace NUMTOOL::TENSOR::FIXED_SIZE;
     using namespace ICEICLE::UTIL;
+    using namespace ICEICLE::TMP;
 
     // Get the floating point and index types from 
     // cmake configuration
@@ -95,6 +100,33 @@ int main(int argc, char *argv[]){
 
     MESH::AbstractMesh<T, IDX, ndim> mesh = MESH::lua_uniform_mesh<T, IDX, ndim>(lua_state);
 
+    // perturb nodes if applicable 
+    sol::optional<std::string> perturb_fcn_name = lua_state["mesh_perturbation"];
+    if(perturb_fcn_name){
+        std::vector<bool> fixed_nodes = MESH::flag_boundary_nodes(mesh);
+
+        std::function< void(std::span<T, ndim>, std::span<T, ndim>) > perturb_fcn;
+        if(eq_icase(perturb_fcn_name.value(), "taylor-green")){
+            perturb_fcn = MESH::PERTURBATION_FUNCTIONS::TaylorGreenVortex<T, ndim>{
+                .v0 = 0.5,
+                .xmin = {
+                    lua_state["uniform_mesh"]["bounding_box"]["min"][1],
+                    lua_state["uniform_mesh"]["bounding_box"]["min"][2],
+                },
+
+                .xmax = {
+                    lua_state["uniform_mesh"]["bounding_box"]["max"][1],
+                    lua_state["uniform_mesh"]["bounding_box"]["max"][2],
+                },
+                .L = 1
+            };
+        } else if(eq_icase(perturb_fcn_name.value(), "zig-zag")){
+            perturb_fcn = MESH::PERTURBATION_FUNCTIONS::ZigZag<T, ndim>{};
+        }
+
+        MESH::perturb_nodes(mesh, perturb_fcn, fixed_nodes);
+    }
+
     // ===================================
     // = create the finite element space =
     // ===================================
@@ -108,6 +140,18 @@ int main(int argc, char *argv[]){
     DISC::HeatEquation<T, IDX, ndim> heat_equation{}; 
     sol::optional<T> mu_input = lua_state["mu"];
     if(mu_input) heat_equation.mu = mu_input.value();
+
+    sol::optional<sol::table> a_adv_input = lua_state["a_adv"];
+    if(a_adv_input){
+        for(int idim = 0; idim < ndim; ++idim)
+            heat_equation.a[idim] = a_adv_input.value()[idim + 1];
+    }
+
+    sol::optional<sol::table> b_adv_input = lua_state["b_adv"];
+    if(b_adv_input){
+        for(int idim = 0; idim < ndim; ++idim)
+            heat_equation.b[idim] = b_adv_input.value()[idim + 1];
+    }
 
     // Get boundary condition values from input deck  TODO: get rid of 
     static constexpr int MAX_BC_ENTRIES = 100; // protect from infinite loops
@@ -180,8 +224,8 @@ int main(int argc, char *argv[]){
     // = set up a solution vector =
     // ============================
     constexpr int neq = decltype(heat_equation)::nv_comp;
-    std::vector<T> u_data(fespace.dg_offsets.calculate_size_requirement(neq));
-    FE::dg_layout<T, neq> u_layout{fespace.dg_offsets};
+    FE::fe_layout_right u_layout{fespace.dg_map, to_size<neq>{}};
+    std::vector<T> u_data(u_layout.size());
     FE::fespan u{u_data.data(), u_layout};
 
     // ===========================
@@ -229,18 +273,18 @@ int main(int argc, char *argv[]){
 
     DISC::Projection<T, IDX, ndim, neq> projection{ic};
     // TODO: extract into LinearFormSolver
-    std::vector<T> u_local_data(fespace.dg_offsets.max_el_size_reqirement(neq));
-    std::vector<T> res_local_data(fespace.dg_offsets.max_el_size_reqirement(neq));
+    std::vector<T> u_local_data(fespace.dg_map.max_el_size_reqirement(neq));
+    std::vector<T> res_local_data(fespace.dg_map.max_el_size_reqirement(neq));
     std::for_each(fespace.elements.begin(), fespace.elements.end(), 
         [&](const ELEMENT::FiniteElement<T, IDX, ndim> &el){
             // form the element local views
             // TODO: maybe instead of scatter from local view 
             // we can directly create the view on the subset of u 
             // for CG this might require a different compact Layout 
-            FE::elspan u_local{u_local_data.data(), u.create_element_layout(el.elidx)};
+            FE::dofspan u_local{u_local_data.data(), u.create_element_layout(el.elidx)};
             u_local = 0;
 
-            FE::elspan res_local{res_local_data.data(), u.create_element_layout(el.elidx)};
+            FE::dofspan res_local{res_local_data.data(), u.create_element_layout(el.elidx)};
             res_local = 0;
 
             // project
@@ -293,7 +337,11 @@ int main(int argc, char *argv[]){
         };
 
         std::string solver_type = solver_params["type"];
-        if(eq_icase(solver_type, "explicit_euler") || eq_icase(solver_type, "rk3-ssp")){
+        if(
+            eq_icase(solver_type, "explicit_euler") || 
+            eq_icase(solver_type, "rk3-ssp")        ||
+            eq_icase(solver_type, "rk3-tvd")        
+        ){
             // determine timestep criterion
             std::optional<TimestepVariant<T, IDX>> timestep;
 
@@ -337,16 +385,6 @@ int main(int argc, char *argv[]){
 
             if(timestep.has_value() && stop_condition.has_value()){
 
-                // Option A
-//                TimestepVariant<T, IDX> a { timestep.value()};
-//                TerminationVariant<T, IDX> b {stop_condition.value()};
-//                std::visit(select_fcn{
-//                    [&](const auto &ts, const auto &sc){
-//                        ExplicitEuler solver{fespace, heat_equation, ts, sc};
-//                    }
-//                }, a, b);
-
-                // Option B
                 std::tuple{timestep.value(), stop_condition.value()} >> select_fcn{
                     [&](const auto &ts, const auto &sc){
 
@@ -357,6 +395,10 @@ int main(int argc, char *argv[]){
                             t_final = solver.time;
                         } else if(eq_icase(solver_type, "rk3-ssp")){
                             RK3SSP solver{fespace, heat_equation, ts, sc};
+                            setup_and_solve(solver);
+                            t_final = solver.time;
+                        } else if(eq_icase(solver_type, "rk3-tvd")){
+                            RK3TVD solver{fespace, heat_equation, ts, sc};
                             setup_and_solve(solver);
                             t_final = solver.time;
                         }
@@ -378,55 +420,115 @@ int main(int argc, char *argv[]){
                     }
                 };
             }
+        } else if(
+            eq_icase(solver_type, "newton") ||
+            eq_icase(solver_type, "newton-ls")
+        ) {
+#ifdef ICEICLE_USE_PETSC
+            // ==============================
+            // = Solve with Newton's Method =
+            // ==============================
+            using namespace ICEICLE::SOLVERS;
+
+            // default is machine zero convergence 
+            // with maximum of 5 nonlinear iterations
+            ConvergenceCriteria<T, IDX> conv_criteria{
+                .tau_abs = (sol::optional<T>{solver_params["tau_abs"]}) ? solver_params["tau_abs"].get<T>() : std::numeric_limits<T>::epsilon(),
+                .tau_rel = (sol::optional<T>{solver_params["tau_rel"]}) ? solver_params["tau_rel"].get<T>() : 0.0,
+                .kmax = (sol::optional<IDX>{solver_params["kmax"]}) ? solver_params["kmax"].get<IDX>() : 5 
+            };
+
+            // select the linesearch type
+            LinesearchVariant<T, IDX> linesearch;
+            sol::optional<sol::table> ls_arg_opt = solver_params["linesearch"];
+            if(ls_arg_opt){
+                sol::table ls_arg = ls_arg_opt.value();
+                if(eq_icase(ls_arg["type"].get<std::string>(), "wolfe") 
+                        || eq_icase(ls_arg["type"].get<std::string>(), "cubic"))
+                {
+                    IDX kmax = (sol::optional<IDX>{ls_arg["kmax"]}) ? ls_arg["kmax"].get<IDX>() : 5; 
+                    T alpha_initial = (sol::optional<T>{ls_arg["alpha_initial"]}) ? ls_arg["alpha_initial"].get<T>() : 1; 
+                    T alpha_max = (sol::optional<T>{ls_arg["alpha_max"]}) ? ls_arg["alpha_max"].get<T>() : 10.0; 
+                    T c1 = (sol::optional<T>{ls_arg["c1"]}) ? ls_arg["c1"].get<T>() : 1e-4; 
+                    T c2 = (sol::optional<T>{ls_arg["c2"]}) ? ls_arg["c2"].get<T>() : 0.9; 
+                    linesearch = wolfe_linesearch{kmax, alpha_initial, alpha_max, c1, c2};
+                } else {
+                    linesearch = no_linesearch<T, IDX>{};
+                }
+            } else {
+                linesearch = no_linesearch<T, IDX>{};
+            };
+
+            // dispatch with the set lineset strategy
+            linesearch >> select_fcn{
+                [&](const auto& ls){
+                    PetscNewton solver{fespace, heat_equation, conv_criteria, ls};
+                    solver.idiag = (sol::optional<IDX>{solver_params["idiag"]}) ? solver_params["idiag"].get<IDX>() : -1;
+                    solver.ivis = (sol::optional<IDX>{solver_params["ivis"]}) ? solver_params["ivis"].get<IDX>() : 1;
+                    ICEICLE::IO::PVDWriter<T, IDX, ndim> pvd_writer;
+                    pvd_writer.register_fespace(fespace);
+                    pvd_writer.register_fields(u, "u");
+                    pvd_writer.write_vtu(0, 0.0); // print the initial solution
+                    solver.vis_callback = [&](decltype(solver) &solver, IDX k, Vec res_data, Vec du_data){
+                        T res_norm;
+                        PetscCallAbort(solver.comm, VecNorm(res_data, NORM_2, &res_norm));
+                        std::cout << std::setprecision(8);
+                        std::cout << "itime: " << std::setw(6) << k
+                            << " | residual l2: " << std::setw(14) << res_norm
+                            << std::endl;
+                        // offset by initial solution iteration
+                        pvd_writer.write_vtu(k + 1, (T) k + 1);
+                    };
+                    solver.solve(u);
+
+                    // ========================
+                    // = Compute the L2 Error =
+                    // =   (if applicable)    =
+                    // ========================
+                    sol::optional<sol::function> exact_sol = lua_state["exact_sol"];
+                    if(exact_sol){
+                        std::function<void(T*, T*)> exactfunc = 
+                            [&lua_state](T *x, T *out) -> void {
+                                sol::function fexact = lua_state["exact_sol"];
+                                out[0] = fexact(x[0], x[1]);
+                            };
+                        T l2_error = DISC::l2_error(exactfunc, fespace, u);
+                        std::cout << "L2 error: " << std::setprecision(9) << l2_error << std::endl;
+                    }
+
+                }
+            };
+
+//            // ===============================
+//            // = move the nodes around a bit =
+//            // ===============================
+//            FE::nodeset_dof_map<IDX> nodeset{FE::select_nodeset(fespace, heat_equation, u, 0.003, ICEICLE::TMP::to_size<ndim>())};
+//            FE::node_selection_layout<IDX, ndim> new_coord_layout{nodeset};
+//            std::vector<T> new_coord_storage(new_coord_layout.size());
+//            FE::dofspan dx_coord{new_coord_storage.data(), new_coord_layout};
+//
+//            
+//            std::vector<T> node_radii = FE::node_freedom_radii(fespace);
+//            dx_coord = 0;
+//            for(IDX idof = 0; idof < dx_coord.ndof(); ++idof){
+//                IDX inode = nodeset.selected_nodes[idof];
+//
+//                // push to the right a little 
+//                dx_coord[idof, 0] = 0.5 * node_radii[inode];
+//            }
+//
+//            // apply new nodes 
+//            FE::scatter_node_selection_span(1.0, dx_coord, 1.0, fespace.meshptr->nodes);
+//            // fixup interior nodes 
+//            FE::regularize_interior_nodes(fespace);
+
+#else 
+            AnomalyLog::log_anomaly(Anomaly{"Newton solver requires PETSC!"), general_anomaly_tag{}});
+#endif
         }
     } else {
+
 #ifdef ICEICLE_USE_PETSC
-    // ==============================
-    // = Solve with Newton's Method =
-    // ==============================
-    using namespace ICEICLE::SOLVERS;
-
-    // default is machine zero convergence 
-    // with maximum of 5 nonlinear iterations
-    ConvergenceCriteria<T, IDX> conv_criteria{
-        .tau_abs = std::numeric_limits<T>::epsilon(),
-        .tau_rel = 0,
-        .kmax = 5
-    };
-    PetscNewton solver{fespace, heat_equation, conv_criteria};
-    solver.idiag = -1;
-    solver.ivis = 1;
-    ICEICLE::IO::PVDWriter<T, IDX, ndim> pvd_writer;
-    pvd_writer.register_fespace(fespace);
-    pvd_writer.register_fields(u, "u");
-    pvd_writer.write_vtu(0, 0.0); // print the initial solution
-    solver.vis_callback = [&](decltype(solver) &solver, IDX k, Vec res_data, Vec du_data){
-        T res_norm;
-        PetscCallAbort(solver.comm, VecNorm(res_data, NORM_2, &res_norm));
-        std::cout << std::setprecision(8);
-        std::cout << "itime: " << std::setw(6) << k
-            << " | residual l2: " << std::setw(14) << res_norm
-            << std::endl;
-        // offset by initial solution iteration
-        pvd_writer.write_vtu(k + 1, (T) k + 1);
-    };
-    solver.solve(u);
-
-    // ========================
-    // = Compute the L2 Error =
-    // =   (if applicable)    =
-    // ========================
-    sol::optional<sol::function> exact_sol = lua_state["exact_sol"];
-    if(exact_sol){
-        std::function<void(T*, T*)> exactfunc = 
-            [&lua_state](T *x, T *out) -> void {
-                sol::function fexact = lua_state["exact_sol"];
-                out[0] = fexact(x[0], x[1]);
-            };
-        T l2_error = DISC::l2_error(exactfunc, fespace, u);
-        std::cout << "L2 error: " << std::setprecision(9) << l2_error << std::endl;
-    }
-
     //cleanup
     PetscFinalize();
 #elifdef ICEICLE_USE_MPI

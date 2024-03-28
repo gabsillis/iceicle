@@ -23,41 +23,47 @@ $$
 
 ## Problem Setup
 We run the `sine_diffusion_1d` executable with arguments `--nelem` to control the number of elements and `--order` to control the polynomial order of the basis functions (note this is one less than the expected order of convergence). `--ivis` Can also be used to limit the amount of output.
-Time integration is done with RK3-SSP using a Fourier number starting at 0.0001 through option `--fo` and decreasing until converged.
+Time integration is done with RK3-TVD using a Fourier number of 0.0001 through option `--fo`.
 We use:
 $$
 \mu = 1.0 \\
 t_{f} = 1.0
 $$
-where $t_f$ is the final time
+where $t_f$ is the final time.
+The basis functions used are Legendre polynomials.
 ## Data
 ### Standard DDG
 ```
-nx dgp1          dgp2           dgp3           dgp4
-2  0.39253572    0.0342310385   0.0295085698   0.000618673124
-4  0.0865962955  0.0162980418   0.00146665915  0.000107503922
-8  0.022298003   0.00215772759  9.16912292e-05 3.42449894e-06
-16 0.00561251423 0.000275937015 7.77050204e-06 1.05995419e-07
-32 0.00140545422 3.50002585e-05 3.60395859e-07 5.47713242e-09
+nx dgp1          dgp2           dgp3           dgp4           
+2  0.262893571   0.0412573649   0.0243959323   0.000824445723 
+4  0.0636081844  0.0142770782   0.00121340947  9.13430722e-05  
+8  0.0165579431  0.00190644295  6.954314e-05   3.05927449e-06  
+16 0.00417741741 0.000243693789 4.21576248e-06 9.76500519e-08  
+32 0.00104667189 3.07065654e-05 2.6077164e-07  3.07044764e-09 
 ```
 
 ### DDGIC
+DDGIC is run by using `--ddgic_mult=0.5`. The multiplier ($\sigma$) is from the 2023 Danis and Yan paper which gives a general form for DDGIC, 
+but in a previous paper this coefficient was 0.5 which gives slightly better results in DGP1
 ```
 nx dgp1          dgp2           dgp3           dgp4
-2  0.40382591    0.0360444902   0.0294514095   0.000580089877 
-4  0.125660094   0.0168739011   0.00142564585  0.000108381037 
-8  0.047332525   0.0022157682   8.40767787e-05 3.42216429e-06 
-16 0.014611397   0.000280198664 5.19002789e-06 1.059878e-07 
-32 0.00399429849 3.52918274e-05 3.38055008e-07 5.4590666e-09 
+2  0.265591462   0.0419605773   0.024368788    0.000803681355 
+4  0.0824449545  0.0145741899   0.00120722602  9.18430908e-05  
+8  0.027170573   0.00193508108  6.88325795e-05 3.07358828e-06 
+16 0.00765793611 0.000245728865 4.17464082e-06 9.79118744e-08 
+32 0.00201135591 3.08407736e-05 2.58739186e-07 3.0748137e-09 
 ```
 
 ### Interior Penalty
+Interior Penalty is run by using `--interior_penalty`.
+Note we use the $\beta_0$ DDG coefficient as the interior penalty coefficient, so DG(P1) is equivalent to standard DDG
 ```
 nx dgp1          dgp2           dgp3           dgp4
-2  0.39253572    0.0451453519   0.0332393394   0.000752868536
-4  0.0865962955  0.0192983987   0.00143829301  0.000123088087
-8  0.022298003   0.00404716997  8.54828275e-05 4.85949068e-06
-16 0.00561251423 0.000955739058 5.31485229e-06 4.70040364e-07 
+2  0.262893571   0.0475606773   0.0290106132   0.000952407674  
+4  0.0636081844  0.0175930309   0.00140523714  0.000111911005  
+8  0.0165579431  0.00390484158  8.63017364e-05 6.16326363e-06 
+16 0.00417741741 0.000942627192 5.38785297e-06 3.73127053e-07 
+32 0.00104667189 0.000233492261 3.36699076e-07 2.31358939e-08 
 ```
 
 ## Plot

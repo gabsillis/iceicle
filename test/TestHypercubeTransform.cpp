@@ -813,6 +813,7 @@ TEST( test_hypercube_transform, test_fill_hess_3d){
 
 
 TEST( test_hypercube_transform, test_jacobian ){
+
   std::random_device rdev{};
   std::default_random_engine engine{rdev()};
   std::uniform_real_distribution<double> dist{-0.2, 0.2};
@@ -820,6 +821,35 @@ TEST( test_hypercube_transform, test_jacobian ){
 
   static double epsilon = 1e-8;//std::sqrt(std::numeric_limits<double>::epsilon());
 
+  /// Test when degenerated to a triangle
+  {
+    static constexpr int ndim = 2;
+    static constexpr int Pn = 1;
+    FE::NodalFEFunction<double, ndim> coord{
+      {0, 0},
+      {0.0, 1.0},
+      {1.0, 0.0},
+      {0.5, 0.5}
+    };
+
+    HypercubeElementTransformation<double, int, ndim, Pn> trans{};
+
+    for(int k = 0; k < 10; ++k){
+      // random point in domain 
+        MATH::GEOMETRY::Point<double, ndim> testpt;
+        for(int idim = 0; idim < ndim; ++idim) testpt[idim] = domain_dist(engine);
+        int node_indices[4] = {0, 1, 2, 3};
+
+        double xi = testpt[0];
+        double eta = testpt[1];
+        auto J = trans.Jacobian(coord, node_indices, testpt);
+        ASSERT_NEAR(J[0][0],  (3 - eta) / 8.0, 1e-10);
+        ASSERT_NEAR(J[0][1], -(1 + xi ) / 8.0, 1e-10);
+        ASSERT_NEAR(J[1][0], -(1 + eta) / 8.0, 1e-10);
+        ASSERT_NEAR(J[1][1],  (3 - xi ) / 8.0, 1e-10);
+    }
+
+  }
   auto rand_doub = [&]() -> double { return dist(engine); };
 
   NUMTOOL::TMP::constexpr_for_range<1, 5>([&]<int ndim>(){

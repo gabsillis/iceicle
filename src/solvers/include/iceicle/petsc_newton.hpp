@@ -30,8 +30,9 @@ namespace ICEICLE::SOLVERS {
      * @tparam IDX the index type
      * @tparam ndim the number of dimensions
      * @tparam disc_class the discretization
+     * @tparam ls_type the linesearch type to use
      */
-    template<class T, class IDX, int ndim, class disc_class>
+    template<class T, class IDX, int ndim, class disc_class, class ls_type = no_linesearch<T, IDX>>
     class PetscNewton {
 
         // ================
@@ -59,6 +60,9 @@ namespace ICEICLE::SOLVERS {
 
         /// @brief store a reference to the discretization being solved
         disc_class &disc;
+
+        /// @brief the linesearch strategy
+        ls_type linesearch;
 
         /// @brief store the MPI communicator used at construction
         MPI_Comm comm;
@@ -130,11 +134,12 @@ namespace ICEICLE::SOLVERS {
             FE::FESpace<T, IDX, ndim> &fespace,
             disc_class &disc,
             const ConvergenceCriteria<T, IDX> &conv_criteria,
+            const ls_type& linesearch,
             Mat jac = nullptr,
             MPI_Comm comm = MPI_COMM_WORLD
-        ) : fespace(fespace), disc(disc), comm(comm), conv_criteria{conv_criteria}, jac{jac}
+        ) : fespace(fespace), disc(disc), linesearch{linesearch}, comm(comm), conv_criteria{conv_criteria}, jac{jac}
         {
-            PetscInt local_res_size = fespace.dg_offsets.calculate_size_requirement(disc_class::dnv_comp);
+            PetscInt local_res_size = fespace.dg_map.calculate_size_requirement(disc_class::dnv_comp);
             PetscInt local_u_size = local_res_size;
             // Create and set up the matrix if not given 
             if(jac == nullptr){
@@ -164,6 +169,13 @@ namespace ICEICLE::SOLVERS {
             PetscCallAbort(comm, KSPSetFromOptions(ksp));
         }
 
+        PetscNewton(
+            FE::FESpace<T, IDX, ndim> &fespace,
+            disc_class &disc,
+            const ConvergenceCriteria<T, IDX> &conv_criteria,
+            Mat jac = nullptr,
+            MPI_Comm comm = MPI_COMM_WORLD
+        ) : PetscNewton(fespace, disc, conv_criteria, no_linesearch<T, IDX>{}, jac, comm) {}
         // ====================
         // = Member Functions =
         // ====================
@@ -185,6 +197,8 @@ namespace ICEICLE::SOLVERS {
                 PETSC::VecSpan res_view{res_data};
                 FE::fespan res{res_view.data(), u.get_layout()};
                 form_petsc_jacobian_fd(fespace, disc, u, res, jac);
+//                std::cout << "res_initial" << std::endl;
+//                std::cout << res;
             } // end scope of res_view
 
             // set the initial residual norm
@@ -200,10 +214,36 @@ namespace ICEICLE::SOLVERS {
                 PetscCallAbort(comm, KSPSolve(ksp, res_data, du_data));
 
                 // update u
-                {
+                if constexpr (std::is_same_v<ls_type, no_linesearch<T, IDX>>){
                     PETSC::VecSpan du_view{du_data};
                     FE::fespan du{du_view.data(), u.get_layout()};
                     FE::axpy(-1.0, du, u);
+                } else {
+                    // its linesearchin time!
+                    PETSC::VecSpan du_view{du_data};
+                    FE::fespan du{du_view.data(), u.get_layout()};
+                    std::vector<T> u_step_storage(u.size());
+                    FE::fespan u_step{u_step_storage.data(), u.get_layout()};
+                    FE::copy_fespan(u, u_step);
+
+                    std::vector<T> r_work_storage(u.size());
+                    FE::fespan res_work{r_work_storage.data(), u.get_layout()};
+
+                    T alpha = linesearch([&](T alpha_arg){
+                        static constexpr T BIG_RESIDUAL = 1e9;
+                        FE::copy_fespan(u, u_step);
+                        FE::axpy(-alpha_arg, du, u_step);
+                        form_residual(fespace, disc, u_step, res_work);
+                        // safeguard the cost function for linesearch 
+                        T rnorm = res_work.vector_norm();
+                        if(std::isfinite(rnorm)){
+                            return rnorm;
+                        } else {
+                            return BIG_RESIDUAL;
+                        }
+                    });
+
+                    FE::axpy(-alpha, du, u);
                 }
 
                 // Get the new residual and Jacobian (for the next step)
@@ -243,17 +283,29 @@ namespace ICEICLE::SOLVERS {
     };
 
     /// Deduction guides
+    template<class T, class IDX, int ndim, class disc_class, class ls_type>
+    PetscNewton(FE::FESpace<T, IDX, ndim> &, disc_class &,
+        const ConvergenceCriteria<T, IDX> &, const ls_type&) -> PetscNewton<T, IDX, ndim, disc_class, ls_type>;
+
+    template<class T, class IDX, int ndim, class disc_class, class ls_type>
+    PetscNewton(FE::FESpace<T, IDX, ndim> &, disc_class &,
+        const ConvergenceCriteria<T, IDX> &, const ls_type&, Mat) -> PetscNewton<T, IDX, ndim, disc_class, ls_type>;
+
+    template<class T, class IDX, int ndim, class disc_class, class ls_type>
+    PetscNewton(FE::FESpace<T, IDX, ndim> &, disc_class &,
+        const ConvergenceCriteria<T, IDX> &, const ls_type&, Mat, MPI_Comm) -> PetscNewton<T, IDX, ndim, disc_class, ls_type>;
+
+    /// Deduction guides
     template<class T, class IDX, int ndim, class disc_class>
     PetscNewton(FE::FESpace<T, IDX, ndim> &, disc_class &,
-        const ConvergenceCriteria<T, IDX> &) -> PetscNewton<T, IDX, ndim, disc_class>;
+        const ConvergenceCriteria<T, IDX> &) -> PetscNewton<T, IDX, ndim, disc_class, no_linesearch<T, IDX>>;
 
     template<class T, class IDX, int ndim, class disc_class>
     PetscNewton(FE::FESpace<T, IDX, ndim> &, disc_class &,
-        const ConvergenceCriteria<T, IDX> &, Mat) -> PetscNewton<T, IDX, ndim, disc_class>;
+        const ConvergenceCriteria<T, IDX> &, Mat) -> PetscNewton<T, IDX, ndim, disc_class, no_linesearch<T, IDX>>;
 
     template<class T, class IDX, int ndim, class disc_class>
     PetscNewton(FE::FESpace<T, IDX, ndim> &, disc_class &,
-        const ConvergenceCriteria<T, IDX> &, Mat, MPI_Comm) -> PetscNewton<T, IDX, ndim, disc_class>;
-
+        const ConvergenceCriteria<T, IDX> &, Mat, MPI_Comm) -> PetscNewton<T, IDX, ndim, disc_class, no_linesearch<T, IDX>>;
 
 }

@@ -119,7 +119,7 @@ namespace ELEMENT {
 
         int n_nodes() const override { return trans.n_nodes; }
 
-        IDX *nodes() override { return _nodes.data(); }
+        const IDX *nodes() const override { return _nodes.data(); }
 
     };
 }

@@ -1,9 +1,10 @@
 #include "iceicle/basis/lagrange.hpp"
-#include "iceicle/fe_function/layout_enums.hpp"
 #include "iceicle/geometry/hypercube_element.hpp"
+#include "iceicle/tmp_utils.hpp"
 #include <iceicle/quadrature/HypercubeGaussLegendre.hpp>
 #include <iceicle/fe_function/fespan.hpp>
 #include <iceicle/fe_function/dglayout.hpp>
+#include <iceicle/fe_function/layout_right.hpp>
 #include <iceicle/element/finite_element.hpp>
 
 #include <gtest/gtest.h>
@@ -45,43 +46,47 @@ TEST(test_fespan, test_dglayout){
     elements.push_back(el2);
 
     // get the offsets
-    FE::dg_dof_offsets offsets{elements};
+    FE::dg_dof_map offsets{elements};
 
     std::vector<T> data(offsets.calculate_size_requirement(2));
     std::iota(data.begin(), data.end(), 0.0);
-    FE::dg_layout<T, 2> test(offsets);
-    FE::fespan<T, FE::dg_layout<T, 2> > fespan1(data.data(), offsets);
+    FE::fe_layout_right<IDX, decltype(offsets), 2> layout(offsets);
+    // alternate layout syntax
+    using namespace ICEICLE::TMP;
+    FE::fe_layout_right layout2{offsets, to_size<2>{}};
+
+    FE::fespan fespan1(data.data(), layout);
 
     static constexpr int ndof_per_elem = ndim * (Pn + 1);
    
     int neq = 2;
-    ASSERT_EQ(neq * 2 + 1.0, (fespan1[FE::fe_index{.iel = 0, .idof = 2, .iv = 1}]));
+    ASSERT_EQ(neq * 2 + 1.0, (fespan1[0, 2, 1]));
 
     std::size_t iel = 1, idof = 2, iv = 0;
-    ASSERT_EQ(iel * std::pow(ndim, (Pn + 1)) * neq + idof * neq + iv, (fespan1[FE::fe_index{.iel = iel, .idof = idof, .iv = iv}]));
+    ASSERT_EQ(iel * std::pow(ndim, (Pn + 1)) * neq + idof * neq + iv, (fespan1[iel, idof, iv]));
 
 
     auto local_layout = fespan1.create_element_layout(1);
     std::vector<T> el_memory(local_layout.size());
-    FE::elspan elspan1{el_memory.data(), local_layout};
+    FE::dofspan elspan1{el_memory.data(), local_layout};
     FE::extract_elspan(1, fespan1, elspan1);
 
     iel = 1;
     idof = 8;
     iv = 1;
-    ASSERT_DOUBLE_EQ(iel * std::pow(ndim, (Pn + 1)) * neq + idof * neq + iv, (elspan1[FE::compact_index{idof, iv}]));
+    ASSERT_DOUBLE_EQ(iel * std::pow(ndim, (Pn + 1)) * neq + idof * neq + iv, (elspan1[idof, iv]));
 
     FE::scatter_elspan(1, 1.0, elspan1, 1.0, fespan1);
-    ASSERT_DOUBLE_EQ(2.0 * (iel * std::pow(ndim, (Pn + 1)) * neq + idof * neq + iv), (fespan1[FE::fe_index{.iel = iel, .idof = idof, .iv = iv}]));
+    ASSERT_DOUBLE_EQ(2.0 * (iel * std::pow(ndim, (Pn + 1)) * neq + idof * neq + iv), (fespan1[iel, idof, iv]));
     iel = 1;
     idof = 1;
     iv = 1;
-    ASSERT_DOUBLE_EQ(2.0 *(iel * std::pow(ndim, (Pn + 1)) * neq + idof * neq + iv), (fespan1[FE::fe_index{.iel = iel, .idof = idof, .iv = iv}]));
+    ASSERT_DOUBLE_EQ(2.0 *(iel * std::pow(ndim, (Pn + 1)) * neq + idof * neq + iv), (fespan1[iel, idof, iv]));
     iel = 0;
     idof = 8;
     iv = 0;
     // make sure original element data remains unchanged
-    ASSERT_DOUBLE_EQ(iel * std::pow(ndim, (Pn + 1)) * neq + idof * neq + iv, (fespan1[FE::fe_index{.iel = iel, .idof = idof, .iv = iv}]));
+    ASSERT_DOUBLE_EQ(iel * std::pow(ndim, (Pn + 1)) * neq + idof * neq + iv, (fespan1[iel, idof, iv]));
 
     //TODO: add more tests
 }

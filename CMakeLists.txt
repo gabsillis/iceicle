@@ -31,6 +31,19 @@ if(USE_64_BIT_INT)
   add_definitions(-DIDX_64_BIT)
 endif()
 
+# ====================
+# = Compiler Options =
+# ====================
+option(ICEICLE_MARCH "Build with the march=native flag if in release mode" ON)
+option(ICEICLE_MTUNE "Build with the mtune=native flag if in release mode" ON)
+if(ICEICLE_MARCH)
+  SET(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -march=native")
+endif()
+if(ICEICLE_MTUNE)
+  SET(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -mtune=native")
+endif()
+
+
 # ===============
 # = TPL OPTIONS =
 # ===============

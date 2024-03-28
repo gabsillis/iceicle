@@ -6,6 +6,7 @@
 
 #pragma once
 
+#include "Numtool/MathUtils.hpp"
 #include "Numtool/fixed_size_tensor.hpp"
 #include "Numtool/matrixT.hpp"
 #include "iceicle/anomaly_log.hpp"
@@ -39,6 +40,12 @@ namespace DISC {
     template<typename T, typename IDX, int ndim>
     class HeatEquation final {
 
+    private:
+        template<class T2, std::size_t... sizes>
+        using Tensor = NUMTOOL::TENSOR::FIXED_SIZE::Tensor<T2, sizes...>;
+        using FiniteElement = ELEMENT::FiniteElement<T, IDX, ndim>;
+        using Trace = ELEMENT::TraceSpace<T, IDX, ndim>;
+
     public:
 
         /// @brief the number of vector components
@@ -52,6 +59,20 @@ namespace DISC {
 
         /// @brief the diffusion coefficient (positive)
         T mu = 0.001;
+
+        /// @brief advection coefficient 
+        Tensor<T, ndim> a = []{
+            Tensor<T, ndim> ret{};
+            for(int idim = 0; idim < ndim; ++idim) ret[idim] = 0;
+            return ret;
+        }();
+
+        /// @brief nonlinear advection coefficient
+        Tensor<T, ndim> b = []{
+            Tensor<T, ndim> ret{};
+            for(int idim = 0; idim < ndim; ++idim) ret[idim] = 0;
+            return ret;
+        }();
 
         /// @brief the interior penalty coefficient for 
         /// Dirichlet boundary conditions 
@@ -94,7 +115,10 @@ namespace DISC {
          * @return the timestep based on the cfl condition
          */
         T dt_from_cfl(T cfl, T reference_length){
-            return SQUARED(reference_length) / mu * cfl;
+            T aref = 0;
+            for(int idim = 0; idim < ndim; ++idim) aref += a[idim] * a[idim];
+            aref = std::sqrt(aref);
+            return (reference_length * cfl) / (mu / reference_length + aref);
         }
 
         /**
@@ -111,13 +135,15 @@ namespace DISC {
          * @param [out] res the residuals for each basis function
          *              WARNING: must be zeroed out
          */
-        template<class ULayoutPolicy, class UAccessorPolicy, class ResLayoutPolicy>
         void domainIntegral(
             const ELEMENT::FiniteElement<T, IDX, ndim> &el,
             FE::NodalFEFunction<T, ndim> &coord,
-            FE::elspan<T, ULayoutPolicy, UAccessorPolicy> &u,
-            FE::elspan<T, ResLayoutPolicy> &res
+            FE::elspan auto u,
+            FE::elspan auto res
         ) const {
+
+            std::vector<T> gradx_data(el.nbasis() * ndim);
+            std::vector<T> bi(el.nbasis());
 
             // loop over the quadrature points
             for(int iqp = 0; iqp < el.nQP(); ++iqp){
@@ -128,8 +154,19 @@ namespace DISC {
                 T detJ = NUMTOOL::TENSOR::FIXED_SIZE::determinant(J);
 
                 // get the gradients in the physical domain
-                std::vector<T> gradx_data(el.nbasis() * ndim);
                 auto gradxBi = el.evalPhysGradBasisQP(iqp, coord, J, gradx_data.data());
+                el.evalBasisQP(iqp, bi.data());
+
+                // construct the value of u at the quadrature point
+                T u_qp = 0;
+                for(IDX ibasis = 0; ibasis < el.nbasis(); ++ibasis){
+                    u_qp += u[ibasis, 0] * bi[ibasis];
+                }
+
+                Tensor<T, ndim> flux_adv{};
+                for(int idim = 0; idim < ndim; ++idim){
+                    flux_adv[idim] = a[idim] * u_qp + 0.5 * b[idim] * SQUARED(u_qp);
+                }
 
                 // construct the gradient of u
                 T gradu[ndim] = {0};
@@ -139,7 +176,8 @@ namespace DISC {
                 for(std::size_t itest = 0; itest < el.nbasis(); ++itest){
                     for(std::size_t jdim = 0; jdim < ndim; ++jdim){
                         res[itest, 0]
-                            -= mu * gradu[jdim] * gradxBi[itest, jdim] * detJ * quadpt.weight;
+                            += (flux_adv[jdim] - mu * gradu[jdim])
+                                * gradxBi[itest, jdim] * detJ * quadpt.weight;
                     }
                 }
             }
@@ -150,11 +188,16 @@ namespace DISC {
         void traceIntegral(
             const ELEMENT::TraceSpace<T, IDX, ndim> &trace,
             FE::NodalFEFunction<T, ndim> &coord,
-            FE::elspan<T, ULayoutPolicy, UAccessorPolicy> &uL,
-            FE::elspan<T, ULayoutPolicy, UAccessorPolicy> &uR,
-            FE::elspan<T, ResLayoutPolicy> &resL,
-            FE::elspan<T, ResLayoutPolicy> &resR
-        ) const {
+            FE::dofspan<T, ULayoutPolicy, UAccessorPolicy> uL,
+            FE::dofspan<T, ULayoutPolicy, UAccessorPolicy> uR,
+            FE::dofspan<T, ResLayoutPolicy> resL,
+            FE::dofspan<T, ResLayoutPolicy> resR
+        ) const requires ( 
+            FE::elspan<decltype(uL)> && 
+            FE::elspan<decltype(uR)> && 
+            FE::elspan<decltype(resL)> && 
+            FE::elspan<decltype(resL)>
+        ) {
             using namespace NUMTOOL::TENSOR::FIXED_SIZE;
             using FiniteElement = ELEMENT::FiniteElement<T, IDX, ndim>;
 
@@ -165,6 +208,19 @@ namespace DISC {
             auto centroidL = elL.geo_el->centroid(coord);
             auto centroidR = elR.geo_el->centroid(coord);
 
+            // Storage for Basis function and solution values
+            std::vector<T> bi_dataL(elL.nbasis()); //TODO: move storage declaration out of loop
+            std::vector<T> bi_dataR(elR.nbasis());
+            std::vector<T> grad_dataL(elL.nbasis() * ndim);
+            std::vector<T> grad_dataR(elR.nbasis() * ndim);
+            std::vector<T> gradu_dataL(ndim);
+            std::vector<T> gradu_dataR(ndim);
+            std::vector<T> hess_dataL(elL.nbasis() * ndim * ndim);
+            std::vector<T> hess_dataR(elR.nbasis() * ndim * ndim);
+            std::vector<T> hessu_dataL(ndim * ndim);
+            std::vector<T> hessu_dataR(ndim * ndim);
+
+
             // loop over the quadrature points 
             for(int iqp = 0; iqp < trace.nQP(); ++iqp){
                 const QUADRATURE::QuadraturePoint<T, ndim - 1> &quadpt = trace.getQP(iqp);
@@ -174,12 +230,10 @@ namespace DISC {
                 // these are needed for the gradients and hessians in the physical domn 
                 // but we also need Jfac for unit_normal
 
-                auto Jfac = trace.face.Jacobian(coord, quadpt.abscisse);
-                T sqrtg = trace.face.rootRiemannMetric(Jfac, quadpt.abscisse);
+                auto Jfac = trace.face->Jacobian(coord, quadpt.abscisse);
+                T sqrtg = trace.face->rootRiemannMetric(Jfac, quadpt.abscisse);
 
                 // get the function values
-                std::vector<T> bi_dataL(elL.nbasis()); //TODO: move storage declaration out of loop
-                std::vector<T> bi_dataR(elR.nbasis());
                 trace.evalBasisQPL(iqp, bi_dataL.data());
                 trace.evalBasisQPR(iqp, bi_dataR.data());
 
@@ -190,24 +244,16 @@ namespace DISC {
                 { value_uR += uR[ibasis, 0] * bi_dataR[ibasis]; }
 
                 // get the gradients the physical domain
-                std::vector<T> grad_dataL(elL.nbasis() * ndim);
-                std::vector<T> grad_dataR(elR.nbasis() * ndim);
                 auto gradBiL = trace.evalPhysGradBasisQPL(iqp, coord, grad_dataL.data());
                 auto gradBiR = trace.evalPhysGradBasisQPR(iqp, coord, grad_dataR.data());
 
-                std::vector<T> gradu_dataL(ndim);
-                std::vector<T> gradu_dataR(ndim);
                 auto graduL = uL.contract_mdspan(gradBiL, gradu_dataL.data());
                 auto graduR = uR.contract_mdspan(gradBiR, gradu_dataR.data());
 
                 // get the hessians in the physical domain 
-                std::vector<T> hess_dataL(elL.nbasis() * ndim * ndim);
-                std::vector<T> hess_dataR(elR.nbasis() * ndim * ndim);
                 auto hessBiL = trace.evalPhysHessBasisQPL(iqp, coord, hess_dataL.data());
                 auto hessBiR = trace.evalPhysHessBasisQPR(iqp, coord, hess_dataR.data());
 
-                std::vector<T> hessu_dataL(ndim * ndim);
-                std::vector<T> hessu_dataR(ndim * ndim);
                 auto hessuL = uL.contract_mdspan(hessBiL, hessu_dataL.data());
                 auto hessuR = uR.contract_mdspan(hessBiR, hessu_dataR.data());
 
@@ -215,9 +261,22 @@ namespace DISC {
                 auto normal = calc_ortho(Jfac);
                 auto unit_normal = normalize(normal);
 
+                // calculate inviscid fluxes
+                T fadvn = 0;
+                for(int idim = 0; idim < ndim; ++idim){
+
+                    // flux vector splitting
+                    T lambdaL = unit_normal[idim] * (a[idim] + 0.5 * b[idim] * value_uL);
+                    T lambdaR = unit_normal[idim] * (a[idim] + 0.5 * b[idim] * value_uR);
+                    T lambda_l_plus = 0.5 * (lambdaL + std::abs(lambdaL));
+                    T lambda_r_plus = 0.5 * (lambdaR - std::abs(lambdaR));
+
+                    fadvn += value_uL * lambda_l_plus + value_uR * lambda_r_plus;
+                }
+
                 // calculate the DDG distance
                 MATH::GEOMETRY::Point<T, ndim> phys_pt;
-                trace.face.transform(quadpt.abscisse, coord, phys_pt.data());
+                trace.face->transform(quadpt.abscisse, coord, phys_pt.data());
                 T h_ddg = 0;
                 for(int idim = 0; idim < ndim; ++idim){
                     h_ddg += unit_normal[idim] * (
@@ -253,16 +312,19 @@ namespace DISC {
                     grad_ddg[idim] += beta1 * h_ddg * hessTerm;
                 }
 
+                using namespace MATH::MATRIX_T;
                 // calculate the flux weighted by the quadrature and face metric
-                T flux = mu * MATH::MATRIX_T::dotprod<T, ndim>(grad_ddg, unit_normal.data()) 
+                T fvisc = mu * dotprod<T, ndim>(grad_ddg, unit_normal.data()) 
                     * quadpt.weight * sqrtg;
+
+                fadvn *= quadpt.weight * sqrtg;
 
                 // contribution to the residual 
                 for(std::size_t itest = 0; itest < elL.nbasis(); ++itest){
-                    resL[itest, 0] += flux * bi_dataL[itest];
+                    resL[itest, 0] += (fvisc - fadvn) * bi_dataL[itest];
                 }
                 for(std::size_t itest = 0; itest < elR.nbasis(); ++itest){
-                    resR[itest, 0] -= flux * bi_dataR[itest];
+                    resR[itest, 0] -= (fvisc - fadvn) * bi_dataR[itest];
                 }
 
                 // apply the interface correction 
@@ -271,14 +333,17 @@ namespace DISC {
 
                     T average_gradv[ndim];
                     for(std::size_t itest = 0; itest < elL.nbasis(); ++itest){
+                        // get the average test function gradient
                         for(int idim = 0; idim < ndim; ++idim){
                             average_gradv[idim] = 0.5 * ( gradBiL[itest, idim] + gradBiR[itest, idim] );
-                            T interface_correction = sigma_ic * jumpu * mu * 
-                                MATH::MATRIX_T::dotprod<T, ndim>(average_gradv, unit_normal.data())
-                                * quadpt.weight * sqrtg;
-                            resL[itest, 0] -= interface_correction;
-                            resR[itest, 0] -= interface_correction;
                         }
+
+                        // calcualate the interface correction integral contribution
+                        T interface_correction = sigma_ic * jumpu * mu * 
+                            MATH::MATRIX_T::dotprod<T, ndim>(average_gradv, unit_normal.data())
+                            * quadpt.weight * sqrtg;
+                        resL[itest, 0] -= interface_correction;
+                        resR[itest, 0] -= interface_correction;
                     }
                 } else if(sigma_ic != 0) {
                     ICEICLE::UTIL::AnomalyLog::log_anomaly(
@@ -311,17 +376,21 @@ namespace DISC {
         void boundaryIntegral(
             const ELEMENT::TraceSpace<T, IDX, ndim> &trace,
             FE::NodalFEFunction<T, ndim> &coord,
-            FE::elspan<T, ULayoutPolicy, UAccessorPolicy> &uL,
-            FE::elspan<T, ULayoutPolicy, UAccessorPolicy> &uR,
-            FE::elspan<T, ResLayoutPolicy> &resL
-        ) const {
+            FE::dofspan<T, ULayoutPolicy, UAccessorPolicy> uL,
+            FE::dofspan<T, ULayoutPolicy, UAccessorPolicy> uR,
+            FE::dofspan<T, ResLayoutPolicy> resL
+        ) const requires(
+            FE::elspan<decltype(uL)> &&
+            FE::elspan<decltype(uR)> &&
+            FE::elspan<decltype(resL)> 
+        ) {
             using namespace NUMTOOL::TENSOR::FIXED_SIZE;
             using FiniteElement = ELEMENT::FiniteElement<T, IDX, ndim>;
             const FiniteElement &elL = trace.elL;
 
             auto centroidL = elL.geo_el->centroid(coord);
 
-            switch(trace.face.bctype){
+            switch(trace.face->bctype){
                 case ELEMENT::BOUNDARY_CONDITIONS::DIRICHLET: 
                 {
                     // see Huang, Chen, Li, Yan 2016
@@ -331,8 +400,8 @@ namespace DISC {
                         const QUADRATURE::QuadraturePoint<T, ndim - 1> &quadpt = trace.getQP(iqp);
 
                         // calculate the jacobian and riemannian metric root det
-                        auto Jfac = trace.face.Jacobian(coord, quadpt.abscisse);
-                        T sqrtg = trace.face.rootRiemannMetric(Jfac, quadpt.abscisse);
+                        auto Jfac = trace.face->Jacobian(coord, quadpt.abscisse);
+                        T sqrtg = trace.face->rootRiemannMetric(Jfac, quadpt.abscisse);
 
                         // calculate the normal vector 
                         auto normal = calc_ortho(Jfac);
@@ -355,22 +424,34 @@ namespace DISC {
 
                         // Get the value at the boundary 
                         T dirichlet_val;
-                        if(trace.face.bcflag < 0){
+                        if(trace.face->bcflag < 0){
                             // calback using physical domain location
                             MATH::GEOMETRY::Point<T, ndim> ref_pt, phys_pt;
-                            trace.face.transform_xiL(quadpt.abscisse, ref_pt.data());
+                            trace.face->transform_xiL(quadpt.abscisse, ref_pt.data());
                             elL.transform(coord, ref_pt, phys_pt);
                             
-                            dirichlet_callbacks[-trace.face.bcflag](phys_pt.data(), &dirichlet_val);
+                            dirichlet_callbacks[-trace.face->bcflag](phys_pt.data(), &dirichlet_val);
 
                         } else {
                             // just use the value
-                            dirichlet_val = dirichlet_values[trace.face.bcflag];
+                            dirichlet_val = dirichlet_values[trace.face->bcflag];
+                        }
+
+                        // calculate inviscid fluxes
+                        T fadvn = 0;
+                        for(int idim = 0; idim < ndim; ++idim){
+                            // flux vector splitting
+                            T lambdaL = unit_normal[idim] * (a[idim] + 0.5 * b[idim] * value_uL);
+                            T lambdaR = unit_normal[idim] * (a[idim] + 0.5 * b[idim] * dirichlet_val);
+                            T lambda_l_plus = 0.5 * (lambdaL + std::abs(lambdaL));
+                            T lambda_r_plus = 0.5 * (lambdaR - std::abs(lambdaR));
+
+                            fadvn += value_uL * lambda_l_plus + dirichlet_val * lambda_r_plus;
                         }
 
                         // calculate the DDG distance
                         MATH::GEOMETRY::Point<T, ndim> phys_pt;
-                        trace.face.transform(quadpt.abscisse, coord, phys_pt.data());
+                        trace.face->transform(quadpt.abscisse, coord, phys_pt.data());
                         T h_ddg = 0; // uses distance to quadpt on boundary face
                         for(int idim = 0; idim < ndim; ++idim){
                             h_ddg += std::abs(unit_normal[idim] * 
@@ -393,13 +474,16 @@ namespace DISC {
                         }
 
                         // calculate the flux weighted by the quadrature and face metric
-                        T flux = (
+                        T fvisc = (
                             mu * grad_ddg_n
                             + penalty * jumpu
                         ) * quadpt.weight * sqrtg;
 
+                        // scale by weight and face metric
+                        fadvn *= quadpt.weight * sqrtg;
+
                         for(std::size_t itest = 0; itest < elL.nbasis(); ++itest){
-                            resL[itest, 0] += flux * bi_dataL[itest];
+                            resL[itest, 0] += (fvisc - fadvn) * bi_dataL[itest];
                         }
                     }
                 }
@@ -413,8 +497,8 @@ namespace DISC {
                         const QUADRATURE::QuadraturePoint<T, ndim - 1> &quadpt = trace.getQP(iqp);
 
                         // calculate the jacobian and riemannian metric root det
-                        auto Jfac = trace.face.Jacobian(coord, quadpt.abscisse);
-                        T sqrtg = trace.face.rootRiemannMetric(Jfac, quadpt.abscisse);
+                        auto Jfac = trace.face->Jacobian(coord, quadpt.abscisse);
+                        T sqrtg = trace.face->rootRiemannMetric(Jfac, quadpt.abscisse);
 
                         // get the basis function values
                         std::vector<T> bi_dataL(elL.nbasis());
@@ -422,7 +506,7 @@ namespace DISC {
 
                         // flux contribution weighted by quadrature and face metric 
                         // Li and Tang 2017 sec 9.1.1
-                        T flux = mu * neumann_values[trace.face.bcflag]
+                        T flux = mu * neumann_values[trace.face->bcflag]
                             * quadpt.weight * sqrtg;
 
                         for(std::size_t itest = 0; itest < elL.nbasis(); ++itest){
@@ -434,9 +518,105 @@ namespace DISC {
 
                 default:
                     // assume essential
-                    std::cerr << "Warning: assuming essential BC." << std::endl;;
+                    std::cerr << "Warning: assuming essential BC." << std::endl;
                     break;
             }
+        }
+
+        void interface_conservation(
+            const Trace &trace,
+            FE::NodalFEFunction<T, ndim> &coord,
+            FE::elspan auto unkelL,
+            FE::elspan auto unkelR,
+            FE::facspan auto res
+        ) const {
+            using namespace MATH::MATRIX_T;
+            using namespace NUMTOOL::TENSOR::FIXED_SIZE;
+
+            // calculate the centroids of the left and right elements
+            // in the physical domain
+            const FiniteElement &elL = trace.elL;
+            const FiniteElement &elR = trace.elR;
+
+            // Storage for Basis function and solution values
+            std::vector<T> bi_dataL(elL.nbasis()); 
+            std::vector<T> bi_dataR(elR.nbasis());
+            std::vector<T> bi_trace(trace.nbasis_trace());
+            std::vector<T> grad_dataL(elL.nbasis() * ndim);
+            std::vector<T> grad_dataR(elR.nbasis() * ndim);
+            std::vector<T> gradu_dataL(ndim);
+            std::vector<T> gradu_dataR(ndim);
+            std::vector<T> hess_dataL(elL.nbasis() * ndim * ndim);
+            std::vector<T> hess_dataR(elR.nbasis() * ndim * ndim);
+            std::vector<T> hessu_dataL(ndim * ndim);
+            std::vector<T> hessu_dataR(ndim * ndim);
+            for(int iqp = 0; iqp < trace.nQP(); ++iqp){
+                const QUADRATURE::QuadraturePoint<T, ndim - 1> &quadpt = trace.getQP(iqp);
+
+                // calcualate Jacobian and metric
+                auto Jfac = trace.face->Jacobian(coord, quadpt.abscisse);
+                T sqrtg = trace.face->rootRiemannMetric(Jfac, quadpt.abscisse);
+
+                // calculate the normal vector 
+                auto normal = calc_ortho(Jfac);
+                auto unit_normal = normalize(normal);
+
+                // get the function values
+                trace.evalBasisQPL(iqp, bi_dataL.data());
+                trace.evalBasisQPR(iqp, bi_dataR.data());
+
+                T uL = 0.0, uR = 0.0;
+                for(std::size_t ibasis = 0; ibasis < elL.nbasis(); ++ibasis)
+                { uL += unkelL[ibasis, 0] * bi_dataL[ibasis]; }
+                for(std::size_t ibasis = 0; ibasis < elR.nbasis(); ++ibasis)
+                { uR += unkelR[ibasis, 0] * bi_dataR[ibasis]; }
+
+                // get the gradients the physical domain
+                auto gradBiL = trace.evalPhysGradBasisQPL(iqp, coord, grad_dataL.data());
+                auto gradBiR = trace.evalPhysGradBasisQPR(iqp, coord, grad_dataR.data());
+
+                auto graduL = unkelL.contract_mdspan(gradBiL, gradu_dataL.data());
+                auto graduR = unkelR.contract_mdspan(gradBiR, gradu_dataR.data());
+
+                // get the test functions 
+                trace.eval_trace_basis_qp(iqp, bi_trace.data());
+
+                // viscous fluxes
+                // TODO: dotprod based on mdspan extent
+                T fvisc_nL = -mu * dotprod<T, ndim>(gradu_dataL.data(), unit_normal.data());
+                T fvisc_nR = -mu * dotprod<T, ndim>(gradu_dataR.data(), unit_normal.data());
+
+                // inviscid fluxes 
+                NUMTOOL::TENSOR::FIXED_SIZE::Tensor<T, ndim> fadvL{};
+                NUMTOOL::TENSOR::FIXED_SIZE::Tensor<T, ndim> fadvR{};
+                for(int idim = 0; idim < ndim; ++idim){
+                    fadvL[idim] = a[idim] * uL + b[idim] * SQUARED(uL);
+                    fadvR[idim] = a[idim] * uR + b[idim] * SQUARED(uR);
+                }
+
+                T fadv_nL = dotprod<T, ndim>(fadvL.data(), unit_normal.data());
+                T fadv_nR = dotprod<T, ndim>(fadvR.data(), unit_normal.data());
+
+                // calculate the flux jump
+                T jumpF = (fvisc_nR - fvisc_nL) + (fadv_nR - fadv_nL);
+
+                for(int itest = 0; itest < trace.nbasis_trace(); ++itest){
+                    // integral contribution of interface conservation
+                    T ic_res = jumpF * bi_trace[itest] * sqrtg * quadpt.weight;
+
+                    if constexpr(decltype(res)::static_extent() == ndim){
+                        // take the norm of the residual (scalar value in this case)
+                        // and multiply by normal vector components 
+                        for(IDX idim = 0; idim < ndim; ++idim){
+                            res[itest, idim] += std::abs(ic_res * unit_normal[idim]);
+                        }
+                    } else {
+                        // assume there is only one component 
+                        res[itest, 0] += ic_res;
+                    }
+                }
+            }
+
         }
     };
 }
