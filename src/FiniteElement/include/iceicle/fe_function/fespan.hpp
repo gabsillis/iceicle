@@ -883,6 +883,8 @@ namespace FE {
     /**
      * @brief restrict the set of nodes to the nodes on interior faces 
      * that have a interface conservation vector norm above the given threshold 
+     *
+     * @return the nodeset based on the threshold
      */
     template<class T, class IDX, int ndim, class disc_type, class uLayout, class uAccessor, std::size_t vextent>
     auto select_nodeset(
@@ -890,12 +892,12 @@ namespace FE {
         disc_type disc,                                  /// [in] the discretization
         fespan<T, uLayout, uAccessor> u,                 /// [in] the current finite element solution
         T residual_threshold,                            /// [in] residual threshhold for selecting a trace
-        std::integral_constant<std::size_t, vextent> nv, /// [in] the number of vector components for Interface Conservation
-        nodeset_dof_map<IDX> nodeset                     /// [out] the nodeset based on the threshold
-    ) -> void {
+        std::integral_constant<std::size_t, vextent> nv  /// [in] the number of vector components for Interface Conservation
+    ) -> nodeset_dof_map<IDX> {
         using index_type = IDX;
         using trace_type = FE::FESpace<T, IDX, ndim>::TraceType;
 
+        nodeset_dof_map<IDX> nodeset{};
 
         // we will be filling the selected traces, nodes, 
         // and selected nodes -> gnode index map respectively
@@ -903,11 +905,8 @@ namespace FE {
         std::vector<index_type>& selected_nodes{nodeset.selected_nodes};
         std::vector<index_type>& inv_selected_nodes{nodeset.inv_selected_nodes};
 
-        // helper set to copy into selected_nodes later
-        // TODO: use a custom heap instad because of data locality
-        // would need to not add duplicates so the downHeap function would
-        // do one additional comparison each time to check equaility
-        std::set<index_type> nodes_set{}; 
+        // helper array to keep track of which global node indices to select
+        std::vector<bool> to_select(fespace.meshptr->nodes.n_nodes(), false);
 
         std::vector<T> res_storage{};
         // preallocate storage for compact views of u and res 
@@ -934,28 +933,38 @@ namespace FE {
 
             disc.interface_conservation(trace, fespace.meshptr->nodes, uL, uR, ic_res);
 
-            std::cout << "Interface nr: " << trace.facidx; 
-            std::cout << " | ic residual: " << ic_res.vector_norm() << std::endl; 
+//            std::cout << "Interface nr: " << trace.facidx; 
+//            std::cout << " | nodes:";
+//            for(index_type inode : trace.face->nodes_span()){
+//                std::cout << " " << inode;
+//            }
+//            std::cout << " | ic residual: " << ic_res.vector_norm() << std::endl; 
 
             // if interface conservation residual is high enough,
             // add the trace and nodes of the trace
             if(ic_res.vector_norm() > residual_threshold){
                 selected_traces.push_back(trace.facidx);
-                const index_type *nodes = trace.face->nodes();
-                for(index_type inode = 0; inode < trace.face->n_nodes(); ++inode){
-                    nodes_set.insert(nodes[inode]);
+                for(index_type inode : trace.face->nodes_span()){
+                    to_select[inode] = true;
                 }
             }
         }
 
         // finish setting up the map arrays
-        selected_nodes.resize(nodes_set.size());
-        std::copy(nodes_set.begin(), nodes_set.end(), selected_nodes.begin());
+
+        // add all the selected nodes
+        for(int ignode = 0; ignode < fespace.meshptr->nodes.n_nodes(); ++ignode){
+            if(to_select[ignode]){
+                selected_nodes.push_back(ignode);
+            }
+        }
 
         // default value for nodes that aren't selected is to map to selected_nodes.size()
         inv_selected_nodes = std::vector<index_type>(fespace.meshptr->nodes.n_nodes(), selected_nodes.size());
         for(int idof = 0; idof < selected_nodes.size(); ++idof){
             inv_selected_nodes[selected_nodes[idof]] = idof;
         }
+
+        return nodeset;
     }
 }

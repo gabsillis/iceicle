@@ -115,7 +115,10 @@ namespace DISC {
          * @return the timestep based on the cfl condition
          */
         T dt_from_cfl(T cfl, T reference_length){
-            return SQUARED(reference_length) / mu * cfl;
+            T aref = 0;
+            for(int idim = 0; idim < ndim; ++idim) aref += a[idim] * a[idim];
+            aref = std::sqrt(aref);
+            return (reference_length * cfl) / (mu / reference_length + aref);
         }
 
         /**
@@ -259,18 +262,16 @@ namespace DISC {
                 auto unit_normal = normalize(normal);
 
                 // calculate inviscid fluxes
-                Tensor<T, ndim> fadv{};
+                T fadvn = 0;
                 for(int idim = 0; idim < ndim; ++idim){
-                    T fadvL = a[idim] * value_uL + b[idim] * SQUARED(value_uL);
-                    T fadvR = a[idim] * value_uR + b[idim] * SQUARED(value_uR);
 
                     // flux vector splitting
-                    T lambdaL = unit_normal[idim] * (a[idim] * 0.5 * b[idim] * value_uL);
-                    T lambdaR = unit_normal[idim] * (a[idim] * 0.5 * b[idim] * value_uR);
+                    T lambdaL = unit_normal[idim] * (a[idim] + 0.5 * b[idim] * value_uL);
+                    T lambdaR = unit_normal[idim] * (a[idim] + 0.5 * b[idim] * value_uR);
                     T lambda_l_plus = 0.5 * (lambdaL + std::abs(lambdaL));
-                    T lambda_r_plus = 0.5 * (lambdaR + std::abs(lambdaR));
+                    T lambda_r_plus = 0.5 * (lambdaR - std::abs(lambdaR));
 
-                    fadv[idim] = value_uL * lambda_l_plus + value_uR * lambda_r_plus;
+                    fadvn += value_uL * lambda_l_plus + value_uR * lambda_r_plus;
                 }
 
                 // calculate the DDG distance
@@ -316,8 +317,7 @@ namespace DISC {
                 T fvisc = mu * dotprod<T, ndim>(grad_ddg, unit_normal.data()) 
                     * quadpt.weight * sqrtg;
 
-                T fadvn = dotprod<T, ndim>(fadv.data(), unit_normal.data())
-                    * quadpt.weight * sqrtg;
+                fadvn *= quadpt.weight * sqrtg;
 
                 // contribution to the residual 
                 for(std::size_t itest = 0; itest < elL.nbasis(); ++itest){
@@ -438,15 +438,15 @@ namespace DISC {
                         }
 
                         // calculate inviscid fluxes
-                        Tensor<T, ndim> fadv{};
+                        T fadvn = 0;
                         for(int idim = 0; idim < ndim; ++idim){
                             // flux vector splitting
-                            T lambdaL = unit_normal[idim] * (a[idim] * 0.5 * b[idim] * value_uL);
-                            T lambdaR = unit_normal[idim] * (a[idim] * 0.5 * b[idim] * dirichlet_val);
+                            T lambdaL = unit_normal[idim] * (a[idim] + 0.5 * b[idim] * value_uL);
+                            T lambdaR = unit_normal[idim] * (a[idim] + 0.5 * b[idim] * dirichlet_val);
                             T lambda_l_plus = 0.5 * (lambdaL + std::abs(lambdaL));
-                            T lambda_r_plus = 0.5 * (lambdaR + std::abs(lambdaR));
+                            T lambda_r_plus = 0.5 * (lambdaR - std::abs(lambdaR));
 
-                            fadv[idim] = value_uL * lambda_l_plus + dirichlet_val * lambda_r_plus;
+                            fadvn += value_uL * lambda_l_plus + dirichlet_val * lambda_r_plus;
                         }
 
                         // calculate the DDG distance
@@ -479,9 +479,8 @@ namespace DISC {
                             + penalty * jumpu
                         ) * quadpt.weight * sqrtg;
 
-                        using namespace MATH::MATRIX_T;
-                        T fadvn = dotprod<T, ndim>(fadv.data(), unit_normal.data())
-                            * quadpt.weight * sqrtg;
+                        // scale by weight and face metric
+                        fadvn *= quadpt.weight * sqrtg;
 
                         for(std::size_t itest = 0; itest < elL.nbasis(); ++itest){
                             resL[itest, 0] += (fvisc - fadvn) * bi_dataL[itest];
@@ -540,7 +539,7 @@ namespace DISC {
             const FiniteElement &elR = trace.elR;
 
             // Storage for Basis function and solution values
-            std::vector<T> bi_dataL(elL.nbasis()); //TODO: move storage declaration out of loop
+            std::vector<T> bi_dataL(elL.nbasis()); 
             std::vector<T> bi_dataR(elR.nbasis());
             std::vector<T> bi_trace(trace.nbasis_trace());
             std::vector<T> grad_dataL(elL.nbasis() * ndim);

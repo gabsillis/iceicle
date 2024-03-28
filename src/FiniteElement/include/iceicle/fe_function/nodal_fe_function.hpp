@@ -27,10 +27,16 @@ namespace FE {
         operator T *() { return _ptr; }
 
         /// @brief copy the vlaues into a std::array
-        std::array<T, ndim> clone(){
+        std::array<T, ndim> clone() const {
             std::array<T, ndim> values{};
             std::copy_n(_ptr, ndim, values.begin());
             return values;
+        }
+
+        auto clone_pt() -> MATH::GEOMETRY::Point<T, ndim> const {
+            MATH::GEOMETRY::Point<T, ndim> pt{};
+            std::copy_n(_ptr, ndim, pt.data());
+            return pt;
         }
 
         /// @brief get a span view of the data

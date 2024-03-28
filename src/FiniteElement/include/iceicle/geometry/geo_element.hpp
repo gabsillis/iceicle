@@ -109,6 +109,20 @@ namespace ELEMENT{
         virtual
         const IDX *nodes() const = 0;
 
+
+        /**
+         * @brief get the array of node indices as a span 
+         *
+         * This array should be garuanteed to be in the same order as the reference degres of freedom
+         * for the reference domain corresponding to this face
+         * This is so nodal basis functions can be mapped to the global node dofs
+         *
+         * @return the node indices in the mesh nodes array
+         */
+        std::span<const IDX> nodes_span() const {
+            return std::span{nodes(), static_cast<std::size_t>(n_nodes())};
+        }
+
         /**
          * @brief transform from the reference domain to the physical domain
          * @param [in] node_coords the coordinates of all the nodes
@@ -148,6 +162,15 @@ namespace ELEMENT{
             FE::NodalFEFunction<T, ndim> &node_coords,
             const Point &xi
         ) const = 0;
+
+        /**
+         * @brief given surface nodes 
+         * find interior nodes according to their barycentric weights
+         */
+        virtual 
+        auto regularize_interior_nodes(
+            FE::NodalFEFunction<T, ndim>& coord /// [in/out] the node coordinates array 
+        ) const -> void = 0;
 
         /**
          * @brief virtual destructor

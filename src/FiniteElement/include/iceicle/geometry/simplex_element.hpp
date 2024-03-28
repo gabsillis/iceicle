@@ -60,6 +60,13 @@ namespace ELEMENT {
             return transformation.Hessian(node_coords, _nodes, xi, hess);
         }
 
+
+        auto regularize_interior_nodes(
+            FE::NodalFEFunction<T, ndim>& coord /// [in/out] the node coordinates array 
+        ) const -> void override {
+            // TODO: 
+        }
+
         /** @brief set the node index at idx to value */
         void setNode(int idx, int value){_nodes[idx] = value; }
     };

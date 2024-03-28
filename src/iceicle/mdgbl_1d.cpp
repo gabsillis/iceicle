@@ -182,7 +182,13 @@ int main(int argc, char *argv[]){
 
         // mdg selection
         FE::nodeset_dof_map<IDX> nodeset;
-        FE::select_nodeset(fespace, disc, u, 0.01, ICEICLE::TMP::to_size<ndim>{}, nodeset);
+        nodeset = FE::select_nodeset(fespace, disc, u, 0.01, ICEICLE::TMP::to_size<ndim>{});
+
+        std::cout << "Selected Nodes: ";
+        for(IDX inode : nodeset.selected_nodes){
+            std::cout << " " << inode;
+        }
+        std::cout << std::endl;
 
         AnomalyLog::handle_anomalies();
         return 0;

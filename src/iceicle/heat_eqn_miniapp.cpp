@@ -11,6 +11,7 @@
 #include "iceicle/ssp_rk3.hpp"
 #include "iceicle/string_utils.hpp"
 #include "iceicle/tmp_utils.hpp"
+#include "iceicle/mdg_utils.hpp"
 #include <iomanip>
 #include <limits>
 #include <type_traits>
@@ -139,6 +140,18 @@ int main(int argc, char *argv[]){
     DISC::HeatEquation<T, IDX, ndim> heat_equation{}; 
     sol::optional<T> mu_input = lua_state["mu"];
     if(mu_input) heat_equation.mu = mu_input.value();
+
+    sol::optional<sol::table> a_adv_input = lua_state["a_adv"];
+    if(a_adv_input){
+        for(int idim = 0; idim < ndim; ++idim)
+            heat_equation.a[idim] = a_adv_input.value()[idim + 1];
+    }
+
+    sol::optional<sol::table> b_adv_input = lua_state["b_adv"];
+    if(b_adv_input){
+        for(int idim = 0; idim < ndim; ++idim)
+            heat_equation.b[idim] = b_adv_input.value()[idim + 1];
+    }
 
     // Get boundary condition values from input deck  TODO: get rid of 
     static constexpr int MAX_BC_ENTRIES = 100; // protect from infinite loops
@@ -457,6 +470,30 @@ int main(int argc, char *argv[]){
         T l2_error = DISC::l2_error(exactfunc, fespace, u);
         std::cout << "L2 error: " << std::setprecision(9) << l2_error << std::endl;
     }
+
+    // ===============================
+    // = move the nodes around a bit =
+    // ===============================
+    FE::nodeset_dof_map<IDX> nodeset{FE::select_nodeset(fespace, heat_equation, u, 0.01, ICEICLE::TMP::to_size<ndim>())};
+    FE::node_selection_layout<IDX, ndim> new_coord_layout{nodeset};
+    std::vector<T> new_coord_storage(new_coord_layout.size());
+    FE::dofspan dx_coord{new_coord_storage.data(), new_coord_layout};
+
+    
+    std::vector<T> node_radii = FE::node_freedom_radii(fespace);
+    for(IDX idof = 0; idof < dx_coord.ndof(); ++idof){
+        IDX inode = nodeset.selected_nodes[idof];
+
+        // push to the right a little (increasing farther right)
+        dx_coord[idof, 0] = 0.5 * dx_coord[idof, 0] * node_radii[inode];
+    }
+
+    // apply new nodes 
+    FE::scatter_node_selection_span(1.0, dx_coord, 1.0, fespace.meshptr->nodes);
+    // fixup interior nodes 
+    FE::regularize_interior_nodes(fespace);
+
+    pvd_writer.write_mesh();
 
     //cleanup
     PetscFinalize();

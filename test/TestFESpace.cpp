@@ -98,6 +98,11 @@ public:
         hess[1][1][1] = 0;
         return hess;
     }
+    auto regularize_interior_nodes(
+        FE::NodalFEFunction<T, ndim>& coord /// [in/out] the node coordinates array 
+    ) const -> void override{
+        // do nothing: no interior nodes
+    }
 };
 
 class test_basis : public BASIS::Basis<double, 2> {

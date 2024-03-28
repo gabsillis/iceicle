@@ -51,7 +51,6 @@ namespace FE {
         // ===========
         const nodeset_dof_map<IDX>& nodeset;
 
-
         // ==============
         // = Properties =
         // ==============
