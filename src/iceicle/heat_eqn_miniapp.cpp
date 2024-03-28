@@ -7,6 +7,7 @@
 #include "iceicle/fespace/fespace_lua_interface.hpp"
 #include "iceicle/anomaly_log.hpp"
 #include "iceicle/mesh/mesh_utils.hpp"
+#include "iceicle/nonlinear_solver_utils.hpp"
 #include "iceicle/program_args.hpp"
 #include "iceicle/ssp_rk3.hpp"
 #include "iceicle/string_utils.hpp"
@@ -437,7 +438,8 @@ int main(int argc, char *argv[]){
         .tau_rel = 0,
         .kmax = 5
     };
-    PetscNewton solver{fespace, heat_equation, conv_criteria};
+    wolfe_linesearch<T, IDX> ls{.max_it = 10};
+    PetscNewton solver{fespace, heat_equation, conv_criteria, ls};
     solver.idiag = -1;
     solver.ivis = 1;
     ICEICLE::IO::PVDWriter<T, IDX, ndim> pvd_writer;
@@ -474,7 +476,7 @@ int main(int argc, char *argv[]){
     // ===============================
     // = move the nodes around a bit =
     // ===============================
-    FE::nodeset_dof_map<IDX> nodeset{FE::select_nodeset(fespace, heat_equation, u, 0.3, ICEICLE::TMP::to_size<ndim>())};
+    FE::nodeset_dof_map<IDX> nodeset{FE::select_nodeset(fespace, heat_equation, u, 0.003, ICEICLE::TMP::to_size<ndim>())};
     FE::node_selection_layout<IDX, ndim> new_coord_layout{nodeset};
     std::vector<T> new_coord_storage(new_coord_layout.size());
     FE::dofspan dx_coord{new_coord_storage.data(), new_coord_layout};

@@ -608,7 +608,7 @@ namespace DISC {
                         // take the norm of the residual (scalar value in this case)
                         // and multiply by normal vector components 
                         for(IDX idim = 0; idim < ndim; ++idim){
-                            res[itest, idim] += ic_res * unit_normal[idim];
+                            res[itest, idim] += std::abs(ic_res * unit_normal[idim]);
                         }
                     } else {
                         // assume there is only one component 

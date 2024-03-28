@@ -931,6 +931,8 @@ namespace FE {
             FE::extract_elspan(trace.elL.elidx, u, uL);
             FE::extract_elspan(trace.elR.elidx, u, uR);
 
+            // zero out and then get interface conservation
+            ic_res = 0.0;
             disc.interface_conservation(trace, fespace.meshptr->nodes, uL, uR, ic_res);
 
             std::cout << "Interface nr: " << trace.facidx; 
