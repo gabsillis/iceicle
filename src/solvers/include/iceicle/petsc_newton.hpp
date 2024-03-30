@@ -54,6 +54,12 @@ namespace ICEICLE::SOLVERS {
         /// @brief the preconditioner
         PC pc;
 
+        /// @brief the set of selected nodes to do mdg with 
+        /// Activates mdg mode if specified 
+        /// Mdg mode adds node dofs 
+        /// and interface conservation equations
+        std::optional<FE::nodeset_dof_map<IDX>> mdg_nodeset;
+
         public:
         /// @brief store a reference to the fespace being used 
         FE::FESpace<T, IDX, ndim> &fespace;

@@ -7,6 +7,7 @@
 #pragma once 
 #include "iceicle/element/finite_element.hpp"
 #include "iceicle/fe_function/fespan.hpp"
+#include "iceicle/fe_function/trace_layout.hpp"
 #include "iceicle/fespace/fespace.hpp"
 
 namespace ICEICLE::SOLVERS {
@@ -148,5 +149,62 @@ namespace ICEICLE::SOLVERS {
         delete[] uR_data;
         delete[] resL_data;
         delete[] resR_data;
+    }
+
+    template<
+        class T, 
+        class IDX,
+        int ndim,
+        class disc_class,
+        class uLayoutPolicy,
+        class uAccessorPolicy
+    >
+    auto form_mdg_residual(
+        FE::FESpace<T, IDX, ndim>& fespace,
+        disc_class& disc,
+        FE::fespan<T, uLayoutPolicy, uAccessorPolicy> u,
+        FE::node_selection_span auto& mdg_residual
+    ) -> void {
+        using Element = ELEMENT::FiniteElement<T, IDX, ndim>;
+        using Trace = ELEMENT::TraceSpace<T, IDX, ndim>;
+        using index_type = IDX;
+        using namespace FE;
+
+        // zero out the residual 
+        mdg_residual = 0;
+
+        // preallocate storage for compact views of u 
+        const std::size_t max_local_size =
+            fespace.dg_map.max_el_size_reqirement(disc_class::dnv_comp);
+        std::vector<T> uL_storage(max_local_size);
+        std::vector<T> uR_storage(max_local_size);
+        std::vector<T> res_storage{};
+
+        const nodeset_dof_map<index_type>& nodeset = mdg_residual.get_layout().nodeset; 
+
+        // loop over the boundary faces in the selection 
+        for(index_type itrace : nodeset.selected_traces){
+            Trace& trace = fespace.traces[itrace];
+            
+            // set up compact data views
+            auto uL_layout = u.create_element_layout(trace.elL.elidx);
+            FE::dofspan uL{uL_storage, uL_layout};
+            auto uR_layout = u.create_element_layout(trace.elR.elidx);
+            FE::dofspan uR{uR_storage, uR_layout};
+
+            trace_layout_right<IDX, decltype(mdg_residual)::static_extent()> res_layout{trace};
+            res_storage.resize(res_layout.size());
+            dofspan res{res_storage, res_layout};
+
+            // extract the compact values from the global u view
+            FE::extract_elspan(trace.elL.elidx, u, uL);
+            FE::extract_elspan(trace.elR.elidx, u, uR);
+
+            // zero out then get interface conservation residual 
+            res = 0;
+            disc.interface_conservation(trace, fespace.meshptr->nodes, uL, uR, res);
+
+            scatter_facspan(trace, 1.0, res, 0.0, mdg_residual);
+        }
     }
 }

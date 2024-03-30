@@ -6,6 +6,7 @@
 
 #include <type_traits>
 #include <vector>
+#include <stdexcept>
 namespace FE {
 
     /**
@@ -101,7 +102,10 @@ namespace FE {
             index_type iv
         ) const noexcept(index_noexcept) -> index_type {
 #ifndef NDEBUG
-            // Bounds checking version in debug
+            // Bounds checking version in debug 
+            // NOTE: allow indexing ndof()
+            // for nodes that arent in inv_selected_nodes but still 
+            // valid gdofs
             if(idof < 0  || idof >= ndof()  ) throw std::out_of_range("Dof index out of range");
             if(iv < 0    || iv >= nv()      ) throw std::out_of_range("Vector compoenent index out of range");
 #endif

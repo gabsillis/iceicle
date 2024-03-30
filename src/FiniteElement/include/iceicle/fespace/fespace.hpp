@@ -9,6 +9,7 @@
 #pragma once
 
 #include "iceicle/basis/basis.hpp"
+#include "iceicle/crs.hpp"
 #include "iceicle/element/finite_element.hpp"
 #include <iceicle/element/reference_element.hpp>
 #include "iceicle/fe_enums.hpp"
@@ -131,6 +132,9 @@ namespace FE {
 
         /** @brief maps local dofs to global dofs for dg space */
         dg_dof_map<IDX> dg_map;
+
+        /** @brief the mapping of faces connected to each node */
+        ICEICLE::UTIL::crs<IDX> fac_surr_nodes;
 
         private:
 
@@ -260,6 +264,16 @@ namespace FE {
 
             // generate the dof offsets 
             dg_map = dg_dof_map{elements};
+
+            // generate the face surrounding nodes connectivity matrix 
+            std::vector<std::vector<IDX>> connectivity_ragged(traces.size());
+            for(int itrace = 0; itrace < traces.size(); ++itrace){
+                const TraceType& trace = traces[itrace];
+                for(IDX inode : trace.face->nodes_span()){
+                    connectivity_ragged[inode].push_back(itrace);
+                }
+            }
+            fac_surr_nodes = ICEICLE::UTIL::crs{connectivity_ragged};
         } 
 
         /**

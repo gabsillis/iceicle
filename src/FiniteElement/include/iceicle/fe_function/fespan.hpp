@@ -12,8 +12,10 @@
 #include "iceicle/fespace/fespace.hpp"
 #include <cstdlib>
 #include <ostream>
+#include <ranges>
 #include <set>
 #include <span>
+#include <ranges>
 #include <format>
 #include <cmath>
 #include <type_traits>
@@ -368,6 +370,11 @@ namespace FE {
             noexcept : _ptr(data), _layout{layout_args...}, _accessor{} 
             {}
 
+            template<std::ranges::contiguous_range R, typename... LayoutArgsT>
+            constexpr dofspan(R&& data_range, LayoutArgsT&&... layout_args) 
+            noexcept : _ptr(std::ranges::data(data_range)), _layout{layout_args...}, _accessor{} 
+            {}
+
             template<typename... LayoutArgsT>
             constexpr dofspan(pointer data, LayoutArgsT&&... layout_args, const AccessorPolicy &_accessor) 
             noexcept : _ptr(data), _layout{layout_args...}, _accessor{_accessor} 
@@ -601,6 +608,8 @@ namespace FE {
     dofspan(T * data, LayoutPolicy &) -> dofspan<T, LayoutPolicy>;
     template<typename T, class LayoutPolicy>
     dofspan(T * data, const LayoutPolicy &) -> dofspan<T, LayoutPolicy>;
+    template<std::ranges::contiguous_range R, class LayoutPolicy>
+    dofspan(R&&, LayoutPolicy &) -> dofspan<std::ranges::range_value_t<R>, LayoutPolicy>;
 
     // ================================
     // = dofspan concept restrictions =
@@ -834,8 +843,11 @@ namespace FE {
         static_assert(std::is_same_v<index_type, typename decltype(global_data)::index_type> , "index_types must match");
         static_assert(decltype(fac_data)::static_extent() == decltype(global_data)::static_extent(), "static_extents must match" );
 
+        // node selection data structure 
+        const nodeset_dof_map<index_type>& nodeset = global_data.get_layout().nodeset;
+
         // maps from full set of nodes -> restricted set of nodes
-        const std::vector<index_type>& inv_selected_nodes = global_data.get_layout().nodeset.inv_selected_nodes;
+        const std::vector<index_type>& inv_selected_nodes = nodeset.inv_selected_nodes;
 
         for(index_type inode = 0; inode < trace.face->n_nodes(); ++inode){
             index_type ignode = inv_selected_nodes[trace.face->nodes()[inode]];
@@ -873,9 +885,11 @@ namespace FE {
 
         for(index_type idof = 0; idof < node_selection_data.ndof(); ++idof){
             index_type ignode = selected_nodes[idof];
-            for(index_type iv = 0; iv < node_selection_data.nv(); ++iv){
-                all_nodes_data[ignode][iv] = alpha * node_selection_data[idof, iv]
-                    + beta * all_nodes_data[ignode][iv];
+            if(ignode != selected_nodes.size()){ // safeguard against boundary nodes
+                for(index_type iv = 0; iv < node_selection_data.nv(); ++iv){
+                    all_nodes_data[ignode][iv] = alpha * node_selection_data[idof, iv]
+                        + beta * all_nodes_data[ignode][iv];
+                }
             }
         }
     }
@@ -925,7 +939,7 @@ namespace FE {
             // trace data view
             trace_layout_right<IDX, vextent> ic_res_layout{trace};
             res_storage.resize(ic_res_layout.size());
-            dofspan ic_res{res_storage.data(), ic_res_layout};
+            dofspan ic_res{res_storage, ic_res_layout};
 
             // extract the compact values from the global u view 
             FE::extract_elspan(trace.elL.elidx, u, uL);
