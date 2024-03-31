@@ -82,14 +82,14 @@ solver = {
 		-- number of times to repeat the node selection + nonlinear solve process
 		-- the first cycle has no movement
 		ncycles = 2,
-		ic_selection_threshold = 0.0001,
+		ic_selection_threshold = 0,
 	},
-	verbosity = 1,
-	kmax = 2,
+	verbosity = 4,
+	kmax = 10,
 	ivis = 1,
 	linesearch = {
 		type = "cubic",
-		alpha_initial = 0.01,
+		alpha_initial = 0.1,
 		alpha_max = 1.0,
 	}
 }

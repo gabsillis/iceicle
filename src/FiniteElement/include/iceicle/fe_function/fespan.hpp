@@ -425,6 +425,27 @@ namespace FE {
             requires(std::is_same_v<AccessorPolicy, default_accessor<T>>) 
             { return _ptr; }
 
+            /**
+             * @brief access the underlying data as a std::span 
+             * at the given dof 
+             * @param idof the degree of freedom to index at 
+             * @return std::span over the vector component data at idof 
+             */
+            constexpr inline 
+            auto span_at_dof(index_type idof) -> std::span<value_type> {
+                return std::span{_ptr + _layout[idof, 0], _ptr + _layout[idof, 0] + _layout.nv()};
+            }
+
+            /**
+             * @brief access the underlying data as a std::span 
+             * at the given dof 
+             * @param idof the degree of freedom to index at 
+             * @return std::span over the vector component data at idof 
+             */
+            constexpr inline 
+            auto span_at_dof(index_type idof) const -> std::span<const value_type> {
+                return std::span{_ptr + _layout[idof, 0], _ptr + _layout[idof, 0] + _layout.nv()};
+            }
 
             // ===========
             // = Utility =

@@ -10,6 +10,7 @@
 #include "iceicle/nonlinear_solver_utils.hpp"
 #include "iceicle/petsc_interface.hpp"
 #include "iceicle/mdg_utils.hpp"
+#include <format>
 #include <functional>
 #include <iomanip>
 #include <iostream>
@@ -90,6 +91,10 @@ namespace ICEICLE::SOLVERS {
         /// Level 0: no extra output
         /// Level 1: 
         ///   - linesearch iterations and multiplier
+        /// Level 2:
+        /// Level 3:
+        /// Level 4: 
+        ///   - x_step for each dof and the corresponnding global node
         IDX verbosity = 0;
 
         /// @brief multiplier for node movement of the node radius
@@ -324,6 +329,27 @@ namespace ICEICLE::SOLVERS {
                     PETSC::VecSpan du_view{du_data};
                     FE::fespan du{du_view.data(), u.get_layout()};
                     FE::dofspan dx{du_view.data() + u.size(), mdg_layout};
+                    // restrict dx by node_radius
+                    const FE::nodeset_dof_map<IDX> &nodeset = mdg_layout.nodeset;
+                    for(IDX idof = 0; idof < dx.ndof(); ++idof){
+                        T node_limit = node_radius_mult * node_radii[nodeset.selected_nodes[idof]];
+
+                        if(verbosity >= 4){
+                            std::cout << "nodeset_dof: " << std::format("{:<4d}", idof)
+                                << " | node_index: " << std::format("{:<4d}", nodeset.selected_nodes[idof])
+                                << " | step_limit: " << std::format("{:>8f}", node_limit)
+                                << " | dx: ";
+                            for(int idim = 0; idim < ndim; ++idim)
+                                std::cout << std::format("{:<16f}", dx[idof, idim]) << " ";
+                            std::cout << std::endl;
+                        }
+                        for(IDX iv = 0; iv < dx.nv(); ++iv){
+                            dx[idof, iv] = std::copysign(
+                                std::min(std::abs(dx[idof, iv]), node_limit),
+                                dx[idof, iv]
+                            );
+                        }
+                    }
 
                     // u step for linesearch
                     std::vector<T> u_step_storage(u.size());
@@ -333,17 +359,6 @@ namespace ICEICLE::SOLVERS {
                     // x step for linesearch
                     std::vector<T> x_step_storage(mdg_layout.size());
                     FE::dofspan x_step{x_step_storage, mdg_layout};
-                    // restrict x_step by node_radius
-                    const FE::nodeset_dof_map<IDX> &nodeset = mdg_layout.nodeset;
-                    for(IDX idof = 0; idof < x_step.ndof(); ++idof){
-                        T node_limit = node_radius_mult * node_radii[nodeset.selected_nodes[idof]];
-                        for(IDX iv = 0; iv < x_step.nv(); ++iv){
-                            x_step[idof, iv] = std::copysign(
-                                std::min(std::abs(x_step[idof, iv]), node_limit),
-                                x_step[idof, iv]
-                            );
-                        }
-                    }
 
                     // working array for linesearch residuals
                     std::vector<T> r_work_storage(u.size());
