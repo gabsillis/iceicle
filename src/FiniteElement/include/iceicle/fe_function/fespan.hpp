@@ -13,7 +13,6 @@
 #include <cstdlib>
 #include <ostream>
 #include <ranges>
-#include <set>
 #include <span>
 #include <ranges>
 #include <format>
@@ -372,7 +371,8 @@ namespace FE {
 
             template<std::ranges::contiguous_range R, typename... LayoutArgsT>
             constexpr dofspan(R&& data_range, LayoutArgsT&&... layout_args) 
-            noexcept : _ptr(std::ranges::data(data_range)), _layout{layout_args...}, _accessor{} 
+            noexcept : _ptr(std::ranges::data(data_range)), _layout{std::forward<LayoutArgsT>(layout_args)...}, 
+                     _accessor{} 
             {}
 
             template<typename... LayoutArgsT>
@@ -444,6 +444,22 @@ namespace FE {
                 // maybe by delegating to the LayoutPolicy
                 for(int i = 0; i < size(); ++i){
                     _ptr[i] = value;
+                }
+                return *this;
+            }
+
+
+            /**
+             * @brief add another dofspan with the same layout to this 
+             */
+            template<class otherAccessor>
+            constexpr inline 
+            auto operator+=(const dofspan<T, LayoutPolicy, otherAccessor>& other)
+            -> dofspan<T, LayoutPolicy, AccessorPolicy>& {
+                for(index_type idof = 0; idof < ndof(); ++idof){
+                    for(index_type iv = 0; iv < nv(); ++iv){
+                        operator[](idof, iv) += other[idof, iv];
+                    }
                 }
                 return *this;
             }
@@ -609,7 +625,7 @@ namespace FE {
     template<typename T, class LayoutPolicy>
     dofspan(T * data, const LayoutPolicy &) -> dofspan<T, LayoutPolicy>;
     template<std::ranges::contiguous_range R, class LayoutPolicy>
-    dofspan(R&&, LayoutPolicy &) -> dofspan<std::ranges::range_value_t<R>, LayoutPolicy>;
+    dofspan(R&&, const LayoutPolicy&) -> dofspan<std::ranges::range_value_t<R>, LayoutPolicy>;
 
     // ================================
     // = dofspan concept restrictions =
@@ -672,6 +688,23 @@ namespace FE {
     // ================
     // = Span Utility =
     // ================
+   
+    /**
+     * @brief BLAS-like add scaled version of one dofspan to another with the same layout policy 
+     * y <= y + alpha * x
+     * @param [in] alpha the multipier for x
+     * @param [in] x the dofspan to add 
+     * @param [in/out] y the dofspan to add to
+     */
+    template<typename T, class LayoutPolicy>
+    auto axpy(T alpha, dofspan<T, LayoutPolicy> x, dofspan<T, LayoutPolicy> y) -> void {
+        using index_type = decltype(y)::index_type;
+        for(index_type idof = 0; idof < x.ndof(); ++idof){
+            for(index_type iv = 0; iv < x.nv(); ++iv){
+                y[idof, iv] += alpha * x[idof, iv];
+            }
+        }
+    }
 
     /**
      * @brief extract the data for a specific element 
@@ -851,9 +884,35 @@ namespace FE {
 
         for(index_type inode = 0; inode < trace.face->n_nodes(); ++inode){
             index_type ignode = inv_selected_nodes[trace.face->nodes()[inode]];
-            for(index_type iv = 0; iv < fac_data.nv(); ++iv){
-                global_data[ignode, iv] = alpha * fac_data[inode, iv]
-                    + beta * global_data[ignode, iv];
+            if(ignode != nodeset.selected_nodes.size()){ // safeguard against boundary nodes
+                for(index_type iv = 0; iv < fac_data.nv(); ++iv){
+                    global_data[ignode, iv] = alpha * fac_data[inode, iv]
+                        + beta * global_data[ignode, iv];
+                }
+            }
+        }
+    }
+
+    /**
+     * @brief get the node coordinates into a node selection data 
+     * @param [in] all_nodes_data the node coordinates 
+     * @param [out] node_selection_data the selected coordinates
+     */
+    template<class T, int ndim>
+    inline auto extract_node_selection_span(
+        const FE::NodalFEFunction<T, ndim>& all_nodes_data,
+        node_selection_span auto node_selection_data
+    ) -> void {
+
+        using index_type = decltype(node_selection_data)::index_type;
+
+        // the global node index of each dof in order
+        const std::vector<index_type>& selected_nodes = node_selection_data.get_layout().nodeset.selected_nodes;
+
+        for(index_type idof = 0; idof < node_selection_data.ndof(); ++idof){
+            index_type ignode = selected_nodes[idof];
+            for(index_type iv = 0; iv < ndim; ++iv){ // TODO: bounds check against nv()
+                node_selection_data[idof, iv] = all_nodes_data[ignode][iv];
             }
         }
     }
@@ -885,11 +944,9 @@ namespace FE {
 
         for(index_type idof = 0; idof < node_selection_data.ndof(); ++idof){
             index_type ignode = selected_nodes[idof];
-            if(ignode != selected_nodes.size()){ // safeguard against boundary nodes
-                for(index_type iv = 0; iv < node_selection_data.nv(); ++iv){
-                    all_nodes_data[ignode][iv] = alpha * node_selection_data[idof, iv]
-                        + beta * all_nodes_data[ignode][iv];
-                }
+            for(index_type iv = 0; iv < node_selection_data.nv(); ++iv){
+                all_nodes_data[ignode][iv] = alpha * node_selection_data[idof, iv]
+                    + beta * all_nodes_data[ignode][iv];
             }
         }
     }
@@ -987,6 +1044,50 @@ namespace FE {
         inv_selected_nodes = std::vector<index_type>(fespace.meshptr->nodes.n_nodes(), selected_nodes.size());
         for(int idof = 0; idof < selected_nodes.size(); ++idof){
             inv_selected_nodes[selected_nodes[idof]] = idof;
+        }
+
+        return nodeset;
+    }
+
+    template<class T, class IDX, int ndim>
+    auto select_all_nodes(
+        FE::FESpace<T, IDX, ndim> &fespace
+    ) -> nodeset_dof_map<IDX> {
+        using index_type = IDX;
+        using trace_type = FE::FESpace<T, IDX, ndim>::TraceType;
+        nodeset_dof_map<IDX> nodeset{};
+        // helper array to keep track of which global node indices to select
+        std::vector<bool> to_select(fespace.meshptr->nodes.n_nodes(), false);
+
+        // loop over interior faces and select faces and nodes
+        for(const trace_type& trace : fespace.get_interior_traces()){
+            nodeset.selected_traces.push_back(trace.facidx);
+            for(index_type inode : trace.face->nodes_span()){
+                to_select[inode] = true;
+            }
+        }
+
+        // loop over the boundary faces and deactivate all boundary nodes 
+        // since some may be connected to an active interior face 
+        for(const trace_type &trace : fespace.get_boundary_traces()){
+            for(index_type inode : trace.face->nodes_span()){
+                to_select[inode] = false;
+            }
+        }
+
+        // finish setting up the map arrays
+
+        // add all the selected nodes
+        for(int ignode = 0; ignode < fespace.meshptr->nodes.n_nodes(); ++ignode){
+            if(to_select[ignode]){
+                nodeset.selected_nodes.push_back(ignode);
+            }
+        }
+
+        // default value for nodes that aren't selected is to map to selected_nodes.size()
+        nodeset.inv_selected_nodes = std::vector<index_type>(fespace.meshptr->nodes.n_nodes(), nodeset.selected_nodes.size());
+        for(int idof = 0; idof < nodeset.selected_nodes.size(); ++idof){
+            nodeset.inv_selected_nodes[nodeset.selected_nodes[idof]] = idof;
         }
 
         return nodeset;

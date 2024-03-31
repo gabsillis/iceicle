@@ -352,7 +352,7 @@ namespace ICEICLE::SOLVERS {
         FE::FESpace<T, IDX, ndim>& fespace,
         disc_class& disc,
         FE::fespan<T, uLayoutPolicy, uAccessorPolicy> u,
-        FE::node_selection_span auto& mdg_residual,
+        FE::node_selection_span auto mdg_residual,
         Mat jac,
         T epsilon = std::sqrt(std::numeric_limits<T>::epsilon()),
         MPI_Comm comm = MPI_COMM_WORLD 
@@ -424,14 +424,14 @@ namespace ICEICLE::SOLVERS {
                     uL[idofu, iequ] += eps_scaled;
 
                     // get the perturbed residual
-                    res = 0;
+                    resp = 0;
                     disc.interface_conservation(trace, fespace.meshptr->nodes, uL, uR, resp);
 
                     // fill jacobian for this perturbation 
                     for(IDX idoff = 0; idoff < res.ndof(); ++idoff) {
 
                         // only do perturbation if node is actually in nodeset 
-                        IDX ignode = trace.face.nodes()[idoff];
+                        IDX ignode = trace.face->nodes()[idoff];
                         IDX igdof = nodeset.inv_selected_nodes[ignode];
 
                         if(igdof != nodeset.selected_nodes.size()){
@@ -458,14 +458,14 @@ namespace ICEICLE::SOLVERS {
                     uR[idofu, iequ] += eps_scaled;
 
                     // get the perturbed residual
-                    res = 0;
+                    resp = 0;
                     disc.interface_conservation(trace, fespace.meshptr->nodes, uL, uR, resp);
 
                     // fill jacobian for this perturbation 
                     for(IDX idoff = 0; idoff < res.ndof(); ++idoff) {
 
                         // only do perturbation if node is actually in nodeset 
-                        IDX ignode = trace.face.nodes()[idoff];
+                        IDX ignode = trace.face->nodes()[idoff];
                         IDX igdof = nodeset.inv_selected_nodes[ignode];
 
                         if(igdof != nodeset.selected_nodes.size()){
@@ -517,7 +517,7 @@ namespace ICEICLE::SOLVERS {
                     FE::dofspan resRp{resRp_storage, u.create_element_layout(trace.elR.elidx)};
 
                     // get the unperturbed residual
-                    disc.trace_integral(trace, fespace.meshptr->nodes, uL, uR, resL, resR);
+                    disc.traceIntegral(trace, fespace.meshptr->nodes, uL, uR, resL, resR);
 
                     // set up the perturbation amount scaled by unperturbed residual 
                     T eps_scaled = std::max(epsilon, std::max(resL.vector_norm(), resR.vector_norm()) * epsilon);
@@ -531,10 +531,10 @@ namespace ICEICLE::SOLVERS {
                         fespace.meshptr->nodes[inode][idim] += eps_scaled;
 
                         // get the perturbed residual
-                        disc.trace_integral(trace, fespace.meshptr->nodes, uL, uR, resLp, resRp);
+                        disc.traceIntegral(trace, fespace.meshptr->nodes, uL, uR, resLp, resRp);
 
                         // resL
-                        for(IDX idoff = 0; idoff < resL.ndof; ++idoff){
+                        for(IDX idoff = 0; idoff < resL.ndof(); ++idoff){
                             for(IDX ieqf = 0; ieqf < resL.nv(); ++ieqf){
                                 IDX irow = proc_range_beg + glob_index_L + resL.get_layout()[idoff, ieqf];
                                 T fd_val = (resLp[idoff, ieqf] - resL[idoff, ieqf]) / eps_scaled;
@@ -543,7 +543,7 @@ namespace ICEICLE::SOLVERS {
                         }
 
                         // resR
-                        for(IDX idoff = 0; idoff < resR.ndof; ++idoff){
+                        for(IDX idoff = 0; idoff < resR.ndof(); ++idoff){
                             for(IDX ieqf = 0; ieqf < resR.nv(); ++ieqf){
                                 IDX irow = proc_range_beg + glob_index_R + resR.get_layout()[idoff, ieqf];
                                 T fd_val = (resRp[idoff, ieqf] - resR[idoff, ieqf]) / eps_scaled;
@@ -558,7 +558,7 @@ namespace ICEICLE::SOLVERS {
 
                 // dICE/dx
                 {
-                    auto res_layout = u.create_element_layout(trace.elL.elidx);
+                    auto res_layout = trace_layout_right{trace};
                     res_storage.resize(res_layout.size());
                     FE::dofspan res{res_storage, res_layout};
                     resp_storage.resize(res_layout.size());
@@ -584,7 +584,7 @@ namespace ICEICLE::SOLVERS {
                         for(IDX idoff = 0; idoff < res.ndof(); ++idoff){
 
                             // only scatter if node is actually in nodeset 
-                            IDX ignode = trace.face.nodes()[idoff];
+                            IDX ignode = trace.face->nodes()[idoff];
                             IDX igdof = nodeset.inv_selected_nodes[ignode];
                             
                             if(igdof != nodeset.selected_nodes.size()){

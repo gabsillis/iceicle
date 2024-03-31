@@ -3,7 +3,7 @@
  * 
  * @author Gianni Absillis (gabsill@ncsu.edu)
  */
-
+#pragma once
 #include "Numtool/point.hpp"
 #include "iceicle/fe_function/nodal_fe_function.hpp"
 #include "iceicle/fespace/fespace.hpp"

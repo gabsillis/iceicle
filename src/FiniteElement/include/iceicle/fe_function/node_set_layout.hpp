@@ -28,13 +28,13 @@ namespace FE {
         // =================
 
         /// @brief the indices of traces to add dof's for 
-        std::vector<index_type> selected_traces;
+        std::vector<index_type> selected_traces{};
 
         /// @brief the global node indices of the nodes to represent dofs for 
-        std::vector<index_type> selected_nodes;
+        std::vector<index_type> selected_nodes{};
 
         /// @brief index in the selected node dofs each gdof maps to, or size() if not included
-        std::vector<index_type> inv_selected_nodes;
+        std::vector<index_type> inv_selected_nodes{};
 
     };
 

@@ -37,10 +37,10 @@ namespace ICEICLE::UTIL {
         size_type _nrow;
 
         /// @brief the data (size = nnz)
-        value_type *_data;
+        value_type *_data{nullptr};
 
         /// @brief the indices of the start of each row (size = nrow + 1)
-        index_type *_cols;
+        index_type *_cols{nullptr};
 
         public:
 

@@ -462,24 +462,67 @@ int main(int argc, char *argv[]){
             // dispatch with the set lineset strategy
             linesearch >> select_fcn{
                 [&](const auto& ls){
-                    PetscNewton solver{fespace, heat_equation, conv_criteria, ls};
-                    solver.idiag = (sol::optional<IDX>{solver_params["idiag"]}) ? solver_params["idiag"].get<IDX>() : -1;
-                    solver.ivis = (sol::optional<IDX>{solver_params["ivis"]}) ? solver_params["ivis"].get<IDX>() : 1;
+
+                    // setup output writer
                     ICEICLE::IO::PVDWriter<T, IDX, ndim> pvd_writer;
                     pvd_writer.register_fespace(fespace);
                     pvd_writer.register_fields(u, "u");
                     pvd_writer.write_vtu(0, 0.0); // print the initial solution
-                    solver.vis_callback = [&](decltype(solver) &solver, IDX k, Vec res_data, Vec du_data){
-                        T res_norm;
-                        PetscCallAbort(solver.comm, VecNorm(res_data, NORM_2, &res_norm));
-                        std::cout << std::setprecision(8);
-                        std::cout << "itime: " << std::setw(6) << k
-                            << " | residual l2: " << std::setw(14) << res_norm
-                            << std::endl;
-                        // offset by initial solution iteration
-                        pvd_writer.write_vtu(k + 1, (T) k + 1);
-                    };
-                    solver.solve(u);
+                    
+
+                    sol::optional<sol::table> mdg_params_opt = solver_params["mdg"];
+                    if(mdg_params_opt){
+                        sol::table mdg_params = mdg_params_opt.value();
+                        IDX ncycles = (sol::optional<IDX>{mdg_params["ncycles"]}) ? mdg_params["ncycles"].get<IDX>() : 1;
+                        T ic_selection_threshold = (sol::optional<T>{mdg_params["ic_selection_threshold"]}) 
+                            ? mdg_params["ic_selection_threshold"].get<T>() : 0.1;
+
+
+                        FE::nodeset_dof_map<IDX> nodeset{}; // select no nodes initially
+                        for(IDX icycle = 0; icycle < ncycles; ++icycle){
+                            std::cout << "=================" << std::endl;
+                            std::cout << " MDG CYCLE : " << icycle << std::endl;
+                            std::cout << "=================" << std::endl << std::endl;
+
+                            // set up solver and solve
+                            PetscNewton solver{fespace, heat_equation, conv_criteria, ls, nodeset};
+                            solver.idiag = (sol::optional<IDX>{solver_params["idiag"]}) ? solver_params["idiag"].get<IDX>() : -1;
+                            solver.ivis = (sol::optional<IDX>{solver_params["ivis"]}) ? solver_params["ivis"].get<IDX>() : 1;
+                            solver.verbosity = (sol::optional<IDX>{solver_params["verbosity"]}) ? solver_params["verbosity"].get<IDX>() : 0;
+                            solver.vis_callback = [&](decltype(solver) &solver, IDX k, Vec res_data, Vec du_data){
+                                T res_norm;
+                                PetscCallAbort(solver.comm, VecNorm(res_data, NORM_2, &res_norm));
+                                std::cout << std::setprecision(8);
+                                std::cout << "itime: " << std::setw(6) << k
+                                    << " | residual l2: " << std::setw(14) << res_norm
+                                    << std::endl;
+                                // offset by initial solution iteration
+                                pvd_writer.write_vtu(k + 1, (T) k + 1);
+                            };
+                            solver.solve(u);
+
+                            // select a new nodeset
+                            nodeset = FE::select_nodeset(fespace, heat_equation, u, ic_selection_threshold, ICEICLE::TMP::to_size<ndim>{});
+                        }
+
+                    } else {
+                        // setup solver and solve
+                        PetscNewton solver{fespace, heat_equation, conv_criteria, ls};
+                        solver.idiag = (sol::optional<IDX>{solver_params["idiag"]}) ? solver_params["idiag"].get<IDX>() : -1;
+                        solver.ivis = (sol::optional<IDX>{solver_params["ivis"]}) ? solver_params["ivis"].get<IDX>() : 1;
+                        solver.verbosity = (sol::optional<IDX>{solver_params["verbosity"]}) ? solver_params["verbosity"].get<IDX>() : 0;
+                        solver.vis_callback = [&](decltype(solver) &solver, IDX k, Vec res_data, Vec du_data){
+                            T res_norm;
+                            PetscCallAbort(solver.comm, VecNorm(res_data, NORM_2, &res_norm));
+                            std::cout << std::setprecision(8);
+                            std::cout << "itime: " << std::setw(6) << k
+                                << " | residual l2: " << std::setw(14) << res_norm
+                                << std::endl;
+                            // offset by initial solution iteration
+                            pvd_writer.write_vtu(k + 1, (T) k + 1);
+                        };
+                        solver.solve(u);
+                    }
 
                     // ========================
                     // = Compute the L2 Error =

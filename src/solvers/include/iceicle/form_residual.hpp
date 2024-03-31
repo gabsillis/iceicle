@@ -163,7 +163,7 @@ namespace ICEICLE::SOLVERS {
         FE::FESpace<T, IDX, ndim>& fespace,
         disc_class& disc,
         FE::fespan<T, uLayoutPolicy, uAccessorPolicy> u,
-        FE::node_selection_span auto& mdg_residual
+        FE::node_selection_span auto mdg_residual
     ) -> void {
         using Element = ELEMENT::FiniteElement<T, IDX, ndim>;
         using Trace = ELEMENT::TraceSpace<T, IDX, ndim>;

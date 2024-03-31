@@ -158,18 +158,12 @@ namespace ELEMENT {
 
             switch(fac->domain_type()){
                 case HYPERCUBE:
-
-                    switch(btype){
-                        case LAGRANGE:
-                            trace_basis = std::make_unique<BASIS::HypercubeLagrangeBasis<
-                                T, IDX, ndim - 1, basis_order>>();
-                        case LEGENDRE:
-                            trace_basis = std::make_unique<BASIS::HypercubeLegendreBasis<
-                                T, IDX, ndim - 1, basis_order>>();
-                            break;
-                        default:
-                            break;
-                    }
+                        
+                    // NOTE: we want the trace basis to be in the space of the geometry 
+                    // so we use lagrange polynomials with geometry order
+                    trace_basis = std::make_unique<BASIS::HypercubeLagrangeBasis<
+                        T, IDX, ndim - 1, geo_order>>();
+                    
 
                     switch(quadrature_type){
                         case GAUSS_LEGENDRE:
