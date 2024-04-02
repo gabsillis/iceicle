@@ -8,6 +8,7 @@
 #include "iceicle/anomaly_log.hpp"
 #include "iceicle/mesh/mesh_utils.hpp"
 #include "iceicle/nonlinear_solver_utils.hpp"
+#include "iceicle/petsc_interface.hpp"
 #include "iceicle/program_args.hpp"
 #include "iceicle/ssp_rk3.hpp"
 #include "iceicle/tvd_rk3.hpp"
@@ -474,12 +475,25 @@ int main(int argc, char *argv[]){
                     if(mdg_params_opt){
                         sol::table mdg_params = mdg_params_opt.value();
                         IDX ncycles = (sol::optional<IDX>{mdg_params["ncycles"]}) ? mdg_params["ncycles"].get<IDX>() : 1;
-                        T ic_selection_threshold = (sol::optional<T>{mdg_params["ic_selection_threshold"]}) 
-                            ? mdg_params["ic_selection_threshold"].get<T>() : 0.1;
 
+                        sol::optional<sol::function> ic_selection_function{mdg_params["ic_selection_threshold"]};
+                        sol::optional<T> ic_selection_value{mdg_params["ic_selection_threshold"]};
 
                         FE::nodeset_dof_map<IDX> nodeset{}; // select no nodes initially
+                        IDX total_nl_vis = 0; // cumulative index for times visualization function gets called
                         for(IDX icycle = 0; icycle < ncycles; ++icycle){
+                            
+                            // select the nodes
+                            T ic_selection_threshold = 0.1;
+                            if(ic_selection_value){
+                                ic_selection_threshold = ic_selection_value.value();
+                            }
+                            // selection function takes the cycle number to give dynamic threshold
+                            if(ic_selection_function){ 
+                                ic_selection_threshold = ic_selection_function.value()(icycle);
+                            }
+
+                            nodeset = FE::select_nodeset(fespace, heat_equation, u, ic_selection_threshold, ICEICLE::TMP::to_size<ndim>{});
                             std::cout << "=================" << std::endl;
                             std::cout << " MDG CYCLE : " << icycle << std::endl;
                             std::cout << "=================" << std::endl << std::endl;
@@ -497,12 +511,22 @@ int main(int argc, char *argv[]){
                                     << " | residual l2: " << std::setw(14) << res_norm
                                     << std::endl;
                                 // offset by initial solution iteration
-                                pvd_writer.write_vtu(k + 1, (T) k + 1);
-                            };
-                            solver.solve(u);
+                                pvd_writer.write_vtu(total_nl_vis + k + 1, (T) total_nl_vis +  k + 1);
 
-                            // select a new nodeset
-                            nodeset = FE::select_nodeset(fespace, heat_equation, u, ic_selection_threshold, ICEICLE::TMP::to_size<ndim>{});
+                                // setup output for mdg data
+                                ICEICLE::IO::PVDWriter<T, IDX, ndim> mdg_writer;
+                                mdg_writer.register_fespace(fespace);
+                                ICEICLE::PETSC::VecSpan res_view{res_data};
+                                ICEICLE::PETSC::VecSpan dx_view{du_data};
+                                FE::node_selection_layout<IDX, ndim> mdg_layout{nodeset};
+                                FE::dofspan mdg_res{res_view.data(), mdg_layout};
+                                FE::dofspan mdg_dx{dx_view.data(), mdg_layout};
+                                mdg_writer.register_fields(mdg_res, "mdg residual");
+                                mdg_writer.register_fields(mdg_dx, "-dx");
+                                mdg_writer.data_directory /= "mdg_data";
+                                mdg_writer.write_vtu(total_nl_vis + k + 1, (T) total_nl_vis +  k + 1);
+                            };
+                            total_nl_vis += solver.solve(u);
                         }
 
                     } else {

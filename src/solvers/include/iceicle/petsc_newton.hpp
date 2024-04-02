@@ -269,9 +269,10 @@ namespace ICEICLE::SOLVERS {
          * @param [in/out] u the discretized solution coefficients. 
          * The given values are used as the initial guess to the newton method.
          * After this function, this holds the solution 
+         * @return the number of iterations performed (can discard)
          */
         template<class uLayoutPolicy>
-        void solve(FE::fespan<T, uLayoutPolicy> u){
+        auto solve(FE::fespan<T, uLayoutPolicy> u) -> IDX {
 
             // TODO: find a cleaner way to do this
 
@@ -302,7 +303,8 @@ namespace ICEICLE::SOLVERS {
             // set the initial residual norm
             PetscCallAbort(comm, VecNorm(res_data, NORM_2, &(conv_criteria.r0)));
 
-            for(IDX k = 0; k < conv_criteria.kmax; ++k){
+            IDX k;
+            for(k = 0; k < conv_criteria.kmax; ++k){
 
                 // keep around the current node locations
                 FE::extract_node_selection_span(fespace.meshptr->nodes, current_x);
@@ -326,15 +328,15 @@ namespace ICEICLE::SOLVERS {
                     // its linesearchin time!
 
                     // view into the calculated newton step for u and x
+                    const FE::nodeset_dof_map<IDX> &nodeset = mdg_layout.nodeset;
                     PETSC::VecSpan du_view{du_data};
                     FE::fespan du{du_view.data(), u.get_layout()};
                     FE::dofspan dx{du_view.data() + u.size(), mdg_layout};
-                    // restrict dx by node_radius
-                    const FE::nodeset_dof_map<IDX> &nodeset = mdg_layout.nodeset;
-                    for(IDX idof = 0; idof < dx.ndof(); ++idof){
-                        T node_limit = node_radius_mult * node_radii[nodeset.selected_nodes[idof]];
 
-                        if(verbosity >= 4){
+                    // print out dx if verbosity is 4 or more
+                    if(verbosity >= 4){
+                        for(int idof = 0; idof < dx.ndof(); ++idof){
+                            T node_limit = node_radius_mult * node_radii[nodeset.selected_nodes[idof]];
                             std::cout << "nodeset_dof: " << std::format("{:<4d}", idof)
                                 << " | node_index: " << std::format("{:<4d}", nodeset.selected_nodes[idof])
                                 << " | step_limit: " << std::format("{:>8f}", node_limit)
@@ -342,13 +344,37 @@ namespace ICEICLE::SOLVERS {
                             for(int idim = 0; idim < ndim; ++idim)
                                 std::cout << std::format("{:<16f}", dx[idof, idim]) << " ";
                             std::cout << std::endl;
+
                         }
-                        for(IDX iv = 0; iv < dx.nv(); ++iv){
-                            dx[idof, iv] = std::copysign(
-                                std::min(std::abs(dx[idof, iv]), node_limit),
-                                dx[idof, iv]
-                            );
+
+                    }
+
+                    // restrict dx by node_radius
+//                    for(IDX idof = 0; idof < dx.ndof(); ++idof){
+//                        T node_limit = node_radius_mult * node_radii[nodeset.selected_nodes[idof]];
+//
+//                        for(IDX iv = 0; iv < dx.nv(); ++iv){
+//                            dx[idof, iv] = std::copysign(
+//                                std::min(std::abs(dx[idof, iv]), node_limit),
+//                                dx[idof, iv]
+//                            );
+//                        }
+//                    }
+
+                    
+                    // compute a linesearch restriction by node radius
+                    // with no linesearch you'll just be YOLOing 
+                    // when it comes to node movement i guess
+                    if constexpr (variable_alpha_ls<ls_type>){
+                        T alpha_node_limit = linesearch.alpha_max;
+                        for(int idof = 0; idof < dx.ndof(); ++idof){
+                            T node_limit = node_radius_mult * node_radii[nodeset.selected_nodes[idof]];
+                            alpha_node_limit = std::min(alpha_node_limit, node_limit);
                         }
+
+                        linesearch.alpha_max = alpha_node_limit;
+                        // start off at half of the max
+                        linesearch.alpha_initial = 0.5 * alpha_node_limit;
                     }
 
                     // u step for linesearch
@@ -457,6 +483,7 @@ namespace ICEICLE::SOLVERS {
                 if(conv_criteria.done_callback(rk)) break;
 
             }
+            return k;
         }
 
         ~PetscNewton(){

@@ -3,7 +3,7 @@
 -- define the mesh as a uniform quad mesh
 uniform_mesh = {
 	-- specify the number of elements in each direction
-	nelem = { 20, 3 },
+	nelem = { 10, 3 },
 
 	-- specify the bounding box of the uniform mesh domain
 	bounding_box = {
@@ -80,12 +80,11 @@ solver = {
 	type = "newton",
 	mdg = {
 		-- number of times to repeat the node selection + nonlinear solve process
-		-- the first cycle has no movement
 		ncycles = 2,
-		ic_selection_threshold = 0,
+		ic_selection_threshold = 1e-8,
 	},
 	verbosity = 4,
-	kmax = 10,
+	kmax = 2,
 	ivis = 1,
 	linesearch = {
 		type = "cubic",

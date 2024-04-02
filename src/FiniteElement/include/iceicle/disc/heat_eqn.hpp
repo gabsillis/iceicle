@@ -608,6 +608,7 @@ namespace DISC {
                         // take the norm of the residual (scalar value in this case)
                         // and multiply by normal vector components 
                         for(IDX idim = 0; idim < ndim; ++idim){
+                            // TODO: can we get the right direction if we don't use abs value ???
                             res[itest, idim] += std::abs(ic_res * unit_normal[idim]);
                         }
                     } else {

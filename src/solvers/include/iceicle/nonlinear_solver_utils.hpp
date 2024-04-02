@@ -210,6 +210,14 @@ namespace ICEICLE::SOLVERS {
 
     };
 
+    /// @brief a linesearch class that can set a linesearch multipler (alpha)
+    /// through class members alpha_initial and alpha_max
+    template< class ls_class >
+    concept variable_alpha_ls = requires( ls_class ls){
+        {ls.alpha_initial} -> std::convertible_to<typename ls_class::value_type>;
+        {ls.alpha_max} -> std::convertible_to<typename ls_class::value_type>;
+    };
+
     template<class T, class IDX>
     using LinesearchVariant = std::variant<no_linesearch<T, IDX>, wolfe_linesearch<T, IDX>>;
 

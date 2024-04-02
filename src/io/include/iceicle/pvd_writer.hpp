@@ -3,6 +3,7 @@
  * @author Gianni Absillis (gabsill@ncsu.edu)
  */
 #pragma once
+#include "iceicle/anomaly_log.hpp"
 #include "iceicle/element/finite_element.hpp"
 #include "iceicle/fe_enums.hpp"
 #include "iceicle/fe_function/fespan.hpp"
@@ -228,6 +229,9 @@ namespace ICEICLE::IO {
             /// @brief adds the xml DataArray tags and data to a given vtu file 
             virtual void write_data(std::ofstream &vtu_file, FE::FESpace<T, IDX, ndim> &fespace) const = 0;
 
+            /// @brief if this data is in dg format and requires duplicated mesh nodes
+            virtual auto is_dg_format() const -> bool { return true; }
+
             virtual ~writable_field(){};
         };
 
@@ -294,6 +298,63 @@ namespace ICEICLE::IO {
             }
         };
 
+        /**
+         * @brief a data fielf for MDG nodal vector data output 
+         * contains field_name
+         * and a node_selection_span for the data 
+         *
+         * writes nodal data for a nodal version of the mesh 
+         * WARNING: do not couple with dg mesh
+         */
+        template< class LayoutPolicy, class AccessorPolicy>
+        struct MDGVectorDataField final : public writable_field {
+            using value_type = T; 
+            using index_type = LayoutPolicy::index_type;
+            ///  the data view 
+            mutable FE::dofspan<T, LayoutPolicy, AccessorPolicy> mdgdata;
+            static_assert(FE::node_selection_span<decltype(mdgdata)>, 
+                    "Must be a node selection span to be mdg data");
+
+            /// the field name 
+            std::string field_name;
+
+            /// @brief constructor with argument forwarding for the vector constructor
+            MDGVectorDataField(FE::dofspan<value_type, LayoutPolicy, AccessorPolicy> mdgdata, std::string field_name)
+            : mdgdata(mdgdata), field_name(field_name){}
+
+            void write_data(std::ofstream &vtu_file, FE::FESpace<T, IDX, ndim>& fespace) const override {
+                using namespace impl;
+                const FE::nodeset_dof_map<index_type>& nodeset = mdgdata.get_layout().nodeset;
+
+                write_open(XMLTag{"DataArray", {
+                    {"type", "Float64"},
+                    {"Name", field_name}, 
+                    {"NumberOfComponents", std::to_string(mdgdata.nv())},
+                    {"format", "ascii"}
+                }}, vtu_file);
+
+                for(index_type inode = 0; inode < fespace.meshptr->nodes.n_nodes(); ++inode){
+                    index_type idof = nodeset.inv_selected_nodes[inode];
+                    if(idof == nodeset.selected_nodes.size()){
+                        for(index_type iv = 0; iv < mdgdata.nv(); ++iv){
+                            vtu_file << "0.0 ";
+                        }
+                        vtu_file << std::endl;
+                    } else {
+                        for(index_type iv = 0; iv < mdgdata.nv(); ++iv){
+                            vtu_file << mdgdata[idof, iv] << " ";
+                        }
+                        vtu_file << std::endl;
+                    }
+                }
+                write_close(XMLTag{"DataArray"}, vtu_file);
+            }
+
+            auto is_dg_format() const -> bool override {
+                return false;
+            }
+        };
+
         private:
 
         MESH::AbstractMesh<T, IDX, ndim> *meshptr;
@@ -342,55 +403,135 @@ namespace ICEICLE::IO {
             fields.push_back(std::move(field_ptr));
         }
 
-        /**
-         * @brief write the mesh and field values in a .vtu file 
-         * @param itime the timestep
-         * @param time the time value
-         * NOTE: the user is responsible for making sure itime and time are unique 
-         * (aside from parallel case, separate file names are generated per process in parallel)
-         */
-        void write_vtu(int itime, T time){
+        template< class LayoutPolicy, class AccessorPolicy>
+        void register_fields(FE::dofspan<T, LayoutPolicy, AccessorPolicy>& nodal_data, std::string_view field_name){
+            auto field_ptr = std::make_unique<MDGVectorDataField<LayoutPolicy, AccessorPolicy>>(
+                    nodal_data, std::string{field_name});
+            fields.push_back(std::move(field_ptr));
+        }
 
-            if(fespace_ptr == nullptr) {
-                throw std::logic_error("fespace pointer not set");
-            }
-
+        private:
+        auto write_cg_unstructured_grid(std::ofstream& out){
             using namespace impl;
+            using namespace ICEICLE::UTIL;
             using Element = ELEMENT::FiniteElement<T, IDX, ndim>;
+            write_open(XMLTag{"Piece", {
+                {"NumberOfPoints", std::to_string(meshptr->nodes.n_nodes())},
+                {"NumberOfCells", std::to_string(meshptr->elements.size())}
+            }}, out);
 
-            // create the path if it doesn't exist
-            std::filesystem::create_directories(data_directory);
+            // ===================
+            // = write the nodes =
+            // ===================
+            write_open(XMLTag{"Points"}, out);
+            write_open(XMLTag{"DataArray", {
+                {"type", "Float64"},
+                {"Name", "Points"},
+                {"NumberOfComponents", "3"},
+                {"format", "ascii"}
+            }}, out);
 
-            // create the mesh file 
-            std::filesystem::path mesh_path = data_directory;
-            mesh_path /= ("data." + std::to_string(itime) + ".vtu");
-
-            std::ofstream out{mesh_path};
-            if(!out) {
-                throw std::logic_error("could not open mesh file for writing.");
+            for(IDX inode = 0; inode < meshptr->nodes.n_nodes(); ++inode){
+                for(int idim = 0; idim < ndim; ++idim){
+                    out << meshptr->nodes[inode][idim] << " ";
+                }
+                for(int idim = ndim; idim < 3; ++idim){
+                    out << 0.0;
+                }
+                out << std::endl;
             }
+            write_close(XMLTag{"DataArray"}, out);
+            write_close(XMLTag{"Points"}, out);
 
-            if(!meshptr){
-                throw std::logic_error("mesh doesn't exist");
-            }
-
-            // setup the output stream 
-            out << std::setprecision(print_precision);
-
-            write_vtu_header(out);
+            // ===============
+            // = write cells =
+            // ===============
             
+            // === connectivity ===
+            write_open(XMLTag{"Cells"}, out);
+            write_open(XMLTag{"DataArray", {
+                {"type", "Int64"},
+                {"Name", "connectivity"},
+                {"format", "ascii"}
+            }}, out);
+            
+            for(Element &el : fespace_ptr->elements){
+                VTKElement<T, ndim> &vtk_el = get_vtk_element(el.geo_el, el.geo_el->geometry_order());
+                if(vtk_el.nodes.size() != el.geo_el->n_nodes()){
+                    AnomalyLog::log_anomaly(Anomaly{"must have a matching vtk element for cg data", general_anomaly_tag{}});
+                }
+
+                // TODO: FIX AND GENERALIZE TO OTHER ELEMENT TYPES 
+                // convert to paraview ordering
+                std::span<const IDX> nodes = el.geo_el->nodes_span();
+                out << std::to_string(nodes[0]) << " "
+                    << std::to_string(nodes[2]) << " "
+                    << std::to_string(nodes[3]) << " "
+                    << std::to_string(nodes[1]) << " ";
+
+//                for(IDX inode : el.geo_el->nodes_span()){
+//                    out << std::to_string(inode) << " ";
+//                }
+                out << std::endl;
+            }
+            write_close(XMLTag{"DataArray"}, out);
+
+            // === offsets ===
+            write_open(XMLTag{"DataArray", {
+                {"type", "Int64"},
+                {"Name", "offsets"},
+                {"format", "ascii"}
+            }}, out);
+            std::size_t goffset = 0;
+            for(Element &el : fespace_ptr->elements){
+                VTKElement<T, ndim> &vtk_el = get_vtk_element(el.geo_el, el.geo_el->geometry_order());
+                goffset += vtk_el.nodes.size();
+                out << std::to_string(goffset) << " ";
+            }
+            out << "\n";
+            write_close(XMLTag{"DataArray"}, out);
+
+            // === cell types ===
+            write_open(XMLTag{"DataArray", {
+                {"type", "Int64"},
+                {"Name", "types"},
+                {"format", "ascii"}
+            }}, out);
+            for(Element &el : fespace_ptr->elements){
+                VTKElement<T, ndim> &vtk_el = get_vtk_element(el.geo_el, el.geo_el->geometry_order());
+                out << vtk_el.vtk_id  << " ";
+            }
+            out << "\n";
+            write_close(XMLTag{"DataArray"}, out);
+
+            write_close(XMLTag{"Cells"}, out);
+
+            // ===================
+            // = write PointData =
+            // ===================
+            write_open(XMLTag{"PointData"}, out);
+            for(auto &field_ptr : fields){
+                field_ptr->write_data(out, *fespace_ptr);
+            }
+            write_close(XMLTag{"PointData"}, out);
+            write_close(XMLTag{"Piece"}, out);
+        }
+
+        auto write_dg_unstructured_grid(std::ofstream &out) -> void {
+            using namespace impl;
+            using namespace ICEICLE::UTIL;
+            using Element = ELEMENT::FiniteElement<T, IDX, ndim>;
             // count the number of nodes (duplicate for each element)
             std::size_t nodecount = 0;
             for(Element &el : fespace_ptr->elements){
                 VTKElement<T, ndim> &vtk_el = get_vtk_element(el.geo_el, el.basis->getPolynomialOrder());
                 nodecount += vtk_el.nodes.size();
             }
-
-            write_open(XMLTag{"UnstructuredGrid"}, out);
             write_open(XMLTag{"Piece", {
                 {"NumberOfPoints", std::to_string(nodecount)},
                 {"NumberOfCells", std::to_string(meshptr->elements.size())}
             }}, out);
+
 
             // ===================
             // = write the nodes =
@@ -486,9 +627,65 @@ namespace ICEICLE::IO {
             write_close(XMLTag{"PointData"}, out);
 
             write_close(XMLTag{"Piece"}, out);
+
+        }
+
+        public:
+        /**
+         * @brief write the mesh and field values in a .vtu file 
+         * @param itime the timestep
+         * @param time the time value
+         * NOTE: the user is responsible for making sure itime and time are unique 
+         * (aside from parallel case, separate file names are generated per process in parallel)
+         */
+        void write_vtu(int itime, T time){
+
+            if(fespace_ptr == nullptr) {
+                throw std::logic_error("fespace pointer not set");
+            }
+
+            using namespace impl;
+            using namespace ICEICLE::UTIL;
+            using Element = ELEMENT::FiniteElement<T, IDX, ndim>;
+
+            // create the path if it doesn't exist
+            std::filesystem::create_directories(data_directory);
+
+            // create the mesh file 
+            std::filesystem::path mesh_path = data_directory;
+            mesh_path /= ("data." + std::to_string(itime) + ".vtu");
+
+            std::ofstream out{mesh_path};
+            if(!out) {
+                throw std::logic_error("could not open mesh file for writing.");
+            }
+
+            if(!meshptr){
+                throw std::logic_error("mesh doesn't exist");
+            }
+
+            // setup the output stream 
+            out << std::setprecision(print_precision);
+
+            write_vtu_header(out);
+            
+            bool use_dg_mesh = fields[0]->is_dg_format();
+
+            for(int ifield = 1; ifield < fields.size(); ++ifield){
+                if(fields[ifield]->is_dg_format() != use_dg_mesh){
+                    AnomalyLog::log_anomaly(Anomaly{"Cannot mix dg and cg fields", general_anomaly_tag{}});
+                }
+            }
+
+            write_open(XMLTag{"UnstructuredGrid"}, out);
+
+            if(use_dg_mesh) write_dg_unstructured_grid(out);
+            else write_cg_unstructured_grid(out);
+
             write_close(XMLTag{"UnstructuredGrid"}, out);
             write_vtu_footer(out);
         }
+
         
 
         /**
