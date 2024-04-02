@@ -266,7 +266,7 @@ namespace FE {
             dg_map = dg_dof_map{elements};
 
             // generate the face surrounding nodes connectivity matrix 
-            std::vector<std::vector<IDX>> connectivity_ragged(traces.size());
+            std::vector<std::vector<IDX>> connectivity_ragged(meshptr->nodes.n_nodes());
             for(int itrace = 0; itrace < traces.size(); ++itrace){
                 const TraceType& trace = traces[itrace];
                 for(IDX inode : trace.face->nodes_span()){
