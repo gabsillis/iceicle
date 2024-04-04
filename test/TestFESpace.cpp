@@ -327,7 +327,4 @@ TEST(test_fespace, test_dg_projection){
     );
 
     delete[] u;
-
-
-
 }

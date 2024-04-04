@@ -67,3 +67,12 @@ target_link_libraries( test_solvers PUBLIC iceicle_solvers )
 target_link_libraries( test_solvers PUBLIC gtest )
 endif()
 
+if(ICEICLE_USE_PETSC)
+    set(SOLVER_TEST_SOURCES
+        test_petsc_jacobian.cpp 
+    )
+    add_executable(test_solvers ${SOLVER_TEST_SOURCES})
+    target_link_libraries( test_solvers PUBLIC iceicle_fe )
+    target_link_libraries( test_solvers PUBLIC iceicle_solvers )
+    target_link_libraries( test_solvers PUBLIC gtest )
+endif()

@@ -7,6 +7,7 @@
 #pragma once 
 #include "iceicle/element/finite_element.hpp"
 #include "iceicle/fe_function/fespan.hpp"
+#include "iceicle/fe_function/layout_right.hpp"
 #include "iceicle/fe_function/trace_layout.hpp"
 #include "iceicle/fespace/fespace.hpp"
 
@@ -206,5 +207,49 @@ namespace ICEICLE::SOLVERS {
 
             scatter_facspan(trace, 1.0, res, 0.0, mdg_residual);
         }
+    }
+
+    /**
+     * calculate the contiguous storage requirement to represent the dg residual and 
+     * selected mdg dofs in a single residual array 
+     */
+    template<class T, class IDX, int ndim, class disc_class, int neq_mdg>
+    auto calculate_residual_size_square_mdg(
+        FE::FESpace<T, IDX, ndim>& fespace,
+        disc_class& disc,
+        FE::nodeset_dof_map<IDX>& nodeset,
+        std::integral_constant<int, neq_mdg>& neq_mdg_arg
+    ) -> IDX {
+        return fespace.dg_map.calculate_size_requirement(disc_class::nv_comp())
+            + nodeset.size() * neq_mdg;
+    }
+
+    template<class T, class IDX, int ndim, class disc_class, int neq_mdg>
+    auto form_residual(
+        FE::FESpace<T, IDX, ndim>& fespace,
+        disc_class& disc,
+        FE::nodeset_dof_map<IDX>& nodeset,
+        std::span<T> u,
+        std::span<T> res,
+        std::integral_constant<int, neq_mdg> neq_mdg_arg
+    ) -> void {
+        using namespace FE;
+
+        // create all the layouts
+        fe_layout_right dg_layout{fespace.dg_map};
+        node_selection_layout<IDX, ndim> node_layout{nodeset};
+        node_selection_layout<IDX, neq_mdg> mdg_layout{nodeset};
+
+        // create views over the u and res arrays
+        fespan u_dg{u, dg_layout};
+        dofspan u_nodes{std::span{u.begin() + dg_layout.size(), u.end()}, node_layout};
+        fespan res_dg{res, dg_layout};
+        dofspan res_mdg{std::span{res.begin() + dg_layout.size(), u.end()}, mdg_layout};
+
+        // set the mesh from u_nodes
+        FE::scatter_node_selection_span(1.0, u_nodes, 0.0, fespace.meshptr->nodes);
+
+        form_residual(fespace, disc, u_dg, res_dg);
+        form_mdg_residual(fespace, disc, u_dg, res_mdg);
     }
 }

@@ -10,6 +10,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <iostream>
+#include <limits>
 #include <vector>
 #include <memory>
 #include <ostream>
@@ -75,6 +76,16 @@ namespace ICEICLE::UTIL {
     /** @brief anomaly tag to mark a failed expect() statement */
     struct expectation_anomaly_tag{ using anomaly_tag = expectation_anomaly_tag; };
 
+    /** @brief anomaly tag for bounds issues */ 
+    template<class index_type, class bounds_type>
+    struct bounds_anomaly_tag{
+        using anomaly_tag = bounds_anomaly_tag<index_type, bounds_type>;
+        static constexpr bounds_type unbounded = std::numeric_limits<bounds_type>::max();
+        index_type index;
+        bounds_type bounds_lower;
+        bounds_type bounds_upper;
+    };
+
     /** @brief tag to mark general anomalies */
     struct general_anomaly_tag{ using anomaly_tag = general_anomaly_tag; };
 
@@ -100,6 +111,14 @@ namespace ICEICLE::UTIL {
                 << anomaly.where() << std::endl << std::endl;
     }
 
+    template<class index_type, class bounds_type>
+    inline void handle_anomaly(const Anomaly<bounds_anomaly_tag<index_type, bounds_type>> &anomaly,
+            std::ostream &log_out) {
+        log_out << "Index out of bounds: " << anomaly.what() << std::endl 
+                << "index " << anomaly.data().index << "is not between "
+                << anomaly.data().bounds_lower << " and " << anomaly.data().bounds_upper
+                << anomaly.where() << std::endl << std::endl;
+    }
     template<class Data>
     void Anomaly<Data>::handle_self(std::ostream &log_out){
         handle_anomaly(*this, log_out);

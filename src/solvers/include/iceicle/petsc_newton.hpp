@@ -411,7 +411,6 @@ namespace ICEICLE::SOLVERS {
                         FE::scatter_node_selection_span(1.0, x_step, 0.0, fespace.meshptr->nodes);
 
                         form_residual(fespace, disc, u_step, res_work);
-                        // safeguard the cost function for linesearch 
                         T rnorm = res_work.vector_norm();
 
                         // Add MDG contribution if applicable
@@ -432,11 +431,12 @@ namespace ICEICLE::SOLVERS {
                             std::cout << "linesearch: alpha = " << alpha_arg << " | linesearch residual = " << rnorm << std::endl;
                         }
 
+                        // safeguard the cost function for linesearch 
                         if(std::isfinite(rnorm)){
                             return rnorm;
                         } else {
                             if(verbosity >= 1) {
-                                std::cout << "linessearch: non-finite residual" << std::endl;
+                                std::cout << "linesearch: non-finite residual" << std::endl;
                             }
                             return BIG_RESIDUAL;
                         }

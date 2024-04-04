@@ -1,9 +1,8 @@
 #pragma once
+#include "iceicle/anomaly_log.hpp"
 #include "iceicle/fespace/fespace.hpp"
-#include "iceicle/fe_function/fespan.hpp"
+#include "iceicle/fe_function/node_set_layout.hpp"
 #include "iceicle/linalg/linalg_utils.hpp"
-#include "mdspan/mdspan.hpp"
-#include <span>
 
 namespace ICEICLE::SOLVERS{
 
@@ -12,22 +11,41 @@ namespace ICEICLE::SOLVERS{
         class IDX,
         int ndim,
         class disc_class,
-        class uLayoutPolicy,
-        class uAccessorPolicy,
-        class resLayoutPolicy
+        int neq_mdg
     >
     auto form_dense_jacobian_fd(
         FE::FESpace<T, IDX, ndim>& fespace,
         disc_class& disc,
-        FE::fespan<T, uLayoutPolicy, uAccessorPolicy> u,
-        FE::fespan<T, resLayoutPolicy> res,
-        FE::node_selection_span auto mdg_residual,
+        FE::nodeset_dof_map<IDX>& nodeset,
+        std::span<T> u,
+        std::span<T> res,
         LINALG::out_matrix auto jac,
+        std::integral_constant<int, neq_mdg> neq_mdg_arg = std::integral_constant<int, ndim>{},
         T epsilon = std::sqrt(std::numeric_limits<T>::epsilon())
-    ) {
+    ) -> void {
+        using namespace UTIL;
+        // check sizes
+        if(jac.extents(0) < res.size()){
+            AnomalyLog::log_anomaly(Anomaly{"jacobian rows is less than number of equations", general_anomaly_tag{}});
+        }
+        if(jac.extents(1) < u.size()){
+            AnomalyLog::log_anomaly(Anomaly{"jacobian cols is less than number of unknowns", general_anomaly_tag{}});
+        }
+       
+        // form the unperturbed residual
+        form_residual(fespace, disc, nodeset, u, res, neq_mdg_arg);
 
-        IDX total_neq = res.size() + mdg_residual.size();
-        FE::nodeset_dof_map<IDX>& nodeset = mdg_residual.get_layout().nodeset;
-        IDX total_nvar = u.size() + ndim * nodeset.selected_nodes.size();
+        // do the perturbed residuals
+        std::vector<T> resp(res.size());
+        for(IDX jdof = 0; jdof < u.size(); ++jdof){
+            T uold = u[jdof];
+            u[jdof] += epsilon;
+            form_residual(fespace, disc, nodeset, u, resp, neq_mdg_arg);
+            for(IDX ieq = 0; ieq < res.size(); ++ieq){
+                jac[ieq, jdof] = (resp[ieq] - res[ieq]) / epsilon;
+            }
+            u[jdof] = uold;
+        }
+
     }
 }
