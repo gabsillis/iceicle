@@ -642,9 +642,9 @@ namespace FE {
 
     // deduction guides
     template<typename T, class LayoutPolicy>
-    dofspan(T * data, LayoutPolicy &) -> dofspan<T, LayoutPolicy>;
+    dofspan(T* data, LayoutPolicy &) -> dofspan<T, LayoutPolicy>;
     template<typename T, class LayoutPolicy>
-    dofspan(T * data, const LayoutPolicy &) -> dofspan<T, LayoutPolicy>;
+    dofspan(T* data, const LayoutPolicy &) -> dofspan<T, LayoutPolicy>;
     template<std::ranges::contiguous_range R, class LayoutPolicy>
     dofspan(R&&, const LayoutPolicy&) -> dofspan<std::ranges::range_value_t<R>, LayoutPolicy>;
 
@@ -989,16 +989,10 @@ namespace FE {
         using index_type = IDX;
         using trace_type = FE::FESpace<T, IDX, ndim>::TraceType;
 
-        nodeset_dof_map<IDX> nodeset{};
 
         // we will be filling the selected traces, nodes, 
         // and selected nodes -> gnode index map respectively
-        std::vector<index_type>& selected_traces{nodeset.selected_traces};
-        std::vector<index_type>& selected_nodes{nodeset.selected_nodes};
-        std::vector<index_type>& inv_selected_nodes{nodeset.inv_selected_nodes};
-
-        // helper array to keep track of which global node indices to select
-        std::vector<bool> to_select(fespace.meshptr->nodes.n_nodes(), false);
+        std::vector<index_type> selected_traces{};
 
         std::vector<T> res_storage{};
         // preallocate storage for compact views of u and res 
@@ -1038,36 +1032,10 @@ namespace FE {
             // add the trace and nodes of the trace
             if(ic_res.vector_norm() > residual_threshold){
                 selected_traces.push_back(trace.facidx);
-                for(index_type inode : trace.face->nodes_span()){
-                    to_select[inode] = true;
-                }
             }
         }
 
-        // loop over the boundary faces and deactivate all boundary nodes 
-        // since some may be connected to an active interior face 
-        for(const trace_type &trace : fespace.get_boundary_traces()){
-            for(index_type inode : trace.face->nodes_span()){
-                to_select[inode] = false;
-            }
-        }
-
-        // finish setting up the map arrays
-
-        // add all the selected nodes
-        for(int ignode = 0; ignode < fespace.meshptr->nodes.n_nodes(); ++ignode){
-            if(to_select[ignode]){
-                selected_nodes.push_back(ignode);
-            }
-        }
-
-        // default value for nodes that aren't selected is to map to selected_nodes.size()
-        inv_selected_nodes = std::vector<index_type>(fespace.meshptr->nodes.n_nodes(), selected_nodes.size());
-        for(int idof = 0; idof < selected_nodes.size(); ++idof){
-            inv_selected_nodes[selected_nodes[idof]] = idof;
-        }
-
-        return nodeset;
+        return nodeset_dof_map{selected_traces, fespace};
     }
 
     template<class T, class IDX, int ndim>
@@ -1076,41 +1044,9 @@ namespace FE {
     ) -> nodeset_dof_map<IDX> {
         using index_type = IDX;
         using trace_type = FE::FESpace<T, IDX, ndim>::TraceType;
-        nodeset_dof_map<IDX> nodeset{};
-        // helper array to keep track of which global node indices to select
-        std::vector<bool> to_select(fespace.meshptr->nodes.n_nodes(), false);
 
-        // loop over interior faces and select faces and nodes
-        for(const trace_type& trace : fespace.get_interior_traces()){
-            nodeset.selected_traces.push_back(trace.facidx);
-            for(index_type inode : trace.face->nodes_span()){
-                to_select[inode] = true;
-            }
-        }
-
-        // loop over the boundary faces and deactivate all boundary nodes 
-        // since some may be connected to an active interior face 
-        for(const trace_type &trace : fespace.get_boundary_traces()){
-            for(index_type inode : trace.face->nodes_span()){
-                to_select[inode] = false;
-            }
-        }
-
-        // finish setting up the map arrays
-
-        // add all the selected nodes
-        for(int ignode = 0; ignode < fespace.meshptr->nodes.n_nodes(); ++ignode){
-            if(to_select[ignode]){
-                nodeset.selected_nodes.push_back(ignode);
-            }
-        }
-
-        // default value for nodes that aren't selected is to map to selected_nodes.size()
-        nodeset.inv_selected_nodes = std::vector<index_type>(fespace.meshptr->nodes.n_nodes(), nodeset.selected_nodes.size());
-        for(int idof = 0; idof < nodeset.selected_nodes.size(); ++idof){
-            nodeset.inv_selected_nodes[nodeset.selected_nodes[idof]] = idof;
-        }
-
-        return nodeset;
+        std::vector<index_type> selected_traces(fespace.interior_trace_end - fespace.interior_trace_start);
+        std::iota(selected_traces.begin(), selected_traces.end(), fespace.interior_trace_start);
+        return nodeset_dof_map{selected_traces, fespace};
     }
 }

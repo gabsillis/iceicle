@@ -17,6 +17,7 @@
 #include "iceicle/mdg_utils.hpp"
 #include <iomanip>
 #include <limits>
+#include <mpi.h>
 #ifdef ICEICLE_USE_PETSC 
 #include "iceicle/petsc_newton.hpp"
 #elifdef ICEICLE_USE_MPI
@@ -518,12 +519,18 @@ int main(int argc, char *argv[]){
                                 mdg_writer.register_fespace(fespace);
                                 ICEICLE::PETSC::VecSpan res_view{res_data};
                                 ICEICLE::PETSC::VecSpan dx_view{du_data};
+
+                                // get the start indices for the petsc matrix on this processor
+                                PetscInt proc_range_beg, proc_range_end, mdg_range_beg;
+                                PetscCallAbort(MPI_COMM_WORLD, VecGetOwnershipRange(res_data, &proc_range_beg, &proc_range_end));
+                                mdg_range_beg = proc_range_beg + u.size();
+
                                 FE::node_selection_layout<IDX, ndim> mdg_layout{nodeset};
-                                FE::dofspan mdg_res{res_view.data(), mdg_layout};
-                                FE::dofspan mdg_dx{dx_view.data(), mdg_layout};
+                                FE::dofspan mdg_res{res_view.data() + mdg_range_beg, mdg_layout};
+                                FE::dofspan mdg_dx{dx_view.data() + mdg_range_beg, mdg_layout};
                                 mdg_writer.register_fields(mdg_res, "mdg residual");
                                 mdg_writer.register_fields(mdg_dx, "-dx");
-                                mdg_writer.data_directory /= "mdg_data";
+                                mdg_writer.collection_name = "mdg_data";
                                 mdg_writer.write_vtu(total_nl_vis + k + 1, (T) total_nl_vis +  k + 1);
                             };
                             total_nl_vis += solver.solve(u);

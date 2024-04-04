@@ -410,6 +410,7 @@ namespace ICEICLE::SOLVERS {
             // get the unperturbed residual and send to full residual
             res = 0;
             disc.interface_conservation(trace, fespace.meshptr->nodes, uL, uR, res);
+            FE::scatter_facspan(trace, 1.0, res, 1.0, mdg_residual);
 
             // set up the perturbation amount scaled by unperturbed residual 
             T eps_scaled = std::max(epsilon, res.vector_norm() * epsilon);
@@ -525,7 +526,7 @@ namespace ICEICLE::SOLVERS {
                     // loop over dimensions of node and perturb
                     for(int idim = 0; idim < ndim; ++idim) {
                         // the unknowns will always have ndim vector components 
-                        IDX jcol = jmdg * ndim + idim;
+                        IDX jcol = mdg_range_beg + jmdg * ndim + idim;
 
                         T old_val = fespace.meshptr->nodes[inode][idim];
                         fespace.meshptr->nodes[inode][idim] += eps_scaled;
@@ -572,7 +573,7 @@ namespace ICEICLE::SOLVERS {
                     // loop over dimensions of node and perturb
                     for(int idim = 0; idim < ndim; ++idim) {
                         // the unknowns will always have ndim vector components 
-                        IDX jcol = jmdg * ndim + idim;
+                        IDX jcol = mdg_range_beg + jmdg * ndim + idim;
 
                         // peturb the node
                         T old_val = fespace.meshptr->nodes[inode][idim];

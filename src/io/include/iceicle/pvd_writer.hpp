@@ -364,7 +364,7 @@ namespace ICEICLE::IO {
         public:
 
         int print_precision = 8;
-        std::string collection_name = "iceicle_data";
+        std::string collection_name = "data";
         std::filesystem::path data_directory;
 
         PVDWriter() : data_directory(std::filesystem::current_path()) {
@@ -653,7 +653,7 @@ namespace ICEICLE::IO {
 
             // create the mesh file 
             std::filesystem::path mesh_path = data_directory;
-            mesh_path /= ("data." + std::to_string(itime) + ".vtu");
+            mesh_path /= (collection_name + std::to_string(itime) + ".vtu");
 
             std::ofstream out{mesh_path};
             if(!out) {

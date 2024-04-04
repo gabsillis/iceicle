@@ -7,6 +7,7 @@
 #include <type_traits>
 #include <variant>
 #include <tuple>
+#include <mdspan/mdspan.hpp>
 namespace ICEICLE::TMP{
 
     /** @brief a compile time constant integer type

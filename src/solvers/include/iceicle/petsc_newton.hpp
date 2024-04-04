@@ -315,6 +315,12 @@ namespace ICEICLE::SOLVERS {
                 // solve for du 
                 MatAssemblyBegin(jac, MAT_FINAL_ASSEMBLY);
                 MatAssemblyEnd(jac, MAT_FINAL_ASSEMBLY);
+
+                PetscViewer jacobian_viewer;
+                PetscViewerASCIIOpen(comm, ("jacobian_view" + std::to_string(k) + ".dat").c_str(), &jacobian_viewer);
+                PetscViewerPushFormat(jacobian_viewer, PETSC_VIEWER_ASCII_DENSE);
+                MatView(jac, jacobian_viewer);
+                PetscViewerDestroy(&jacobian_viewer);
 //                MatView(jac, PETSC_VIEWER_STDOUT_WORLD); // for debug purposes
                 PetscCallAbort(comm, KSPSetOperators(ksp, this->jac, this->jac));
                 PetscCallAbort(comm, KSPSolve(ksp, res_data, du_data));
