@@ -69,6 +69,7 @@ endif()
 
 if(ICEICLE_USE_PETSC)
     set(SOLVER_TEST_SOURCES
+        test_solvers_main.cpp
         test_petsc_jacobian.cpp 
     )
     add_executable(test_solvers ${SOLVER_TEST_SOURCES})
