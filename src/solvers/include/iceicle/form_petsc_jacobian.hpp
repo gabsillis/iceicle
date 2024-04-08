@@ -6,9 +6,11 @@
 #pragma once
 #include "iceicle/fespace/fespace.hpp"
 #include "iceicle/fe_function/fespan.hpp"
+#include "iceicle/geometry/face.hpp"
 #include "iceicle/petsc_interface.hpp"
 #include <cmath>
 #include <limits>
+#include <set>
 #include <petscerror.h>
 #include <petscmat.h>
 #include <mdspan/mdspan.hpp>
@@ -490,11 +492,71 @@ namespace ICEICLE::SOLVERS {
         std::vector<T> resR_storage(fespace.dg_map.max_el_size_reqirement(u.nv()));
         std::vector<T> resRp_storage(fespace.dg_map.max_el_size_reqirement(u.nv()));
 
-        // TODO: Jacobian wrt x 
+        // Jacobian wrt x 
         for(IDX jmdg = 0; jmdg < mdg_residual.ndof(); ++jmdg){
             // the global node index corresponding to this mdg dof
             IDX inode = nodeset.selected_nodes[jmdg];
-            for(IDX itrace : fespace.fac_surr_nodes.rowspan(inode)){
+
+            // loop over element surrounding for domain integral
+            for(IDX iel : fespace.el_surr_nodes.rowspan(inode)) {
+                const Element& el = fespace.elements[iel];
+
+                // set up compact data views
+                auto el_layout = u.create_element_layout(iel);
+                FE::dofspan u_el{uL_storage, el_layout};
+                FE::dofspan res{resL_storage, u.create_element_layout(iel)};
+                FE::dofspan resp{resLp_storage, u.create_element_layout(iel)};
+
+                // get the global index to the start of the contiguous component x dof range
+                std::size_t glob_index_el = u.get_layout()[iel, 0, 0];
+
+                // extract the compact values from the global u view
+                FE::extract_elspan(iel, u, u_el);
+
+                // get the unperturbed residual
+                res = 0;
+                disc.domainIntegral(el, fespace.meshptr->nodes, u_el, res);
+
+                // set up the perturbation amount scaled by unperturbed residual 
+                T eps_scaled = std::max(epsilon, res.vector_norm() * epsilon);
+
+                // loop over dimensions of node and perturb
+                for(int idim = 0; idim < ndim; ++idim){
+                    
+                        // the unknowns will always have ndim vector components 
+                        IDX jcol = mdg_range_beg + jmdg * ndim + idim;
+
+                        T old_val = fespace.meshptr->nodes[inode][idim];
+                        fespace.meshptr->nodes[inode][idim] += eps_scaled;
+
+                        // get perturbed residual
+                        resp = 0;
+                        disc.domainIntegral(el, fespace.meshptr->nodes, u_el, resp);
+
+                        // jacobian contribution 
+                        for(IDX idoff = 0; idoff < res.ndof(); ++idoff){
+                            for(IDX ieqf = 0; ieqf < res.nv(); ++ieqf){
+                                IDX irow = proc_range_beg + glob_index_el + res.get_layout()[idoff, ieqf];
+                                T fd_val = (resp[idoff, ieqf] - res[idoff, ieqf]) / eps_scaled;
+                                MatSetValue(jac, irow, jcol, fd_val, ADD_VALUES);
+                            }
+                        }
+
+                        // revert perturbation
+                        fespace.meshptr->nodes[inode][idim] = old_val;
+                }
+            }
+
+            // build the extended stencil of face indices around the node
+            std::set<IDX>traces_to_visit{};
+            for(IDX iel : fespace.el_surr_nodes.rowspan(inode)){
+                for(IDX itrace : fespace.fac_surr_el.rowspan(iel)){
+                    traces_to_visit.insert(itrace);
+                }
+            }
+
+            // loop over traces in extended stencil around the node
+            for(IDX itrace : traces_to_visit){
                 const Trace& trace = fespace.traces[itrace];
 
                 // set up compact data views
@@ -516,9 +578,14 @@ namespace ICEICLE::SOLVERS {
                     FE::dofspan resLp{resLp_storage, u.create_element_layout(trace.elL.elidx)};
                     FE::dofspan resR{resR_storage, u.create_element_layout(trace.elR.elidx)};
                     FE::dofspan resRp{resRp_storage, u.create_element_layout(trace.elR.elidx)};
+                    resL = 0; resR = 0;
 
                     // get the unperturbed residual
-                    disc.traceIntegral(trace, fespace.meshptr->nodes, uL, uR, resL, resR);
+                    if(trace.face->bctype == ELEMENT::BOUNDARY_CONDITIONS::INTERIOR){
+                        disc.traceIntegral(trace, fespace.meshptr->nodes, uL, uR, resL, resR);
+                    } else {
+                        disc.boundaryIntegral(trace, fespace.meshptr->nodes, uL, uR, resL);
+                    }
 
                     // set up the perturbation amount scaled by unperturbed residual 
                     T eps_scaled = std::max(epsilon, std::max(resL.vector_norm(), resR.vector_norm()) * epsilon);
@@ -532,7 +599,12 @@ namespace ICEICLE::SOLVERS {
                         fespace.meshptr->nodes[inode][idim] += eps_scaled;
 
                         // get the perturbed residual
-                        disc.traceIntegral(trace, fespace.meshptr->nodes, uL, uR, resLp, resRp);
+                        resLp = 0; resRp = 0;
+                        if(trace.face->bctype == ELEMENT::BOUNDARY_CONDITIONS::INTERIOR){
+                            disc.traceIntegral(trace, fespace.meshptr->nodes, uL, uR, resLp, resRp);
+                        } else {
+                            disc.boundaryIntegral(trace, fespace.meshptr->nodes, uL, uR, resLp);
+                        }
 
                         // resL
                         for(IDX idoff = 0; idoff < resL.ndof(); ++idoff){
@@ -543,12 +615,14 @@ namespace ICEICLE::SOLVERS {
                             }
                         }
 
-                        // resR
-                        for(IDX idoff = 0; idoff < resR.ndof(); ++idoff){
-                            for(IDX ieqf = 0; ieqf < resR.nv(); ++ieqf){
-                                IDX irow = proc_range_beg + glob_index_R + resR.get_layout()[idoff, ieqf];
-                                T fd_val = (resRp[idoff, ieqf] - resR[idoff, ieqf]) / eps_scaled;
-                                MatSetValue(jac, irow, jcol, fd_val, ADD_VALUES);
+                        // resR (only for interior traces)
+                        if(trace.face->bctype == ELEMENT::BOUNDARY_CONDITIONS::INTERIOR){
+                            for(IDX idoff = 0; idoff < resR.ndof(); ++idoff){
+                                for(IDX ieqf = 0; ieqf < resR.nv(); ++ieqf){
+                                    IDX irow = proc_range_beg + glob_index_R + resR.get_layout()[idoff, ieqf];
+                                    T fd_val = (resRp[idoff, ieqf] - resR[idoff, ieqf]) / eps_scaled;
+                                    MatSetValue(jac, irow, jcol, fd_val, ADD_VALUES);
+                                }
                             }
                         }
 
@@ -566,6 +640,7 @@ namespace ICEICLE::SOLVERS {
                     FE::dofspan resp{resp_storage, res_layout};
 
                     // get the unperturbed residual
+                    res = 0;
                     disc.interface_conservation(trace, fespace.meshptr->nodes, uL, uR, res);
                     // set up the perturbation amount scaled by unperturbed residual 
                     T eps_scaled = std::max(epsilon, res.vector_norm() * epsilon);
@@ -580,7 +655,8 @@ namespace ICEICLE::SOLVERS {
                         fespace.meshptr->nodes[inode][idim] += eps_scaled;
 
                         // get the perturbed residual
-                        disc.interface_conservation(trace, fespace.meshptr->nodes, uL, uR, res);
+                        resp = 0;
+                        disc.interface_conservation(trace, fespace.meshptr->nodes, uL, uR, resp);
 
                         for(IDX idoff = 0; idoff < res.ndof(); ++idoff){
 
@@ -603,6 +679,7 @@ namespace ICEICLE::SOLVERS {
                     }
                 }
             }
+
         }
     }
 }

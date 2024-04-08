@@ -10,6 +10,8 @@
 #include "iceicle/fe_function/layout_right.hpp"
 #include "iceicle/fe_function/trace_layout.hpp"
 #include "iceicle/fespace/fespace.hpp"
+#include "iceicle/tmp_utils.hpp"
+#include <type_traits>
 
 namespace ICEICLE::SOLVERS {
 
@@ -205,7 +207,7 @@ namespace ICEICLE::SOLVERS {
             res = 0;
             disc.interface_conservation(trace, fespace.meshptr->nodes, uL, uR, res);
 
-            scatter_facspan(trace, 1.0, res, 0.0, mdg_residual);
+            scatter_facspan(trace, 1.0, res, 1.0, mdg_residual);
         }
     }
 
@@ -236,15 +238,15 @@ namespace ICEICLE::SOLVERS {
         using namespace FE;
 
         // create all the layouts
-        fe_layout_right dg_layout{fespace.dg_map};
+        fe_layout_right dg_layout{fespace.dg_map, TMP::to_size<disc_class::nv_comp>()};
         node_selection_layout<IDX, ndim> node_layout{nodeset};
         node_selection_layout<IDX, neq_mdg> mdg_layout{nodeset};
 
         // create views over the u and res arrays
-        fespan u_dg{u, dg_layout};
+        fespan u_dg{u.data(), dg_layout};
         dofspan u_nodes{std::span{u.begin() + dg_layout.size(), u.end()}, node_layout};
-        fespan res_dg{res, dg_layout};
-        dofspan res_mdg{std::span{res.begin() + dg_layout.size(), u.end()}, mdg_layout};
+        fespan res_dg{res.data(), dg_layout};
+        dofspan res_mdg{std::span{res.begin() + dg_layout.size(), res.end()}, mdg_layout};
 
         // set the mesh from u_nodes
         FE::scatter_node_selection_span(1.0, u_nodes, 0.0, fespace.meshptr->nodes);

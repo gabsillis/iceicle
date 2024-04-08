@@ -1,10 +1,15 @@
 #include "iceicle/build_config.hpp"
 #include "iceicle/disc/heat_eqn.hpp"
+#include "iceicle/fe_function/fespan.hpp"
 #include "iceicle/fespace/fespace.hpp"
 #include "iceicle/fe_function/layout_right.hpp"
+#include "iceicle/form_dense_jacobian.hpp"
 #include "iceicle/petsc_newton.hpp"
 #include "iceicle/form_petsc_jacobian.hpp"
+#include "mdspan/mdspan.hpp"
 #include <gtest/gtest.h>
+#include <petscmat.h>
+#include <petscsys.h>
 
 TEST(test_petsc_jacobian, test_mdg_bl){
 
@@ -64,5 +69,60 @@ TEST(test_petsc_jacobian, test_mdg_bl){
     PetscNewton solver{fespace, disc, conv_criteria};
     solver.solve(u);
 
+
+    FE::nodeset_dof_map<IDX> nodeset = FE::select_all_nodes(fespace);
+    Mat jac;
+    MatCreate(PETSC_COMM_WORLD, &jac);
+    PetscInt local_res_size = fespace.dg_map.calculate_size_requirement(1) + nodeset.selected_nodes.size() * ndim;
+    PetscInt local_u_size = fespace.dg_map.calculate_size_requirement(1) + nodeset.selected_nodes.size() * ndim;
+    MatSetSizes(jac, local_res_size, local_u_size, PETSC_DETERMINE, PETSC_DETERMINE);
+    MatSetFromOptions(jac);
+
+    std::vector<T> res_storage(local_res_size);
+    FE::fespan res{res_storage.data(), u_layout};
+    FE::node_selection_layout<IDX, ndim> mdg_layout{nodeset};
+    FE::dofspan mdg_res{res_storage.data() + res.size(), mdg_layout};
+
+    // get the jacobian and residual from petsc interface
+    form_petsc_jacobian_fd(fespace, disc, u, res, jac);
+    form_petsc_mdg_jacobian_fd(fespace, disc, u, mdg_res, jac);
+    MatAssemblyBegin(jac, MAT_FINAL_ASSEMBLY);
+    MatAssemblyEnd(jac, MAT_FINAL_ASSEMBLY);
+
+    // get the jacobian and residual through the dense matrix interface
+    std::vector<T> u_dense(local_u_size);
+    std::vector<T> res_dense(local_res_size);
+    std::copy_n(u.data(), u.size(), u_dense.begin());
+    for(int inode = 0; inode < nodeset.selected_nodes.size(); ++inode){
+        IDX gnode = nodeset.selected_nodes[inode];
+        for(int idim = 0; idim < ndim; ++idim){
+            u_dense[u.size() + ndim * inode + idim] = fespace.meshptr->nodes[gnode][idim];
+        }
+    }
+
+    std::vector<T> jac_dense_storage(local_u_size * local_res_size);
+    std::mdspan jac_dense{jac_dense_storage.data(), std::extents{local_res_size, local_u_size}};
+    form_dense_jacobian_fd(fespace, disc, nodeset, std::span{u_dense}, std::span{res_dense}, 
+            jac_dense, std::integral_constant<int, ndim>{});
+
+    for(int i = 0; i < local_res_size; ++i){
+        SCOPED_TRACE("MDG indices start at: " + std::to_string(fespace.dg_map.calculate_size_requirement(1)));
+        SCOPED_TRACE("ires = " + std::to_string(i));
+        ASSERT_DOUBLE_EQ(res_storage[i], res_dense[i]);
+    }
+
+    for(int i = 0; i < local_res_size; ++i){
+        SCOPED_TRACE("MDG indices start at: " + std::to_string(fespace.dg_map.calculate_size_requirement(1)));
+        SCOPED_TRACE("irow = " + std::to_string(i));
+        for(int j = 0; j < local_u_size; ++j){
+            SCOPED_TRACE("jcol = " + std::to_string(j));
+            T petsc_mat_val;
+            MatGetValue(jac, i, j, &petsc_mat_val);
+            // ASSERT_NEAR(petsc_mat_val, (jac_dense[i, j]), 1e-3);
+            
+            std::cout << std::format("{:>16f}", (petsc_mat_val - jac_dense[i, j])) << " ";
+        }
+        std::cout << std::endl;
+    }
 
 }

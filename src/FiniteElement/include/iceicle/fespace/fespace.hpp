@@ -136,6 +136,12 @@ namespace FE {
         /** @brief the mapping of faces connected to each node */
         ICEICLE::UTIL::crs<IDX> fac_surr_nodes;
 
+        /** @brief the mapping of elements connected to each node */
+        ICEICLE::UTIL::crs<IDX> el_surr_nodes;
+
+        /** @brief the mapping of faces connected to each element */
+        ICEICLE::UTIL::crs<IDX> fac_surr_el;
+
         private:
 
         // ========================================
@@ -265,6 +271,10 @@ namespace FE {
             // generate the dof offsets 
             dg_map = dg_dof_map{elements};
 
+            // ===================================
+            // = Build the connectivity matrices =
+            // ===================================
+
             // generate the face surrounding nodes connectivity matrix 
             std::vector<std::vector<IDX>> connectivity_ragged(meshptr->nodes.n_nodes());
             for(int itrace = 0; itrace < traces.size(); ++itrace){
@@ -274,6 +284,23 @@ namespace FE {
                 }
             }
             fac_surr_nodes = ICEICLE::UTIL::crs{connectivity_ragged};
+
+            std::vector<std::vector<IDX>> el_surr_nodes_ragged(meshptr->nodes.n_nodes());
+            for(int iel = 0; iel < elements.size(); ++iel){
+                const ElementType& element = elements[iel];
+                for(IDX inode : element.geo_el->nodes_span()){
+                    el_surr_nodes_ragged[inode].push_back(iel);
+                }
+            }
+            el_surr_nodes = ICEICLE::UTIL::crs{el_surr_nodes_ragged};
+
+            std::vector<std::vector<IDX>> fac_surr_el_ragged(elements.size());
+            for(int itrace = 0; itrace < traces.size(); ++itrace){
+                const TraceType& trace = traces[itrace];
+                fac_surr_el_ragged[trace.elL.elidx].push_back(itrace);
+                fac_surr_el_ragged[trace.elR.elidx].push_back(itrace);
+            }
+            fac_surr_el = ICEICLE::UTIL::crs{fac_surr_el_ragged};
         } 
 
         /**

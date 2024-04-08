@@ -3,7 +3,7 @@
  * can be used to represent MDG unknowns and residuals
  * @author Gianni Absillis (gabsill@ncsu.edu)
  */
-
+#pragma once
 #include "iceicle/fespace/fespace.hpp"
 #include <ranges>
 #include <type_traits>
