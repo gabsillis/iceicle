@@ -548,7 +548,7 @@ int main(int argc, char *argv[]){
                             std::cout << std::setprecision(8);
                             std::cout << "itime: " << std::setw(6) << k
                                 << " | residual l2: " << std::setw(14) << res_norm
-                                << std::endl;
+                                << std::endl << std::endl;
                             // offset by initial solution iteration
                             pvd_writer.write_vtu(k + 1, (T) k + 1);
                         };

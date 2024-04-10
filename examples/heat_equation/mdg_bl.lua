@@ -3,7 +3,7 @@
 -- define the mesh as a uniform quad mesh
 uniform_mesh = {
 	-- specify the number of elements in each direction
-	nelem = { 3, 3 },
+	nelem = { 4, 8 },
 
 	-- specify the bounding box of the uniform mesh domain
 	bounding_box = {
@@ -56,8 +56,8 @@ boundary_conditions = {
 	dirichlet = {
 		-- constant values
 		values = {
-			1.0, -- flag 1
-			2.0, -- flag 2
+			0.0, -- flag 1
+			1.0, -- flag 2
 			0.9, -- flag 3
 		},
 
@@ -80,20 +80,26 @@ solver = {
 	type = "newton",
 	mdg = {
 		-- number of times to repeat the node selection + nonlinear solve process
-		ncycles = 100,
-		ic_selection_threshold = 1e-8,
+		ncycles = 81,
+		ic_selection_threshold = function(icycle)
+			if (icycle % 2 == 0) then
+				return 1e8
+			else
+				return 0
+			end
+		end,
 	},
 	verbosity = 4,
-	kmax = 2,
+	kmax = 1,
 	ivis = 1,
 	linesearch = {
 		type = "cubic",
-		alpha_initial = 0.1,
-		alpha_max = 1.0,
+		alpha_initial = 0.01,
+		alpha_max = 1,
 	}
 }
 
 -- initial condition
 initial_condition = function(x, y)
-	return 1 + x;
+	return x;
 end

@@ -548,6 +548,7 @@ namespace ICEICLE::SOLVERS {
             }
 
             // build the extended stencil of face indices around the node
+            // use a set to prevent repeats
             std::set<IDX>traces_to_visit{};
             for(IDX iel : fespace.el_surr_nodes.rowspan(inode)){
                 for(IDX itrace : fespace.fac_surr_el.rowspan(iel)){

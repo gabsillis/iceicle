@@ -21,6 +21,7 @@
 #include <petscpc.h>
 #include <petscpctypes.h>
 #include <petscsys.h>
+#include <petscsystypes.h>
 #include <petscvec.h>
 #include <petscviewer.h>
 
@@ -98,7 +99,7 @@ namespace ICEICLE::SOLVERS {
         IDX verbosity = 0;
 
         /// @brief multiplier for node movement of the node radius
-        T node_radius_mult = 0.1;
+        T node_radius_mult = 0.4;
 
         /// @brief diagnostics function 
         /// very minimal by default other options are defined in this header
@@ -248,6 +249,7 @@ namespace ICEICLE::SOLVERS {
 
             // Create the linear solver and preconditioner
             PetscCallAbort(comm, KSPCreate(comm, &ksp));
+            PetscCallAbort(comm, KSPSetFromOptions(ksp));
 
             // default to sor preconditioner
             PetscCallAbort(comm, KSPGetPC(ksp, &pc));
@@ -312,16 +314,27 @@ namespace ICEICLE::SOLVERS {
                 // get node radii 
                 std::vector<T> node_radii{FE::node_freedom_radii(fespace)};
 
+                // NOTE: add regularization for geometry dofs 
+                for(IDX idiag = u.size(); idiag < mdg_layout.size(); ++idiag){
+                    T lambda = 1e-8;
+                    // idiag is a process-local index
+                    MatSetValueLocal(jac, idiag, idiag, lambda, ADD_VALUES);
+                }
+
                 // solve for du 
                 MatAssemblyBegin(jac, MAT_FINAL_ASSEMBLY);
                 MatAssemblyEnd(jac, MAT_FINAL_ASSEMBLY);
 
-                PetscViewer jacobian_viewer;
-                PetscViewerASCIIOpen(comm, ("jacobian_view" + std::to_string(k) + ".dat").c_str(), &jacobian_viewer);
-                PetscViewerPushFormat(jacobian_viewer, PETSC_VIEWER_ASCII_DENSE);
-                MatView(jac, jacobian_viewer);
-                PetscViewerDestroy(&jacobian_viewer);
-//                MatView(jac, PETSC_VIEWER_STDOUT_WORLD); // for debug purposes
+                // view jacobian matrix
+                if(verbosity >= 4){
+                    PetscViewer jacobian_viewer;
+                    PetscViewerASCIIOpen(comm, ("iceicle_data/jacobian_view" + std::to_string(k) + ".dat").c_str(), &jacobian_viewer);
+                    PetscViewerPushFormat(jacobian_viewer, PETSC_VIEWER_ASCII_DENSE);
+                    MatView(jac, jacobian_viewer);
+                    PetscViewerDestroy(&jacobian_viewer);
+    //                MatView(jac, PETSC_VIEWER_STDOUT_WORLD); // for debug purposes
+                }
+
                 PetscCallAbort(comm, KSPSetOperators(ksp, this->jac, this->jac));
                 PetscCallAbort(comm, KSPSolve(ksp, res_data, du_data));
 
@@ -339,50 +352,6 @@ namespace ICEICLE::SOLVERS {
                     FE::fespan du{du_view.data(), u.get_layout()};
                     FE::dofspan dx{du_view.data() + u.size(), mdg_layout};
 
-                    // print out dx if verbosity is 4 or more
-                    if(verbosity >= 4){
-                        for(int idof = 0; idof < dx.ndof(); ++idof){
-                            T node_limit = node_radius_mult * node_radii[nodeset.selected_nodes[idof]];
-                            std::cout << "nodeset_dof: " << std::format("{:<4d}", idof)
-                                << " | node_index: " << std::format("{:<4d}", nodeset.selected_nodes[idof])
-                                << " | step_limit: " << std::format("{:>8f}", node_limit)
-                                << " | dx: ";
-                            for(int idim = 0; idim < ndim; ++idim)
-                                std::cout << std::format("{:<16f}", dx[idof, idim]) << " ";
-                            std::cout << std::endl;
-
-                        }
-
-                    }
-
-                    // restrict dx by node_radius
-//                    for(IDX idof = 0; idof < dx.ndof(); ++idof){
-//                        T node_limit = node_radius_mult * node_radii[nodeset.selected_nodes[idof]];
-//
-//                        for(IDX iv = 0; iv < dx.nv(); ++iv){
-//                            dx[idof, iv] = std::copysign(
-//                                std::min(std::abs(dx[idof, iv]), node_limit),
-//                                dx[idof, iv]
-//                            );
-//                        }
-//                    }
-
-                    
-                    // compute a linesearch restriction by node radius
-                    // with no linesearch you'll just be YOLOing 
-                    // when it comes to node movement i guess
-                    if constexpr (variable_alpha_ls<ls_type>){
-                        T alpha_node_limit = linesearch.alpha_max;
-                        for(int idof = 0; idof < dx.ndof(); ++idof){
-                            T node_limit = node_radius_mult * node_radii[nodeset.selected_nodes[idof]];
-                            alpha_node_limit = std::min(alpha_node_limit, node_limit);
-                        }
-
-                        linesearch.alpha_max = alpha_node_limit;
-                        // start off at half of the max
-                        linesearch.alpha_initial = 0.5 * alpha_node_limit;
-                    }
-
                     // u step for linesearch
                     std::vector<T> u_step_storage(u.size());
                     FE::fespan u_step{u_step_storage.data(), u.get_layout()};
@@ -397,6 +366,54 @@ namespace ICEICLE::SOLVERS {
                     FE::fespan res_work{r_work_storage.data(), u.get_layout()};
 
                     std::vector<T> r_mdg_work_storage{};
+
+                    T ls_alpha_max_old, ls_alpha_initial_old;
+                    // compute a linesearch restriction by node radius
+                    // with no linesearch you'll just be YOLOing 
+                    // when it comes to node movement i guess
+                    if constexpr (variable_alpha_ls<ls_type>){
+                        T alpha_node_limit = linesearch.alpha_max;
+                        for(int idof = 0; idof < dx.ndof(); ++idof){
+                            T dx_max = 0.0;
+                            for(int idim = 0; idim < ndim; ++idim){
+
+                                dx_max = std::max(dx_max, std::abs(dx[idof, idim]));
+                            }
+                            T node_limit = node_radius_mult * node_radii[nodeset.selected_nodes[idof]] / dx_max;
+                            alpha_node_limit = std::min(alpha_node_limit, node_limit);
+                        }
+
+                        // store the current alpha max and initial
+                        ls_alpha_max_old = linesearch.alpha_max;
+                        ls_alpha_initial_old = linesearch.alpha_initial;
+
+                        linesearch.alpha_max = std::min(alpha_node_limit, linesearch.alpha_max);
+                        // start off at half of the max
+                        linesearch.alpha_initial = std::min(0.5 * alpha_node_limit, linesearch.alpha_initial);
+                        if(verbosity >= 3)
+                            std::cout << "new alpha_max: " << linesearch.alpha_max << std::endl;
+                    }
+
+
+                    // print out dx if verbosity is 4 or more
+                    if(verbosity >= 4){
+                        for(int idof = 0; idof < dx.ndof(); ++idof){
+                            T dx_max = 1e-8;
+                            for(int idim = 0; idim < ndim; ++idim){
+                                dx_max = std::max(dx_max, std::abs(dx[idof, idim]));
+                            }
+                            T node_limit = node_radius_mult * node_radii[nodeset.selected_nodes[idof]] / dx_max;
+                            std::cout << "nodeset_dof: " << std::format("{:<4d}", idof)
+                                << " | node_index: " << std::format("{:<4d}", nodeset.selected_nodes[idof])
+                                << " | step_limit: " << std::format("{:>12f}", node_limit)
+                                << " | dx: ";
+                            for(int idim = 0; idim < ndim; ++idim)
+                                std::cout << std::format("{:<16f}", dx[idof, idim]) << " ";
+                            std::cout << std::endl;
+
+                        }
+
+                    }
 
                     T alpha = linesearch([&](T alpha_arg){
                         static constexpr T BIG_RESIDUAL = 1e9;
@@ -431,6 +448,9 @@ namespace ICEICLE::SOLVERS {
                             std::cout << "linesearch: alpha = " << alpha_arg << " | linesearch residual = " << rnorm << std::endl;
                         }
 
+                        // revert nodes
+                        FE::scatter_node_selection_span(1.0, current_x, 0.0, fespace.meshptr->nodes);
+
                         // safeguard the cost function for linesearch 
                         if(std::isfinite(rnorm)){
                             return rnorm;
@@ -440,10 +460,13 @@ namespace ICEICLE::SOLVERS {
                             }
                             return BIG_RESIDUAL;
                         }
-
-                        // revert nodes
-                        FE::scatter_node_selection_span(1.0, current_x, 0.0, fespace.meshptr->nodes);
                     });
+
+                    // revert the linesearch parameters 
+                    if constexpr (variable_alpha_ls<ls_type>){
+                        linesearch.alpha_max = ls_alpha_max_old;
+                        linesearch.alpha_initial = ls_alpha_initial_old;
+                    }
 
                     if(verbosity >= 1) std::cout << "linesearch: selected alpha = " << alpha << std::endl;
 
