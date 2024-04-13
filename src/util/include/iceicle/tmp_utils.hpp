@@ -54,4 +54,7 @@ namespace ICEICLE::TMP{
     template<typename T>
     concept not_default = !std::same_as<T, std::monostate>;
 
+    /// @brief tag when constructing from range
+    struct from_range_t{};
+
 }

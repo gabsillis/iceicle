@@ -5,8 +5,77 @@
 #include "iceicle/fe_function/fespan.hpp"
 #include "iceicle/fespace/fespace.hpp"
 #include "iceicle/geometry/face.hpp"
+#include "iceicle/mesh/mesh.hpp"
 #include <map>
 #include <list>
+
+namespace MESH {
+
+    /**
+     *
+     *  NOTE: we assume the time dimension is always the last
+     */
+    template<class T, class IDX, int ndim>
+    auto compute_st_node_connectivity(
+        MESH::AbstractMesh<T, IDX, ndim> &mesh_past,
+        MESH::AbstractMesh<T, IDX, ndim> &mesh_current
+    ) -> std::map<IDX, IDX> {
+        static_assert(ndim > 1, "Assumes at least 2D spacetime mesh");
+        using Face = ELEMENT::Face<T, IDX, ndim>;
+        std::vector<bool> past_nodes_connected(mesh_past.nodes.n_nodes(), false);
+        std::vector<bool> current_nodes_connected(mesh_current.nodes.n_nodes(), false);
+
+        // look for nodes in SPACETIME_FUTURE boundary in the past mesh
+        for(IDX ibface = mesh_past.bdyFaceStart; ibface < mesh_past.bdyFaceEnd; ++ibface){
+            const Face& face = mesh_past.faces[ibface];
+            if(face.bctype == ELEMENT::BOUNDARY_CONDITIONS::SPACETIME_FUTURE){
+                for(IDX inode : face.nodes_span()){
+                    past_nodes_connected[inode] = true;
+                }
+            }
+        }
+
+        // look for nodes in SPACETIME_PAST boundary in the current mesh
+        for(IDX ibface = mesh_current.bdyFaceStart; ibface < mesh_current.bdyFaceEnd; ++ibface){
+            const Face& face = mesh_current.faces[ibface];
+            if(face.bctype == ELEMENT::BOUNDARY_CONDITIONS::SPACETIME_PAST){
+                for(IDX inode : face.nodes_span()){
+                    past_nodes_connected[inode] = true;
+                }
+            }
+        }
+
+        // create array of the node indices on the past mesh that are on the ST boundary
+        std::vector<IDX> past_nodes{};
+        for(IDX inode = 0; inode < mesh_past.nodes.n_nodes(); ++inode){
+            if(past_nodes_connected[inode]) past_nodes.push_back(inode);
+        }
+
+        // find connected nodes 
+        std::map<IDX, IDX> curr_to_past_nodes;
+        for(IDX inode_curr = 0; inode_curr < mesh_current.nodes.n_nodes(); ++inode_curr){
+            if(current_nodes_connected[inode_curr]){
+                // search for a node in the past_nodes list that is close enough in all coordinates except the last 
+                // NOTE: we assume the time dimension is always the last
+                for(IDX inode_past : past_nodes){
+                    bool all_same = true;
+                    for(int idim = 0; idim < ndim - 1; ++idim){
+                        if(std::abs(mesh_current.nodes[inode_curr][idim] - mesh_past.nodes[inode_past][idim]) > 1e-8){
+                            all_same = false;
+                            break;
+                        }
+                    }
+
+                    if(all_same){
+                        curr_to_past_nodes[inode_curr] = inode_past;
+                        break;
+                    }
+                }
+            }
+        }
+    }
+}
+
 namespace DISC {
     template<
         class T,

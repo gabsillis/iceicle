@@ -3,7 +3,7 @@
 -- define the mesh as a uniform quad mesh
 uniform_mesh = {
 	-- specify the number of elements in each direction
-	nelem = { 4, 8 },
+	nelem = { 2, 3 },
 
 	-- specify the bounding box of the uniform mesh domain
 	bounding_box = {

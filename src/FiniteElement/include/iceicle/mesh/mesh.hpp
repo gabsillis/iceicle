@@ -7,11 +7,17 @@
 #pragma once
 #include "Numtool/fixed_size_tensor.hpp"
 #include "iceicle/geometry/hypercube_face.hpp"
+#include "iceicle/tmp_utils.hpp"
+#include <concepts>
 #include <iceicle/geometry/face.hpp>
 #include <iceicle/geometry/geo_element.hpp>
 #include <iceicle/geometry/hypercube_element.hpp>
 #include <ostream>
+#include <map>
+#include <ranges>
+#ifndef NDEBUG
 #include <iomanip>
+#endif
 #include <iceicle/fe_function/nodal_fe_function.hpp>
 namespace MESH {
 
@@ -81,13 +87,21 @@ namespace MESH {
             return ret;
         }();
 
+        inline static constexpr NUMTOOL::TENSOR::FIXED_SIZE::Tensor<int, 2 * ndim>
+        all_zero = [](){
+            NUMTOOL::TENSOR::FIXED_SIZE::Tensor<int, 2*ndim> ret;
+            for(int i = 0; i < 2*ndim; ++i) ret[i] = 0;
+            return ret;
+        }();
+
         public:
+
         /**
          * @brief generate a uniform mesh of n-dimensional hypercubes
          * aligned with the axis
          * @param xmin the [-1, -1, ..., -1] corner of the domain
          * @param xmax the [1, 1, ..., 1] corner of the domain
-         * @param directional nelem, the number of elements in each coordinate direction
+         * @param directional_nelem, the number of elements in each coordinate direction
          * @param order the polynomial order of the hypercubes
          * @param bctypes the boundary conditions for each face of the whole domain,
          *                following the hypercube numbering convention
@@ -102,13 +116,28 @@ namespace MESH {
          * @param bcflags the boundary condition flags for each face of the whole domain,
          *                same layout
          */
+        template<
+            std::ranges::random_access_range R_xmin,
+            std::ranges::random_access_range R_xmax,
+            std::ranges::random_access_range R_nelem,
+            std::ranges::random_access_range R_bctype,
+            std::ranges::random_access_range R_bcflags
+        >
         AbstractMesh(
-            const T xmin[ndim], 
-            const T xmax[ndim],
-            const IDX directional_nelem[ndim],
+            ICEICLE::TMP::from_range_t,
+            R_xmin&& xmin, 
+            R_xmax&& xmax,
+            R_nelem&& directional_nelem,
             int order,
-            NUMTOOL::TENSOR::FIXED_SIZE::Tensor<ELEMENT::BOUNDARY_CONDITIONS, 2 * ndim> bctypes,
-            const int bcflags[2 * ndim]
+            R_bctype&& bctypes,
+            R_bcflags&& bcflags
+        ) requires(
+            std::convertible_to<std::ranges::range_value_t<R_xmin>, T> &&
+            std::convertible_to<std::ranges::range_value_t<R_xmax>, T> &&
+            std::convertible_to<std::ranges::range_value_t<R_nelem>, IDX> &&
+            std::same_as<std::ranges::range_value_t<R_bctype>, ELEMENT::BOUNDARY_CONDITIONS> &&
+            std::convertible_to<std::ranges::range_value_t<R_bcflags>, int>
+
         ) : nodes{}, elements{}, faces{} {
             using namespace NUMTOOL::TENSOR::FIXED_SIZE;
 
@@ -443,21 +472,31 @@ namespace MESH {
             // EXITING ORDER TEMPLATED SECTION
         } 
 
-        /**
-         * Overload for uniform mesh generation to support initializer lists
-         */
+
+        /// @brief default argument version of uniform mesh constructor 
+        template<
+            std::ranges::random_access_range R_xmin,
+            std::ranges::random_access_range R_xmax,
+            std::ranges::random_access_range R_nelem
+        >
         AbstractMesh(
-            const NUMTOOL::TENSOR::FIXED_SIZE::Tensor<T, ndim> &xmin,
-            const NUMTOOL::TENSOR::FIXED_SIZE::Tensor<T, ndim> &xmax,
-            const NUMTOOL::TENSOR::FIXED_SIZE::Tensor<IDX, ndim> &directional_nelem,
+            ICEICLE::TMP::from_range_t range_arg,
+            R_xmin&& xmin, 
+            R_xmax&& xmax,
+            R_nelem&& directional_nelem,
+            int order = 1
+        ) : AbstractMesh(range_arg, xmin, xmax, directional_nelem, order, all_periodic, all_zero) {}
+
+        /// @brief version of uniform mesh constructor using Tensor
+        /// so that initializer lists can be used for each range 
+        AbstractMesh(
+            NUMTOOL::TENSOR::FIXED_SIZE::Tensor<T, ndim> xmin,
+            NUMTOOL::TENSOR::FIXED_SIZE::Tensor<T, ndim> xmax,
+            NUMTOOL::TENSOR::FIXED_SIZE::Tensor<IDX, ndim> directional_nelem,
             int order = 1,
-            NUMTOOL::TENSOR::FIXED_SIZE::Tensor<ELEMENT::BOUNDARY_CONDITIONS, 2 * ndim> bctypes = all_periodic, 
-            const NUMTOOL::TENSOR::FIXED_SIZE::Tensor<int, 2* ndim> &bcflags = [](){
-                NUMTOOL::TENSOR::FIXED_SIZE::Tensor<int, 2 * ndim> ret{};
-                for(int i = 0; i < 2 * ndim; ++i) ret[i] = 0;
-                return ret;
-            }()
-        ) : AbstractMesh(xmin.data(), xmax.data(), directional_nelem.data(), order, bctypes, bcflags.data()) {}
+            NUMTOOL::TENSOR::FIXED_SIZE::Tensor<ELEMENT::BOUNDARY_CONDITIONS, 2*ndim> bctypes = all_periodic,
+            NUMTOOL::TENSOR::FIXED_SIZE::Tensor<int, 2*ndim> bcflags = all_zero
+        ): AbstractMesh(ICEICLE::TMP::from_range_t{}, xmin, xmax, directional_nelem, order, bctypes, bcflags) {}
 
 //        TODO: Do this in a separate file so we can build without mfem 
 //        AbstractMesh(mfem::FiniteElementSpace &mfem_mesh);
