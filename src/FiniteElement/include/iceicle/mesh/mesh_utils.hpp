@@ -3,11 +3,67 @@
  * @author Gianni Absillis (gabsill@ncsu.edu)
  */
 #pragma once
+#include "iceicle/basis/tensor_product.hpp"
 #include "iceicle/geometry/face.hpp"
 #include "iceicle/mesh/mesh.hpp"
 #include <vector>
 
 namespace MESH {
+
+
+    /**
+     * @brief create a 2 element mesh with no boundary faces 
+     * This is good for testing numerical fluxes 
+     * @param centroid1 the centroid of the first element 
+     * @param centroid2 the centroid of the second element
+     */
+    template<class T, int ndim>
+    auto create_2_element_mesh(
+        NUMTOOL::TENSOR::FIXED_SIZE::Tensor<T, ndim> centroid1,
+        NUMTOOL::TENSOR::FIXED_SIZE::Tensor<T, ndim> centroid2,
+        ELEMENT::BOUNDARY_CONDITIONS bctype,
+        int bcflag
+    ) -> AbstractMesh<T, int, ndim>
+    {
+        using namespace NUMTOOL::TENSOR::FIXED_SIZE;
+
+        T dist = 0;
+        for(int idim = 0; idim < ndim; ++idim) dist += SQUARED(centroid2[idim] - centroid1[idim]);
+        dist = std::sqrt(dist);
+
+        T el_radius = 0.5 * dist;
+
+        // setup the mesh 
+        AbstractMesh<T, int, ndim> mesh{};
+
+        // Create the nodes 
+        mesh.nodes.resize(3 * std::pow(2, ndim - 1));
+
+        BASIS::QTypeIndexSet<int, ndim - 1, 2> node_positions{};
+        for(int ipoin = 0; ipoin < node_positions.size(); ++ipoin){
+            auto& mindex = node_positions[ipoin];
+
+            // positions in a reference domain where centroid1 is [0, 0, ..., 0]
+            // and centroid 2 is at [0, 0, ..., dist]
+            std::array<T, ndim> position_reference1{};
+            std::array<T, ndim> position_reference2{};
+            std::array<T, ndim> position_reference3{};
+            for(int idim = 0; idim < ndim -1 ; ++idim){
+                T idim_pos = (mindex[idim] == 0) ? (-el_radius) : (el_radius);
+                T position_reference1[idim] = idim_pos;
+                T position_reference2[idim] = idim_pos;
+                T position_reference3[idim] = idim_pos;
+            }
+            position_reference1[ndim - 1] = -el_radius;
+            position_reference2[ndim - 1] = el_radius;
+            position_reference3[ndim - 1] = dist + el_radius;
+        }
+
+        // TODO: rotation matrix
+
+        // Generate the elements 
+        
+    }
 
     /**
      * @brief for every node provide a boolean flag for whether 

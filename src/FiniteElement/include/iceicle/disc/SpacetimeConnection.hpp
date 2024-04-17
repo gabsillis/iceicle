@@ -27,7 +27,7 @@ namespace MESH {
 
         // look for nodes in SPACETIME_FUTURE boundary in the past mesh
         for(IDX ibface = mesh_past.bdyFaceStart; ibface < mesh_past.bdyFaceEnd; ++ibface){
-            const Face& face = mesh_past.faces[ibface];
+            const Face& face = *(mesh_past.faces[ibface]);
             if(face.bctype == ELEMENT::BOUNDARY_CONDITIONS::SPACETIME_FUTURE){
                 for(IDX inode : face.nodes_span()){
                     past_nodes_connected[inode] = true;
@@ -37,10 +37,10 @@ namespace MESH {
 
         // look for nodes in SPACETIME_PAST boundary in the current mesh
         for(IDX ibface = mesh_current.bdyFaceStart; ibface < mesh_current.bdyFaceEnd; ++ibface){
-            const Face& face = mesh_current.faces[ibface];
+            const Face& face = *(mesh_current.faces[ibface]);
             if(face.bctype == ELEMENT::BOUNDARY_CONDITIONS::SPACETIME_PAST){
                 for(IDX inode : face.nodes_span()){
-                    past_nodes_connected[inode] = true;
+                    current_nodes_connected[inode] = true;
                 }
             }
         }
@@ -73,6 +73,8 @@ namespace MESH {
                 }
             }
         }
+
+        return curr_to_past_nodes;
     }
 }
 

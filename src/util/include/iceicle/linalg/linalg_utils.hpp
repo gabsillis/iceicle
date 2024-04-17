@@ -16,6 +16,9 @@ namespace ICEICLE::LINALG {
     template<class T>
     concept in_matrix = is_mdspan<T> && T::rank() == 2;
 
+    template<class T>
+    concept in_tensor = is_mdspan<T>;
+
     /// @brief a matrix that can be written to
     template<class T>
     concept out_matrix = is_mdspan<T> && T::rank() == 2 &&

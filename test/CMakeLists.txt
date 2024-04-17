@@ -44,6 +44,7 @@ set(FELIB_TEST_SOURCES
     TestSimplexTransform.cpp
     TestSimplexQuadrature.cpp
     TestSimplexLagrange.cpp
+    test_spacetime_utils.cpp
     )
 
 add_executable(test_felib ${FELIB_TEST_SOURCES})
