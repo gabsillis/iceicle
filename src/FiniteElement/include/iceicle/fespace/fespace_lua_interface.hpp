@@ -11,9 +11,8 @@ namespace FE {
     template<class T, class IDX, int ndim>
     FESpace<T, IDX, ndim> lua_fespace(
         MESH::AbstractMesh<T, IDX, ndim> *meshptr,
-        sol::state &lua
+        sol::table &tbl
     ) {
-        sol::table tbl = lua["fespace"];
 
         // get the basis function type
         FESPACE_ENUMS::FESPACE_BASIS_TYPE btype = FESPACE_ENUMS::LAGRANGE; // default
@@ -42,5 +41,15 @@ namespace FE {
                 return FESpace<T, IDX, ndim>{meshptr, btype, qtype, std::integral_constant<int, order_comp>{}};
             }
         );
+    }
+
+    template<class T, class IDX, int ndim>
+    FESpace<T, IDX, ndim> lua_fespace(
+        MESH::AbstractMesh<T, IDX, ndim> *meshptr,
+        sol::state &lua
+    ) {
+        sol::table tbl = lua["fespace"];
+
+        return lua_fespace(meshptr, tbl);
     }
 }

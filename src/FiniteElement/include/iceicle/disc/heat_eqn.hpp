@@ -135,7 +135,7 @@ namespace DISC {
          * @param [out] res the residuals for each basis function
          *              WARNING: must be zeroed out
          */
-        void domainIntegral(
+        void domain_integral(
             const ELEMENT::FiniteElement<T, IDX, ndim> &el,
             FE::NodalFEFunction<T, ndim> &coord,
             FE::elspan auto u,
@@ -185,7 +185,7 @@ namespace DISC {
 
 
         template<class ULayoutPolicy, class UAccessorPolicy, class ResLayoutPolicy>
-        void traceIntegral(
+        void trace_integral(
             const ELEMENT::TraceSpace<T, IDX, ndim> &trace,
             FE::NodalFEFunction<T, ndim> &coord,
             FE::dofspan<T, ULayoutPolicy, UAccessorPolicy> uL,
@@ -226,7 +226,7 @@ namespace DISC {
                 const QUADRATURE::QuadraturePoint<T, ndim - 1> &quadpt = trace.getQP(iqp);
 
                 // calculate the riemannian metric tensor root
-                // TODO: could maybe reuse the left and righte jacobians because
+                // TODO: could maybe reuse the left and right jacobians because
                 // these are needed for the gradients and hessians in the physical domn 
                 // but we also need Jfac for unit_normal
 
@@ -289,7 +289,7 @@ namespace DISC {
                 static constexpr int ieq = 0;
                 // construct the DDG derivatives
                 T grad_ddg[ndim];
-                int max_basis_order = std::min(
+                int max_basis_order = std::max(
                     elL.basis->getPolynomialOrder(),
                     elR.basis->getPolynomialOrder()
                 );

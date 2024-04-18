@@ -27,6 +27,19 @@ if(ICEICLE_USE_LUA)
     add_executable(heat_eqn_miniapp heat_eqn_miniapp.cpp)
     target_link_libraries(heat_eqn_miniapp iceicle_lib)
     target_link_libraries(heat_eqn_miniapp ${MPI_CXX_LIBRARIES})
+
+endif()
+
+# ============================
+# = Conservation Law Miniapp =
+# ============================
+if(ICEICLE_USE_LUA)
+    add_executable(conservation_law conservation_law.cpp)
+    target_link_libraries(conservation_law iceicle_lib)
+    target_link_libraries(conservation_law ${MPI_CXX_LIBRARIES})
+
+    # TODO: maybe add opengl for mesh visualization on the fly
+
 endif()
 
 add_executable(sine_diffusion_1d sine_diffusion_1d.cpp)

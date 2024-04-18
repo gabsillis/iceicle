@@ -175,7 +175,7 @@ namespace ICEICLE::SOLVERS {
             resR = 0;
 
             // get the unperturbed residual and send to full residual
-            disc.traceIntegral(trace, fespace.meshptr->nodes, uL, uR, resL, resR);
+            disc.trace_integral(trace, fespace.meshptr->nodes, uL, uR, resL, resR);
             FE::scatter_elspan(trace.elL.elidx, 1.0, resL, 1.0, res);
             FE::scatter_elspan(trace.elR.elidx, 1.0, resR, 1.0, res);
 
@@ -206,7 +206,7 @@ namespace ICEICLE::SOLVERS {
                     resRp = 0;
 
                     // get the perturbed residual
-                    disc.traceIntegral(trace, fespace.meshptr->nodes, uL, uR, resLp, resRp);
+                    disc.trace_integral(trace, fespace.meshptr->nodes, uL, uR, resLp, resRp);
 
                     // fill jacobian for this perturbation
                     for(IDX idoff = 0; idoff < trace.elL.nbasis(); ++idoff) {
@@ -253,7 +253,7 @@ namespace ICEICLE::SOLVERS {
                     resRp = 0;
 
                     // get the perturbed residual
-                    disc.traceIntegral(trace, fespace.meshptr->nodes, uL, uR, resLp, resRp);
+                    disc.trace_integral(trace, fespace.meshptr->nodes, uL, uR, resLp, resRp);
 
                     // fill jacobian for this perturbation
                     for(IDX idoff = 0; idoff < trace.elL.nbasis(); ++idoff) {
@@ -297,7 +297,7 @@ namespace ICEICLE::SOLVERS {
             FE::extract_elspan(el.elidx, u, u_el);
 
             res_el = 0;
-            disc.domainIntegral(el, fespace.meshptr->nodes, u_el, res_el);
+            disc.domain_integral(el, fespace.meshptr->nodes, u_el, res_el);
 
             // get the global index to the start of the contiguous component x dof range for L/R elem
             std::size_t glob_index_el = u.get_layout()[el.elidx, 0, 0];
@@ -321,7 +321,7 @@ namespace ICEICLE::SOLVERS {
                     resp_el = 0;
 
                     // get the perturbed residual
-                    disc.domainIntegral(el, fespace.meshptr->nodes, u_el, resp_el);
+                    disc.domain_integral(el, fespace.meshptr->nodes, u_el, resp_el);
 
                     // fill jacobian for this perturbation
                     for(IDX idoff = 0; idoff < el.nbasis(); ++idoff) {
@@ -515,7 +515,7 @@ namespace ICEICLE::SOLVERS {
 
                 // get the unperturbed residual
                 res = 0;
-                disc.domainIntegral(el, fespace.meshptr->nodes, u_el, res);
+                disc.domain_integral(el, fespace.meshptr->nodes, u_el, res);
 
                 // set up the perturbation amount scaled by unperturbed residual 
                 T eps_scaled = std::max(epsilon, res.vector_norm() * epsilon);
@@ -531,7 +531,7 @@ namespace ICEICLE::SOLVERS {
 
                         // get perturbed residual
                         resp = 0;
-                        disc.domainIntegral(el, fespace.meshptr->nodes, u_el, resp);
+                        disc.domain_integral(el, fespace.meshptr->nodes, u_el, resp);
 
                         // jacobian contribution 
                         for(IDX idoff = 0; idoff < res.ndof(); ++idoff){
@@ -583,7 +583,7 @@ namespace ICEICLE::SOLVERS {
 
                     // get the unperturbed residual
                     if(trace.face->bctype == ELEMENT::BOUNDARY_CONDITIONS::INTERIOR){
-                        disc.traceIntegral(trace, fespace.meshptr->nodes, uL, uR, resL, resR);
+                        disc.trace_integral(trace, fespace.meshptr->nodes, uL, uR, resL, resR);
                     } else {
                         disc.boundaryIntegral(trace, fespace.meshptr->nodes, uL, uR, resL);
                     }
@@ -602,7 +602,7 @@ namespace ICEICLE::SOLVERS {
                         // get the perturbed residual
                         resLp = 0; resRp = 0;
                         if(trace.face->bctype == ELEMENT::BOUNDARY_CONDITIONS::INTERIOR){
-                            disc.traceIntegral(trace, fespace.meshptr->nodes, uL, uR, resLp, resRp);
+                            disc.trace_integral(trace, fespace.meshptr->nodes, uL, uR, resLp, resRp);
                         } else {
                             disc.boundaryIntegral(trace, fespace.meshptr->nodes, uL, uR, resLp);
                         }

@@ -118,6 +118,30 @@ namespace MESH {
         }
     }
 
+    /// @brief a bounding box
+    template<class T, int ndim>
+    struct BoundingBox {
+        std::array<T, ndim> xmin;
+        std::array<T, ndim> xmax;
+    };
+
+    /// @brief compute the bounding box of the mesh
+    /// by nodes
+    template<class T, class IDX, int ndim>
+    auto compute_bounding_box(
+        AbstractMesh<T, IDX, ndim> &mesh
+    ) -> BoundingBox<T, ndim> {
+        BoundingBox<T, ndim> bbox{};
+        std::ranges::fill(bbox.xmin, 1e100);
+        std::ranges::fill(bbox.xmax, -1e100);
+        for(IDX inode = 0; inode < mesh.nodes.n_nodes(); ++inode){
+            for(int idim = 0; idim < ndim; ++idim){
+                bbox.xmin[idim] = std::min(bbox.xmin[idim], mesh.nodes[inode][idim]);
+                bbox.xmax[idim] = std::max(bbox.xmax[idim], mesh.nodes[inode][idim]);
+            }
+        }
+    }
+
     namespace PERTURBATION_FUNCTIONS {
 
         /**

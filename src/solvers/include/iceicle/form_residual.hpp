@@ -122,7 +122,7 @@ namespace ICEICLE::SOLVERS {
             resL = 0;
             resR = 0;
 
-           disc.traceIntegral(trace, fespace.meshptr->nodes, uL, uR, resL, resR); 
+           disc.trace_integral(trace, fespace.meshptr->nodes, uL, uR, resL, resR); 
 
            FE::scatter_elspan(trace.elL.elidx, 1.0, resL, 1.0, res);
            FE::scatter_elspan(trace.elR.elidx, 1.0, resR, 1.0, res);
@@ -143,7 +143,7 @@ namespace ICEICLE::SOLVERS {
             // zero out the residual 
             res_el = 0;
 
-            disc.domainIntegral(el, fespace.meshptr->nodes, u_el, res_el);
+            disc.domain_integral(el, fespace.meshptr->nodes, u_el, res_el);
 
             FE::scatter_elspan(el.elidx, 1.0, res_el, 1.0, res);
         }
