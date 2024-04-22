@@ -3,7 +3,6 @@
 #include <vector>
 #include <iostream>
 #include <fstream>
-#include <algorithm>
 #include <sstream>
 using namespace std;
 
@@ -13,7 +12,7 @@ using namespace std;
 #include <GL/glew.h>
 
 #include <iceicle/load_shaders.hpp>
-namespace ICEICLE_GL {
+namespace iceicle::gl {
 	Shader &Shader::load(){
 		glUseProgram(id);
 
@@ -68,7 +67,7 @@ namespace ICEICLE_GL {
 	}
 }
 
-GLuint LoadShaders(const char * vertex_file_path,const char * fragment_file_path){
+GLuint LoadShaders(const char* vertex_file_path,const char* fragment_file_path){
 
 	// Create the shaders
 	GLuint VertexShaderID = glCreateShader(GL_VERTEX_SHADER);

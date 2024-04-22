@@ -13,14 +13,14 @@
 #include "iceicle/tmp_utils.hpp"
 #include <type_traits>
 
-namespace ICEICLE::SOLVERS {
+namespace iceicle::solvers {
 
     /**
      * @brief requires that the discretization specifies the number of 
      * vector components the solutions have 
      * both compile time and dynamic versions
      *
-     * The compile time version is named nv_comp and can be FE::dynamic_ncomp 
+     * The compile time version is named nv_comp and can be dynamic_ncomp 
      * the dynamic version is named dnv_comp and is either equal to nv_comp 
      * if nv_comp is specified at compile time or the dynamic value
      */
@@ -56,15 +56,15 @@ namespace ICEICLE::SOLVERS {
         class resLayoutPolicy
     >
     void form_residual(
-        FE::FESpace<T, IDX, ndim> &fespace,
+        FESpace<T, IDX, ndim> &fespace,
         disc_class &disc,
-        FE::fespan<T, uLayoutPolicy, uAccessorPolicy> u,
-        FE::fespan<T, resLayoutPolicy> res
+        fespan<T, uLayoutPolicy, uAccessorPolicy> u,
+        fespan<T, resLayoutPolicy> res
     )
     requires specifies_ncomp<disc_class>
     {
-        using Element = ELEMENT::FiniteElement<T, IDX, ndim>;
-        using Trace = ELEMENT::TraceSpace<T, IDX, ndim>;
+        using Element = FiniteElement<T, IDX, ndim>;
+        using Trace = TraceSpace<T, IDX, ndim>;
 
         // zero out the residual
         res = 0;
@@ -82,41 +82,41 @@ namespace ICEICLE::SOLVERS {
         for(const Trace &trace : fespace.get_boundary_traces()){
             // set up compact data views
             auto uL_layout = u.create_element_layout(trace.elL.elidx);
-            FE::dofspan uL{uL_data, uL_layout};
+            dofspan uL{uL_data, uL_layout};
             auto uR_layout = u.create_element_layout(trace.elR.elidx);
-            FE::dofspan uR{uR_data, uR_layout};
+            dofspan uR{uR_data, uR_layout};
 
             auto resL_layout = res.create_element_layout(trace.elL.elidx);
-            FE::dofspan resL{resL_data, resL_layout};
+            dofspan resL{resL_data, resL_layout};
 
             // extract the compact values from the global u view
-            FE::extract_elspan(trace.elL.elidx, u, uL);
-            FE::extract_elspan(trace.elR.elidx, u, uR);
+            extract_elspan(trace.elL.elidx, u, uL);
+            extract_elspan(trace.elR.elidx, u, uR);
 
             // zero out the residual
             resL = 0;
 
             disc.boundaryIntegral(trace, fespace.meshptr->nodes, uL, uR, resL);
 
-            FE::scatter_elspan(trace.elL.elidx, 1.0, resL, 1.0, res);
+            scatter_elspan(trace.elL.elidx, 1.0, resL, 1.0, res);
         }
 
         // interior faces 
         for(const Trace &trace : fespace.get_interior_traces()){
             // set up compact data views
             auto uL_layout = u.create_element_layout(trace.elL.elidx);
-            FE::dofspan uL{uL_data, uL_layout};
+            dofspan uL{uL_data, uL_layout};
             auto uR_layout = u.create_element_layout(trace.elR.elidx);
-            FE::dofspan uR{uR_data, uR_layout};
+            dofspan uR{uR_data, uR_layout};
 
             auto resL_layout = res.create_element_layout(trace.elL.elidx);
-            FE::dofspan resL{resL_data, resL_layout};
+            dofspan resL{resL_data, resL_layout};
             auto resR_layout = res.create_element_layout(trace.elR.elidx);
-            FE::dofspan resR{resR_data, resR_layout};
+            dofspan resR{resR_data, resR_layout};
 
             // extract the compact values from the global u view
-            FE::extract_elspan(trace.elL.elidx, u, uL);
-            FE::extract_elspan(trace.elR.elidx, u, uR);
+            extract_elspan(trace.elL.elidx, u, uL);
+            extract_elspan(trace.elR.elidx, u, uR);
 
             // zero out the residual
             resL = 0;
@@ -124,28 +124,28 @@ namespace ICEICLE::SOLVERS {
 
            disc.trace_integral(trace, fespace.meshptr->nodes, uL, uR, resL, resR); 
 
-           FE::scatter_elspan(trace.elL.elidx, 1.0, resL, 1.0, res);
-           FE::scatter_elspan(trace.elR.elidx, 1.0, resR, 1.0, res);
+           scatter_elspan(trace.elL.elidx, 1.0, resL, 1.0, res);
+           scatter_elspan(trace.elR.elidx, 1.0, resR, 1.0, res);
         }
 
         // domain integral
         for(const Element &el : fespace.elements){
             // set up compact data views (reuse the storage defined for traces)
             auto uel_layout = u.create_element_layout(el.elidx);
-            FE::dofspan u_el{uL_data, uel_layout};
+            dofspan u_el{uL_data, uel_layout};
 
             auto ures_layout = res.create_element_layout(el.elidx);
-            FE::dofspan res_el{resL_data, ures_layout};
+            dofspan res_el{resL_data, ures_layout};
 
             // extract the compact values from the global u view 
-            FE::extract_elspan(el.elidx, u, u_el);
+            extract_elspan(el.elidx, u, u_el);
 
             // zero out the residual 
             res_el = 0;
 
             disc.domain_integral(el, fespace.meshptr->nodes, u_el, res_el);
 
-            FE::scatter_elspan(el.elidx, 1.0, res_el, 1.0, res);
+            scatter_elspan(el.elidx, 1.0, res_el, 1.0, res);
         }
 
         delete[] uL_data;
@@ -163,15 +163,14 @@ namespace ICEICLE::SOLVERS {
         class uAccessorPolicy
     >
     auto form_mdg_residual(
-        FE::FESpace<T, IDX, ndim>& fespace,
+        FESpace<T, IDX, ndim>& fespace,
         disc_class& disc,
-        FE::fespan<T, uLayoutPolicy, uAccessorPolicy> u,
-        FE::node_selection_span auto mdg_residual
+        fespan<T, uLayoutPolicy, uAccessorPolicy> u,
+        node_selection_span auto mdg_residual
     ) -> void {
-        using Element = ELEMENT::FiniteElement<T, IDX, ndim>;
-        using Trace = ELEMENT::TraceSpace<T, IDX, ndim>;
+        using Element = FiniteElement<T, IDX, ndim>;
+        using Trace = TraceSpace<T, IDX, ndim>;
         using index_type = IDX;
-        using namespace FE;
 
         // zero out the residual 
         mdg_residual = 0;
@@ -191,17 +190,17 @@ namespace ICEICLE::SOLVERS {
             
             // set up compact data views
             auto uL_layout = u.create_element_layout(trace.elL.elidx);
-            FE::dofspan uL{uL_storage, uL_layout};
+            dofspan uL{uL_storage, uL_layout};
             auto uR_layout = u.create_element_layout(trace.elR.elidx);
-            FE::dofspan uR{uR_storage, uR_layout};
+            dofspan uR{uR_storage, uR_layout};
 
             trace_layout_right<IDX, decltype(mdg_residual)::static_extent()> res_layout{trace};
             res_storage.resize(res_layout.size());
             dofspan res{res_storage, res_layout};
 
             // extract the compact values from the global u view
-            FE::extract_elspan(trace.elL.elidx, u, uL);
-            FE::extract_elspan(trace.elR.elidx, u, uR);
+            extract_elspan(trace.elL.elidx, u, uL);
+            extract_elspan(trace.elR.elidx, u, uR);
 
             // zero out then get interface conservation residual 
             res = 0;
@@ -217,9 +216,9 @@ namespace ICEICLE::SOLVERS {
      */
     template<class T, class IDX, int ndim, class disc_class, int neq_mdg>
     auto calculate_residual_size_square_mdg(
-        FE::FESpace<T, IDX, ndim>& fespace,
+        FESpace<T, IDX, ndim>& fespace,
         disc_class& disc,
-        FE::nodeset_dof_map<IDX>& nodeset,
+        nodeset_dof_map<IDX>& nodeset,
         std::integral_constant<int, neq_mdg>& neq_mdg_arg
     ) -> IDX {
         return fespace.dg_map.calculate_size_requirement(disc_class::nv_comp())
@@ -228,17 +227,16 @@ namespace ICEICLE::SOLVERS {
 
     template<class T, class IDX, int ndim, class disc_class, int neq_mdg>
     auto form_residual(
-        FE::FESpace<T, IDX, ndim>& fespace,
+        FESpace<T, IDX, ndim>& fespace,
         disc_class& disc,
-        FE::nodeset_dof_map<IDX>& nodeset,
+        nodeset_dof_map<IDX>& nodeset,
         std::span<T> u,
         std::span<T> res,
         std::integral_constant<int, neq_mdg> neq_mdg_arg
     ) -> void {
-        using namespace FE;
 
         // create all the layouts
-        fe_layout_right dg_layout{fespace.dg_map, TMP::to_size<disc_class::nv_comp>()};
+        fe_layout_right dg_layout{fespace.dg_map, tmp::to_size<disc_class::nv_comp>()};
         node_selection_layout<IDX, ndim> node_layout{nodeset};
         node_selection_layout<IDX, neq_mdg> mdg_layout{nodeset};
 
@@ -249,7 +247,7 @@ namespace ICEICLE::SOLVERS {
         dofspan res_mdg{std::span{res.begin() + dg_layout.size(), res.end()}, mdg_layout};
 
         // set the mesh from u_nodes
-        FE::scatter_node_selection_span(1.0, u_nodes, 0.0, fespace.meshptr->nodes);
+        scatter_node_selection_span(1.0, u_nodes, 0.0, fespace.meshptr->nodes);
 
         form_residual(fespace, disc, u_dg, res_dg);
         form_mdg_residual(fespace, disc, u_dg, res_mdg);

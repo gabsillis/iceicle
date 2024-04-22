@@ -1,4 +1,4 @@
-#include <iceicle/solvers/element_linear_solve.hpp>
+#include <iceicle/element_linear_solve.hpp>
 #include <iceicle/disc/projection.hpp> 
 #include <iceicle/element/finite_element.hpp> 
 #include <iceicle/transformations/SimplexElementTransformation.hpp>
@@ -10,6 +10,8 @@
 #include <iomanip>
 #include <cmath>
 #include <fenv.h>
+
+using namespace iceicle;
 
 void testfunc(const double x[4], double val[1]){
     //val[0] = std::sin(x[0] + x[1] + x[2] + x[3]);
@@ -31,9 +33,7 @@ void testfunc(const double x[4], double val[1]){
 TEST(test_simplex_4d_linear, project_nl_func){
 
     feenableexcept(FE_ALL_EXCEPT & ~FE_INEXACT);
-    using namespace ELEMENT;
-    using namespace ELEMENT::TRANSFORMATIONS;
-    using namespace BASIS;
+    using namespace transformations;
 
 //    SimplexGeoElement<double, int, 4, 2> simplex1{};
 //
@@ -55,7 +55,7 @@ TEST(test_simplex_4d_linear, project_nl_func){
     SimplexGeoElement<double, int, 4, 1> simplex1{};
 
     using Point = MATH::GEOMETRY::Point<double, 4>;
-    FE::NodalFEFunction<double, 4> node_coords{};
+    NodeArray<double, 4> node_coords{};
     node_coords.resize(simplex1.transformation.nnodes());
     
     for(int i = 0; i < simplex1.transformation.nnodes(); ++i){
@@ -64,7 +64,7 @@ TEST(test_simplex_4d_linear, project_nl_func){
         simplex1.setNode(i, i);
     }
 
-    DISC::Projection<double, int, 4, 1> proj(testfunc);
+    Projection<double, int, 4, 1> proj(testfunc);
 
     Point testpt_ref = {0.2, 0.2, 0.2, 0.2}; // centroid (5 barycentric coords)
     Point testpt_act{};
@@ -74,22 +74,22 @@ TEST(test_simplex_4d_linear, project_nl_func){
     auto testproject = [&]<int Pn>() {
         static constexpr int neq = 1;
         SimplexLagrangeBasis<double, int, 4, Pn> basis{};
-        QUADRATURE::GrundmannMollerSimplexQuadrature<double, int, 4, Pn+1> quadrule{};
+        GrundmannMollerSimplexQuadrature<double, int, 4, Pn+1> quadrule{};
         FEEvaluation<double, int, 4> evals(basis, quadrule);
         FiniteElement<double, int, 4> fe(&simplex1, basis, quadrule, evals, 0);
 
         MATH::Vector<double, int> udata(basis.nbasis());
         MATH::Vector<double, int> resdata(basis.nbasis());
         
-        FE::ElementData<double, neq> u(basis.nbasis(), udata.data());
-        FE::ElementData<double, neq> res(basis.nbasis(), resdata.data());
+        ElementData<double, neq> u(basis.nbasis(), udata.data());
+        ElementData<double, neq> res(basis.nbasis(), resdata.data());
         res = 0; // make sure to zero out residual before projection
 
         // get the domain integral of the projection
         proj.domainIntegral(fe, node_coords, res);
        
         // solve for u
-        SOLVERS::ElementLinearSolver<double, int, 4, neq> solver(fe, node_coords);
+        solvers::ElementLinearSolver<double, int, 4, neq> solver(fe, node_coords);
         solver.solve(u, res);
 
         // get error at centroid
@@ -102,7 +102,7 @@ TEST(test_simplex_4d_linear, project_nl_func){
 
         // get L2 error
         double sqerrL2 = 0;
-        QUADRATURE::GrundmannMollerSimplexQuadrature<double, int, 4, Pn+2> quadrule2{};
+        GrundmannMollerSimplexQuadrature<double, int, 4, Pn+2> quadrule2{};
         for(int igauss = 0; igauss < quadrule2.npoints(); ++igauss){
             auto qp = quadrule2.getPoint(igauss);
             testpt_ref = qp.abscisse;
@@ -148,14 +148,11 @@ TEST(test_simplex_4d_linear, project_nl_func){
 TEST(test_simplex_4d_quadratic, project_nl_func){
 
     feenableexcept(FE_ALL_EXCEPT & ~FE_INEXACT);
-    using namespace ELEMENT;
-    using namespace ELEMENT::TRANSFORMATIONS;
-    using namespace BASIS;
 
     SimplexGeoElement<double, int, 4, 2> simplex1{};
 
     using Point = MATH::GEOMETRY::Point<double, 4>;
-    FE::NodalFEFunction<double, 4> node_coords{simplex1.transformation.nnodes()};
+    NodeArray<double, 4> node_coords{simplex1.transformation.nnodes()};
     
     for(int i = 0; i < simplex1.transformation.nnodes(); ++i){
         node_coords[i] = simplex1.transformation.reference_nodes()[i];
@@ -168,7 +165,7 @@ TEST(test_simplex_4d_quadratic, project_nl_func){
     node_coords[9]  = Point{0, bent_value, 0, bent_value};
     node_coords[10] = Point{0, 0, bent_value, bent_value};
 
-    DISC::Projection<double, int, 4, 1> proj(testfunc);
+    Projection<double, int, 4, 1> proj(testfunc);
 
     Point testpt_ref = {0.2, 0.2, 0.2, 0.2}; // centroid (5 barycentric coords)
     Point testpt_act{};
@@ -178,22 +175,22 @@ TEST(test_simplex_4d_quadratic, project_nl_func){
     auto testproject = [&]<int Pn>() {
         static constexpr int neq = 1;
         SimplexLagrangeBasis<double, int, 4, Pn> basis{};
-        QUADRATURE::GrundmannMollerSimplexQuadrature<double, int, 4, 2*Pn> quadrule{};
+        GrundmannMollerSimplexQuadrature<double, int, 4, 2*Pn> quadrule{};
         FEEvaluation<double, int, 4> evals(basis, quadrule);
         FiniteElement<double, int, 4> fe(&simplex1, basis, quadrule, evals, 0);
 
         MATH::Vector<double, int> udata(basis.nbasis());
         MATH::Vector<double, int> resdata(basis.nbasis());
         
-        FE::ElementData<double, neq> u(basis.nbasis(), udata.data());
-        FE::ElementData<double, neq> res(basis.nbasis(), resdata.data());
+        ElementData<double, neq> u(basis.nbasis(), udata.data());
+        ElementData<double, neq> res(basis.nbasis(), resdata.data());
         res = 0; // make sure to zero out residual before projection
 
         // get the domain integral of the projection
         proj.domainIntegral(fe, node_coords, res);
        
         // solve for u
-        SOLVERS::ElementLinearSolver<double, int, 4, neq> solver(fe, node_coords);
+        solvers::ElementLinearSolver<double, int, 4, neq> solver(fe, node_coords);
         solver.solve(u, res);
 
         // get error at centroid
@@ -206,7 +203,7 @@ TEST(test_simplex_4d_quadratic, project_nl_func){
 
         // get L2 error
         double sqerrL2 = 0;
-        QUADRATURE::GrundmannMollerSimplexQuadrature<double, int, 4, Pn+2> quadrule2{};
+        GrundmannMollerSimplexQuadrature<double, int, 4, Pn+2> quadrule2{};
         for(int igauss = 0; igauss < quadrule2.npoints(); ++igauss){
             auto qp = quadrule2.getPoint(igauss);
             testpt_ref = qp.abscisse;

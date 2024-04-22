@@ -11,14 +11,13 @@
 #include "Numtool/matrixT.hpp"
 #include "iceicle/anomaly_log.hpp"
 #include "iceicle/fe_function/fespan.hpp"
-#include "iceicle/fe_function/nodal_fe_function.hpp"
 #include "iceicle/geometry/face.hpp"
 #include "iceicle/quadrature/QuadratureRule.hpp"
 #include <iceicle/element/finite_element.hpp>
 #include <iceicle/element/TraceSpace.hpp>
 #include <iostream>
 #include <vector>
-namespace DISC {
+namespace iceicle {
 
     /**
      * @brief a discretization of the heat equation on one variable
@@ -43,8 +42,7 @@ namespace DISC {
     private:
         template<class T2, std::size_t... sizes>
         using Tensor = NUMTOOL::TENSOR::FIXED_SIZE::Tensor<T2, sizes...>;
-        using FiniteElement = ELEMENT::FiniteElement<T, IDX, ndim>;
-        using Trace = ELEMENT::TraceSpace<T, IDX, ndim>;
+        using Trace = TraceSpace<T, IDX, ndim>;
 
     public:
 
@@ -136,10 +134,10 @@ namespace DISC {
          *              WARNING: must be zeroed out
          */
         void domain_integral(
-            const ELEMENT::FiniteElement<T, IDX, ndim> &el,
-            FE::NodalFEFunction<T, ndim> &coord,
-            FE::elspan auto u,
-            FE::elspan auto res
+            const FiniteElement<T, IDX, ndim> &el,
+            NodeArray<T, ndim> &coord,
+            elspan auto u,
+            elspan auto res
         ) const {
 
             std::vector<T> gradx_data(el.nbasis() * ndim);
@@ -147,7 +145,7 @@ namespace DISC {
 
             // loop over the quadrature points
             for(int iqp = 0; iqp < el.nQP(); ++iqp){
-                const QUADRATURE::QuadraturePoint<T, ndim> &quadpt = el.getQP(iqp);
+                const QuadraturePoint<T, ndim> &quadpt = el.getQP(iqp);
 
                 // calculate the jacobian determinant 
                 auto J = el.geo_el->Jacobian(coord, quadpt.abscisse);
@@ -186,20 +184,20 @@ namespace DISC {
 
         template<class ULayoutPolicy, class UAccessorPolicy, class ResLayoutPolicy>
         void trace_integral(
-            const ELEMENT::TraceSpace<T, IDX, ndim> &trace,
-            FE::NodalFEFunction<T, ndim> &coord,
-            FE::dofspan<T, ULayoutPolicy, UAccessorPolicy> uL,
-            FE::dofspan<T, ULayoutPolicy, UAccessorPolicy> uR,
-            FE::dofspan<T, ResLayoutPolicy> resL,
-            FE::dofspan<T, ResLayoutPolicy> resR
+            const TraceSpace<T, IDX, ndim> &trace,
+            NodeArray<T, ndim> &coord,
+            dofspan<T, ULayoutPolicy, UAccessorPolicy> uL,
+            dofspan<T, ULayoutPolicy, UAccessorPolicy> uR,
+            dofspan<T, ResLayoutPolicy> resL,
+            dofspan<T, ResLayoutPolicy> resR
         ) const requires ( 
-            FE::elspan<decltype(uL)> && 
-            FE::elspan<decltype(uR)> && 
-            FE::elspan<decltype(resL)> && 
-            FE::elspan<decltype(resL)>
+            elspan<decltype(uL)> && 
+            elspan<decltype(uR)> && 
+            elspan<decltype(resL)> && 
+            elspan<decltype(resL)>
         ) {
             using namespace NUMTOOL::TENSOR::FIXED_SIZE;
-            using FiniteElement = ELEMENT::FiniteElement<T, IDX, ndim>;
+            using FiniteElement = FiniteElement<T, IDX, ndim>;
 
             // calculate the centroids of the left and right elements
             // in the physical domain
@@ -223,7 +221,7 @@ namespace DISC {
 
             // loop over the quadrature points 
             for(int iqp = 0; iqp < trace.nQP(); ++iqp){
-                const QUADRATURE::QuadraturePoint<T, ndim - 1> &quadpt = trace.getQP(iqp);
+                const QuadraturePoint<T, ndim - 1> &quadpt = trace.getQP(iqp);
 
                 // calculate the riemannian metric tensor root
                 // TODO: could maybe reuse the left and right jacobians because
@@ -276,7 +274,7 @@ namespace DISC {
 
                 // calculate the DDG distance
                 MATH::GEOMETRY::Point<T, ndim> phys_pt;
-                trace.face->transform(quadpt.abscisse, coord, phys_pt.data());
+                trace.face->transform(quadpt.abscisse, coord, phys_pt);
                 T h_ddg = 0;
                 for(int idim = 0; idim < ndim; ++idim){
                     h_ddg += unit_normal[idim] * (
@@ -346,10 +344,10 @@ namespace DISC {
                         resR[itest, 0] -= interface_correction;
                     }
                 } else if(sigma_ic != 0) {
-                    ICEICLE::UTIL::AnomalyLog::log_anomaly(
-                        ICEICLE::UTIL::Anomaly{
+                    util::AnomalyLog::log_anomaly(
+                        util::Anomaly{
                             "DDGIC only works for same basis order throughout",
-                            ICEICLE::UTIL::general_anomaly_tag{}}
+                            util::general_anomaly_tag{}}
                     );
                 }
             }
@@ -374,30 +372,30 @@ namespace DISC {
          */
         template<class ULayoutPolicy, class UAccessorPolicy, class ResLayoutPolicy>
         void boundaryIntegral(
-            const ELEMENT::TraceSpace<T, IDX, ndim> &trace,
-            FE::NodalFEFunction<T, ndim> &coord,
-            FE::dofspan<T, ULayoutPolicy, UAccessorPolicy> uL,
-            FE::dofspan<T, ULayoutPolicy, UAccessorPolicy> uR,
-            FE::dofspan<T, ResLayoutPolicy> resL
+            const TraceSpace<T, IDX, ndim> &trace,
+            NodeArray<T, ndim> &coord,
+            dofspan<T, ULayoutPolicy, UAccessorPolicy> uL,
+            dofspan<T, ULayoutPolicy, UAccessorPolicy> uR,
+            dofspan<T, ResLayoutPolicy> resL
         ) const requires(
-            FE::elspan<decltype(uL)> &&
-            FE::elspan<decltype(uR)> &&
-            FE::elspan<decltype(resL)> 
+            elspan<decltype(uL)> &&
+            elspan<decltype(uR)> &&
+            elspan<decltype(resL)> 
         ) {
             using namespace NUMTOOL::TENSOR::FIXED_SIZE;
-            using FiniteElement = ELEMENT::FiniteElement<T, IDX, ndim>;
+            using FiniteElement = FiniteElement<T, IDX, ndim>;
             const FiniteElement &elL = trace.elL;
 
             auto centroidL = elL.geo_el->centroid(coord);
 
             switch(trace.face->bctype){
-                case ELEMENT::BOUNDARY_CONDITIONS::DIRICHLET: 
+                case BOUNDARY_CONDITIONS::DIRICHLET: 
                 {
                     // see Huang, Chen, Li, Yan 2016
 
                     // loop over quadrature points
                     for(int iqp = 0; iqp < trace.nQP(); ++iqp){
-                        const QUADRATURE::QuadraturePoint<T, ndim - 1> &quadpt = trace.getQP(iqp);
+                        const QuadraturePoint<T, ndim - 1> &quadpt = trace.getQP(iqp);
 
                         // calculate the jacobian and riemannian metric root det
                         auto Jfac = trace.face->Jacobian(coord, quadpt.abscisse);
@@ -427,7 +425,7 @@ namespace DISC {
                         if(trace.face->bcflag < 0){
                             // calback using physical domain location
                             MATH::GEOMETRY::Point<T, ndim> ref_pt, phys_pt;
-                            trace.face->transform_xiL(quadpt.abscisse, ref_pt.data());
+                            trace.face->transform_xiL(quadpt.abscisse, ref_pt);
                             elL.transform(coord, ref_pt, phys_pt);
                             
                             dirichlet_callbacks[-trace.face->bcflag](phys_pt.data(), &dirichlet_val);
@@ -451,7 +449,7 @@ namespace DISC {
 
                         // calculate the DDG distance
                         MATH::GEOMETRY::Point<T, ndim> phys_pt;
-                        trace.face->transform(quadpt.abscisse, coord, phys_pt.data());
+                        trace.face->transform(quadpt.abscisse, coord, phys_pt);
                         T h_ddg = 0; // uses distance to quadpt on boundary face
                         for(int idim = 0; idim < ndim; ++idim){
                             h_ddg += std::abs(unit_normal[idim] * 
@@ -489,12 +487,12 @@ namespace DISC {
                 }
                 break;
 
-                case ELEMENT::BOUNDARY_CONDITIONS::NEUMANN:
+                case BOUNDARY_CONDITIONS::NEUMANN:
                 {
                     // loop over quadrature points 
                     for(int iqp = 0; iqp < trace.nQP(); ++iqp){
 
-                        const QUADRATURE::QuadraturePoint<T, ndim - 1> &quadpt = trace.getQP(iqp);
+                        const QuadraturePoint<T, ndim - 1> &quadpt = trace.getQP(iqp);
 
                         // calculate the jacobian and riemannian metric root det
                         auto Jfac = trace.face->Jacobian(coord, quadpt.abscisse);
@@ -525,18 +523,18 @@ namespace DISC {
 
         void interface_conservation(
             const Trace &trace,
-            FE::NodalFEFunction<T, ndim> &coord,
-            FE::elspan auto unkelL,
-            FE::elspan auto unkelR,
-            FE::facspan auto res
+            NodeArray<T, ndim> &coord,
+            elspan auto unkelL,
+            elspan auto unkelR,
+            facspan auto res
         ) const {
             using namespace MATH::MATRIX_T;
             using namespace NUMTOOL::TENSOR::FIXED_SIZE;
 
             // calculate the centroids of the left and right elements
             // in the physical domain
-            const FiniteElement &elL = trace.elL;
-            const FiniteElement &elR = trace.elR;
+            const FiniteElement<T, IDX, ndim> &elL = trace.elL;
+            const FiniteElement<T, IDX, ndim> &elR = trace.elR;
 
             // Storage for Basis function and solution values
             std::vector<T> bi_dataL(elL.nbasis()); 
@@ -551,7 +549,7 @@ namespace DISC {
             std::vector<T> hessu_dataL(ndim * ndim);
             std::vector<T> hessu_dataR(ndim * ndim);
             for(int iqp = 0; iqp < trace.nQP(); ++iqp){
-                const QUADRATURE::QuadraturePoint<T, ndim - 1> &quadpt = trace.getQP(iqp);
+                const QuadraturePoint<T, ndim - 1> &quadpt = trace.getQP(iqp);
 
                 // calcualate Jacobian and metric
                 auto Jfac = trace.face->Jacobian(coord, quadpt.abscisse);

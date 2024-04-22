@@ -9,7 +9,7 @@
 #include <type_traits>
 #include <vector>
 #include <stdexcept>
-namespace FE {
+namespace iceicle {
 
     /**
      * @brief this maps a set of selected faces and their corresponding nodes to 
@@ -43,7 +43,7 @@ namespace FE {
         // ================
 
         template<std::ranges::forward_range R1, typename T, int ndim>
-        nodeset_dof_map(R1&& trace_indices, FE::FESpace<T, IDX, ndim>& fespace)
+        nodeset_dof_map(R1&& trace_indices, FESpace<T, IDX, ndim>& fespace)
 #ifdef __cpp_lib_containers_ranges
         : selected_traces(std::from_range, trace_indices) 
 #else 
@@ -51,7 +51,7 @@ namespace FE {
 #endif
         {
             // helper array to keep track of which global node indices to select
-            std::vector<bool> to_select(fespace.meshptr->nodes.n_nodes(), false);
+            std::vector<bool> to_select(fespace.meshptr->n_nodes(), false);
             using trace_type = std::remove_reference_t<decltype(fespace)>::TraceType;
 
             // loop over selected faces and select nodes
@@ -71,12 +71,12 @@ namespace FE {
             }
 
             // construct the selected nodes list 
-            for(int inode = 0; inode < fespace.meshptr->nodes.n_nodes(); ++inode){
+            for(int inode = 0; inode < fespace.meshptr->n_nodes(); ++inode){
                 if(to_select[inode]) selected_nodes.push_back(inode);
             }
 
             // default value for nodes that aren't selected is to map to selected_nodes.size()
-            inv_selected_nodes = std::vector<index_type>(fespace.meshptr->nodes.n_nodes(), selected_nodes.size());
+            inv_selected_nodes = std::vector<index_type>(fespace.meshptr->n_nodes(), selected_nodes.size());
             for(int idof = 0; idof < selected_nodes.size(); ++idof){
                 inv_selected_nodes[selected_nodes[idof]] = idof;
             }
@@ -91,7 +91,7 @@ namespace FE {
     };
 
     template<std::ranges::forward_range R, typename T, int ndim>
-    nodeset_dof_map(R&&, FE::FESpace<T, std::ranges::range_value_t<R>, ndim>&) -> nodeset_dof_map<std::ranges::range_value_t<R>>;
+    nodeset_dof_map(R&&, FESpace<T, std::ranges::range_value_t<R>, ndim>&) -> nodeset_dof_map<std::ranges::range_value_t<R>>;
 
 
     template<class IDX, std::size_t vextent>

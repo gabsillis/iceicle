@@ -14,7 +14,7 @@
 
 #include <iostream>
 #include <iomanip>
-namespace ICEICLE::SOLVERS {
+namespace iceicle::solvers{
 
 template< class T, class IDX, class TimestepClass, class StopCondition>
 class ExplicitEuler {
@@ -66,7 +66,7 @@ public:
      */
     template<int ndim, class disc_class>
     ExplicitEuler(
-        FE::FESpace<T, IDX, ndim> &fespace,
+        FESpace<T, IDX, ndim> &fespace,
         disc_class &disc,
         const TimestepClass &timestep,
         const StopCondition &stop_condition
@@ -85,7 +85,7 @@ public:
      * @param [in/out] u the solution as an fespan view
      */
     template<int ndim, class disc_class, class LayoutPolicy, class uAccessorPolicy>
-    void step(FE::FESpace<T, IDX, ndim> &fespace, disc_class &disc, FE::fespan<T, LayoutPolicy, uAccessorPolicy> u)
+    void step(FESpace<T, IDX, ndim> &fespace, disc_class &disc, fespan<T, LayoutPolicy, uAccessorPolicy> u)
     requires TimestepT<TimestepClass, T, IDX, ndim, disc_class, LayoutPolicy, uAccessorPolicy>
     {
        
@@ -96,7 +96,7 @@ public:
         dt = stop_condition.limit_dt(dt, time);
 
         // create view of the residual using the same Layout as u 
-        FE::fespan res{res_data.data(), u.get_layout()};
+        fespan res{res_data.data(), u.get_layout()};
 
         // get the rhs
         form_residual(fespace, disc, u, res);
@@ -108,10 +108,10 @@ public:
 
         // TODO: prestore mass matrix with the reference element 
         // TODO: need to build a global mass matrix if doing CG (but not for DG)
-        for(ELEMENT::FiniteElement<T, IDX, ndim> &el : fespace.elements){
+        for(FiniteElement<T, IDX, ndim> &el : fespace.elements){
             using namespace MATH::MATRIX;
             using namespace MATH::MATRIX::SOLVERS;
-            DenseMatrix<T> mass = ELEMENT::calculate_mass_matrix(el, fespace.meshptr->nodes);
+            DenseMatrix<T> mass = calculate_mass_matrix(el, fespace.meshptr->nodes);
             PermutationMatrix<unsigned int> pi = decompose_lu(mass);
 
             const IDX ndof = el.nbasis();
@@ -149,7 +149,7 @@ public:
      * @param [in/out] u the solution as an fespan view
      */
     template<int ndim, class disc_class, class LayoutPolicy, class uAccessorPolicy>
-    void solve(FE::FESpace<T, IDX, ndim> &fespace, disc_class &disc, FE::fespan<T, LayoutPolicy, uAccessorPolicy> u) {
+    void solve(FESpace<T, IDX, ndim> &fespace, disc_class &disc, fespan<T, LayoutPolicy, uAccessorPolicy> u) {
 
         // visualization callback on initial state (0 % anything == 0) 
         vis_callback(*this);
@@ -166,7 +166,7 @@ public:
 
 // template argument deduction
 template<class T, class IDX, int ndim, class disc_class, class TimestepClass, class StopCondition>
-ExplicitEuler(FE::FESpace<T, IDX, ndim> &, disc_class &,
+ExplicitEuler(FESpace<T, IDX, ndim> &, disc_class &,
     const TimestepClass &, const StopCondition &) -> ExplicitEuler<T, IDX, TimestepClass, StopCondition>;
 
 }

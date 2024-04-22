@@ -8,18 +8,16 @@
 #include "Numtool/fixed_size_tensor.hpp"
 #include "iceicle/geometry/hypercube_face.hpp"
 #include "iceicle/tmp_utils.hpp"
-#include <concepts>
 #include <iceicle/geometry/face.hpp>
 #include <iceicle/geometry/geo_element.hpp>
 #include <iceicle/geometry/hypercube_element.hpp>
 #include <ostream>
-#include <map>
 #include <ranges>
+#include <type_traits>
 #ifndef NDEBUG
 #include <iomanip>
 #endif
-#include <iceicle/fe_function/nodal_fe_function.hpp>
-namespace MESH {
+namespace iceicle {
 
     /**
      * @brief Abstract class that defines a mesh
@@ -34,8 +32,8 @@ namespace MESH {
         // ================
         // = Type Aliases =
         // ================
-        using Element = ELEMENT::GeometricElement<T, IDX, ndim>;
-        using Face = ELEMENT::Face<T, IDX, ndim>;
+        using Element = GeometricElement<T, IDX, ndim>;
+        using face_t = Face<T, IDX, ndim>;
         using Point = MATH::GEOMETRY::Point<T, ndim>;
 
         public:
@@ -44,7 +42,7 @@ namespace MESH {
         // ===========================
 
         /// The node coordinates
-        FE::NodalFEFunction<T, ndim> nodes;
+        NodeArray<T, ndim> nodes;
 
         /// A list of pointers to geometric elements
         /// These are owned by the mesh and destroyed when the mesh is destroyed
@@ -52,7 +50,7 @@ namespace MESH {
 
         /// All faces (internal and boundary) 
         /// interior faces must be a contiguous set
-        std::vector<Face *> faces;
+        std::vector<face_t *> faces;
 
         /// index of the start of interior faces (interior faces must be consecutive)
         IDX interiorFaceStart;
@@ -80,10 +78,10 @@ namespace MESH {
 
         private:
 
-        inline static constexpr NUMTOOL::TENSOR::FIXED_SIZE::Tensor<ELEMENT::BOUNDARY_CONDITIONS, 2*ndim>
+        inline static constexpr NUMTOOL::TENSOR::FIXED_SIZE::Tensor<BOUNDARY_CONDITIONS, 2*ndim>
         all_periodic = [](){
-            NUMTOOL::TENSOR::FIXED_SIZE::Tensor<ELEMENT::BOUNDARY_CONDITIONS, 2*ndim> ret;
-            for(int i = 0; i < 2*ndim; ++i) ret[i] = ELEMENT::BOUNDARY_CONDITIONS::PERIODIC;
+            NUMTOOL::TENSOR::FIXED_SIZE::Tensor<BOUNDARY_CONDITIONS, 2*ndim> ret;
+            for(int i = 0; i < 2*ndim; ++i) ret[i] = BOUNDARY_CONDITIONS::PERIODIC;
             return ret;
         }();
 
@@ -124,7 +122,7 @@ namespace MESH {
             std::ranges::random_access_range R_bcflags
         >
         AbstractMesh(
-            ICEICLE::TMP::from_range_t,
+            iceicle::tmp::from_range_t,
             R_xmin&& xmin, 
             R_xmax&& xmax,
             R_nelem&& directional_nelem,
@@ -135,7 +133,7 @@ namespace MESH {
             std::convertible_to<std::ranges::range_value_t<R_xmin>, T> &&
             std::convertible_to<std::ranges::range_value_t<R_xmax>, T> &&
             std::convertible_to<std::ranges::range_value_t<R_nelem>, IDX> &&
-            std::same_as<std::ranges::range_value_t<R_bctype>, ELEMENT::BOUNDARY_CONDITIONS> &&
+            std::same_as<std::ranges::range_value_t<R_bctype>, BOUNDARY_CONDITIONS> &&
             std::convertible_to<std::ranges::range_value_t<R_bcflags>, int>
 
         ) : nodes{}, elements{}, faces{} {
@@ -198,8 +196,7 @@ namespace MESH {
 
            // ENTERING ORDER TEMPLATED SECTION
            // here we find the compile time function to call based on the order input 
-            NUMTOOL::TMP::constexpr_for_range<1, ELEMENT::MAX_DYNAMIC_ORDER + 1>([&]<int Pn>{
-                using namespace ELEMENT;
+            NUMTOOL::TMP::constexpr_for_range<1, MAX_DYNAMIC_ORDER + 1>([&]<int Pn>{
                 using FaceType = HypercubeFace<T, IDX, ndim, Pn>;
                 using ElementType = HypercubeElement<T, IDX, ndim, Pn>;
                 if(order == Pn){
@@ -480,7 +477,7 @@ namespace MESH {
             std::ranges::random_access_range R_nelem
         >
         AbstractMesh(
-            ICEICLE::TMP::from_range_t range_arg,
+            tmp::from_range_t range_arg,
             R_xmin&& xmin, 
             R_xmax&& xmax,
             R_nelem&& directional_nelem,
@@ -494,15 +491,19 @@ namespace MESH {
             NUMTOOL::TENSOR::FIXED_SIZE::Tensor<T, ndim> xmax,
             NUMTOOL::TENSOR::FIXED_SIZE::Tensor<IDX, ndim> directional_nelem,
             int order = 1,
-            NUMTOOL::TENSOR::FIXED_SIZE::Tensor<ELEMENT::BOUNDARY_CONDITIONS, 2*ndim> bctypes = all_periodic,
+            NUMTOOL::TENSOR::FIXED_SIZE::Tensor<BOUNDARY_CONDITIONS, 2*ndim> bctypes = all_periodic,
             NUMTOOL::TENSOR::FIXED_SIZE::Tensor<int, 2*ndim> bcflags = all_zero
-        ): AbstractMesh(ICEICLE::TMP::from_range_t{}, xmin, xmax, directional_nelem, order, bctypes, bcflags) {}
+        ): AbstractMesh(tmp::from_range_t{}, xmin, xmax, directional_nelem, order, bctypes, bcflags) {}
 
 //        TODO: Do this in a separate file so we can build without mfem 
 //        AbstractMesh(mfem::FiniteElementSpace &mfem_mesh);
 
         /** @brief construct a mesh from file (currently supports gmsh) */
         AbstractMesh(std::string_view filepath);
+
+        /// @brief get the number of nodes 
+        inline constexpr
+        auto n_nodes() const -> std::make_unsigned_t<IDX> { return nodes.size(); }
 
         // ================
         // = Diagonostics =
@@ -523,7 +524,7 @@ namespace MESH {
         void printFaces(std::ostream &out){
             out << "\nInterior Faces\n";
             for(int ifac = interiorFaceStart; ifac < interiorFaceEnd; ++ifac){
-                Face &fac = *(faces[ifac]);
+                face_t &fac = *(faces[ifac]);
                 out << "Face index: " << ifac << "\n";
                 if constexpr(ndim == 2){
                     MATH::GEOMETRY::Point<T, 1> s = {0};
@@ -538,7 +539,7 @@ namespace MESH {
                 }
                 out << "}\n";
                 out << "ElemL: " << fac.elemL << " | ElemR: " << fac.elemR << "\n"; 
-                out << "FaceNrL: " << fac.face_infoL / ELEMENT::FACE_INFO_MOD << " | FaceNrR: " << fac.face_infoR / ELEMENT::FACE_INFO_MOD << "\n";
+                out << "FaceNrL: " << fac.face_infoL / FACE_INFO_MOD << " | FaceNrR: " << fac.face_infoR / FACE_INFO_MOD << "\n";
                 out << "-------------------------\n";
            }
         }
@@ -548,7 +549,7 @@ namespace MESH {
                 delete el_ptr;
             }
 
-            for(Face *fac_ptr : faces){
+            for(face_t *fac_ptr : faces){
                 delete fac_ptr;
             }
         }

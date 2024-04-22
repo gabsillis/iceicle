@@ -28,14 +28,15 @@ int main(int argc, char* argv[]){
 
     // using declarations
     using namespace NUMTOOL::TENSOR::FIXED_SIZE;
-    using namespace ICEICLE::UTIL;
-    using namespace ICEICLE::TMP;
-    using namespace ICEICLE::UTIL::PROGRAM_ARGS;
+    using namespace iceicle;
+    using namespace iceicle::util;
+    using namespace iceicle::util::program_args;
+    using namespace iceicle::tmp;
 
     // Get the floating point and index types from 
     // cmake configuration
-    using T = BUILD_CONFIG::T;
-    using IDX = BUILD_CONFIG::IDX;
+    using T = build_config::T;
+    using IDX = build_config::IDX;
 
     // ===============================
     // = Command line argument setup =
@@ -89,15 +90,15 @@ int main(int argc, char* argv[]){
         // ==============
         // = Setup Mesh =
         // ==============
-        MESH::AbstractMesh<T, IDX, ndim> mesh =
-            MESH::lua_uniform_mesh<T, IDX, ndim>(script_config);
-        MESH::perturb_mesh(script_config, mesh);
+        AbstractMesh<T, IDX, ndim> mesh =
+            lua_uniform_mesh<T, IDX, ndim>(script_config);
+        perturb_mesh(script_config, mesh);
 
         // ===================================
         // = create the finite element space =
         // ===================================
 
-        auto fespace = FE::lua_fespace(&mesh, lua_state);
+        auto fespace = lua_fespace(&mesh, lua_state);
         return 0;
     };
     // exit compile time ndim region

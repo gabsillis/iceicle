@@ -1,4 +1,5 @@
 #pragma once
+#include <iceicle/fe_definitions.hpp>
 #include "Numtool/point.hpp"
 #include "iceicle/basis/lagrange_1d.hpp"
 #include "iceicle/basis/tensor_product.hpp"
@@ -10,11 +11,10 @@
 #include <Numtool/fixed_size_tensor.hpp>
 #include <array>
 #include <cmath>
-#include <iceicle/fe_function/nodal_fe_function.hpp>
 #include <mdspan/mdspan.hpp>
 #include <algorithm>
 
-namespace ELEMENT::TRANSFORMATIONS {
+namespace iceicle::transformations {
 // forward declaration for friend 
 template<typename T, typename IDX, int ndim, int Pn>
 class HypercubeTraceTransformation;
@@ -41,9 +41,9 @@ private:
 
   // === Nodal Basis ===
 public:
-  BASIS::UniformLagrangeInterpolation<T, Pn> interpolation_1d{};
+  UniformLagrangeInterpolation<T, Pn> interpolation_1d{};
   using BasisType = decltype(interpolation_1d);
-  BASIS::QTypeProduct<T, ndim, BasisType::nbasis> tensor_prod{};
+  QTypeProduct<T, ndim, BasisType::nbasis> tensor_prod{};
   using TensorProdType = decltype(tensor_prod);
 
 private:
@@ -103,7 +103,7 @@ public:
    * @param [in] xi the position in the refernce domain
    * @param [out] x the position in the physical domain
    */
-  void transform(const FE::NodalFEFunction<T, ndim> &node_coords,
+  void transform(const NodeArray<T, ndim>& node_coords,
                  const IDX *node_indices, const Point &xi, Point &x) const {
     // clear output array
     std::fill_n(&(x[0]), ndim, 0.0);
@@ -130,7 +130,7 @@ public:
     * @return the Jacobian matrix
     */
   NUMTOOL::TENSOR::FIXED_SIZE::Tensor<T, ndim, ndim> Jacobian(
-      const FE::NodalFEFunction<T, ndim> &node_coords,
+      const NodeArray<T, ndim> &node_coords,
       const IDX *node_indices,
       const Point &xi
   ) const {
@@ -167,7 +167,7 @@ public:
     * @return the Hessian in tensor form indexed [k][i][j] as described above
     */
   NUMTOOL::TENSOR::FIXED_SIZE::Tensor<T, ndim, ndim, ndim> Hessian(
-      const FE::NodalFEFunction<T, ndim> &node_coords,
+      const NodeArray<T, ndim> &node_coords,
       const IDX *node_indices,
       const Point &xi
   ) const noexcept {
@@ -350,7 +350,7 @@ public:
    */
   auto regularize_nodes(
       const IDX gnodes[nnode],            /// [in] global node indices 
-      FE::NodalFEFunction<T, ndim> &coord /// [in/out] node coordinate array
+      NodeArray<T, ndim> &coord /// [in/out] node coordinate array
   ) -> void const {
 
     // loop  over all interior nodes
@@ -773,8 +773,8 @@ class HypercubeTraceTransformation {
 
   static constexpr int trace_ndim = (ndim - 1 < 0) ? 0 : ndim - 1;
   static constexpr int n_trace = ndim * 2;
-  using TracePointView = MATH::GEOMETRY::PointView<T, trace_ndim>;
-  using ElPointView = MATH::GEOMETRY::PointView<T, ndim>;
+  using FacePoint = MATH::GEOMETRY::Point<T, ndim-1>;
+  using ElPoint = MATH::GEOMETRY::Point<T, ndim>;
 
   inline static HypercubeElementTransformation<T, IDX, trace_ndim, Pn> trace_domain_trans{};
 
@@ -835,7 +835,7 @@ class HypercubeTraceTransformation {
     const IDX *node_indices,
     int traceNr,
     const T *s,
-    ElPointView xi
+    ElPoint& xi
   ) const {
 
     int trace_coord = traceNr % ndim;
@@ -858,8 +858,8 @@ class HypercubeTraceTransformation {
       const IDX *node_indices,
       int traceNr,
       const MATH::GEOMETRY::Point<T, ndim - 1> &s,
-      FE::NodalFEFunction<T, ndim> &coord,
-      ElPointView x
+      NodeArray<T, ndim> &coord,
+      ElPoint& x
   ) const {
     // zero fill 
     std::fill_n(x.data(), ndim, 0.0);
@@ -885,7 +885,7 @@ class HypercubeTraceTransformation {
    * @param s the point in the reference trace space 
    */
   NUMTOOL::TENSOR::FIXED_SIZE::Tensor<T, ndim, trace_ndim> Jacobian(
-      FE::NodalFEFunction<T, ndim> &coord,
+      NodeArray<T, ndim> &coord,
       const IDX *face_node_indices,
       int traceNr,
       const MATH::GEOMETRY::Point<T, trace_ndim> &s
@@ -904,7 +904,7 @@ class HypercubeTraceTransformation {
     // add contributions from each node 
     for(int inode = 0; inode < trace_domain_trans.nnode; ++inode){
         IDX global_inode = face_node_indices[inode];
-        ElPointView node{coord[global_inode]};
+        ElPoint node{coord[global_inode]};
         for(int idim = 0; idim < ndim; ++idim){
             for(int jdim = 0; jdim < trace_ndim; ++jdim){
                 // add contribution to jacobian from this basis function
@@ -928,7 +928,7 @@ class HypercubeTraceTransformation {
   NUMTOOL::TENSOR::FIXED_SIZE::Tensor<T, ndim, trace_ndim> Jacobian(
       IDX *node_indices,
       int traceNr,
-      const TracePointView &s,
+      const FacePoint & s,
       const NUMTOOL::TENSOR::FIXED_SIZE::Tensor<T, ndim, ndim> &elJacobian
   ) const {
     // TODO: column major storage would make permutations quicker
@@ -980,8 +980,8 @@ class HypercubeTraceTransformation<T, IDX, 1, Pn>{
   static constexpr int trace_ndim = 0;
   static constexpr int n_trace = 2;
 
-  using ElPointView = MATH::GEOMETRY::PointView<T, ndim>;
-  using TracePointView = MATH::GEOMETRY::PointView<T, trace_ndim>;
+  using ElPoint = MATH::GEOMETRY::Point<T, ndim>;
+  using TracePoint = MATH::GEOMETRY::Point<T, trace_ndim>;
   public:
 
   static constexpr int n_nodes = 1;
@@ -998,7 +998,7 @@ class HypercubeTraceTransformation<T, IDX, 1, Pn>{
     const IDX *node_indices,
     int traceNr,
     const T *s,
-    ElPointView xi
+    ElPoint& xi
   ) const {
     if(traceNr == 0){
       xi[0] = -1.0;
@@ -1011,8 +1011,8 @@ class HypercubeTraceTransformation<T, IDX, 1, Pn>{
       const IDX *node_indices,
       int traceNr,
       const MATH::GEOMETRY::Point<T, ndim - 1> &s,
-      FE::NodalFEFunction<T, ndim> &coord,
-      ElPointView x
+      NodeArray<T, ndim>& coord,
+      ElPoint& x
   ) const {
     x[0] = coord[node_indices[0]][0];
   }
@@ -1026,7 +1026,7 @@ class HypercubeTraceTransformation<T, IDX, 1, Pn>{
    * @param s the point in the reference trace space 
    */
   NUMTOOL::TENSOR::FIXED_SIZE::Tensor<T, ndim, trace_ndim> Jacobian(
-      FE::NodalFEFunction<T, ndim> &coord,
+      NodeArray<T, ndim> &coord,
       const IDX *face_node_indices,
       int traceNr,
       const MATH::GEOMETRY::Point<T, trace_ndim> &s
@@ -1056,7 +1056,7 @@ class HypercubeTraceTransformation<T, IDX, 1, Pn>{
   NUMTOOL::TENSOR::FIXED_SIZE::Tensor<T, ndim, trace_ndim> Jacobian(
       IDX *node_indices,
       int traceNr,
-      const TracePointView &s,
+      const TracePoint &s,
       const NUMTOOL::TENSOR::FIXED_SIZE::Tensor<T, ndim, ndim> &elJacobian
   ) const {
     using namespace NUMTOOL::TENSOR::FIXED_SIZE;

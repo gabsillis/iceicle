@@ -9,7 +9,7 @@
 #include <iceicle/fe_function/fespan.hpp>
 #include <Numtool/matrix/dense_matrix.hpp>
 #include <Numtool/matrix/decomposition/decomp_lu.hpp>
-namespace SOLVERS {
+namespace iceicle::solvers {
     
     /**
      * Solver for a linear form on an individual element
@@ -32,13 +32,13 @@ namespace SOLVERS {
          * @param el the element to make the solver for
          * @param node_coords the global node coordinates array
          */
-        ElementLinearSolver(const ELEMENT::FiniteElement<T, IDX, ndim> &el, FE::NodalFEFunction<T, ndim> &node_coords) 
+        ElementLinearSolver(const FiniteElement<T, IDX, ndim> &el, NodeArray<T, ndim> &node_coords) 
         : mass(el.nbasis(), el.nbasis()), pi{} {
             // calculate and decompose the mass matrix
             mass = 0.0; // fill with zeros
             
             for(int ig = 0; ig < el.nQP(); ++ig){
-                const QUADRATURE::QuadraturePoint<T, ndim> quadpt = el.getQP(ig);
+                const QuadraturePoint<T, ndim> quadpt = el.getQP(ig);
 
                 // calculate the jacobian determinant
                 auto J = el.geo_el->Jacobian(node_coords, quadpt.abscisse);
@@ -60,7 +60,7 @@ namespace SOLVERS {
          * @param [out] u the solution of Mu = b
          * @param [in] b the residual
          */
-        void solve(FE::ElementData<T, neq> &u, FE::ElementData<T, neq> &b){
+        void solve(ElementData<T, neq> &u, ElementData<T, neq> &b){
             MATH::MATRIX::SOLVERS::sub_lu(mass, pi, b.getData(), u.getData());
         }
 
@@ -74,8 +74,8 @@ namespace SOLVERS {
          * @param [in] res the residual
          */
         void solve(
-            FE::elspan auto u, 
-            const FE::elspan auto res
+            elspan auto u, 
+            const elspan auto res
         ){
             MATH::MATRIX::SOLVERS::sub_lu(mass, pi, res.data(), u.data());
         }

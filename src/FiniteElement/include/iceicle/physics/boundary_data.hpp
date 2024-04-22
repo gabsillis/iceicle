@@ -8,7 +8,7 @@
 #include <span>
 #include <vector>
 #include <Numtool/fixed_size_tensor.hpp>
-namespace PHYSICS {
+namespace iceicle {
 
     template<class T, std::size_t neq = std::dynamic_extent>
     class DirichletData {

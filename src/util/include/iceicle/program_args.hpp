@@ -18,7 +18,7 @@
 #include "petscsys.h"
 #endif
 
-namespace ICEICLE::UTIL::PROGRAM_ARGS {
+namespace iceicle::util::program_args{
 
     /// @brief a variant of all the types that can be parsed to
     using arg_variant = std::variant<std::monostate, std::string_view, std::string, 
@@ -61,7 +61,6 @@ namespace ICEICLE::UTIL::PROGRAM_ARGS {
                 if constexpr( std::constructible_from<T, decltype(data)>){
                     return T(data);
                 } else {
-                    using namespace ICEICLE::UTIL;
                     std::string err_msg = std::string{"Cannot convert from "} + typeid(decltype(data)).name() 
                         + " to " + typeid(T).name();
                     AnomalyLog::log_anomaly(Anomaly{err_msg, general_anomaly_tag{} });
@@ -194,7 +193,6 @@ namespace ICEICLE::UTIL::PROGRAM_ARGS {
             // we have our own argument parser 
             PetscOptionsSetValue(NULL, "-options_left", "false");
 #endif
-            using namespace ICEICLE::UTIL;
             // fill the in_options map
             for(int i = 1; i < argc; ++i){
                 std::string_view arg_view = argv[i];

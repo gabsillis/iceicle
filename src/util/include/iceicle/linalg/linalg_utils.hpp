@@ -2,7 +2,7 @@
 
 #include "mdspan/mdspan.hpp"
 #include <type_traits>
-namespace ICEICLE::LINALG {
+namespace iceicle::linalg {
 
     /// @brief whether or not something is an mdspan
     template<class T>

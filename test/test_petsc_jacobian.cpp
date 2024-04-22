@@ -11,39 +11,39 @@
 #include <petscmat.h>
 #include <petscsys.h>
 
+using namespace iceicle;
+using namespace iceicle::util;
+using namespace iceicle::solvers;
 TEST(test_petsc_jacobian, test_mdg_bl){
 
     using namespace NUMTOOL::TENSOR::FIXED_SIZE;
-    using namespace ICEICLE::UTIL;
-    using namespace ICEICLE::SOLVERS;
-    using namespace FE;
     static constexpr int ndim = 2;
     static constexpr int pn_order = 1;
     static constexpr int neq = 1;
-    using T = BUILD_CONFIG::T;
-    using IDX = BUILD_CONFIG::IDX;
+    using T = build_config::T;
+    using IDX = build_config::IDX;
     int nelemx = 3;
     int nelemy = 3;
 
     // set up mesh and fespace
-    MESH::AbstractMesh<T, IDX, ndim> mesh{
+    AbstractMesh<T, IDX, ndim> mesh{
         Tensor<T, ndim>{{0.0, 0.0}},
         Tensor<T, ndim>{{1.0, 1.0}},
         Tensor<IDX, ndim>{{nelemx, nelemy}},
         1,
-        Tensor<ELEMENT::BOUNDARY_CONDITIONS, 4>{
-            ELEMENT::BOUNDARY_CONDITIONS::DIRICHLET,
-            ELEMENT::BOUNDARY_CONDITIONS::NEUMANN,
-            ELEMENT::BOUNDARY_CONDITIONS::DIRICHLET,
-            ELEMENT::BOUNDARY_CONDITIONS::NEUMANN,
+        Tensor<BOUNDARY_CONDITIONS, 4>{
+            BOUNDARY_CONDITIONS::DIRICHLET,
+            BOUNDARY_CONDITIONS::NEUMANN,
+            BOUNDARY_CONDITIONS::DIRICHLET,
+            BOUNDARY_CONDITIONS::NEUMANN,
         },
         Tensor<int, 4>{0, 0, 1, 0}
     };
 
-    FE::FESpace<T, IDX, ndim> fespace{&mesh, FE::FESPACE_ENUMS::LAGRANGE, FE::FESPACE_ENUMS::GAUSS_LEGENDRE, std::integral_constant<int, pn_order>{}};
+    FESpace<T, IDX, ndim> fespace{&mesh, FESPACE_ENUMS::LAGRANGE, FESPACE_ENUMS::GAUSS_LEGENDRE, std::integral_constant<int, pn_order>{}};
 
     // set up discretization
-    DISC::HeatEquation<T, IDX, ndim> disc{};
+    HeatEquation<T, IDX, ndim> disc{};
     disc.mu = 0.01;
     disc.a = 1.0;
     disc.dirichlet_values.push_back(0.0);
@@ -70,7 +70,7 @@ TEST(test_petsc_jacobian, test_mdg_bl){
     solver.solve(u);
 
 
-    FE::nodeset_dof_map<IDX> nodeset = FE::select_all_nodes(fespace);
+    nodeset_dof_map<IDX> nodeset = select_all_nodes(fespace);
     Mat jac;
     MatCreate(PETSC_COMM_WORLD, &jac);
     PetscInt local_res_size = fespace.dg_map.calculate_size_requirement(1) + nodeset.selected_nodes.size() * ndim;
@@ -79,9 +79,9 @@ TEST(test_petsc_jacobian, test_mdg_bl){
     MatSetFromOptions(jac);
 
     std::vector<T> res_storage(local_res_size);
-    FE::fespan res{res_storage.data(), u_layout};
-    FE::node_selection_layout<IDX, ndim> mdg_layout{nodeset};
-    FE::dofspan mdg_res{res_storage.data() + res.size(), mdg_layout};
+    fespan res{res_storage.data(), u_layout};
+    node_selection_layout<IDX, ndim> mdg_layout{nodeset};
+    dofspan mdg_res{res_storage.data() + res.size(), mdg_layout};
 
     // get the jacobian and residual from petsc interface
     form_petsc_jacobian_fd(fespace, disc, u, res, jac);

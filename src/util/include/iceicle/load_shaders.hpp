@@ -5,7 +5,7 @@
 #include <iostream>
 GLuint LoadShaders(const char * vertex_file_path,const char * fragment_file_path);
 
-namespace ICEICLE_GL{
+namespace iceicle::gl {
     /**
     * @brief a general purpose shader object that represents a GLSL shader
     */

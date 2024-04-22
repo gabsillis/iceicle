@@ -15,7 +15,7 @@
 #include <string>
 #include <sstream>
 
-namespace BASIS {
+namespace iceicle{
 
     /**
      * @brief represents a multi-index set for a Q-type tensor product

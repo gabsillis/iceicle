@@ -15,7 +15,7 @@
 #include <petscmat.h>
 #include <mdspan/mdspan.hpp>
 
-namespace ICEICLE::SOLVERS {
+namespace iceicle::solvers {
 
     /**
      * @brief form the jacobian for the given discretization on the given 
@@ -49,17 +49,17 @@ namespace ICEICLE::SOLVERS {
         class resLayoutPolicy
     >
     void form_petsc_jacobian_fd(
-        FE::FESpace<T, IDX, ndim> &fespace,
+        FESpace<T, IDX, ndim> &fespace,
         disc_class &disc,
-        FE::fespan<T, uLayoutPolicy, uAccessorPolicy> u,
-        FE::fespan<T, resLayoutPolicy> res,
+        fespan<T, uLayoutPolicy, uAccessorPolicy> u,
+        fespan<T, resLayoutPolicy> res,
         Mat jac,
         T epsilon = std::sqrt(std::numeric_limits<T>::epsilon()),
         MPI_Comm comm = MPI_COMM_WORLD 
     ) {
 
-        using Element = ELEMENT::FiniteElement<T, IDX, ndim>;
-        using Trace = ELEMENT::TraceSpace<T, IDX, ndim>;
+        using Element = FiniteElement<T, IDX, ndim>;
+        using Trace = TraceSpace<T, IDX, ndim>;
 
         using namespace std::experimental;
 
@@ -92,27 +92,27 @@ namespace ICEICLE::SOLVERS {
         // boundary faces 
         for(const Trace &trace : fespace.get_boundary_traces()) {
             // compact data views 
-            FE::dofspan uL{uL_data.data(), u.create_element_layout(trace.elL.elidx)};
-            FE::dofspan uR{uR_data.data(), u.create_element_layout(trace.elR.elidx)};
+            dofspan uL{uL_data.data(), u.create_element_layout(trace.elL.elidx)};
+            dofspan uR{uR_data.data(), u.create_element_layout(trace.elR.elidx)};
 
             // compact residual views
-            FE::dofspan resL{resL_data.data(), res.create_element_layout(trace.elL.elidx)};
-            FE::dofspan resLp{resLp_data.data(), res.create_element_layout(trace.elL.elidx)};
+            dofspan resL{resL_data.data(), res.create_element_layout(trace.elL.elidx)};
+            dofspan resLp{resLp_data.data(), res.create_element_layout(trace.elL.elidx)};
 
             // compact jacobian views 
             mdspan jacL{jacL_data.data(), extents{resL.size(), uL.size()}};
             std::fill_n(jacL_data.begin(), jacL.size(), 0);
 
             // extract the compact values from the global u view 
-            FE::extract_elspan(trace.elL.elidx, u, uL);
-            FE::extract_elspan(trace.elR.elidx, u, uR);
+            extract_elspan(trace.elL.elidx, u, uL);
+            extract_elspan(trace.elR.elidx, u, uR);
 
             // zero out the residuals 
             resL = 0;
 
             // get the unperturbed residual and send to full residual
             disc.boundaryIntegral(trace, fespace.meshptr->nodes, uL, uR, resL);
-            FE::scatter_elspan(trace.elL.elidx, 1.0, resL, 1.0, res);
+            scatter_elspan(trace.elL.elidx, 1.0, resL, 1.0, res);
 
             // set up the perturbation amount scaled by unperturbed residual 
             T eps_scaled = std::max(epsilon, resL.vector_norm() * epsilon);
@@ -149,26 +149,26 @@ namespace ICEICLE::SOLVERS {
             }
 
             // TODO: change to a scatter generalized operation to support CG structures
-            ICEICLE::PETSC::add_to_petsc_mat(jac, proc_range_beg + glob_index_L, 
+            petsc::add_to_petsc_mat(jac, proc_range_beg + glob_index_L, 
                     proc_range_beg + glob_index_L, jacL);
         }
 
         // interior faces 
         for(const Trace &trace : fespace.get_interior_traces()) {
             // compact data views 
-            FE::dofspan uL{uL_data.data(), u.create_element_layout(trace.elL.elidx)};
-            FE::dofspan uR{uR_data.data(), u.create_element_layout(trace.elR.elidx)};
+            dofspan uL{uL_data.data(), u.create_element_layout(trace.elL.elidx)};
+            dofspan uR{uR_data.data(), u.create_element_layout(trace.elR.elidx)};
 
             // compact residual views
-            FE::dofspan resL{resL_data.data(), res.create_element_layout(trace.elL.elidx)};
-            FE::dofspan resLp{resLp_data.data(), res.create_element_layout(trace.elL.elidx)};
-            FE::dofspan resR{resR_data.data(), res.create_element_layout(trace.elR.elidx)};
-            FE::dofspan resRp{resRp_data.data(), res.create_element_layout(trace.elR.elidx)};
+            dofspan resL{resL_data.data(), res.create_element_layout(trace.elL.elidx)};
+            dofspan resLp{resLp_data.data(), res.create_element_layout(trace.elL.elidx)};
+            dofspan resR{resR_data.data(), res.create_element_layout(trace.elR.elidx)};
+            dofspan resRp{resRp_data.data(), res.create_element_layout(trace.elR.elidx)};
 
 
             // extract the compact values from the global u view 
-            FE::extract_elspan(trace.elL.elidx, u, uL);
-            FE::extract_elspan(trace.elR.elidx, u, uR);
+            extract_elspan(trace.elL.elidx, u, uL);
+            extract_elspan(trace.elR.elidx, u, uR);
 
             // zero out the residuals 
             resL = 0;
@@ -176,8 +176,8 @@ namespace ICEICLE::SOLVERS {
 
             // get the unperturbed residual and send to full residual
             disc.trace_integral(trace, fespace.meshptr->nodes, uL, uR, resL, resR);
-            FE::scatter_elspan(trace.elL.elidx, 1.0, resL, 1.0, res);
-            FE::scatter_elspan(trace.elR.elidx, 1.0, resR, 1.0, res);
+            scatter_elspan(trace.elL.elidx, 1.0, resL, 1.0, res);
+            scatter_elspan(trace.elR.elidx, 1.0, resR, 1.0, res);
 
             // get the global index to the start of the contiguous component x dof range for L/R elem
             std::size_t glob_index_L = u.get_layout()[trace.elL.elidx, 0, 0];
@@ -228,9 +228,9 @@ namespace ICEICLE::SOLVERS {
             }
             // send the jacobians to the petsc matrix 
             // (note global indices uL, then resL/resR)
-            ICEICLE::PETSC::add_to_petsc_mat(jac, proc_range_beg + glob_index_L, 
+            petsc::add_to_petsc_mat(jac, proc_range_beg + glob_index_L, 
                     proc_range_beg + glob_index_L, jacL);
-            ICEICLE::PETSC::add_to_petsc_mat(jac, proc_range_beg + glob_index_R, 
+            petsc::add_to_petsc_mat(jac, proc_range_beg + glob_index_R, 
                     proc_range_beg + glob_index_L, jacR);
             
             // perturb and form jacobian wrt uR
@@ -274,27 +274,27 @@ namespace ICEICLE::SOLVERS {
                 }
             }
             // send the jacobians to the petsc matrix 
-            ICEICLE::PETSC::add_to_petsc_mat(jac, proc_range_beg + glob_index_L, 
+            petsc::add_to_petsc_mat(jac, proc_range_beg + glob_index_L, 
                     proc_range_beg + glob_index_R, jacL);
-            ICEICLE::PETSC::add_to_petsc_mat(jac, proc_range_beg + glob_index_R, 
+            petsc::add_to_petsc_mat(jac, proc_range_beg + glob_index_R, 
                     proc_range_beg + glob_index_R, jacR);
         }
 
         // domain integral 
         for(const Element &el : fespace.elements) {
             // compact data views 
-            FE::dofspan u_el{uL_data.data(), u.create_element_layout(el.elidx)};
+            dofspan u_el{uL_data.data(), u.create_element_layout(el.elidx)};
 
             // residual data views 
-            FE::dofspan res_el{resL_data.data(), res.create_element_layout(el.elidx)};
-            FE::dofspan resp_el{resLp_data.data(), res.create_element_layout(el.elidx)};
+            dofspan res_el{resL_data.data(), res.create_element_layout(el.elidx)};
+            dofspan resp_el{resLp_data.data(), res.create_element_layout(el.elidx)};
 
             // jacobian data view
             mdspan jac_el{jacL_data.data(), extents{res_el.size(), u_el.size()}};
             std::fill_n(jacL_data.begin(), jac_el.size(), 0);
 
             // extract the compact values from the global u view 
-            FE::extract_elspan(el.elidx, u, u_el);
+            extract_elspan(el.elidx, u, u_el);
 
             res_el = 0;
             disc.domain_integral(el, fespace.meshptr->nodes, u_el, res_el);
@@ -302,7 +302,7 @@ namespace ICEICLE::SOLVERS {
             // get the global index to the start of the contiguous component x dof range for L/R elem
             std::size_t glob_index_el = u.get_layout()[el.elidx, 0, 0];
             // send residual to global residual 
-            FE::scatter_elspan(el.elidx, 1.0, res_el, 1.0, res);
+            scatter_elspan(el.elidx, 1.0, res_el, 1.0, res);
 
             // set up the perturbation amount scaled by unperturbed residual 
             T eps_scaled = std::max(epsilon, res_el.vector_norm() * epsilon);
@@ -337,7 +337,7 @@ namespace ICEICLE::SOLVERS {
             }
 
             // TODO: change to a scatter generalized operation to support CG structures
-            ICEICLE::PETSC::add_to_petsc_mat(jac, proc_range_beg + glob_index_el, 
+            petsc::add_to_petsc_mat(jac, proc_range_beg + glob_index_el, 
                     proc_range_beg + glob_index_el, jac_el);
         }
     }
@@ -351,18 +351,17 @@ namespace ICEICLE::SOLVERS {
         class uAccessorPolicy
     >
     auto form_petsc_mdg_jacobian_fd(
-        FE::FESpace<T, IDX, ndim>& fespace,
+        FESpace<T, IDX, ndim>& fespace,
         disc_class& disc,
-        FE::fespan<T, uLayoutPolicy, uAccessorPolicy> u,
-        FE::node_selection_span auto mdg_residual,
+        fespan<T, uLayoutPolicy, uAccessorPolicy> u,
+        node_selection_span auto mdg_residual,
         Mat jac,
         T epsilon = std::sqrt(std::numeric_limits<T>::epsilon()),
         MPI_Comm comm = MPI_COMM_WORLD 
     ) -> void {
-        using Element = ELEMENT::FiniteElement<T, IDX, ndim>;
-        using Trace = ELEMENT::TraceSpace<T, IDX, ndim>;
+        using Element = FiniteElement<T, IDX, ndim>;
+        using Trace = TraceSpace<T, IDX, ndim>;
         using index_type = IDX;
-        using namespace FE;
         using namespace std::experimental;
 
         // zero out the residual 
@@ -391,9 +390,9 @@ namespace ICEICLE::SOLVERS {
             
             // set up compact data views
             auto uL_layout = u.create_element_layout(trace.elL.elidx);
-            FE::dofspan uL{uL_storage, uL_layout};
+            dofspan uL{uL_storage, uL_layout};
             auto uR_layout = u.create_element_layout(trace.elR.elidx);
-            FE::dofspan uR{uR_storage, uR_layout};
+            dofspan uR{uR_storage, uR_layout};
 
             trace_layout_right<IDX, decltype(mdg_residual)::static_extent()> res_layout{trace};
             res_storage.resize(res_layout.size());
@@ -406,13 +405,13 @@ namespace ICEICLE::SOLVERS {
             std::size_t glob_index_R = u.get_layout()[trace.elR.elidx, 0, 0];
 
             // extract the compact values from the global u view
-            FE::extract_elspan(trace.elL.elidx, u, uL);
-            FE::extract_elspan(trace.elR.elidx, u, uR);
+            extract_elspan(trace.elL.elidx, u, uL);
+            extract_elspan(trace.elR.elidx, u, uR);
 
             // get the unperturbed residual and send to full residual
             res = 0;
             disc.interface_conservation(trace, fespace.meshptr->nodes, uL, uR, res);
-            FE::scatter_facspan(trace, 1.0, res, 1.0, mdg_residual);
+            scatter_facspan(trace, 1.0, res, 1.0, mdg_residual);
 
             // set up the perturbation amount scaled by unperturbed residual 
             T eps_scaled = std::max(epsilon, res.vector_norm() * epsilon);
@@ -503,15 +502,15 @@ namespace ICEICLE::SOLVERS {
 
                 // set up compact data views
                 auto el_layout = u.create_element_layout(iel);
-                FE::dofspan u_el{uL_storage, el_layout};
-                FE::dofspan res{resL_storage, u.create_element_layout(iel)};
-                FE::dofspan resp{resLp_storage, u.create_element_layout(iel)};
+                dofspan u_el{uL_storage, el_layout};
+                dofspan res{resL_storage, u.create_element_layout(iel)};
+                dofspan resp{resLp_storage, u.create_element_layout(iel)};
 
                 // get the global index to the start of the contiguous component x dof range
                 std::size_t glob_index_el = u.get_layout()[iel, 0, 0];
 
                 // extract the compact values from the global u view
-                FE::extract_elspan(iel, u, u_el);
+                extract_elspan(iel, u, u_el);
 
                 // get the unperturbed residual
                 res = 0;
@@ -562,27 +561,27 @@ namespace ICEICLE::SOLVERS {
 
                 // set up compact data views
                 auto uL_layout = u.create_element_layout(trace.elL.elidx);
-                FE::dofspan uL{uL_storage, uL_layout};
+                dofspan uL{uL_storage, uL_layout};
                 auto uR_layout = u.create_element_layout(trace.elR.elidx);
-                FE::dofspan uR{uR_storage, uR_layout};
+                dofspan uR{uR_storage, uR_layout};
 
                 // get the global index to the start of the contiguous component x dof range for L/R elem
                 std::size_t glob_index_L = u.get_layout()[trace.elL.elidx, 0, 0];
                 std::size_t glob_index_R = u.get_layout()[trace.elR.elidx, 0, 0];
 
                 // extract the compact values from the global u view
-                FE::extract_elspan(trace.elL.elidx, u, uL);
-                FE::extract_elspan(trace.elR.elidx, u, uR);
+                extract_elspan(trace.elL.elidx, u, uL);
+                extract_elspan(trace.elR.elidx, u, uR);
                 // du/dx  (L and R)
                 {
-                    FE::dofspan resL{resL_storage, u.create_element_layout(trace.elL.elidx)};
-                    FE::dofspan resLp{resLp_storage, u.create_element_layout(trace.elL.elidx)};
-                    FE::dofspan resR{resR_storage, u.create_element_layout(trace.elR.elidx)};
-                    FE::dofspan resRp{resRp_storage, u.create_element_layout(trace.elR.elidx)};
+                    dofspan resL{resL_storage, u.create_element_layout(trace.elL.elidx)};
+                    dofspan resLp{resLp_storage, u.create_element_layout(trace.elL.elidx)};
+                    dofspan resR{resR_storage, u.create_element_layout(trace.elR.elidx)};
+                    dofspan resRp{resRp_storage, u.create_element_layout(trace.elR.elidx)};
                     resL = 0; resR = 0;
 
                     // get the unperturbed residual
-                    if(trace.face->bctype == ELEMENT::BOUNDARY_CONDITIONS::INTERIOR){
+                    if(trace.face->bctype == BOUNDARY_CONDITIONS::INTERIOR){
                         disc.trace_integral(trace, fespace.meshptr->nodes, uL, uR, resL, resR);
                     } else {
                         disc.boundaryIntegral(trace, fespace.meshptr->nodes, uL, uR, resL);
@@ -601,7 +600,7 @@ namespace ICEICLE::SOLVERS {
 
                         // get the perturbed residual
                         resLp = 0; resRp = 0;
-                        if(trace.face->bctype == ELEMENT::BOUNDARY_CONDITIONS::INTERIOR){
+                        if(trace.face->bctype == BOUNDARY_CONDITIONS::INTERIOR){
                             disc.trace_integral(trace, fespace.meshptr->nodes, uL, uR, resLp, resRp);
                         } else {
                             disc.boundaryIntegral(trace, fespace.meshptr->nodes, uL, uR, resLp);
@@ -617,7 +616,7 @@ namespace ICEICLE::SOLVERS {
                         }
 
                         // resR (only for interior traces)
-                        if(trace.face->bctype == ELEMENT::BOUNDARY_CONDITIONS::INTERIOR){
+                        if(trace.face->bctype == BOUNDARY_CONDITIONS::INTERIOR){
                             for(IDX idoff = 0; idoff < resR.ndof(); ++idoff){
                                 for(IDX ieqf = 0; ieqf < resR.nv(); ++ieqf){
                                     IDX irow = proc_range_beg + glob_index_R + resR.get_layout()[idoff, ieqf];
@@ -636,9 +635,9 @@ namespace ICEICLE::SOLVERS {
                 {
                     auto res_layout = trace_layout_right{trace};
                     res_storage.resize(res_layout.size());
-                    FE::dofspan res{res_storage, res_layout};
+                    dofspan res{res_storage, res_layout};
                     resp_storage.resize(res_layout.size());
-                    FE::dofspan resp{resp_storage, res_layout};
+                    dofspan resp{resp_storage, res_layout};
 
                     // get the unperturbed residual
                     res = 0;

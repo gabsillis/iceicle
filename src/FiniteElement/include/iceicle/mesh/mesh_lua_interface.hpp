@@ -9,7 +9,7 @@
 #include <optional>
 #include <sol/sol.hpp>
 
-namespace MESH {
+namespace iceicle {
 
     /**
      * @brief construct a uniform mesh from inputs provided in a lua state 
@@ -36,10 +36,10 @@ namespace MESH {
         }
 
         // boundary conditions
-        Tensor<ELEMENT::BOUNDARY_CONDITIONS, 2 * ndim> bctypes;
+        Tensor<BOUNDARY_CONDITIONS, 2 * ndim> bctypes;
         for(int iside = 0; iside < 2 * ndim; ++iside){
             std::string bcname = mesh_table["boundary_conditions"]["types"][iside + 1];
-            bctypes[iside] = ELEMENT::get_bc_from_name(bcname);
+            bctypes[iside] = get_bc_from_name(bcname);
         }
 
         // boundary condition flags
@@ -82,10 +82,10 @@ namespace MESH {
         }
 
         // boundary conditions
-        Tensor<ELEMENT::BOUNDARY_CONDITIONS, 2 * ndim> bctypes;
+        Tensor<BOUNDARY_CONDITIONS, 2 * ndim> bctypes;
         for(int iside = 0; iside < 2 * ndim; ++iside){
             std::string bcname = mesh_table["boundary_conditions"]["types"][iside + 1];
-            bctypes[iside] = ELEMENT::get_bc_from_name(bcname);
+            bctypes[iside] = get_bc_from_name(bcname);
         }
 
         // boundary condition flags
@@ -105,7 +105,7 @@ namespace MESH {
     }
     template<class T, class IDX, int ndim>
     std::optional<AbstractMesh<T, IDX, ndim>> construct_mesh_from_config(sol::table& config){
-        using namespace ICEICLE::UTIL;
+        using namespace util;
         if(config["uniform_mesh"]){
             return lua_uniform_mesh<T, IDX, ndim>(config["uniform_mesh"]);
         } else {
@@ -117,25 +117,29 @@ namespace MESH {
     /// @brief perturb the nodes of the mesh if applicable
     template<class T, class IDX, int ndim>
     auto perturb_mesh(sol::table& config, AbstractMesh<T, IDX, ndim>& mesh) -> void {
-        using namespace ICEICLE::UTIL;
+        using namespace util;
         sol::optional<std::string> perturb_fcn_name = config["mesh_perturbation"];
         if(perturb_fcn_name){
-            std::vector<bool> fixed_nodes = MESH::flag_boundary_nodes(mesh);
+            std::vector<bool> fixed_nodes = flag_boundary_nodes(mesh);
 
             std::function< void(std::span<T, ndim>, std::span<T, ndim>) > perturb_fcn;
             if(eq_icase(perturb_fcn_name.value(), "taylor-green")){
                 auto bounding_box = compute_bounding_box(mesh);
-                perturb_fcn = MESH::PERTURBATION_FUNCTIONS::TaylorGreenVortex<T, ndim>{
+                perturb_fcn = PERTURBATION_FUNCTIONS::TaylorGreenVortex<T, ndim>{
                     .v0 = 0.5,
                     .xmin = bounding_box.xmin,
                     .xmax = bounding_box.xmax,
                     .L = 1
                 };
             } else if(eq_icase(perturb_fcn_name.value(), "zig-zag")){
-                perturb_fcn = MESH::PERTURBATION_FUNCTIONS::ZigZag<T, ndim>{};
+                if constexpr (ndim >= 2){
+                    perturb_fcn = PERTURBATION_FUNCTIONS::ZigZag<T, ndim>{};
+                } else {
+                    AnomalyLog::log_anomaly(Anomaly{"zig-zag requires 2D or higher", general_anomaly_tag{}});
+                }
             }
 
-            MESH::perturb_nodes(mesh, perturb_fcn, fixed_nodes);
+            perturb_nodes(mesh, perturb_fcn, fixed_nodes);
         }
     }
 }

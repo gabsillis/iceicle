@@ -7,15 +7,15 @@
 
 #include "Numtool/point.hpp"
 #include <Numtool/tmp_flow_control.hpp>
-#include <iceicle/transformations/HypercubeElementTransformation.hpp>
+#include <iceicle/transformations/HypercubeTransformations.hpp>
 #include <iceicle/geometry/hypercube_element.hpp>
-#include <iceicle/fe_function/nodal_fe_function.hpp>
 
 #include <GL/glew.h>
 #include <GLFW/glfw3.h>
 #include <glm/glm.hpp>
+#include <type_traits>
 
-namespace ELEMENT::TRANSFORMATIONS {
+namespace iceicle::transformations {
    
     /**
      * @brief append a hypercube element to the coordinate array 
@@ -29,13 +29,13 @@ namespace ELEMENT::TRANSFORMATIONS {
     HypercubeElement<T, IDX, ndim, Pn> create_hypercube(
         T centroid[ndim],
         T lengths[ndim], 
-        FE::NodalFEFunction<T, ndim> &coord
+        NodeArray<T, ndim> &coord
     ) {
         HypercubeElement<T, IDX, ndim, Pn> el{};
         HypercubeElementTransformation<T, IDX, ndim, Pn> &trans = el.transformation;
         std::size_t nnode = trans.n_nodes();
-        std::size_t start = coord.n_nodes(); // start at current coord
-        coord.resize(coord.n_nodes() + trans.n_nodes());
+        std::size_t start = coord.size(); // start at current coord
+        coord.resize(coord.size() + trans.n_nodes());
 
         for(int inode = 0; inode < nnode; ++inode){
             const auto &pt = trans.reference_nodes()[inode];
@@ -52,13 +52,14 @@ namespace ELEMENT::TRANSFORMATIONS {
     template<typename T, typename IDX, int Pn>
     void triangle_decompose_quad(
         HypercubeElement<T, IDX, 2, Pn> &quad,
-        FE::NodalFEFunction<T, 2> &coord,
+        NodeArray<T, 2> &coord,
         int refine_order,
         std::vector< unsigned int > &vertexIndices,
         std::vector< glm::vec3 > &vertices
     ){
         if (Pn == refine_order){
             auto &trans = quad.transformation;
+            using trans_t = std::remove_reference_t<decltype(trans)>;
             std::size_t vi_offset = vertices.size();
 
             // split each subquad into two triangles 
@@ -71,11 +72,11 @@ namespace ELEMENT::TRANSFORMATIONS {
                     // push back the triangle indices 
 
                     vertexIndices.emplace_back(
-                        vi_offset + trans.convert_indices_helper(ijk1));
+                        vi_offset + trans_t::TensorProdType::convert_ijk(ijk1));
                     vertexIndices.emplace_back(
-                        vi_offset + trans.convert_indices_helper(ijk2));
+                        vi_offset + trans_t::TensorProdType::convert_ijk(ijk2));
                     vertexIndices.emplace_back(
-                        vi_offset + trans.convert_indices_helper(ijk3));
+                        vi_offset + trans_t::TensorProdType::convert_ijk(ijk3));
 
                     // second triangle 
                     int ijk4[3] = {iquad, jquad};
@@ -83,11 +84,11 @@ namespace ELEMENT::TRANSFORMATIONS {
                     int ijk6[3] = {iquad, jquad+1};
                     // push back the triangle indices 
                     vertexIndices.emplace_back(
-                        vi_offset + trans.convert_indices_helper(ijk4));
+                        vi_offset + trans_t::TensorProdType::convert_ijk(ijk4));
                     vertexIndices.emplace_back(
-                        vi_offset + trans.convert_indices_helper(ijk5));
+                        vi_offset + trans_t::TensorProdType::convert_ijk(ijk5));
                     vertexIndices.emplace_back(
-                        vi_offset + trans.convert_indices_helper(ijk6));
+                        vi_offset + trans_t::TensorProdType::convert_ijk(ijk6));
                 }
             }
 

@@ -4,7 +4,8 @@
 #include <Numtool/autodiff.hpp>
 #include <fenv.h>
 
-using namespace ELEMENT::TRANSFORMATIONS;
+using namespace iceicle;
+using namespace iceicle::transformations;
 using Point3D = MATH::GEOMETRY::Point<double, 3>;
 
 template<typename T>
@@ -20,7 +21,7 @@ MATH::GEOMETRY::Point<T, 3> point_transform(MATH::GEOMETRY::Point<T, 3> original
     return pt_moved;
 }
 
-namespace ELEMENT::TRANSFORMATIONS {
+namespace iceicle::transformations {
     void _test_simplex_transform(){
         
         SimplexElementTransformation<double, int, 3, 4> trans{};
@@ -57,7 +58,7 @@ TEST(test_simplex_transform, test_jacobian){
     const Point3D *reference_nodes = trans.reference_nodes();
     
     // make a curved triangley boi with vortex
-    FE::NodalFEFunction<double, 3> points{trans.nnodes()};
+    NodeArray<double, 3> points{trans.nnodes()};
     std::vector<int> node_numbers{};
     for(int inode = 0; inode < trans.nnodes(); ++inode){
         Point3D pt = trans.reference_nodes()[inode];

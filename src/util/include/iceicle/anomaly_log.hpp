@@ -16,7 +16,7 @@
 #include <ostream>
 #include <source_location>
 #include <string>
-namespace ICEICLE::UTIL {
+namespace iceicle::util {
 
     class AbstractAnomaly {
         friend class AnomalyLog;

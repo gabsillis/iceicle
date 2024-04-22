@@ -6,7 +6,6 @@
 #pragma once
 
 #include "Numtool/point.hpp"
-#include "iceicle/fe_function/nodal_fe_function.hpp"
 #include "iceicle/geometry/geo_element.hpp"
 #include "iceicle/quadrature/QuadratureRule.hpp"
 #include <iceicle/element/finite_element.hpp>
@@ -17,7 +16,7 @@
 #include <cassert>
 #include <mdspan/mdspan.hpp>
 
-namespace ELEMENT {
+namespace iceicle {
 
 /**
  * @brief Precomputed values of basis functions and other reference domain quantities
@@ -25,9 +24,9 @@ namespace ELEMENT {
 template<typename T, typename IDX, int ndim>
 class TraceEvaluation {
 public:
-  using FaceType = ELEMENT::Face<T, IDX, ndim>;
-  using GeoElementType = ELEMENT::GeometricElement<T, IDX, ndim>;
-  using FEType = ELEMENT::FiniteElement<T, IDX, ndim>;
+  using FaceType = Face<T, IDX, ndim>;
+  using GeoElementType = GeometricElement<T, IDX, ndim>;
+  using FEType = FiniteElement<T, IDX, ndim>;
 
 private:
 
@@ -74,16 +73,16 @@ private:
   // None
 public:
   /// @brief the type of geometric faces 
-  using FaceType = ELEMENT::Face<T, IDX, ndim>;
+  using FaceType = Face<T, IDX, ndim>;
 
   /// @brief the type of Geometric Elements (transformation definition)
-  using GeoElementType = ELEMENT::GeometricElement<T, IDX, ndim>;
+  using GeoElementType = GeometricElement<T, IDX, ndim>;
 
   /// @brief the type of the FiniteElement
-  using FEType = ELEMENT::FiniteElement<T, IDX, ndim>;
+  using FEType = FiniteElement<T, IDX, ndim>;
 
   /// @brief the type of the quadrature in the reference trace space 
-  using QuadratureType = QUADRATURE::QuadratureRule<T, IDX, ndim - 1>;
+  using QuadratureType = QuadratureRule<T, IDX, ndim - 1>;
 
   /// @brief a point with domain dimensionality
   using DomainPoint = MATH::GEOMETRY::Point<T, ndim>;
@@ -92,7 +91,7 @@ public:
   using FacePoint = MATH::GEOMETRY::Point<T, ndim - 1>;
 
   /// @brief the type of the basis functions in the trace space 
-  using TraceBasis = BASIS::Basis<T, ndim - 1>;
+  using TraceBasis = Basis<T, ndim - 1>;
 
   // ================
   // = Data Members =
@@ -141,7 +140,7 @@ public:
       quadrule(*quadruleptr), qp_evals(*qp_evals_ptr), facidx(facidx) 
   {
     // TODO: can't do assertion because we call from make_bdy_trace_space
- //   assert((facptr->bctype == ELEMENT::BOUNDARY_CONDITIONS::INTERIOR) 
+ //   assert((facptr->bctype == BOUNDARY_CONDITIONS::INTERIOR) 
  //       && "The given face is not an interior face->");
   }
 
@@ -166,7 +165,7 @@ public:
       const TraceEvaluation<T, IDX, ndim> *qp_evals_ptr,
       IDX facidx
   ) {
-    assert((facptr->bctype != ELEMENT::BOUNDARY_CONDITIONS::INTERIOR) 
+    assert((facptr->bctype != BOUNDARY_CONDITIONS::INTERIOR) 
         && "The given face is not a boundary face->");
     return TraceSpace(facptr, elLptr, elLptr, trace_basisptr, quadruleptr, qp_evals_ptr, facidx);
   }
@@ -198,7 +197,7 @@ public:
    */
   void evalBasisL(const FacePoint &s, T *Bi) const {
     DomainPoint xi{};
-    face->transform_xiL(s, xi.data());
+    face->transform_xiL(s, xi);
     elL.evalBasis(xi, Bi);
   }
 
@@ -214,7 +213,7 @@ public:
    */
   void evalBasisR(const FacePoint &s, T *Bi) const {
     DomainPoint xi{};
-    face->transform_xiR(s, xi.data());
+    face->transform_xiR(s, xi);
     elR.evalBasis(xi, Bi);
   }
 
@@ -279,7 +278,7 @@ public:
    */
   auto evalGradBasisL(const FacePoint &s, T *grad_data) const {
     DomainPoint xi{};
-    face->transform_xiL(s, xi.data());
+    face->transform_xiL(s, xi);
     return elL.evalGradBasis(xi, grad_data);
   }
 
@@ -301,7 +300,7 @@ public:
    */
   auto evalGradBasisR(const FacePoint &s, T *grad_data) const {
     DomainPoint xi{};
-    face->transform_xiR(s, xi.data());
+    face->transform_xiR(s, xi);
     return elR.evalGradBasis(xi, grad_data);
   }
 
@@ -323,11 +322,11 @@ public:
    */
   auto evalPhysGradBasisL(
       const FacePoint &s,
-      FE::NodalFEFunction<T, ndim> &node_list,
+      NodeArray<T, ndim> &node_list,
       T *grad_data
   ) const {
     DomainPoint xi{};
-    face->transform_xiL(s, xi.data());
+    face->transform_xiL(s, xi);
     return elL.evalPhysGradBasis(xi, node_list, grad_data);
   }
 
@@ -349,11 +348,11 @@ public:
    */
   auto evalPhysGradBasisR(
       const FacePoint &s,
-      FE::NodalFEFunction<T, ndim> &node_list,
+      NodeArray<T, ndim> &node_list,
       T *grad_data
   ) const {
     DomainPoint xi{};
-    face->transform_xiR(s, xi.data());
+    face->transform_xiR(s, xi);
     return elR.evalPhysGradBasis(xi, node_list, grad_data);
   }
 
@@ -376,7 +375,7 @@ public:
    */
   auto evalGradBasisQPL(int qidx, T *grad_data) const {
     DomainPoint xi{};
-    face->transform_xiL(quadrule[qidx].abscisse, xi.data());
+    face->transform_xiL(quadrule[qidx].abscisse, xi);
     return elL.evalGradBasis(xi, grad_data);
   }
 
@@ -398,7 +397,7 @@ public:
    */
   auto evalGradBasisQPR(int qidx, T *grad_data) const {
     DomainPoint xi{};
-    face->transform_xiR(quadrule[qidx].abscisse, xi.data());
+    face->transform_xiR(quadrule[qidx].abscisse, xi);
     return elR.evalGradBasis(xi, grad_data);
   }
 
@@ -420,11 +419,11 @@ public:
    */
   auto evalPhysGradBasisQPL(
       int qidx,
-      FE::NodalFEFunction<T, ndim> &node_list,
+      NodeArray<T, ndim> &node_list,
       T *grad_data
   ) const {
     DomainPoint xi{};
-    face->transform_xiL(quadrule[qidx].abscisse, xi.data());
+    face->transform_xiL(quadrule[qidx].abscisse, xi);
     return elL.evalPhysGradBasis(xi, node_list, grad_data);
   }
 
@@ -446,11 +445,11 @@ public:
    */
   auto evalPhysGradBasisQPR(
       int qidx,
-      FE::NodalFEFunction<T, ndim> &node_list,
+      NodeArray<T, ndim> &node_list,
       T *grad_data
   ) const {
     DomainPoint xi{};
-    face->transform_xiR(quadrule[qidx].abscisse, xi.data());
+    face->transform_xiR(quadrule[qidx].abscisse, xi);
     return elR.evalPhysGradBasis(xi, node_list, grad_data);
   }
 
@@ -469,7 +468,7 @@ public:
    */
   auto evalHessBasisL(const FacePoint &s, T *hess_data) const {
     DomainPoint xi{};
-    face->transform_xiL(s, xi.data());
+    face->transform_xiL(s, xi);
     return elL.evalHessBasis(xi, hess_data);
   }
 
@@ -486,7 +485,7 @@ public:
    */
   auto evalHessBasisR(const FacePoint &s, T *hess_data) const {
     DomainPoint xi{};
-    face->transform_xiR(s, xi.data());
+    face->transform_xiR(s, xi);
     return elR.evalHessBasis(xi, hess_data);
   }
 
@@ -504,11 +503,11 @@ public:
    */
   auto evalPhysHessBasisL(
       const FacePoint &s,
-      FE::NodalFEFunction<T, ndim> &node_list,
+      NodeArray<T, ndim> &node_list,
       T *hess_data
   ) const {
     DomainPoint xi{};
-    face->transform_xiL(s, xi.data());
+    face->transform_xiL(s, xi);
     return elL.evalPhysHessBasis(xi, node_list, hess_data);
   }
 
@@ -526,11 +525,11 @@ public:
    */
   auto evalPhysHessBasisR(
       const FacePoint &s,
-      FE::NodalFEFunction<T, ndim> &node_list,
+      NodeArray<T, ndim> &node_list,
       T *hess_data
   ) const {
     DomainPoint xi{};
-    face->transform_xiR(s, xi.data());
+    face->transform_xiR(s, xi);
     return elR.evalPhysHessBasis(xi, node_list, hess_data);
   }
 
@@ -547,7 +546,7 @@ public:
    */
   auto evalHessBasisQPL(int qidx, T *hess_data) const {
     DomainPoint xi{};
-    face->transform_xiL(quadrule[qidx].abscisse, xi.data());
+    face->transform_xiL(quadrule[qidx].abscisse, xi);
     return elL.evalHessBasis(xi, hess_data);
   }
 
@@ -564,7 +563,7 @@ public:
    */
   auto evalHessBasisQPR(int qidx, T *hess_data) const {
     DomainPoint xi{};
-    face->transform_xiR(quadrule[qidx].abscisse, xi.data());
+    face->transform_xiR(quadrule[qidx].abscisse, xi);
     return elR.evalHessBasis(xi, hess_data);
   }
 
@@ -582,11 +581,11 @@ public:
    */
   auto evalPhysHessBasisQPL(
       int qidx,
-      FE::NodalFEFunction<T, ndim> &node_list,
+      NodeArray<T, ndim> &node_list,
       T *hess_data
   ) const {
     DomainPoint xi{};
-    face->transform_xiL(quadrule[qidx].abscisse, xi.data());
+    face->transform_xiL(quadrule[qidx].abscisse, xi);
     return elL.evalPhysHessBasis(xi, node_list, hess_data);
   }
 
@@ -604,11 +603,11 @@ public:
    */
   auto evalPhysHessBasisQPR(
       int qidx,
-      FE::NodalFEFunction<T, ndim> &node_list,
+      NodeArray<T, ndim> &node_list,
       T *hess_data
   ) const {
     DomainPoint xi{};
-    face->transform_xiR(quadrule[qidx].abscisse, xi.data());
+    face->transform_xiR(quadrule[qidx].abscisse, xi);
     return elR.evalPhysHessBasis(xi, node_list, hess_data);
   }
 
@@ -624,7 +623,7 @@ public:
    * @brief get the "QuadraturePoint" (contains point and weight) at the given
    * quadrature point index 
    **/
-  inline constexpr const QUADRATURE::QuadraturePoint<T, ndim - 1> 
+  inline constexpr const QuadraturePoint<T, ndim - 1> 
   getQP(int qp_idx) const
   {
     return quadrule[qp_idx];

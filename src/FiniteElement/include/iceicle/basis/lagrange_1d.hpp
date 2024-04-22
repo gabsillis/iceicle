@@ -6,7 +6,7 @@
 #include "Numtool/polydefs/LagrangePoly.hpp"
 #include <Numtool/fixed_size_tensor.hpp>
 
-namespace BASIS {
+namespace iceicle {
 
     /**
      * @brief Interpolation of a uniform set of Pn + 1 points from -1 to 1 

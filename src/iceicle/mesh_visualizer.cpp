@@ -1,11 +1,12 @@
 #include <iceicle/mesh/mesh.hpp>
 #include <iceicle/pvd_writer.hpp>
 #include <iceicle/fe_function/opengl_fe_function_utils.hpp>
+#include <iceicle/opengl_utils.hpp>
+#include <iceicle/geometry/face_utils.hpp>
 #include <iceicle/opengl_drawer.hpp>
 #include <iceicle/load_shaders.hpp>
 #include <iceicle/opengl_utils.hpp>
 #include "iceicle/geometry/face.hpp"
-#include <iceicle/geometry/face_utils.hpp>
 
 #include <GL/glew.h>
 #include <GLFW/glfw3.h>
@@ -21,9 +22,9 @@
 
 using namespace glm;
 using namespace std;
-using namespace ELEMENT;
-using namespace ELEMENT::TRANSFORMATIONS;
-using namespace ICEICLE_GL;
+using namespace iceicle;
+using namespace iceicle::transformations;
+using namespace iceicle::gl;
 
 
 static void glfw_error_callback(int error, const char* description)
@@ -91,14 +92,14 @@ int main(int argc, char**argv){
     bool number_faces = false;
     bool draw_normals = false;
 
-    MESH::AbstractMesh<double, int, 2> *mesh = nullptr;
-    ICEICLE::IO::PVDWriter<double, int, 2> mesh_writer{mesh};
+    AbstractMesh<double, int, 2> *mesh = nullptr;
+    io::PVDWriter<double, int, 2> mesh_writer{mesh};
 
     // ======================
     // = Setup Face Drawing =
     // ======================
-    ICEICLE_GL::ShapeDrawer<ArrowGenerated> normal_drawer{};
-    ICEICLE_GL::BufferedShapeDrawer<Curve> face_drawer{};
+    ShapeDrawer<ArrowGenerated> normal_drawer{};
+    BufferedShapeDrawer<Curve> face_drawer{};
 
     // ================
     // = FrameBuffers =
@@ -153,7 +154,7 @@ int main(int argc, char**argv){
                 double corner2[2] = {xmax, ymax};
                 int directional_nelem[2] = {nx, ny};
 
-                mesh = new MESH::AbstractMesh<double, int, 2>(
+                mesh = new AbstractMesh<double, int, 2>(
                     {xmin, ymin}, {xmax, ymax}, {nx, ny}, 1
                 );
 
@@ -161,7 +162,7 @@ int main(int argc, char**argv){
                 normal_drawer.clear_list();
 
                 // get the bounding box and apply to the vertex shaders
-                BoundingBox mesh_bounds = ICEICLE_GL::get_mesh_bounds(*mesh);
+                BoundingBox mesh_bounds = get_mesh_bounds(*mesh);
                 face_drawer.shader.load();
                 face_drawer.shader.set3Float("xmin", mesh_bounds.xmin);
                 face_drawer.shader.set3Float("xmax", mesh_bounds.xmax);
@@ -176,17 +177,17 @@ int main(int argc, char**argv){
                     face_drawer.add_shape(create_curve(mesh->faces[iface], mesh->nodes));
 
                     // get the normal to draw 
-                    auto centroid = ELEMENT::face_centroid(*(mesh->faces[iface]), mesh->nodes);
+                    auto centroid = face_centroid(*(mesh->faces[iface]), mesh->nodes);
 
-                    auto normal = ELEMENT::calc_normal(
+                    auto normal = calc_normal(
                         *(mesh->faces[iface]),
                         mesh->nodes,
-                        ELEMENT::ref_face_centroid(*(mesh->faces[iface]))
+                        ref_face_centroid(*(mesh->faces[iface]))
                     );
 
                     ArrowGenerated normal_arrow = {
-                        ICEICLE_GL::to_vec3(centroid),
-                        ICEICLE_GL::to_vec3(normal)
+                        to_vec3(centroid),
+                        to_vec3(normal)
                     };
 
                     normal_drawer.add_shape(normal_arrow);
@@ -197,17 +198,17 @@ int main(int argc, char**argv){
                     face_drawer.add_shape(create_curve(mesh->faces[iface], mesh->nodes));
 
                     // get the normal to draw 
-                    auto centroid = ELEMENT::face_centroid(*(mesh->faces[iface]), mesh->nodes);
+                    auto centroid = face_centroid(*(mesh->faces[iface]), mesh->nodes);
 
-                    auto normal = ELEMENT::calc_normal(
+                    auto normal = calc_normal(
                         *(mesh->faces[iface]),
                         mesh->nodes,
-                        ELEMENT::ref_face_centroid(*(mesh->faces[iface]))
+                        ref_face_centroid(*(mesh->faces[iface]))
                     );
 
                     ArrowGenerated normal_arrow = {
-                        ICEICLE_GL::to_vec3(centroid),
-                        ICEICLE_GL::to_vec3(normal)
+                        to_vec3(centroid),
+                        to_vec3(normal)
                     };
 
                     normal_drawer.add_shape(normal_arrow);
@@ -239,7 +240,7 @@ int main(int argc, char**argv){
             // resize viewport and framebuffer 
             // TODO: use a callback
             GLfloat aspect_ratio = 1.0;
-            ICEICLE_GL::set_viewport_maintain_aspect_ratio(
+            set_viewport_maintain_aspect_ratio(
                     wSize.x, wSize.y, aspect_ratio);
             fbo1.rescale_frame_buffer(wSize.x, wSize.y);
 

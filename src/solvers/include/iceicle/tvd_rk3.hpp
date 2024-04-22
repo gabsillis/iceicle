@@ -15,7 +15,7 @@
 
 #include <iostream>
 #include <iomanip>
-namespace ICEICLE::SOLVERS {
+namespace iceicle::solvers {
 
 /**
  * @brief Explicit 3-stage Total Variation Diminishing Runge-Kutta
@@ -82,7 +82,7 @@ public:
      */
     template<int ndim, class disc_class>
     RK3TVD(
-        FE::FESpace<T, IDX, ndim> &fespace,
+        FESpace<T, IDX, ndim> &fespace,
         disc_class &disc,
         const TimestepClass &timestep,
         const StopCondition &stop_condition
@@ -105,7 +105,7 @@ public:
      * @param [in/out] u the solution as an fespan view
      */
     template<int ndim, class disc_class, class LayoutPolicy, class uAccessorPolicy>
-    void step(FE::FESpace<T, IDX, ndim> &fespace, disc_class &disc, FE::fespan<T, LayoutPolicy, uAccessorPolicy> u)
+    void step(FESpace<T, IDX, ndim> &fespace, disc_class &disc, fespan<T, LayoutPolicy, uAccessorPolicy> u)
     requires TimestepT<TimestepClass, T, IDX, ndim, disc_class, LayoutPolicy, uAccessorPolicy>
     {
        using namespace NUMTOOL::TENSOR::FIXED_SIZE;
@@ -141,7 +141,7 @@ public:
         dt = stop_condition.limit_dt(dt, time);
 
         // create view of the residual using the same Layout as u 
-        FE::fespan res{res_data.data(), u.get_layout()};
+        fespan res{res_data.data(), u.get_layout()};
 
         // storage for rhs of mass matrix equation
         int max_ndof = fespace.dg_map.max_el_size_reqirement(1);
@@ -149,7 +149,7 @@ public:
         std::vector<T> du(max_ndof);
 
         // function to get the residual for a single stage
-        auto stage_residual = [&](FE::fespan<T, LayoutPolicy> u_stage, FE::fespan<T, LayoutPolicy> res_stage){
+        auto stage_residual = [&](fespan<T, LayoutPolicy> u_stage, fespan<T, LayoutPolicy> res_stage){
             // zero out
             res_stage = 0;
 
@@ -159,10 +159,10 @@ public:
             // invert mass matrices
             // TODO: prestore mass matrix with the reference element 
             // TODO: need to build a global mass matrix if doing CG (but not for DG)
-            for(const ELEMENT::FiniteElement<T, IDX, ndim> &el : fespace.elements){
+            for(const FiniteElement<T, IDX, ndim> &el : fespace.elements){
                 using namespace MATH::MATRIX;
                 using namespace MATH::MATRIX::SOLVERS;
-                DenseMatrix<T> mass = ELEMENT::calculate_mass_matrix(el, fespace.meshptr->nodes);
+                DenseMatrix<T> mass = calculate_mass_matrix(el, fespace.meshptr->nodes);
                 PermutationMatrix<unsigned int> pi = decompose_lu(mass);
 
                 const std::size_t ndof = el.nbasis();
@@ -184,23 +184,23 @@ public:
         };
 
         // describe fespans for intermediate states 
-        FE::fespan res1{res1_data.data(), u.get_layout()};
-        FE::fespan res2{res2_data.data(), u.get_layout()};
-        FE::fespan res3{res3_data.data(), u.get_layout()};
-        FE::fespan u_old{u_stage_data.data(), u.get_layout()};
+        fespan res1{res1_data.data(), u.get_layout()};
+        fespan res2{res2_data.data(), u.get_layout()};
+        fespan res3{res3_data.data(), u.get_layout()};
+        fespan u_old{u_stage_data.data(), u.get_layout()};
 
 
-        FE::copy_fespan(u, u_old);
+        copy_fespan(u, u_old);
        
         for(int istage = 0; istage < nstag; ++istage){
             // get Minv * r for the stage u
             stage_residual(u, res1);
 
             // update from coefficients
-            FE::axpby(valfa[nstag-1][istage], u_old, vbeta[nstag-1][istage], u); 
+            axpby(valfa[nstag-1][istage], u_old, vbeta[nstag-1][istage], u); 
 
             // add residual dt contribution
-            FE::axpy(vbeta[nstag-1][istage] * dt, res1, u);
+            axpy(vbeta[nstag-1][istage] * dt, res1, u);
         }
 
         // update the timestep and time
@@ -220,7 +220,7 @@ public:
      * @param [in/out] u the solution as an fespan view
      */
     template<int ndim, class disc_class, class LayoutPolicy, class uAccessorPolicy>
-    void solve(FE::FESpace<T, IDX, ndim> &fespace, disc_class &disc, FE::fespan<T, LayoutPolicy, uAccessorPolicy> u) {
+    void solve(FESpace<T, IDX, ndim> &fespace, disc_class &disc, fespan<T, LayoutPolicy, uAccessorPolicy> u) {
 
         // visualization callback on initial state (0 % anything == 0) 
         vis_callback(*this);
@@ -237,7 +237,7 @@ public:
 
 // template argument deduction
 template<class T, class IDX, int ndim, class disc_class, class TimestepClass, class StopCondition>
-RK3TVD(FE::FESpace<T, IDX, ndim> &, disc_class &,
+RK3TVD(FESpace<T, IDX, ndim> &, disc_class &,
     const TimestepClass &, const StopCondition &) -> RK3TVD<T, IDX, TimestepClass, StopCondition>;
 
 }

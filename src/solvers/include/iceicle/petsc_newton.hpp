@@ -25,7 +25,7 @@
 #include <petscvec.h>
 #include <petscviewer.h>
 
-namespace ICEICLE::SOLVERS {
+namespace iceicle::solvers {
 
     /**
      * @brief Newton solver that uses Petsc for linear solvers 
@@ -46,7 +46,7 @@ namespace ICEICLE::SOLVERS {
         /// Activates mdg mode if specified 
         /// Mdg mode adds node dofs 
         /// and interface conservation equations
-        FE::nodeset_dof_map<IDX> mdg_nodeset;
+        nodeset_dof_map<IDX> mdg_nodeset;
 
         bool mdg_mode;
 
@@ -67,7 +67,7 @@ namespace ICEICLE::SOLVERS {
 
         public:
         /// @brief store a reference to the fespace being used 
-        FE::FESpace<T, IDX, ndim> &fespace;
+        FESpace<T, IDX, ndim> &fespace;
 
         /// @brief store a reference to the discretization being solved
         disc_class &disc;
@@ -157,7 +157,7 @@ namespace ICEICLE::SOLVERS {
          * @param comm (optional) the MPI Communicator defaults to MPI_COMM_WORLD
          */
         PetscNewton(
-            FE::FESpace<T, IDX, ndim> &fespace,
+            FESpace<T, IDX, ndim> &fespace,
             disc_class &disc,
             const ConvergenceCriteria<T, IDX> &conv_criteria,
             const ls_type& linesearch,
@@ -197,7 +197,7 @@ namespace ICEICLE::SOLVERS {
         }
 
         PetscNewton(
-            FE::FESpace<T, IDX, ndim> &fespace,
+            FESpace<T, IDX, ndim> &fespace,
             disc_class &disc,
             const ConvergenceCriteria<T, IDX> &conv_criteria,
             Mat jac = nullptr,
@@ -221,11 +221,11 @@ namespace ICEICLE::SOLVERS {
          *  @param nodeset the subset of nodes to use for mdg dofs 
          */
         PetscNewton(
-            FE::FESpace<T, IDX, ndim>& fespace,
+            FESpace<T, IDX, ndim>& fespace,
             disc_class& disc,
             const ConvergenceCriteria<T, IDX>& conv_criteria,
             const ls_type& linesearch,
-            const FE::nodeset_dof_map<IDX>& nodeset
+            const nodeset_dof_map<IDX>& nodeset
         ) : fespace{fespace}, disc{disc}, conv_criteria{conv_criteria}, linesearch{linesearch},
             mdg_nodeset{nodeset}, mdg_mode{true}, comm{MPI_COMM_WORLD}
         {
@@ -274,27 +274,27 @@ namespace ICEICLE::SOLVERS {
          * @return the number of iterations performed (can discard)
          */
         template<class uLayoutPolicy>
-        auto solve(FE::fespan<T, uLayoutPolicy> u) -> IDX {
+        auto solve(fespan<T, uLayoutPolicy> u) -> IDX {
 
             // TODO: find a cleaner way to do this
 
             // Node selection layout for MDG (empty unless mdg active)
-            FE::node_selection_layout<IDX, ndim> mdg_layout{mdg_nodeset};
+            node_selection_layout<IDX, ndim> mdg_layout{mdg_nodeset};
             // copy out the initial nodes
             std::vector<T> current_x_storage(mdg_layout.size());
-            FE::dofspan current_x{current_x_storage, mdg_layout};
-            FE::extract_node_selection_span(fespace.meshptr->nodes, current_x);
+            dofspan current_x{current_x_storage, mdg_layout};
+            extract_node_selection_span(fespace.meshptr->nodes, current_x);
 
             // get the initial residual and jacobian
             {
-                PETSC::VecSpan res_view{res_data};
-                FE::fespan res{res_view.data(), u.get_layout()};
+                petsc::VecSpan res_view{res_data};
+                fespan res{res_view.data(), u.get_layout()};
                 form_petsc_jacobian_fd(fespace, disc, u, res, jac);
                 if(mdg_mode){
                     // MDG Mode 
 
                     // MDG residual starts after fe residual
-                    FE::dofspan mdg_res{res_view.data() + res.size(), mdg_layout};
+                    dofspan mdg_res{res_view.data() + res.size(), mdg_layout};
 
                     form_petsc_mdg_jacobian_fd(fespace, disc, u, mdg_res, jac);
                 }
@@ -309,10 +309,10 @@ namespace ICEICLE::SOLVERS {
             for(k = 0; k < conv_criteria.kmax; ++k){
 
                 // keep around the current node locations
-                FE::extract_node_selection_span(fespace.meshptr->nodes, current_x);
+                extract_node_selection_span(fespace.meshptr->nodes, current_x);
 
                 // get node radii 
-                std::vector<T> node_radii{FE::node_freedom_radii(fespace)};
+                std::vector<T> node_radii{node_freedom_radii(fespace)};
 
                 // NOTE: add regularization for geometry dofs 
                 for(IDX idiag = u.size(); idiag < mdg_layout.size(); ++idiag){
@@ -340,30 +340,30 @@ namespace ICEICLE::SOLVERS {
 
                 // update u
                 if constexpr (std::is_same_v<ls_type, no_linesearch<T, IDX>>){
-                    PETSC::VecSpan du_view{du_data};
-                    FE::fespan du{du_view.data(), u.get_layout()};
-                    FE::axpy(-1.0, du, u);
+                    petsc::VecSpan du_view{du_data};
+                    fespan du{du_view.data(), u.get_layout()};
+                    axpy(-1.0, du, u);
                 } else {
                     // its linesearchin time!
 
                     // view into the calculated newton step for u and x
-                    const FE::nodeset_dof_map<IDX> &nodeset = mdg_layout.nodeset;
-                    PETSC::VecSpan du_view{du_data};
-                    FE::fespan du{du_view.data(), u.get_layout()};
-                    FE::dofspan dx{du_view.data() + u.size(), mdg_layout};
+                    const nodeset_dof_map<IDX> &nodeset = mdg_layout.nodeset;
+                    petsc::VecSpan du_view{du_data};
+                    fespan du{du_view.data(), u.get_layout()};
+                    dofspan dx{du_view.data() + u.size(), mdg_layout};
 
                     // u step for linesearch
                     std::vector<T> u_step_storage(u.size());
-                    FE::fespan u_step{u_step_storage.data(), u.get_layout()};
-                    FE::copy_fespan(u, u_step);
+                    fespan u_step{u_step_storage.data(), u.get_layout()};
+                    copy_fespan(u, u_step);
 
                     // x step for linesearch
                     std::vector<T> x_step_storage(mdg_layout.size());
-                    FE::dofspan x_step{x_step_storage, mdg_layout};
+                    dofspan x_step{x_step_storage, mdg_layout};
 
                     // working array for linesearch residuals
                     std::vector<T> r_work_storage(u.size());
-                    FE::fespan res_work{r_work_storage.data(), u.get_layout()};
+                    fespan res_work{r_work_storage.data(), u.get_layout()};
 
                     std::vector<T> r_mdg_work_storage{};
 
@@ -419,13 +419,13 @@ namespace ICEICLE::SOLVERS {
                         static constexpr T BIG_RESIDUAL = 1e9;
 
                         // apply the step scaled by linesearch param
-                        FE::copy_fespan(u, u_step);
-                        FE::axpy(-alpha_arg, du, u_step);
-                        FE::extract_node_selection_span(fespace.meshptr->nodes, x_step);
-                        FE::axpy(-alpha_arg, dx, x_step);
+                        copy_fespan(u, u_step);
+                        axpy(-alpha_arg, du, u_step);
+                        extract_node_selection_span(fespace.meshptr->nodes, x_step);
+                        axpy(-alpha_arg, dx, x_step);
 
                         // copy moved nodes 
-                        FE::scatter_node_selection_span(1.0, x_step, 0.0, fespace.meshptr->nodes);
+                        scatter_node_selection_span(1.0, x_step, 0.0, fespace.meshptr->nodes);
 
                         form_residual(fespace, disc, u_step, res_work);
                         T rnorm = res_work.vector_norm();
@@ -437,7 +437,7 @@ namespace ICEICLE::SOLVERS {
 
                             // set the x points from x_step
 
-                            FE::dofspan mdg_res{r_mdg_work_storage, mdg_layout};
+                            dofspan mdg_res{r_mdg_work_storage, mdg_layout};
 
                             form_mdg_residual(fespace, disc, u_step, mdg_res);
                             rnorm += mdg_res.vector_norm();
@@ -449,7 +449,7 @@ namespace ICEICLE::SOLVERS {
                         }
 
                         // revert nodes
-                        FE::scatter_node_selection_span(1.0, current_x, 0.0, fespace.meshptr->nodes);
+                        scatter_node_selection_span(1.0, current_x, 0.0, fespace.meshptr->nodes);
 
                         // safeguard the cost function for linesearch 
                         if(std::isfinite(rnorm)){
@@ -471,24 +471,24 @@ namespace ICEICLE::SOLVERS {
                     if(verbosity >= 1) std::cout << "linesearch: selected alpha = " << alpha << std::endl;
 
                     // apply the step times linesearch multiplier to u and x
-                    FE::axpy(-alpha, du, u);
-                    FE::extract_node_selection_span(fespace.meshptr->nodes, x_step);
-                    FE::axpy(-alpha, dx, x_step);
-                    FE::scatter_node_selection_span(1.0, x_step, 0.0, fespace.meshptr->nodes);
+                    axpy(-alpha, du, u);
+                    extract_node_selection_span(fespace.meshptr->nodes, x_step);
+                    axpy(-alpha, dx, x_step);
+                    scatter_node_selection_span(1.0, x_step, 0.0, fespace.meshptr->nodes);
                 }
 
                 // Get the new residual and Jacobian (for the next step)
                 {
-                    PETSC::VecSpan res_view{res_data};
-                    FE::fespan res{res_view.data(), u.get_layout()};
+                    petsc::VecSpan res_view{res_data};
+                    fespan res{res_view.data(), u.get_layout()};
                     MatZeroEntries(jac); // zero out the jacobian
                     form_petsc_jacobian_fd(fespace, disc, u, res, jac);
                     if(mdg_mode){
                         // MDG Mode 
-                        FE::node_selection_layout<IDX, ndim> mdg_res_layout{mdg_nodeset};
+                        node_selection_layout<IDX, ndim> mdg_res_layout{mdg_nodeset};
 
                         // MDG residual starts after fe residual
-                        FE::dofspan mdg_res{res_view.data() + res.size(), mdg_res_layout};
+                        dofspan mdg_res{res_view.data() + res.size(), mdg_res_layout};
 
                         form_petsc_mdg_jacobian_fd(fespace, disc, u, mdg_res, jac);
                     }
@@ -525,28 +525,28 @@ namespace ICEICLE::SOLVERS {
 
     /// Deduction guides
     template<class T, class IDX, int ndim, class disc_class, class ls_type>
-    PetscNewton(FE::FESpace<T, IDX, ndim> &, disc_class &,
+    PetscNewton(FESpace<T, IDX, ndim> &, disc_class &,
         const ConvergenceCriteria<T, IDX> &, const ls_type&) -> PetscNewton<T, IDX, ndim, disc_class, ls_type>;
 
     template<class T, class IDX, int ndim, class disc_class, class ls_type>
-    PetscNewton(FE::FESpace<T, IDX, ndim> &, disc_class &,
+    PetscNewton(FESpace<T, IDX, ndim> &, disc_class &,
         const ConvergenceCriteria<T, IDX> &, const ls_type&, Mat) -> PetscNewton<T, IDX, ndim, disc_class, ls_type>;
 
     template<class T, class IDX, int ndim, class disc_class, class ls_type>
-    PetscNewton(FE::FESpace<T, IDX, ndim> &, disc_class &,
+    PetscNewton(FESpace<T, IDX, ndim> &, disc_class &,
         const ConvergenceCriteria<T, IDX> &, const ls_type&, Mat, MPI_Comm) -> PetscNewton<T, IDX, ndim, disc_class, ls_type>;
 
     /// Deduction guides
     template<class T, class IDX, int ndim, class disc_class>
-    PetscNewton(FE::FESpace<T, IDX, ndim> &, disc_class &,
+    PetscNewton(FESpace<T, IDX, ndim> &, disc_class &,
         const ConvergenceCriteria<T, IDX> &) -> PetscNewton<T, IDX, ndim, disc_class, no_linesearch<T, IDX>>;
 
     template<class T, class IDX, int ndim, class disc_class>
-    PetscNewton(FE::FESpace<T, IDX, ndim> &, disc_class &,
+    PetscNewton(FESpace<T, IDX, ndim> &, disc_class &,
         const ConvergenceCriteria<T, IDX> &, Mat) -> PetscNewton<T, IDX, ndim, disc_class, no_linesearch<T, IDX>>;
 
     template<class T, class IDX, int ndim, class disc_class>
-    PetscNewton(FE::FESpace<T, IDX, ndim> &, disc_class &,
+    PetscNewton(FESpace<T, IDX, ndim> &, disc_class &,
         const ConvergenceCriteria<T, IDX> &, Mat, MPI_Comm) -> PetscNewton<T, IDX, ndim, disc_class, no_linesearch<T, IDX>>;
 
 }

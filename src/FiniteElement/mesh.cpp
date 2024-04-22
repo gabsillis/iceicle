@@ -13,14 +13,12 @@
 #include <fstream>
 #include <iostream>
 #include <stdexcept>
-#ifdef ICEICLE_USE_MPI
-#include "mpi.h"
-#endif
+#include <utility>
 
-namespace MESH {
+namespace iceicle {
     
-    using T = BUILD_CONFIG::T;
-    using IDX = BUILD_CONFIG::IDX;
+    using T = build_config::T;
+    using IDX = build_config::IDX;
 
     static constexpr int PN_GEOM_MAX = 10;
 
@@ -109,13 +107,13 @@ namespace MESH {
 
             // get BC from tagnaame;
             if(tagname == "wall"){
-                gmshTagMap[gmshTag] = ELEMENT::BOUNDARY_CONDITIONS::WALL_GENERAL;
+                gmshTagMap[gmshTag] = std::to_underlying(BOUNDARY_CONDITIONS::WALL_GENERAL);
             } else if (tagname == "inlet"){
-                gmshTagMap[gmshTag] = ELEMENT::BOUNDARY_CONDITIONS::INLET;
+                gmshTagMap[gmshTag] = std::to_underlying(BOUNDARY_CONDITIONS::INLET);
             } else if (tagname == "outlet"){
-                gmshTagMap[gmshTag] = ELEMENT::BOUNDARY_CONDITIONS::OUTLET;
+                gmshTagMap[gmshTag] = std::to_underlying(BOUNDARY_CONDITIONS::OUTLET);
             } else if (tagname == "Dirichlet"){
-                gmshTagMap[gmshTag] = ELEMENT::BOUNDARY_CONDITIONS::DIRICHLET;
+                gmshTagMap[gmshTag] = std::to_underlying(BOUNDARY_CONDITIONS::DIRICHLET);
             } else {
                 throw std::logic_error("unrecognized bc type: " + tagname + "\n");
             }

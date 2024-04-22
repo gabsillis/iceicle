@@ -8,7 +8,7 @@
 
 
 #include <gtest/gtest.h>
-
+using namespace iceicle;
 TEST(test_trace_space, test_basis_eval){
     // compile-time test parameters
     static constexpr int ndim = 2;
@@ -19,23 +19,23 @@ TEST(test_trace_space, test_basis_eval){
     using T = double;
     using IDX = int;
 
-    using BasisTypeL = BASIS::HypercubeLagrangeBasis<T, IDX, ndim, PnL>;
-    using BasisTypeR = BASIS::HypercubeLagrangeBasis<T, IDX, ndim, PnR>;
-    using TraceBasisType = BASIS::HypercubeLagrangeBasis<T, IDX, ndim - 1, PnR>;
+    using BasisTypeL = HypercubeLagrangeBasis<T, IDX, ndim, PnL>;
+    using BasisTypeR = HypercubeLagrangeBasis<T, IDX, ndim, PnR>;
+    using TraceBasisType = HypercubeLagrangeBasis<T, IDX, ndim - 1, PnR>;
 
-    using QuadTypeL = QUADRATURE::HypercubeGaussLegendre<T, IDX, ndim, PnL>;
-    using QuadTypeR = QUADRATURE::HypercubeGaussLegendre<T, IDX, ndim, PnR>;
-    using TraceQuadrature = QUADRATURE::HypercubeGaussLegendre<T, IDX, ndim - 1, (PnL > PnR) ? PnL : PnR>;
+    using QuadTypeL = HypercubeGaussLegendre<T, IDX, ndim, PnL>;
+    using QuadTypeR = HypercubeGaussLegendre<T, IDX, ndim, PnR>;
+    using TraceQuadrature = HypercubeGaussLegendre<T, IDX, ndim - 1, (PnL > PnR) ? PnL : PnR>;
 
-    using GeoElementType = ELEMENT::GeometricElement<T, IDX, ndim>;
-    using GeoFaceType = ELEMENT::Face<T, IDX, ndim>;
+    using GeoElementType = GeometricElement<T, IDX, ndim>;
+    using GeoFaceType = Face<T, IDX, ndim>;
 
-    using FiniteElement = ELEMENT::FiniteElement<T, IDX, ndim>;
-    using TraceSpace = ELEMENT::TraceSpace<T, IDX, ndim>;
+    using FiniteElement = FiniteElement<T, IDX, ndim>;
+    using TraceSpace = TraceSpace<T, IDX, ndim>;
 
     // Use the Uniform Mesh API to generate a two element mesh with one 
     // internal face
-    MESH::AbstractMesh<T, IDX, ndim> mesh{
+    AbstractMesh<T, IDX, ndim> mesh{
         {-1.0, -1.0},
         {1.0, 1.0}, 
         {2, 1}
@@ -44,7 +44,7 @@ TEST(test_trace_space, test_basis_eval){
     // create the left element 
     BasisTypeL basisL{};
     QuadTypeL quadratureL{};
-    ELEMENT::FEEvaluation<T, IDX, ndim> evalsL{&basisL, &quadratureL};
+    FEEvaluation<T, IDX, ndim> evalsL{&basisL, &quadratureL};
     FiniteElement elL {
         mesh.elements[0],
         &basisL,
@@ -56,7 +56,7 @@ TEST(test_trace_space, test_basis_eval){
     // create the right element 
     BasisTypeR basisR{};
     QuadTypeR quadratureR{};
-    ELEMENT::FEEvaluation<T, IDX, ndim> evalsR{&basisR, &quadratureR};
+    FEEvaluation<T, IDX, ndim> evalsR{&basisR, &quadratureR};
     FiniteElement elR {
         mesh.elements[1],
         &basisR,
@@ -68,7 +68,7 @@ TEST(test_trace_space, test_basis_eval){
     // create the Trace Space 
     TraceBasisType trace_basis{};
     TraceQuadrature trace_quadrule{};
-    ELEMENT::TraceEvaluation<T, IDX, ndim> trace_eval{};
+    TraceEvaluation<T, IDX, ndim> trace_eval{};
     TraceSpace trace {
         mesh.faces[mesh.interiorFaceStart],
         &elL,

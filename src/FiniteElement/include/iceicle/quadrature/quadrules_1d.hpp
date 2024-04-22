@@ -11,7 +11,7 @@
 #include <Numtool/constexpr_math.hpp>
 
 #include <iceicle/quadrature/QuadratureRule.hpp>
-namespace QUADRATURE {
+namespace iceicle {
 
 
     /**

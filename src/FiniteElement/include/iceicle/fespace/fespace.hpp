@@ -12,7 +12,7 @@
 #include "iceicle/crs.hpp"
 #include "iceicle/element/finite_element.hpp"
 #include <iceicle/element/reference_element.hpp>
-#include "iceicle/fe_enums.hpp"
+#include "iceicle/fe_definitions.hpp"
 #include "iceicle/fe_function/dglayout.hpp"
 #include "iceicle/geometry/face.hpp"
 #include "iceicle/geometry/geo_element.hpp"
@@ -23,7 +23,7 @@
 #include <map>
 #include <type_traits>
 
-namespace FE {
+namespace iceicle {
     /**
      * Key to define the surjective mapping from an element 
      * to the corresponding evaluation
@@ -33,7 +33,7 @@ namespace FE {
 
         int geometry_order;
 
-        FE::DOMAIN_TYPE domain_type;
+        DOMAIN_TYPE domain_type;
 
         FESPACE_ENUMS::FESPACE_QUADRATURE qtype;
 
@@ -69,7 +69,7 @@ namespace FE {
 
         int geometry_order;
 
-        FE::DOMAIN_TYPE domain_type;
+        DOMAIN_TYPE domain_type;
 
         FESPACE_ENUMS::FESPACE_QUADRATURE qtype;
 
@@ -103,13 +103,13 @@ namespace FE {
     class FESpace {
         public:
 
-        using ElementType = ELEMENT::FiniteElement<T, IDX, ndim>;
-        using TraceType = ELEMENT::TraceSpace<T, IDX, ndim>;
-        using GeoElementType = ELEMENT::GeometricElement<T, IDX, ndim>;
-        using GeoFaceType = ELEMENT::Face<T, IDX, ndim>;
-        using MeshType = MESH::AbstractMesh<T, IDX, ndim>;
-        using BasisType = BASIS::Basis<T, ndim>;
-        using QuadratureType = QUADRATURE::QuadratureRule<T, IDX, ndim>;
+        using ElementType = FiniteElement<T, IDX, ndim>;
+        using TraceType = TraceSpace<T, IDX, ndim>;
+        using GeoElementType = GeometricElement<T, IDX, ndim>;
+        using GeoFaceType = Face<T, IDX, ndim>;
+        using MeshType = AbstractMesh<T, IDX, ndim>;
+        using BasisType = Basis<T, ndim>;
+        using QuadratureType = QuadratureRule<T, IDX, ndim>;
 
         /// @brief pointer to the mesh used
         MeshType *meshptr;
@@ -134,13 +134,13 @@ namespace FE {
         dg_dof_map<IDX> dg_map;
 
         /** @brief the mapping of faces connected to each node */
-        ICEICLE::UTIL::crs<IDX> fac_surr_nodes;
+        util::crs<IDX> fac_surr_nodes;
 
         /** @brief the mapping of elements connected to each node */
-        ICEICLE::UTIL::crs<IDX> el_surr_nodes;
+        util::crs<IDX> el_surr_nodes;
 
         /** @brief the mapping of faces connected to each element */
-        ICEICLE::UTIL::crs<IDX> fac_surr_el;
+        util::crs<IDX> fac_surr_el;
 
         private:
 
@@ -148,8 +148,8 @@ namespace FE {
         // = Maps to Basis, Quadrature, and Evals =
         // ========================================
 
-        using ReferenceElementType = ELEMENT::ReferenceElement<T, IDX, ndim>;
-        using ReferenceTraceType = ELEMENT::ReferenceTraceSpace<T, IDX, ndim>;
+        using ReferenceElementType = ReferenceElement<T, IDX, ndim>;
+        using ReferenceTraceType = ReferenceTraceSpace<T, IDX, ndim>;
         std::map<FETypeKey, ReferenceElementType> ref_el_map;
         std::map<TraceTypeKey, ReferenceTraceType> ref_trace_map;
 
@@ -182,7 +182,7 @@ namespace FE {
             MeshType *meshptr,
             FESPACE_ENUMS::FESPACE_BASIS_TYPE basis_type,
             FESPACE_ENUMS::FESPACE_QUADRATURE quadrature_type,
-            ICEICLE::TMP::compile_int<basis_order> basis_order_arg
+            tmp::compile_int<basis_order> basis_order_arg
         ) : meshptr(meshptr), elements{} {
 
             // Generate the Finite Elements
@@ -221,7 +221,7 @@ namespace FE {
             for(const GeoFaceType *fac : meshptr->faces){
                 // NOTE: assuming element indexing is the same as the mesh still
 
-                bool is_interior = fac->bctype == ELEMENT::INTERIOR;
+                bool is_interior = fac->bctype == BOUNDARY_CONDITIONS::INTERIOR;
                 ElementType &elL = elements[fac->elemL];
                 ElementType &elR = (is_interior) ? elements[fac->elemR] : elements[fac->elemL];
 
@@ -257,7 +257,7 @@ namespace FE {
                 };
 
                 NUMTOOL::TMP::invoke_at_index(
-                    NUMTOOL::TMP::make_range_sequence<int, 1, ELEMENT::MAX_DYNAMIC_ORDER>{},
+                    NUMTOOL::TMP::make_range_sequence<int, 1, MAX_DYNAMIC_ORDER>{},
                     geo_order,
                     geo_order_dispatch                    
                 );
@@ -276,23 +276,23 @@ namespace FE {
             // ===================================
 
             // generate the face surrounding nodes connectivity matrix 
-            std::vector<std::vector<IDX>> connectivity_ragged(meshptr->nodes.n_nodes());
+            std::vector<std::vector<IDX>> connectivity_ragged(meshptr->n_nodes());
             for(int itrace = 0; itrace < traces.size(); ++itrace){
                 const TraceType& trace = traces[itrace];
                 for(IDX inode : trace.face->nodes_span()){
                     connectivity_ragged[inode].push_back(itrace);
                 }
             }
-            fac_surr_nodes = ICEICLE::UTIL::crs{connectivity_ragged};
+            fac_surr_nodes = util::crs{connectivity_ragged};
 
-            std::vector<std::vector<IDX>> el_surr_nodes_ragged(meshptr->nodes.n_nodes());
+            std::vector<std::vector<IDX>> el_surr_nodes_ragged(meshptr->n_nodes());
             for(int iel = 0; iel < elements.size(); ++iel){
                 const ElementType& element = elements[iel];
                 for(IDX inode : element.geo_el->nodes_span()){
                     el_surr_nodes_ragged[inode].push_back(iel);
                 }
             }
-            el_surr_nodes = ICEICLE::UTIL::crs{el_surr_nodes_ragged};
+            el_surr_nodes = util::crs{el_surr_nodes_ragged};
 
             std::vector<std::vector<IDX>> fac_surr_el_ragged(elements.size());
             for(int itrace = 0; itrace < traces.size(); ++itrace){
@@ -300,7 +300,7 @@ namespace FE {
                 fac_surr_el_ragged[trace.elL.elidx].push_back(itrace);
                 fac_surr_el_ragged[trace.elR.elidx].push_back(itrace);
             }
-            fac_surr_el = ICEICLE::UTIL::crs{fac_surr_el_ragged};
+            fac_surr_el = util::crs{fac_surr_el_ragged};
         } 
 
         /**

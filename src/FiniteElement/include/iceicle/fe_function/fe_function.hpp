@@ -6,13 +6,9 @@
  */
 
 #pragma once
-#include <initializer_list>
-#include <vector>
-#include <stdexcept>
 #include <Numtool/point.hpp>
-#include <algorithm>
 
-namespace FE {
+namespace iceicle {
     
 
     /**

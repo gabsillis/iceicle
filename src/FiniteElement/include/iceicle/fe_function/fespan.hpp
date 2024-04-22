@@ -6,7 +6,6 @@
 #pragma once
 #include "iceicle/element/TraceSpace.hpp"
 #include "iceicle/fe_function/el_layout.hpp"
-#include "iceicle/fe_function/nodal_fe_function.hpp"
 #include "iceicle/fe_function/trace_layout.hpp"
 #include "iceicle/fe_function/node_set_layout.hpp"
 #include "iceicle/fespace/fespace.hpp"
@@ -21,7 +20,7 @@
 #include <iceicle/fe_function/layout_enums.hpp>
 #include <mdspan/mdspan.hpp>
 
-namespace FE {
+namespace iceicle {
     
     /**
      * @brief implementation equivalent of std::default_accessor
@@ -825,8 +824,8 @@ namespace FE {
         class T,
         class LocalLayoutPolicy
     > inline void extract_facspan(
-        ELEMENT::TraceSpace<T, typename LocalLayoutPolicy::index_type, LocalLayoutPolicy::static_extent()> &trace,
-        FE::NodalFEFunction<T, LocalLayoutPolicy::static_extent()> &global_data,
+        TraceSpace<T, typename LocalLayoutPolicy::index_type, LocalLayoutPolicy::static_extent()> &trace,
+        NodeArray<T, LocalLayoutPolicy::static_extent()> &global_data,
         dofspan<T, LocalLayoutPolicy> facdata
     ) requires facspan<decltype(facdata)> {
         using index_type = LocalLayoutPolicy::index_type;
@@ -856,11 +855,11 @@ namespace FE {
         class LocalLayoutPolicy,
         class LocalAccessorPolicy
     > inline void scatter_facspan(
-        ELEMENT::TraceSpace<T, typename LocalLayoutPolicy::index_type, LocalLayoutPolicy::static_extent()> &trace,
+        TraceSpace<T, typename LocalLayoutPolicy::index_type, LocalLayoutPolicy::static_extent()> &trace,
         T alpha, 
         dofspan<T, LocalLayoutPolicy, LocalAccessorPolicy> facdata,
         T beta,
-        FE::NodalFEFunction<T, LocalLayoutPolicy::static_extent()> &global_data 
+        NodeArray<T, LocalLayoutPolicy::static_extent()> &global_data 
     ) requires facspan<decltype(facdata)> {
         using index_type = LocalLayoutPolicy::index_type;
         for(index_type inode = 0; inode < trace.face->n_nodes();  ++inode){
@@ -887,7 +886,7 @@ namespace FE {
     */
     template< class value_type, class index_type, int ndim>
     inline auto scatter_facspan(
-        ELEMENT::TraceSpace<value_type, index_type, ndim> &trace,
+        TraceSpace<value_type, index_type, ndim> &trace,
         value_type alpha,
         facspan auto fac_data,
         value_type beta,
@@ -921,7 +920,7 @@ namespace FE {
      */
     template<class T, int ndim>
     inline auto extract_node_selection_span(
-        const FE::NodalFEFunction<T, ndim>& all_nodes_data,
+        const NodeArray<T, ndim>& all_nodes_data,
         node_selection_span auto node_selection_data
     ) -> void {
 
@@ -956,7 +955,7 @@ namespace FE {
         value_type alpha,
         node_selection_span auto node_selection_data,
         value_type beta, 
-        FE::NodalFEFunction<value_type, decltype(node_selection_data)::static_extent()>& all_nodes_data
+        NodeArray<value_type, decltype(node_selection_data)::static_extent()>& all_nodes_data
     ) -> void {
         using index_type = decltype(node_selection_data)::index_type;
 
@@ -980,14 +979,14 @@ namespace FE {
      */
     template<class T, class IDX, int ndim, class disc_type, class uLayout, class uAccessor, std::size_t vextent>
     auto select_nodeset(
-        FE::FESpace<T, IDX, ndim> &fespace,              /// [in] the finite elment space
+        FESpace<T, IDX, ndim> &fespace,              /// [in] the finite elment space
         disc_type disc,                                  /// [in] the discretization
         fespan<T, uLayout, uAccessor> u,                 /// [in] the current finite element solution
         T residual_threshold,                            /// [in] residual threshhold for selecting a trace
         std::integral_constant<std::size_t, vextent> nv  /// [in] the number of vector components for Interface Conservation
     ) -> nodeset_dof_map<IDX> {
         using index_type = IDX;
-        using trace_type = FE::FESpace<T, IDX, ndim>::TraceType;
+        using trace_type = FESpace<T, IDX, ndim>::TraceType;
 
 
         // we will be filling the selected traces, nodes, 
@@ -1014,8 +1013,8 @@ namespace FE {
             dofspan ic_res{res_storage, ic_res_layout};
 
             // extract the compact values from the global u view 
-            FE::extract_elspan(trace.elL.elidx, u, uL);
-            FE::extract_elspan(trace.elR.elidx, u, uR);
+            extract_elspan(trace.elL.elidx, u, uL);
+            extract_elspan(trace.elR.elidx, u, uR);
 
             // zero out and then get interface conservation
             ic_res = 0.0;
@@ -1040,10 +1039,10 @@ namespace FE {
 
     template<class T, class IDX, int ndim>
     auto select_all_nodes(
-        FE::FESpace<T, IDX, ndim> &fespace
+        FESpace<T, IDX, ndim> &fespace
     ) -> nodeset_dof_map<IDX> {
         using index_type = IDX;
-        using trace_type = FE::FESpace<T, IDX, ndim>::TraceType;
+        using trace_type = FESpace<T, IDX, ndim>::TraceType;
 
         std::vector<index_type> selected_traces(fespace.interior_trace_end - fespace.interior_trace_start);
         std::iota(selected_traces.begin(), selected_traces.end(), fespace.interior_trace_start);

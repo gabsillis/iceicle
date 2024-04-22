@@ -6,11 +6,11 @@
 
 #pragma once
 #include "Numtool/point.hpp"
-#include "iceicle/fe_enums.hpp"
+#include "iceicle/fe_definitions.hpp"
 #include <iceicle/geometry/geo_element.hpp>
-#include <iceicle/transformations/HypercubeElementTransformation.hpp>
+#include <iceicle/transformations/HypercubeTransformations.hpp>
 
-namespace ELEMENT {
+namespace iceicle {
 
     template<typename T, typename IDX, int ndim, int Pn>
     class HypercubeElement final : public GeometricElement<T, IDX, ndim> {
@@ -23,7 +23,7 @@ namespace ELEMENT {
         using HessianType = NUMTOOL::TENSOR::FIXED_SIZE::Tensor<T, ndim, ndim, ndim>;
 
         public:
-        static inline TRANSFORMATIONS::HypercubeElementTransformation<T, IDX, ndim, Pn> transformation{};
+        static inline transformations::HypercubeElementTransformation<T, IDX, ndim, Pn> transformation{};
 
 
         private:
@@ -40,33 +40,33 @@ namespace ELEMENT {
         // ====================
         constexpr int n_nodes() const override { return transformation.n_nodes(); }
 
-        constexpr FE::DOMAIN_TYPE domain_type() const noexcept override  { return FE::DOMAIN_TYPE::HYPERCUBE; }
+        constexpr DOMAIN_TYPE domain_type() const noexcept override  { return DOMAIN_TYPE::HYPERCUBE; }
 
         constexpr int geometry_order() const noexcept override { return Pn; }
 
         const IDX *nodes() const override { return _nodes; }
 
-        void transform(FE::NodalFEFunction<T, ndim> &node_coords, const Point &pt_ref, Point &pt_phys)
+        void transform(NodeArray<T, ndim> &node_coords, const Point &pt_ref, Point &pt_phys)
         const override {
             return transformation.transform(node_coords, _nodes, pt_ref, pt_phys);
         }
 
         JacobianType Jacobian(
-            FE::NodalFEFunction< T, ndim > &node_coords,
+            NodeArray< T, ndim > &node_coords,
             const Point &xi
         ) const override {
             return transformation.Jacobian(node_coords, _nodes, xi);
         }
 
         HessianType Hessian(
-            FE::NodalFEFunction<T, ndim> &node_coords,
+            NodeArray<T, ndim> &node_coords,
             const Point &xi
         ) const override {
             return transformation.Hessian(node_coords, _nodes, xi);
         }
 
         auto regularize_interior_nodes(
-            FE::NodalFEFunction<T, ndim>& node_coords
+            NodeArray<T, ndim>& node_coords
         ) const -> void override {
             transformation.regularize_nodes(_nodes, node_coords);
         }

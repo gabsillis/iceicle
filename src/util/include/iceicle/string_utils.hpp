@@ -2,7 +2,7 @@
 #include <algorithm>
 #include <string_view>
 #include <cctype>
-namespace ICEICLE::UTIL {
+namespace iceicle::util {
 
     /**
      * @brief check if two string views are equivalent ignoring case 

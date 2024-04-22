@@ -5,7 +5,7 @@
 #include "iceicle/form_residual.hpp"
 #include "iceicle/linalg/linalg_utils.hpp"
 
-namespace ICEICLE::SOLVERS{
+namespace iceicle::solvers{
 
     template<
         class T,
@@ -15,16 +15,16 @@ namespace ICEICLE::SOLVERS{
         int neq_mdg
     >
     auto form_dense_jacobian_fd(
-        FE::FESpace<T, IDX, ndim>& fespace,
+        FESpace<T, IDX, ndim>& fespace,
         disc_class& disc,
-        FE::nodeset_dof_map<IDX>& nodeset,
+        nodeset_dof_map<IDX>& nodeset,
         std::span<T> u,
         std::span<T> res,
-        LINALG::out_matrix auto jac,
+        linalg::out_matrix auto jac,
         std::integral_constant<int, neq_mdg> neq_mdg_arg,
         T epsilon = std::sqrt(std::numeric_limits<T>::epsilon())
     ) -> void {
-        using namespace UTIL;
+        using namespace util;
         // check sizes
         if(jac.extent(0) < res.size()){
             AnomalyLog::log_anomaly(Anomaly{"jacobian rows is less than number of equations", general_anomaly_tag{}});

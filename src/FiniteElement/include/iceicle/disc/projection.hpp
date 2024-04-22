@@ -11,7 +11,7 @@
 #include <iceicle/element/finite_element.hpp>
 #include <iceicle/fe_function/fe_function.hpp>
 #include <Numtool/matrixT.hpp>
-namespace DISC {
+namespace iceicle {
     
     /**
      * @brief function to project to
@@ -44,14 +44,14 @@ namespace DISC {
          * @param res the residual function (WARNING: MUST BE ZEROED OUT)
          */
         void domainIntegral(
-            const ELEMENT::FiniteElement<T, IDX, ndim> &el,
-            FE::NodalFEFunction<T, ndim> &node_coords,
-            FE::ElementData<T, neq> &res
+            const FiniteElement<T, IDX, ndim> &el,
+            NodeArray<T, ndim> &node_coords,
+            ElementData<T, neq> &res
         ) {
             for(int ig = 0; ig < el.nQP(); ++ig){ // loop over the quadrature points
                 
                 // convert the quadrature point to the physical domain
-                const QUADRATURE::QuadraturePoint<T, ndim> quadpt = el.getQP(ig);
+                const QuadraturePoint<T, ndim> quadpt = el.getQP(ig);
                 Point phys_pt{};
                 el.transform(node_coords, quadpt.abscisse, phys_pt);
 
@@ -73,15 +73,15 @@ namespace DISC {
         }
 
         void domainIntegral(
-            const ELEMENT::FiniteElement<T, IDX, ndim> &el,
-            FE::NodalFEFunction<T, ndim> &node_coords,
-            FE::elspan auto res
+            const FiniteElement<T, IDX, ndim> &el,
+            NodeArray<T, ndim> &node_coords,
+            elspan auto res
         ) {
             T detJ; // TODO: put back in loop after debuggin for clarity
             for(int ig = 0; ig < el.nQP(); ++ig){ // loop over the quadrature points
                 
                 // convert the quadrature point to the physical domain
-                const QUADRATURE::QuadraturePoint<T, ndim> quadpt = el.getQP(ig);
+                const QuadraturePoint<T, ndim> quadpt = el.getQP(ig);
                 Point phys_pt{};
                 el.transform(node_coords, quadpt.abscisse, phys_pt);
 

@@ -11,7 +11,7 @@
 
 #include <type_traits>
 #include <algorithm>
-namespace FE {
+namespace iceicle {
 
     /** 
      * @brief represents the map from the pair (ielem, idof) -> to a global dof index
@@ -58,7 +58,7 @@ namespace FE {
         template<typename T, int ndim>
         constexpr dg_dof_map(
             index_type nelem,
-            const BASIS::Basis<T, ndim> &basis
+            const Basis<T, ndim> &basis
         ) noexcept : offsets(nelem + 1) {
             for(int i = 0; i <= nelem; ++i){
                 offsets[i] = i * basis.nbasis();
@@ -69,7 +69,7 @@ namespace FE {
         /** @brief construct with a list of FiniteElements */ 
         template<class T, int ndim>
         constexpr dg_dof_map(
-            const std::vector<ELEMENT::FiniteElement<T, index_type, ndim> > &elements
+            const std::vector<FiniteElement<T, index_type, ndim> > &elements
         ) noexcept : offsets(elements.size() + 1) {
             offsets[0] = 0;
             for(index_type i = 0; i < elements.size(); ++i){
@@ -142,7 +142,7 @@ namespace FE {
 
     // Deduction Guides
     template<class T, class IDX, int ndim>
-    dg_dof_map(IDX, const BASIS::Basis<T, ndim>&) -> dg_dof_map<IDX>;
+    dg_dof_map(IDX, const Basis<T, ndim>&) -> dg_dof_map<IDX>;
     template<class T, class IDX, int ndim>
-    dg_dof_map(const std::vector<ELEMENT::FiniteElement<T, IDX, ndim> > &) -> dg_dof_map<IDX>;
+    dg_dof_map(const std::vector<FiniteElement<T, IDX, ndim> > &) -> dg_dof_map<IDX>;
 }

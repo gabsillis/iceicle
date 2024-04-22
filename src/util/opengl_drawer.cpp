@@ -1,7 +1,7 @@
 #include <iceicle/opengl_drawer.hpp>
 
 
-namespace ICEICLE_GL { 
+namespace iceicle::gl { 
 
     const char *arrow_vert_shader =
 #include "../../../shaders/arrow2d_shader.vert"

@@ -5,9 +5,8 @@
 #pragma once
 #include "iceicle/anomaly_log.hpp"
 #include "iceicle/element/finite_element.hpp"
-#include "iceicle/fe_enums.hpp"
+#include "iceicle/fe_definitions.hpp"
 #include "iceicle/fe_function/fespan.hpp"
-#include "iceicle/fe_function/layout_enums.hpp"
 #include "iceicle/geometry/geo_element.hpp"
 #include <algorithm>
 #include <ostream>
@@ -21,7 +20,7 @@
 #include <iomanip>
 #include <fstream>
 #include <filesystem>
-namespace ICEICLE::IO {
+namespace iceicle::io {
 
     namespace impl{
 
@@ -153,13 +152,13 @@ namespace ICEICLE::IO {
          *        uses the maximum polynomial order between the element and basis order 
          */
         template<typename T, typename IDX, int ndim>
-        VTKElement<T, ndim> &get_vtk_element(const ELEMENT::GeometricElement<T, IDX, ndim> *el, int basis_order = 1){
+        VTKElement<T, ndim> &get_vtk_element(const GeometricElement<T, IDX, ndim> *el, int basis_order = 1){
             int max_order = std::max(el->geometry_order(), basis_order);
             if constexpr (ndim == 2){
                 switch(el->domain_type()){
 
                     // Triangle type elements
-                    case FE::DOMAIN_TYPE::SIMPLEX:
+                    case DOMAIN_TYPE::SIMPLEX:
                         switch(max_order){
                             case 1:
                                 return VTK_TRIANGLE<T>;
@@ -168,7 +167,7 @@ namespace ICEICLE::IO {
                         }
                    
                     // Quad type elements 
-                    case FE::DOMAIN_TYPE::HYPERCUBE:
+                    case DOMAIN_TYPE::HYPERCUBE:
                         switch (max_order) {
                             case 0: // use case 1
                             case 1:
@@ -189,7 +188,7 @@ namespace ICEICLE::IO {
                 switch(el->domain_type()){
 
                     // Triangle type elements
-                    case FE::DOMAIN_TYPE::SIMPLEX:
+                    case DOMAIN_TYPE::SIMPLEX:
                         switch(max_order){
                             case 1:
                                 return VTK_TETRA<T>;
@@ -198,7 +197,7 @@ namespace ICEICLE::IO {
                         }
                    
                     // Quad type elements 
-                    case FE::DOMAIN_TYPE::HYPERCUBE:
+                    case DOMAIN_TYPE::HYPERCUBE:
                         switch (max_order) {
                             case 1:
                                 return VTK_HEXAHEDRON<T>;
@@ -227,7 +226,7 @@ namespace ICEICLE::IO {
         */
         struct writable_field {
             /// @brief adds the xml DataArray tags and data to a given vtu file 
-            virtual void write_data(std::ofstream &vtu_file, FE::FESpace<T, IDX, ndim> &fespace) const = 0;
+            virtual void write_data(std::ofstream &vtu_file, FESpace<T, IDX, ndim> &fespace) const = 0;
 
             /// @brief if this data is in dg format and requires duplicated mesh nodes
             virtual auto is_dg_format() const -> bool { return true; }
@@ -243,21 +242,21 @@ namespace ICEICLE::IO {
         template< class LayoutPolicy, class AccessorPolicy>
         struct PVDDataField final : public writable_field {
             /// the data view
-            FE::fespan<T, LayoutPolicy, AccessorPolicy> fedata;
+            fespan<T, LayoutPolicy, AccessorPolicy> fedata;
 
             /// the field name for each vector component of fespan 
             std::vector<std::string> field_names;
 
             /// @brief constructor with argument forwarding for the vector constructor
             template<class... VecArgs>
-            PVDDataField(FE::fespan<T, LayoutPolicy, AccessorPolicy> fedata, VecArgs&&... vec_args)
+            PVDDataField(fespan<T, LayoutPolicy, AccessorPolicy> fedata, VecArgs&&... vec_args)
             : fedata(fedata), field_names({std::forward<VecArgs>(vec_args)...}){}
 
             /// @brief adds the xml DataArray tags and data to a given vtu file 
-            void write_data(std::ofstream &vtu_file, FE::FESpace<T, IDX, ndim> &fespace) const override
+            void write_data(std::ofstream &vtu_file, FESpace<T, IDX, ndim> &fespace) const override
             {
                 using namespace impl;
-                using Element = ELEMENT::FiniteElement<T, IDX, ndim>;
+                using Element = FiniteElement<T, IDX, ndim>;
                 for(std::size_t ifield = 0; ifield < field_names.size(); ++ifield){
 
                     // point data tag
@@ -311,20 +310,20 @@ namespace ICEICLE::IO {
             using value_type = T; 
             using index_type = LayoutPolicy::index_type;
             ///  the data view 
-            mutable FE::dofspan<T, LayoutPolicy, AccessorPolicy> mdgdata;
-            static_assert(FE::node_selection_span<decltype(mdgdata)>, 
+            mutable dofspan<T, LayoutPolicy, AccessorPolicy> mdgdata;
+            static_assert(node_selection_span<decltype(mdgdata)>, 
                     "Must be a node selection span to be mdg data");
 
             /// the field name 
             std::string field_name;
 
             /// @brief constructor with argument forwarding for the vector constructor
-            MDGVectorDataField(FE::dofspan<value_type, LayoutPolicy, AccessorPolicy> mdgdata, std::string field_name)
+            MDGVectorDataField(dofspan<value_type, LayoutPolicy, AccessorPolicy> mdgdata, std::string field_name)
             : mdgdata(mdgdata), field_name(field_name){}
 
-            void write_data(std::ofstream &vtu_file, FE::FESpace<T, IDX, ndim>& fespace) const override {
+            void write_data(std::ofstream &vtu_file, FESpace<T, IDX, ndim>& fespace) const override {
                 using namespace impl;
-                const FE::nodeset_dof_map<index_type>& nodeset = mdgdata.get_layout().nodeset;
+                const nodeset_dof_map<index_type>& nodeset = mdgdata.get_layout().nodeset;
 
                 write_open(XMLTag{"DataArray", {
                     {"type", "Float64"},
@@ -333,7 +332,7 @@ namespace ICEICLE::IO {
                     {"format", "ascii"}
                 }}, vtu_file);
 
-                for(index_type inode = 0; inode < fespace.meshptr->nodes.n_nodes(); ++inode){
+                for(index_type inode = 0; inode < fespace.meshptr->n_nodes(); ++inode){
                     index_type idof = nodeset.inv_selected_nodes[inode];
                     if(idof == nodeset.selected_nodes.size()){
                         for(index_type iv = 0; iv < mdgdata.nv(); ++iv){
@@ -357,8 +356,8 @@ namespace ICEICLE::IO {
 
         private:
 
-        MESH::AbstractMesh<T, IDX, ndim> *meshptr;
-        FE::FESpace<T, IDX, ndim> *fespace_ptr;
+        AbstractMesh<T, IDX, ndim> *meshptr;
+        FESpace<T, IDX, ndim> *fespace_ptr;
         std::vector<std::unique_ptr<writable_field>> fields;
 
         public:
@@ -371,18 +370,18 @@ namespace ICEICLE::IO {
             data_directory /= "iceicle_data";
         }
 
-        PVDWriter(MESH::AbstractMesh<T, IDX, ndim> *meshptr)
+        PVDWriter(AbstractMesh<T, IDX, ndim> *meshptr)
         : meshptr(meshptr), data_directory(std::filesystem::current_path()) {
             data_directory /= "iceicle_data";
         }
 
-        void register_mesh(MESH::AbstractMesh<T, IDX, ndim> *newptr){
+        void register_mesh(AbstractMesh<T, IDX, ndim> *newptr){
             meshptr = newptr;
         }
 
         /// @brief register an fespace to this writer 
         /// will overwrite the registered mesh to the one in the fespace
-        void register_fespace(FE::FESpace<T, IDX, ndim> &fespace){
+        void register_fespace(FESpace<T, IDX, ndim> &fespace){
             fespace_ptr = &fespace;
             meshptr = fespace.meshptr;
         }
@@ -393,7 +392,7 @@ namespace ICEICLE::IO {
          * @param field_names the names for each field in fe_data
          */
         template< class LayoutPolicy, class AccessorPolicy, class... FieldNameTs >
-        void register_fields(FE::fespan<T, LayoutPolicy, AccessorPolicy> &fedata, FieldNameTs&&... field_names){
+        void register_fields(fespan<T, LayoutPolicy, AccessorPolicy> &fedata, FieldNameTs&&... field_names){
             // make sure the size matches
             assert(fedata.get_layout().nv() == sizeof...(field_names));
 
@@ -404,7 +403,7 @@ namespace ICEICLE::IO {
         }
 
         template< class LayoutPolicy, class AccessorPolicy>
-        void register_fields(FE::dofspan<T, LayoutPolicy, AccessorPolicy>& nodal_data, std::string_view field_name){
+        void register_fields(dofspan<T, LayoutPolicy, AccessorPolicy>& nodal_data, std::string_view field_name){
             auto field_ptr = std::make_unique<MDGVectorDataField<LayoutPolicy, AccessorPolicy>>(
                     nodal_data, std::string{field_name});
             fields.push_back(std::move(field_ptr));
@@ -413,10 +412,10 @@ namespace ICEICLE::IO {
         private:
         auto write_cg_unstructured_grid(std::ofstream& out){
             using namespace impl;
-            using namespace ICEICLE::UTIL;
-            using Element = ELEMENT::FiniteElement<T, IDX, ndim>;
+            using namespace util;
+            using Element = FiniteElement<T, IDX, ndim>;
             write_open(XMLTag{"Piece", {
-                {"NumberOfPoints", std::to_string(meshptr->nodes.n_nodes())},
+                {"NumberOfPoints", std::to_string(meshptr->n_nodes())},
                 {"NumberOfCells", std::to_string(meshptr->elements.size())}
             }}, out);
 
@@ -431,7 +430,7 @@ namespace ICEICLE::IO {
                 {"format", "ascii"}
             }}, out);
 
-            for(IDX inode = 0; inode < meshptr->nodes.n_nodes(); ++inode){
+            for(IDX inode = 0; inode < meshptr->n_nodes(); ++inode){
                 for(int idim = 0; idim < ndim; ++idim){
                     out << meshptr->nodes[inode][idim] << " ";
                 }
@@ -519,8 +518,8 @@ namespace ICEICLE::IO {
 
         auto write_dg_unstructured_grid(std::ofstream &out) -> void {
             using namespace impl;
-            using namespace ICEICLE::UTIL;
-            using Element = ELEMENT::FiniteElement<T, IDX, ndim>;
+            using namespace util;
+            using Element = FiniteElement<T, IDX, ndim>;
             // count the number of nodes (duplicate for each element)
             std::size_t nodecount = 0;
             for(Element &el : fespace_ptr->elements){
@@ -645,8 +644,8 @@ namespace ICEICLE::IO {
             }
 
             using namespace impl;
-            using namespace ICEICLE::UTIL;
-            using Element = ELEMENT::FiniteElement<T, IDX, ndim>;
+            using namespace util;
+            using Element = FiniteElement<T, IDX, ndim>;
 
             // create the path if it doesn't exist
             std::filesystem::create_directories(data_directory);
@@ -698,7 +697,7 @@ namespace ICEICLE::IO {
          */
         void write_mesh(){
             using namespace impl;
-            using Element = ELEMENT::GeometricElement<T, IDX, ndim>;
+            using Element = GeometricElement<T, IDX, ndim>;
 
             // create the path if it doesn't exist
             std::filesystem::create_directories(data_directory);

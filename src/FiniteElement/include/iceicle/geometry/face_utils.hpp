@@ -5,13 +5,13 @@
 
 #pragma once
 #include "Numtool/point.hpp"
-#include "iceicle/geometry/geometry_enums.hpp"
 #include <Numtool/fixed_size_tensor.hpp>
-#include <iceicle/fe_function/nodal_fe_function.hpp>
+#include <iceicle/fe_definitions.hpp>
 #include <iceicle/geometry/face.hpp>
 #include <algorithm>
+#include <utility>
 
-namespace ELEMENT {
+namespace iceicle {
 
     /**
      * @brief get the normal vector at a given point 
@@ -23,7 +23,7 @@ namespace ELEMENT {
     template<typename T, typename IDX, int ndim>
     NUMTOOL::TENSOR::FIXED_SIZE::Tensor<T, ndim> calc_normal(
         const Face<T, IDX, ndim> &face,
-        FE::NodalFEFunction<T, ndim> &coord,
+        NodeArray<T, ndim> &coord,
         const MATH::GEOMETRY::Point<T, ndim - 1> &face_point
     ){
         auto J = face.Jacobian(coord, face_point);
@@ -41,12 +41,14 @@ namespace ELEMENT {
     ) {
         MATH::GEOMETRY::Point<T, ndim - 1> centroid;
         switch(face.domain_type()){
-            case FE::HYPERCUBE:
+            case DOMAIN_TYPE::HYPERCUBE:
                 std::fill_n(centroid.data(), ndim - 1, 0.0);
                 return centroid;
-            case FE::SIMPLEX:
+            case DOMAIN_TYPE::SIMPLEX:
                 std::fill_n(centroid.data(), ndim - 1, 1.0 / 3.0);
                 return centroid;
+            default:
+                std::unreachable();
         }
         return centroid;
     }
@@ -60,13 +62,13 @@ namespace ELEMENT {
      */
     template<typename T, typename IDX, int ndim>
     MATH::GEOMETRY::Point<T, ndim> face_centroid(
-        const Face<T, IDX, ndim> &face,
-        FE::NodalFEFunction<T, ndim> &coord
+        const Face<T, IDX, ndim>& face,
+        NodeArray<T, ndim>& coord
     ) {
         using FacePoint = MATH::GEOMETRY::Point<T, ndim - 1>;
         FacePoint c_ref = ref_face_centroid(face);
         MATH::GEOMETRY::Point<T, ndim> c_phys;
-        face.transform(c_ref, coord, c_phys.data());
+        face.transform(c_ref, coord, c_phys);
         return c_phys;
     }
 }

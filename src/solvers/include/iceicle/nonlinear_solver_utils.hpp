@@ -9,7 +9,7 @@
 #include <variant>
 #include <cmath>
 
-namespace ICEICLE::SOLVERS {
+namespace iceicle::solvers {
 
     /**
      * @brief Criteria for convergence of a nonlinear solve 

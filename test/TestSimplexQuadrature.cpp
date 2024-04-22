@@ -1,5 +1,4 @@
 #include "Numtool/fixed_size_tensor.hpp"
-#include "Numtool/matrixT.hpp"
 #include "gtest/gtest.h"
 #include <cmath>
 #include <iostream>
@@ -8,8 +7,8 @@
 #include <iceicle/quadrature/SimplexQuadrature.hpp>
 #include <iceicle/transformations/SimplexElementTransformation.hpp>
 
-using namespace ELEMENT::TRANSFORMATIONS;
-using namespace QUADRATURE;
+using namespace iceicle;
+using namespace iceicle::transformations;
 
 TEST(test_simplex_quadrature, test_grundman_moller_tet){
    
@@ -62,7 +61,7 @@ TEST(test_simplex_quadrature, test_grundmann_moller_triangle){
     };
     // should be integrated exactly by an integration rule of order 2
    
-    FE::NodalFEFunction<double, 2> nodes = {
+    NodeArray<double, 2> nodes = {
         { 2.0, 0.0 },
         { 2.0, 2.0},
         { 0.0, 0.0 }
@@ -100,7 +99,7 @@ TEST(test_simplex_quadrature, test_grundmann_moller_triangle){
 
     ASSERT_NEAR(integral, 32.0 / 15.0, 1e-13);
 
-    FE::NodalFEFunction<double, 2> nodes2 = {
+    NodeArray<double, 2> nodes2 = {
         { 1.0, 0.0 },
         { 1.0, 3.0},
         { 0.0, 0.0 }

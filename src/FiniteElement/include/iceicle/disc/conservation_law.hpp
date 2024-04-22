@@ -5,7 +5,7 @@
 #include "iceicle/element/finite_element.hpp"
 #include "iceicle/fe_function/fespan.hpp"
 #include "iceicle/linalg/linalg_utils.hpp"
-namespace DISC {
+namespace iceicle {
 
     /// @brief coefficients to define the burgers equation
     template<class T, int ndim>
@@ -142,7 +142,7 @@ namespace DISC {
         inline constexpr
         auto operator()(
             T u,
-            ICEICLE::LINALG::in_tensor auto gradu,
+            linalg::in_tensor auto gradu,
             Tensor<T, ndim> unit_normal
         ) const noexcept -> std::array<T, nv_comp>
         {
@@ -308,10 +308,10 @@ namespace DISC {
         // =============
 
         auto domain_integral(
-            const ELEMENT::FiniteElement<T, IDX, ndim> &el,
-            FE::NodalFEFunction<T, ndim>& coord,
-            FE::elspan auto unkel,
-            FE::elspan auto res
+            const FiniteElement<T, IDX, ndim> &el,
+            NodeArray<T, ndim>& coord,
+            elspan auto unkel,
+            elspan auto res
         ) const -> void {
             static constexpr int neq = decltype(unkel)::static_extent;
             static_assert(neq == PhysicalFlux::nv_comp, "Number of equations must match.");
@@ -327,7 +327,7 @@ namespace DISC {
 
             // loop over the quadrature points
             for(int iqp = 0; iqp < el.nQP(); ++iqp){
-                const QUADRATURE::QuadraturePoint<T, ndim> &quadpt = el.getQP(iqp);
+                const QuadraturePoint<T, ndim> &quadpt = el.getQP(iqp);
 
                 // calculate the jacobian determinant 
                 auto J = el.geo_el->Jacobian(coord, quadpt.abscisse);
@@ -380,23 +380,23 @@ namespace DISC {
 
         template<class ULayoutPolicy, class UAccessorPolicy, class ResLayoutPolicy>
         void trace_integral(
-            const ELEMENT::TraceSpace<T, IDX, ndim> &trace,
-            FE::NodalFEFunction<T, ndim> &coord,
-            FE::dofspan<T, ULayoutPolicy, UAccessorPolicy> unkelL,
-            FE::dofspan<T, ULayoutPolicy, UAccessorPolicy> unkelR,
-            FE::dofspan<T, ResLayoutPolicy> resL,
-            FE::dofspan<T, ResLayoutPolicy> resR
+            const TraceSpace<T, IDX, ndim> &trace,
+            NodeArray<T, ndim> &coord,
+            dofspan<T, ULayoutPolicy, UAccessorPolicy> unkelL,
+            dofspan<T, ULayoutPolicy, UAccessorPolicy> unkelR,
+            dofspan<T, ResLayoutPolicy> resL,
+            dofspan<T, ResLayoutPolicy> resR
         ) const requires ( 
-            FE::elspan<decltype(unkelL)> && 
-            FE::elspan<decltype(unkelR)> && 
-            FE::elspan<decltype(resL)> && 
-            FE::elspan<decltype(resL)>
+            elspan<decltype(unkelL)> && 
+            elspan<decltype(unkelR)> && 
+            elspan<decltype(resL)> && 
+            elspan<decltype(resL)>
         ) {
             static constexpr int neq = ConvectiveNumericalFlux::nv_comp;
             static_assert(neq == decltype(unkelL)::static_extent, "Number of equations must match.");
             static_assert(neq == decltype(unkelR)::static_extent, "Number of equations must match.");
             using namespace NUMTOOL::TENSOR::FIXED_SIZE;
-            using FiniteElement = ELEMENT::FiniteElement<T, IDX, ndim>;
+            using FiniteElement = FiniteElement<T, IDX, ndim>;
 
             // calculate the centroids of the left and right elements
             // in the physical domain
@@ -424,7 +424,7 @@ namespace DISC {
 
             // loop over the quadrature points 
             for(int iqp = 0; iqp < trace.nQP(); ++iqp){
-                const QUADRATURE::QuadraturePoint<T, ndim - 1> &quadpt = trace.getQP(iqp);
+                const QuadraturePoint<T, ndim - 1> &quadpt = trace.getQP(iqp);
 
                 // calculate the riemannian metric tensor root
                 auto Jfac = trace.face->Jacobian(coord, quadpt.abscisse);

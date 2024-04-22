@@ -10,7 +10,7 @@
 #include <iceicle/geometry/segment.hpp>
 #include <iceicle/geometry/face.hpp>
 
-namespace MESH {
+namespace iceicle {
     
     template<typename T, typename IDX>
     class SegmentMesh : public AbstractMesh<T, IDX, 1> {
@@ -35,8 +35,8 @@ namespace MESH {
             IDX nelem,
             T xstart,
             T dx,
-            ELEMENT::BOUNDARY_CONDITIONS bcleft = ELEMENT::PERIODIC,
-            ELEMENT::BOUNDARY_CONDITIONS bcright = ELEMENT::PERIODIC,
+            BOUNDARY_CONDITIONS bcleft = BOUNDARY_CONDITIONS::PERIODIC,
+            BOUNDARY_CONDITIONS bcright = BOUNDARY_CONDITIONS::PERIODIC,
             int bcflagL = 0,
             int bcflagR = 0
         );
@@ -65,8 +65,8 @@ namespace MESH {
             IDX nelem,
             T xstart,
             T dx,
-            ELEMENT::BOUNDARY_CONDITIONS bcleft = ELEMENT::PERIODIC,
-            ELEMENT::BOUNDARY_CONDITIONS bcright = ELEMENT::PERIODIC,
+            BOUNDARY_CONDITIONS bcleft = BOUNDARY_CONDITIONS::PERIODIC,
+            BOUNDARY_CONDITIONS bcright = BOUNDARY_CONDITIONS::PERIODIC,
             int bcflagL = 0,
             int bcflagR = 0
         );

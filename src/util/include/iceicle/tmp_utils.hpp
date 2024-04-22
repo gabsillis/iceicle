@@ -8,7 +8,7 @@
 #include <variant>
 #include <tuple>
 #include <mdspan/mdspan.hpp>
-namespace ICEICLE::TMP{
+namespace iceicle::tmp {
 
     /** @brief a compile time constant integer type
      * for template argument deduction */

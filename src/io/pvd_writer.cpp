@@ -1,6 +1,6 @@
 #include <iceicle/pvd_writer.hpp>
 #include <ostream>
-namespace ICEICLE::IO {
+namespace iceicle::io {
 
     namespace impl {
 

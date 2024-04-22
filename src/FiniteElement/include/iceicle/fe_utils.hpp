@@ -4,14 +4,13 @@
  */
 
 #include "Numtool/point.hpp"
-#include "iceicle/fe_enums.hpp"
-#include "iceicle/fe_function/nodal_fe_function.hpp"
+#include "iceicle/fe_definitions.hpp"
 #include "iceicle/geometry/geo_element.hpp"
 
 #include <random>
 
 #pragma once
-namespace FE {
+namespace iceicle {
 
     /**
      * @brief given an element generate a random point in the reference domain 
@@ -20,7 +19,7 @@ namespace FE {
      */
     template<typename T, typename IDX, int ndim>
     MATH::GEOMETRY::Point<T, ndim> random_domain_point(
-        const ELEMENT::GeometricElement<T, IDX, ndim> *geo_el
+        const GeometricElement<T, IDX, ndim> *geo_el
     ){
         static std::random_device rdev{};
         static std::default_random_engine engine{rdev()};
@@ -29,13 +28,13 @@ namespace FE {
 
         MATH::GEOMETRY::Point<T, ndim> randpt{};
         switch(geo_el->domain_type()){
-            case FE::DOMAIN_TYPE::HYPERCUBE:
+            case DOMAIN_TYPE::HYPERCUBE:
                 for(int idim = 0; idim < ndim; ++idim){
                     randpt[idim] = hypercube_dist(engine);
                 }
                 return randpt;
 
-            case FE::DOMAIN_TYPE::SIMPLEX: 
+            case DOMAIN_TYPE::SIMPLEX: 
                 // NOTE: this hypercube is [0, 1]^n
                 T hypercube_pt[ndim]; 
                 for(int idim = 0; idim < ndim; ++idim) 

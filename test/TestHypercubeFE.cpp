@@ -1,7 +1,7 @@
 #include "Numtool/MathUtils.hpp"
 #include "Numtool/tmp_flow_control.hpp"
 #include "iceicle/basis/lagrange.hpp"
-#include <iceicle/solvers/element_linear_solve.hpp>
+#include <iceicle/element_linear_solve.hpp>
 #include <iceicle/disc/projection.hpp>
 #include <iceicle/element/finite_element.hpp>
 #include <iceicle/geometry/hypercube_element.hpp>
@@ -10,6 +10,8 @@
 #include "gtest/gtest.h"
 #include <fenv.h>
 #include <random>
+
+using namespace iceicle;
 
 void testfunc_hypercube(const double x[4], double val[1]){
     val[0] = SQUARED(x[0] * x[2]) + SQUARED(x[1] * x[3]) + x[1] + x[3];
@@ -22,9 +24,7 @@ void testfunc_2d_square(const double x[2], double val[1]){
 TEST(test_quadratic_quad, project_polynomial){
 
     feenableexcept(FE_ALL_EXCEPT & ~FE_INEXACT);
-    using namespace ELEMENT;
-    using namespace ELEMENT::TRANSFORMATIONS;
-    using namespace BASIS;
+    using namespace transformations;
 
     std::random_device rdev{};
     std::default_random_engine engine{rdev()};
@@ -36,7 +36,7 @@ TEST(test_quadratic_quad, project_polynomial){
     HypercubeElement<double, int, ndim, geo_order> geo_el{};
 
     using Point = MATH::GEOMETRY::Point<double, ndim>;
-    FE::NodalFEFunction<double, ndim> node_coords{};
+    NodeArray<double, ndim> node_coords{};
     node_coords.resize(geo_el.n_nodes());
 
     // randomly peturb reference domain nodes 
@@ -56,28 +56,28 @@ TEST(test_quadratic_quad, project_polynomial){
     Point center = {0.0, 0.0};
     Point center_phys{};
 
-    DISC::Projection<double, int, ndim, 1> proj(testfunc_2d_square);
+    Projection<double, int, ndim, 1> proj(testfunc_2d_square);
 
     auto testproject = [&]<int Pn>(){
         static constexpr int neq = 1;
         HypercubeLagrangeBasis<double, int, ndim, Pn> basis{};
-        QUADRATURE::HypercubeGaussLegendre<double, int, ndim, Pn+1> quadrule{};
+        HypercubeGaussLegendre<double, int, ndim, Pn+1> quadrule{};
         FEEvaluation<double, int, ndim> evals(basis, quadrule);
-        FiniteElement<double, int, ndim> fe{&geo_el, basis, quadrule, evals, 0};
+        FiniteElement<double, int, ndim> fe{&geo_el, &basis, &quadrule, &evals, 0};
 
 
         MATH::Vector<double, int> udata(basis.nbasis());
         MATH::Vector<double, int> resdata(basis.nbasis());
         
-        FE::ElementData<double, neq> u(basis.nbasis(), udata.data());
-        FE::ElementData<double, neq> res(basis.nbasis(), resdata.data());
+        ElementData<double, neq> u(basis.nbasis(), udata.data());
+        ElementData<double, neq> res(basis.nbasis(), resdata.data());
         res = 0; // make sure to zero out residual before projection
 
         // get the domain integral of the projection
         proj.domainIntegral(fe, node_coords, res);
        
         // solve for u
-        SOLVERS::ElementLinearSolver<double, int, ndim, neq> solver(fe, node_coords);
+        solvers::ElementLinearSolver<double, int, ndim, neq> solver(fe, node_coords);
         solver.solve(u, res);
 
         // get error at centroid
@@ -91,7 +91,7 @@ TEST(test_quadratic_quad, project_polynomial){
 
         // get L2 error
         double sqerrL2 = 0;
-        QUADRATURE::HypercubeGaussLegendre<double, int, ndim, 4> quadrule2{};
+        HypercubeGaussLegendre<double, int, ndim, 4> quadrule2{};
         for(int igauss = 0; igauss < quadrule2.npoints(); ++igauss){
             auto qp = quadrule2.getPoint(igauss);
             Point testpt_ref = qp.abscisse;
@@ -104,9 +104,8 @@ TEST(test_quadratic_quad, project_polynomial){
             geo_el.transform(node_coords, testpt_ref, testpt_act);
             testfunc_2d_square(testpt_act, &f_act);
 
-            double J[ndim][ndim];
-            geo_el.Jacobian(node_coords, qp.abscisse, J);
-            double detJ = MATH::MATRIX_T::determinant<ndim, double>(*J);
+            auto J = geo_el.Jacobian(node_coords, qp.abscisse);
+            double detJ = MATH::MATRIX_T::determinant<ndim, double>(J.ptr());
 
             double esq = SQUARED(f_approx - f_act);
             sqerrL2 += esq * detJ * qp.weight;
@@ -130,9 +129,6 @@ TEST(test_quadratic_quad, project_polynomial){
 TEST(test_hypercube_linear, project_polynomial){
     
     feenableexcept(FE_ALL_EXCEPT & ~FE_INEXACT);
-    using namespace ELEMENT;
-    using namespace ELEMENT::TRANSFORMATIONS;
-    using namespace BASIS;
 
     std::random_device rdev{};
     std::default_random_engine engine{rdev()};
@@ -143,7 +139,7 @@ TEST(test_hypercube_linear, project_polynomial){
     HypercubeElement<double, int, ndim, 1> geo_el{};
 
     using Point = MATH::GEOMETRY::Point<double, ndim>;
-    FE::NodalFEFunction<double, ndim> node_coords{};
+    NodeArray<double, ndim> node_coords{};
     node_coords.resize(geo_el.n_nodes());
 
     // randomly peturb reference domain nodes 
@@ -163,28 +159,28 @@ TEST(test_hypercube_linear, project_polynomial){
     Point center = {0.0, 0.0, 0.0, 0.0};
     Point center_phys{};
 
-    DISC::Projection<double, int, 4, 1> proj(testfunc_hypercube);
+    Projection<double, int, 4, 1> proj(testfunc_hypercube);
 
     auto testproject = [&]<int Pn>(){
         static constexpr int neq = 1;
         HypercubeLagrangeBasis<double, int, ndim, Pn> basis{};
-        QUADRATURE::HypercubeGaussLegendre<double, int, ndim, Pn+1> quadrule{};
+        HypercubeGaussLegendre<double, int, ndim, Pn+1> quadrule{};
         FEEvaluation<double, int, ndim> evals(basis, quadrule);
-        FiniteElement<double, int, ndim> fe{&geo_el, basis, quadrule, evals, 0};
+        FiniteElement<double, int, ndim> fe{&geo_el, &basis, &quadrule, &evals, 0};
 
 
         MATH::Vector<double, int> udata(basis.nbasis());
         MATH::Vector<double, int> resdata(basis.nbasis());
         
-        FE::ElementData<double, neq> u(basis.nbasis(), udata.data());
-        FE::ElementData<double, neq> res(basis.nbasis(), resdata.data());
+        ElementData<double, neq> u(basis.nbasis(), udata.data());
+        ElementData<double, neq> res(basis.nbasis(), resdata.data());
         res = 0; // make sure to zero out residual before projection
 
         // get the domain integral of the projection
         proj.domainIntegral(fe, node_coords, res);
        
         // solve for u
-        SOLVERS::ElementLinearSolver<double, int, 4, neq> solver(fe, node_coords);
+        solvers::ElementLinearSolver<double, int, 4, neq> solver(fe, node_coords);
         solver.solve(u, res);
 
         // get error at centroid
@@ -198,7 +194,7 @@ TEST(test_hypercube_linear, project_polynomial){
 
         // get L2 error
         double sqerrL2 = 0;
-        QUADRATURE::HypercubeGaussLegendre<double, int, 4, Pn+2> quadrule2{};
+        HypercubeGaussLegendre<double, int, 4, Pn+2> quadrule2{};
         for(int igauss = 0; igauss < quadrule2.npoints(); ++igauss){
             auto qp = quadrule2.getPoint(igauss);
             Point testpt_ref = qp.abscisse;
@@ -211,9 +207,8 @@ TEST(test_hypercube_linear, project_polynomial){
             geo_el.transform(node_coords, testpt_ref, testpt_act);
             testfunc_hypercube(testpt_act, &f_act);
 
-            double J[4][4];
-            geo_el.Jacobian(node_coords, qp.abscisse, J);
-            double detJ = MATH::MATRIX_T::determinant<4, double>(*J);
+            auto J = geo_el.Jacobian(node_coords, qp.abscisse);
+            double detJ = MATH::MATRIX_T::determinant<4, double>(J.ptr());
 
             double esq = SQUARED(f_approx - f_act);
             sqerrL2 += esq * detJ * qp.weight;

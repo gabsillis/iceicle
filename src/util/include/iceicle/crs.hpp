@@ -9,7 +9,7 @@
 #include <vector>
 #include <span>
 #include <algorithm>
-namespace ICEICLE::UTIL {
+namespace iceicle::util {
 
     /**
      * @brief compressed row storage 

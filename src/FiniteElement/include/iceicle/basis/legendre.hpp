@@ -9,7 +9,7 @@
 #include <cmath>
 #include "iceicle/basis/basis.hpp"
 
-namespace BASIS {
+namespace iceicle {
 
     /**
      * @brief legendre basis functions in 1d 
@@ -286,7 +286,7 @@ namespace BASIS {
         using Basis1DType = decltype(basis_1d);
 
         // TODO: is this the right tensor product?
-        static inline BASIS::QTypeProduct<T, ndim, Basis1DType::nbasis> tensor_prod;
+        static inline QTypeProduct<T, ndim, Basis1DType::nbasis> tensor_prod;
         using TensorProdType = decltype(tensor_prod);
 
         using Point = MATH::GEOMETRY::Point<T, ndim>;
@@ -298,7 +298,7 @@ namespace BASIS {
 
         constexpr int nbasis() const override { return TensorProdType::nvalues; }
 
-        constexpr FE::DOMAIN_TYPE domain_type() const noexcept override { return FE::DOMAIN_TYPE::HYPERCUBE; }
+        constexpr DOMAIN_TYPE domain_type() const noexcept override { return DOMAIN_TYPE::HYPERCUBE; }
 
         void evalBasis(const T*xi, T *Bi) const override {
             Point xipt{};

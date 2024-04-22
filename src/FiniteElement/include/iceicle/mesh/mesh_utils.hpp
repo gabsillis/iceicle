@@ -6,10 +6,11 @@
 #include "iceicle/basis/tensor_product.hpp"
 #include "iceicle/geometry/face.hpp"
 #include "iceicle/mesh/mesh.hpp"
+#include <random>
 #include <vector>
+#include <concepts>
 
-namespace MESH {
-
+namespace iceicle {
 
     /**
      * @brief create a 2 element mesh with no boundary faces 
@@ -21,7 +22,7 @@ namespace MESH {
     auto create_2_element_mesh(
         NUMTOOL::TENSOR::FIXED_SIZE::Tensor<T, ndim> centroid1,
         NUMTOOL::TENSOR::FIXED_SIZE::Tensor<T, ndim> centroid2,
-        ELEMENT::BOUNDARY_CONDITIONS bctype,
+        BOUNDARY_CONDITIONS bctype,
         int bcflag
     ) -> AbstractMesh<T, int, ndim>
     {
@@ -39,7 +40,7 @@ namespace MESH {
         // Create the nodes 
         mesh.nodes.resize(3 * std::pow(2, ndim - 1));
 
-        BASIS::QTypeIndexSet<int, ndim - 1, 2> node_positions{};
+        QTypeIndexSet<int, ndim - 1, 2> node_positions{};
         for(int ipoin = 0; ipoin < node_positions.size(); ++ipoin){
             auto& mindex = node_positions[ipoin];
 
@@ -75,12 +76,12 @@ namespace MESH {
      */
     template<class T, class IDX, int ndim>
     std::vector<bool> flag_boundary_nodes(AbstractMesh<T, IDX, ndim> &mesh){
-        std::vector<bool> is_boundary(mesh.nodes.n_nodes(), false);
-        using Face = ELEMENT::Face<T, IDX, ndim>;
+        std::vector<bool> is_boundary(mesh.n_nodes(), false);
+        using Face = Face<T, IDX, ndim>;
         for(Face *face : mesh.faces){
 
             // if its not an interior face, set all the node indices to true
-            if(face->bctype != ELEMENT::BOUNDARY_CONDITIONS::INTERIOR){
+            if(face->bctype != BOUNDARY_CONDITIONS::INTERIOR){
                 for(IDX node : face->nodes_span()){
                     is_boundary[node] = true;
                 }
@@ -103,14 +104,18 @@ namespace MESH {
     template<class T, class IDX, int ndim>
     void perturb_nodes(
         AbstractMesh<T, IDX, ndim> &mesh, 
-        std::function< void(std::span<T, (std::size_t) ndim>, std::span<T, (std::size_t) ndim>) > &perturb_func,
+        std::invocable<
+            std::span<T, (std::size_t) ndim>,
+            std::span<T, (std::size_t) ndim>
+        > auto& perturb_func,
         std::vector<bool> &fixed_nodes
     ) {
-        for(IDX inode = 0; inode < mesh.nodes.n_nodes(); ++inode){
+        using Point = MATH::GEOMETRY::Point<T, ndim>;
+        for(IDX inode = 0; inode < mesh.n_nodes(); ++inode){
             if( true || !fixed_nodes[inode]){
                 // copy current node data to prevent aliasing issues
-                std::array old_node = mesh.nodes[inode].clone();
-                std::span node_view = mesh.nodes[inode].to_span();
+                Point old_node = mesh.nodes[inode];
+                std::span<T, ndim> node_view{mesh.nodes[inode].begin(), mesh.nodes[inode].end()};
 
                 // perturb the node given the current coordinates
                 perturb_func(old_node, node_view);
@@ -134,15 +139,44 @@ namespace MESH {
         BoundingBox<T, ndim> bbox{};
         std::ranges::fill(bbox.xmin, 1e100);
         std::ranges::fill(bbox.xmax, -1e100);
-        for(IDX inode = 0; inode < mesh.nodes.n_nodes(); ++inode){
+        for(IDX inode = 0; inode < mesh.n_nodes(); ++inode){
             for(int idim = 0; idim < ndim; ++idim){
                 bbox.xmin[idim] = std::min(bbox.xmin[idim], mesh.nodes[inode][idim]);
                 bbox.xmax[idim] = std::max(bbox.xmax[idim], mesh.nodes[inode][idim]);
             }
         }
+        return bbox;
     }
 
     namespace PERTURBATION_FUNCTIONS {
+
+        /// @brief randomly perturb the nodes 
+        /// in a given range
+        /// coord = coord + random in [min_perturb, max_perturb]
+        template<typename T, std::size_t ndim>
+        struct random_perturb {
+
+            std::random_device rdev;
+            std::default_random_engine engine;
+            std::uniform_real_distribution<T> dist;
+
+            /// @brief constructor
+            /// @param min_perturb the minimum of the range 
+            /// @param max_perturb the maximum of the range
+            random_perturb(T min_perturb, T max_perturb)
+            : rdev{}, engine{rdev()}, dist{min_perturb, max_perturb} {}
+
+            random_perturb(const random_perturb<T, ndim> &other) = default;
+            random_perturb(random_perturb<T, ndim> &&other) = default;
+
+            void operator()(std::span<T, ndim> xin, std::span<T, ndim> xout) {
+                std::ranges::copy(xin, xout.begin());
+
+                for(int idim = 0; idim < ndim; ++idim){
+                    xout[idim] += dist(engine);
+                }
+            }
+        };
 
         /**
          * @brief perturb by following the Taylor Green Vortex 
@@ -151,7 +185,7 @@ namespace MESH {
          *
          * slowed down by the distance from the center
          */
-        template<typename T, int ndim>
+        template<typename T, std::size_t ndim>
         struct TaylorGreenVortex {
 
             /// @brief the velocity of the vortex 
@@ -223,7 +257,25 @@ namespace MESH {
                             xout[2] += dt * w;
                             }
                             break;
+                        default:
+                            // NOTE: just use the 3D version
+                            {
+                            T x = (xout[0] - center[0]) / domain_len;
+                            T y = (xout[1] - center[1]) / domain_len;
+                            T z = (xout[2] - center[2]) / domain_len;
 
+                            T center_dist = x*x + y*y + z*z;
+                            T mult = v0 * std::exp(-center_dist / 0.5);
+
+                            T u =  mult * std::cos(L * M_PI * x) * std::sin(L * M_PI * y) * sin(L * M_PI * z);
+                            T v = -mult * std::sin(L * M_PI * x) * std::cos(L * M_PI * y) * sin(L * M_PI * z);
+                            T w =  mult * std::sin(L * M_PI * x) * std::sin(L * M_PI * y) * cos(L * M_PI * z);
+
+                            xout[0] += dt * u;
+                            xout[1] += dt * v;
+                            xout[2] += dt * w;
+                            }
+                            break;
                     }
 
                     t += dt;
@@ -233,7 +285,7 @@ namespace MESH {
             }
         };
 
-        template<typename T, int ndim>
+        template<typename T, std::size_t ndim>
         struct ZigZag {
             static_assert(ndim >= 2, "Must be at least 2 dimensional.");
             void operator()(std::span<T, ndim> xin, std::span<T, ndim> xout){
