@@ -104,7 +104,7 @@ int main(int argc, char *argv[]){
                 res_local = 0;
 
                 // project
-                projection.domainIntegral(el, fespace.meshptr->nodes, res_local);
+                projection.domain_integral(el, fespace.meshptr->nodes, res_local);
 
                 // solve 
                 ElementLinearSolver<T, IDX, ndim, neq> solver{el, fespace.meshptr->nodes};

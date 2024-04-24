@@ -32,6 +32,10 @@ namespace iceicle {
         ProjectionFunction<T, ndim , neq> func;
 
         public:
+
+        /// @brief the number of vector components
+        static constexpr int nv_comp = neq;
+
         Projection(ProjectionFunction<T, ndim, neq> func) 
         : func{func} {}
 
@@ -43,7 +47,7 @@ namespace iceicle {
          * @param node_coords the node coordinates array
          * @param res the residual function (WARNING: MUST BE ZEROED OUT)
          */
-        void domainIntegral(
+        void domain_integral(
             const FiniteElement<T, IDX, ndim> &el,
             NodeArray<T, ndim> &node_coords,
             ElementData<T, neq> &res
@@ -72,7 +76,15 @@ namespace iceicle {
             }
         }
 
-        void domainIntegral(
+        /**
+         * @brief Integral over the element domains formed by 
+         *        the weak form of u = f(x)
+         *        /int f(x) v dx
+         * @param el the element
+         * @param node_coords the node coordinates array
+         * @param res the residual function (WARNING: MUST BE ZEROED OUT)
+         */
+        void domain_integral(
             const FiniteElement<T, IDX, ndim> &el,
             NodeArray<T, ndim> &node_coords,
             elspan auto res

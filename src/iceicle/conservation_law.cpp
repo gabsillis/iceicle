@@ -4,11 +4,15 @@
  * @author Gianni Absillis (gabsill@ncsu.edu)
  */
 
+#include "iceicle/disc/conservation_law.hpp"
 #include "Numtool/tmp_flow_control.hpp"
 #include "iceicle/mesh/mesh_lua_interface.hpp"
 #include "iceicle/fespace/fespace_lua_interface.hpp"
 #include "iceicle/program_args.hpp"
 #include "iceicle/anomaly_log.hpp"
+#include "iceicle/string_utils.hpp"
+#include "iceicle/initialization.hpp"
+#include "iceicle/pvd_writer.hpp"
 #ifdef ICEICLE_USE_PETSC 
 #include "iceicle/petsc_newton.hpp"
 #elifdef ICEICLE_USE_MPI
@@ -16,6 +20,46 @@
 #endif
 #include <fenv.h>
 #include <sol/sol.hpp>
+
+// using declarations
+using namespace NUMTOOL::TENSOR::FIXED_SIZE;
+using namespace iceicle;
+using namespace iceicle::util;
+using namespace iceicle::util::program_args;
+using namespace iceicle::tmp;
+
+// Get the floating point and index types from 
+// cmake configuration
+using T = build_config::T;
+using IDX = build_config::IDX;
+
+template<class T, class IDX, int ndim, class pflux, class cflux, class dflux>
+void initialize_and_solve(
+    sol::table config_tbl,
+    FESpace<T, IDX, ndim> &fespace,
+    ConservationLawDDG<T, ndim, pflux, cflux, dflux> &conservation_law
+) {
+    // ==================================
+    // = Initialize the solution vector =
+    // ==================================
+    constexpr int neq = std::remove_reference_t<decltype(conservation_law)>::nv_comp;
+    fe_layout_right u_layout{fespace.dg_map, to_size<neq>{}};
+    std::vector<T> u_data(u_layout.size());
+    fespan u{u_data.data(), u_layout};
+    initialize_solution_lua(config_tbl, fespace, u);
+
+    // ===============================
+    // = Output the Initial Solution =
+    // ===============================
+    if constexpr(ndim == 2 || ndim == 3){
+        io::PVDWriter<T, IDX, ndim> pvd_writer{};
+        pvd_writer.register_fespace(fespace);
+        pvd_writer.register_fields(u, "u");
+        pvd_writer.collection_name = "initial_condition";
+        pvd_writer.write_vtu(0, 0.0);
+    }
+}
+
 int main(int argc, char* argv[]){
 
     // Initialize
@@ -26,17 +70,6 @@ int main(int argc, char* argv[]){
    MPI_Init(&argc, &argv);
 #endif
 
-    // using declarations
-    using namespace NUMTOOL::TENSOR::FIXED_SIZE;
-    using namespace iceicle;
-    using namespace iceicle::util;
-    using namespace iceicle::util::program_args;
-    using namespace iceicle::tmp;
-
-    // Get the floating point and index types from 
-    // cmake configuration
-    using T = build_config::T;
-    using IDX = build_config::IDX;
 
     // ===============================
     // = Command line argument setup =
@@ -55,7 +88,6 @@ int main(int argc, char* argv[]){
     if(cli_args["enable_fp_except"]){
         feenableexcept(FE_ALL_EXCEPT & ~FE_INEXACT);
     }
-
 
     // =============
     // = Lua Setup =
@@ -90,15 +122,56 @@ int main(int argc, char* argv[]){
         // ==============
         // = Setup Mesh =
         // ==============
+        sol::optional<sol::table> uniform_mesh_tbl = script_config["uniform_mesh"];
         AbstractMesh<T, IDX, ndim> mesh =
-            lua_uniform_mesh<T, IDX, ndim>(script_config);
+            lua_uniform_mesh<T, IDX, ndim>(uniform_mesh_tbl.value());
         perturb_mesh(script_config, mesh);
 
         // ===================================
         // = create the finite element space =
         // ===================================
+        sol::table fespace_tbl = script_config["fespace"];
+        auto fespace = lua_fespace(&mesh, fespace_tbl);
 
-        auto fespace = lua_fespace(&mesh, lua_state);
+        // ============================
+        // = Setup the Discretization =
+        // ============================
+        if(script_config["conservation_law"].valid()){
+            sol::table cons_law_tbl = script_config["conservation_law"];
+            if(eq_icase(cons_law_tbl["name"].get<std::string>(), "burgers")) {
+
+                // get the coefficients for burgers equation
+                BurgersCoefficients<T, ndim> burgers_coeffs{};
+                sol::optional<T> mu_input = cons_law_tbl["mu"];
+                if(mu_input) burgers_coeffs.mu = mu_input.value();
+
+                sol::optional<sol::table> a_adv_input = cons_law_tbl["a_adv"];
+                if(a_adv_input){
+                    for(int idim = 0; idim < ndim; ++idim)
+                        burgers_coeffs.a[idim] = a_adv_input.value()[idim + 1];
+                }
+                sol::optional<sol::table> b_adv_input = cons_law_tbl["b_adv"];
+                if(b_adv_input){
+                    for(int idim = 0; idim < ndim; ++idim)
+                        burgers_coeffs.b[idim] = b_adv_input.value()[idim + 1];
+                }
+
+                // create the discretization
+                BurgersFlux physical_flux{burgers_coeffs};
+                BurgersUpwind convective_flux{burgers_coeffs};
+                BurgersDiffusionFlux diffusive_flux{burgers_coeffs};
+                ConservationLawDDG disc{std::move(physical_flux), std::move(convective_flux), std::move(diffusive_flux)};
+                initialize_and_solve(script_config, fespace, disc);
+            } else {
+                AnomalyLog::log_anomaly(Anomaly{ "No such conservation_law implemented",
+                        text_not_found_tag{cons_law_tbl["name"].get<std::string>()}});
+            }
+
+        } else {
+            std::cout << "No conservation_law table specified: exiting...";
+        }
+
+
         return 0;
     };
     // exit compile time ndim region

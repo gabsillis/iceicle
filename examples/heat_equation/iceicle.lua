@@ -3,7 +3,7 @@
 -- define the mesh as a uniform quad mesh
 uniform_mesh = {
 	-- specify the number of elements in each direction
-	nelem = { 5, 5 },
+	nelem = { 2, 1 },
 
 	-- specify the bounding box of the uniform mesh domain
 	bounding_box = {
@@ -34,7 +34,7 @@ uniform_mesh = {
 	geometry_order = 1,
 }
 
-mesh_perturbation = "taylor-green"
+-- mesh_perturbation = "taylor-green"
 
 -- define the finite element domain
 fespace = {
@@ -125,7 +125,7 @@ end
 -- initial condition
 -- initial_condition = "zero"
 initial_condition = function(x, y)
-	return 0.0
+	return x + y
 end
 
 solver = {

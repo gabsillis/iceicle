@@ -45,7 +45,7 @@ namespace iceicle::util {
 
         const std::string &what() const noexcept { return desc; }
         const std::source_location &where() const noexcept { return loc; }
-        const Data &data() const noexcept { return data; }
+        const Data& data() const noexcept { return user_data; }
 
         void handle_self (std::ostream &log_out) override;
     };
@@ -86,6 +86,12 @@ namespace iceicle::util {
         bounds_type bounds_upper;
     };
 
+    /// @brief Anomaly for user input text that doesn't match any implementation
+    struct text_not_found_tag { 
+        using anomaly_tag = text_not_found_tag;
+        std::string text;
+    };
+
     /** @brief tag to mark general anomalies */
     struct general_anomaly_tag{ using anomaly_tag = general_anomaly_tag; };
 
@@ -103,6 +109,12 @@ namespace iceicle::util {
         log_out << "Error: " << anomaly.what() << std::endl 
                 << anomaly.where() << std::endl << std::endl;
 //                << anomaly.stack() << std::endl << std::endl;
+    }
+
+    template<>
+    inline void handle_anomaly(const Anomaly<text_not_found_tag>& anomaly, std::ostream& log_out){
+        log_out << "Error: " << anomaly.what() << "\"" << anomaly.data().text << "\" at:" << std::endl 
+                << anomaly.where() << std::endl << std::endl;
     }
 
     template<>

@@ -273,7 +273,7 @@ TEST(test_fespace, test_dg_projection){
             dofspan<T, compact_layout_right<IDX, 1>> res_local_span(res_local, el_layout);
             
             // projection residual
-            projection.domainIntegral(el, fespace.meshptr->nodes, res_local_span);
+            projection.domain_integral(el, fespace.meshptr->nodes, res_local_span);
 
             // solve 
             solvers::ElementLinearSolver<T, IDX, ndim, neq> solver{el, fespace.meshptr->nodes};

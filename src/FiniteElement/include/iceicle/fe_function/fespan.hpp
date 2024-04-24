@@ -120,6 +120,9 @@ namespace iceicle {
             /** @brief get the number of vector components */
             [[nodiscard]] constexpr size_type nv() const noexcept { return _layout.nv(); }
 
+            /** @brief get the static vector extent */
+            [[nodiscard]] inline static constexpr std::size_t static_extent() noexcept { return LayoutPolicy::static_extent(); }
+
             // ===============
             // = Data Access =
             // ===============

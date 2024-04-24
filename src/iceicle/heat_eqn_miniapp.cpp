@@ -6,6 +6,7 @@
 #include "iceicle/disc/l2_error.hpp"
 #include "iceicle/fespace/fespace_lua_interface.hpp"
 #include "iceicle/anomaly_log.hpp"
+#include "iceicle/linear_form_solver.hpp"
 #include "iceicle/mesh/mesh_utils.hpp"
 #include "iceicle/nonlinear_solver_utils.hpp"
 #include "iceicle/program_args.hpp"
@@ -261,7 +262,7 @@ int main(int argc, char *argv[]){
         out[0] = 0.1 * std::sinh(M_PI * x) / std::sinh(M_PI) * std::sin(M_PI * y) + 1.0;
     };
 
-    auto dirichlet_func = [](const double *xarr, double *out) ->void{
+    auto dirichlet_func = [](const double *xarr, double *out) -> void{
         double x = xarr[0];
         double y = xarr[1];
 
@@ -274,35 +275,8 @@ int main(int argc, char *argv[]){
 
 
     Projection<T, IDX, ndim, neq> projection{ic};
-    // TODO: extract into LinearFormSolver
-    std::vector<T> u_local_data(fespace.dg_map.max_el_size_reqirement(neq));
-    std::vector<T> res_local_data(fespace.dg_map.max_el_size_reqirement(neq));
-    std::for_each(fespace.elements.begin(), fespace.elements.end(), 
-        [&](const FiniteElement<T, IDX, ndim> &el){
-            // form the element local views
-            // TODO: maybe instead of scatter from local view 
-            // we can directly create the view on the subset of u 
-            // for CG this might require a different compact Layout 
-            dofspan u_local{u_local_data.data(), u.create_element_layout(el.elidx)};
-            u_local = 0;
-
-            dofspan res_local{res_local_data.data(), u.create_element_layout(el.elidx)};
-            res_local = 0;
-
-            // project
-            projection.domainIntegral(el, fespace.meshptr->nodes, res_local);
-
-            // solve 
-            ElementLinearSolver<T, IDX, ndim, neq> solver{el, fespace.meshptr->nodes};
-            solver.solve(u_local, res_local);
-
-            // scatter to global array 
-            // (note we use 0 as multiplier for current values in global array)
-            scatter_elspan(el.elidx, 1.0, u_local, 0.0, u);
-        }
-    );
-
-    bool use_explicit = false;
+    LinearFormSolver projection_solver(fespace, projection);
+    projection_solver.solve(u);
 
     sol::optional<sol::table> solver_params_opt = lua_state["solver"];
     if(solver_params_opt){

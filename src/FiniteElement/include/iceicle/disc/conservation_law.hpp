@@ -46,7 +46,7 @@ namespace iceicle {
         public:
 
         /// @brief the number of vector components
-        static constexpr int nv_comp = 1;
+        static constexpr std::size_t nv_comp = 1;
 
         BurgersCoefficients<T, ndim>& coeffs;
 
@@ -73,6 +73,8 @@ namespace iceicle {
             return flux;
         }
     };
+    template<class T, int ndim>
+    BurgersFlux(BurgersCoefficients<T, ndim>) -> BurgersFlux<T, ndim>;
 
     /// @brief upwind numerical flux for the convective flux in burgers equation
     template <class T, int ndim>
@@ -84,7 +86,7 @@ namespace iceicle {
         public:
 
         /// @brief the number of vector components
-        static constexpr int nv_comp = 1;
+        static constexpr std::size_t nv_comp = 1;
 
         BurgersCoefficients<T, ndim>& coeffs;
 
@@ -115,6 +117,8 @@ namespace iceicle {
             return std::array<T, nv_comp>{fadvn};
         }
     };
+    template<class T, int ndim>
+    BurgersUpwind(BurgersCoefficients<T, ndim>) -> BurgersUpwind<T, ndim>;
 
     /// @brief diffusive flux in burgers equation
     template <class T, int ndim>
@@ -125,8 +129,8 @@ namespace iceicle {
 
         public:
 
-        /// @brief the number of vector components
-        static constexpr int nv_comp = 1;
+      /// @brief the number of vector components
+        static constexpr std::size_t nv_comp = 1;
 
         BurgersCoefficients<T, ndim>& coeffs;
 
@@ -156,6 +160,9 @@ namespace iceicle {
         }
     };
 
+    template<class T, int ndim>
+    BurgersDiffusionFlux(BurgersCoefficients<T, ndim>) -> BurgersDiffusionFlux<T, ndim>;
+
     template<
         class T,
         int ndim
@@ -168,7 +175,7 @@ namespace iceicle {
         public:
 
         /// @brief the number of vector components
-        static constexpr int nv_comp = 1;
+        static constexpr std::size_t nv_comp = 1;
         static constexpr int ndim_space = ndim - 1;
         static constexpr int idim_time = ndim - 1;
 
@@ -213,7 +220,7 @@ namespace iceicle {
         public:
 
         /// @brief the number of vector components
-        static constexpr int nv_comp = 1;
+        static constexpr std::size_t nv_comp = 1;
         static constexpr int ndim_space = ndim - 1;
         static constexpr int idim_time = ndim - 1;
 
@@ -249,7 +256,6 @@ namespace iceicle {
 
     template<
         typename T,
-        typename IDX,
         int ndim,
         class PhysicalFlux,
         class ConvectiveNumericalFlux,
@@ -262,8 +268,6 @@ namespace iceicle {
         // ============
 
         using value_type = T;
-        using index_type = IDX;
-        using size_type = std::make_unsigned_t<IDX>;
 
         PhysicalFlux phys_flux;
         ConvectiveNumericalFlux conv_nflux;
@@ -278,6 +282,10 @@ namespace iceicle {
         /// DDGIC (sigma = 1)
         /// Default: Standard DDG (sigma = 0)
         T sigma_ic = 0.0;
+
+        public:
+
+        static constexpr std::size_t nv_comp = PhysicalFlux::nv_comp;
 
         // ===============
         // = Constructor =
@@ -307,6 +315,7 @@ namespace iceicle {
         // = Integrals =
         // =============
 
+        template<class IDX>
         auto domain_integral(
             const FiniteElement<T, IDX, ndim> &el,
             NodeArray<T, ndim>& coord,
@@ -378,7 +387,7 @@ namespace iceicle {
         }
 
 
-        template<class ULayoutPolicy, class UAccessorPolicy, class ResLayoutPolicy>
+        template<class IDX, class ULayoutPolicy, class UAccessorPolicy, class ResLayoutPolicy>
         void trace_integral(
             const TraceSpace<T, IDX, ndim> &trace,
             NodeArray<T, ndim> &coord,
@@ -504,6 +513,18 @@ namespace iceicle {
 
             }
         }
-
     };
+
+    template<
+        class T,
+        int ndim,
+        template<class T1, int ndim1> class PhysicalFlux,
+        template<class T1, int ndim1> class ConvectiveNumericalFlux, 
+        template<class T1, int ndim1> class DiffusiveFlux
+    >
+    ConservationLawDDG(
+        PhysicalFlux<T, ndim>&& physical_flux,
+        ConvectiveNumericalFlux<T, ndim>&& convective_numflux,
+        DiffusiveFlux<T, ndim>&& diffusive_flux
+    ) -> ConservationLawDDG<T, ndim, PhysicalFlux<T, ndim>, ConvectiveNumericalFlux<T, ndim>, DiffusiveFlux<T, ndim>>;
 }

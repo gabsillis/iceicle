@@ -20,6 +20,9 @@ namespace iceicle {
             if(util::eq_icase(basis_name.value(), "lagrange")){
                 btype = FESPACE_ENUMS::LAGRANGE;
             }
+            if(util::eq_icase(basis_name.value(), "legendre")){
+                btype = FESPACE_ENUMS::LEGENDRE;
+            }
         }
 
         // get the quadrature type
