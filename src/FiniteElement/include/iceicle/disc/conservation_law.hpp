@@ -3,6 +3,7 @@
 #include "Numtool/fixed_size_tensor.hpp"
 #include "iceicle/element/finite_element.hpp"
 #include "iceicle/fe_function/fespan.hpp"
+#include "iceicle/geometry/face.hpp"
 #include "iceicle/linalg/linalg_utils.hpp"
 #include <cmath>
 #include <vector>
@@ -180,7 +181,7 @@ namespace iceicle {
             // calculate the flux weighted by the quadrature and face metric
             T fvisc = 0;
             for(int idim = 0; idim < ndim; ++idim){
-                fvisc += gradu[0, idim] * unit_normal[idim];
+                fvisc += coeffs.mu * gradu[0, idim] * unit_normal[idim];
             }
             return std::array<T, nv_comp>{fvisc};
         }
@@ -634,7 +635,6 @@ namespace iceicle {
 
             // solution scratch space 
             std::array<T, neq> uL;
-            std::array<T, neq> uR;
             std::array<T, neq * ndim> graduL_data;
             std::array<T, neq * ndim> graduR_data;
             std::array<T, neq * ndim> grad_ddg_data;
@@ -669,12 +669,10 @@ namespace iceicle {
                         // get the gradients the physical domain
                         auto gradBiL = trace.evalPhysGradBasisQPL(iqp, coord, gradbL_data.data());
 
-                        std::vector<T> gradu_dataL(ndim);
-                        auto graduL = unkelL.contract_mdspan(gradBiL, gradu_dataL.data());
+                        auto graduL = unkelL.contract_mdspan(gradBiL, graduL_data.data());
 
                         // construct the solution on the left and right
                         std::ranges::fill(uL, 0.0);
-                        std::ranges::fill(uR, 0.0);
                         for(int ieq = 0; ieq < neq; ++ieq){
                             for(int ibasis = 0; ibasis < elL.nbasis(); ++ibasis)
                                 { uL[ieq] += unkelL[ibasis, ieq] * biL[ibasis]; }
@@ -685,7 +683,7 @@ namespace iceicle {
                         dirichlet_callbacks[trace.face->bcflag](phys_pt.data(), dirichlet_vals.data());
 
                         // compute convective fluxes
-                        std::array<T, neq> fadvn = conv_nflux(uL, uR, unit_normal);
+                        std::array<T, neq> fadvn = conv_nflux(uL, dirichlet_vals, unit_normal);
 
                         // calculate the DDG distance
                         T h_ddg = 0; // uses distance to quadpt on boundary face
@@ -695,7 +693,6 @@ namespace iceicle {
                             );
                         }
 
-                        static constexpr int ieq = 0;
                         // construct the DDG derivatives
                         int order = 
                             elL.basis->getPolynomialOrder();
@@ -780,7 +777,74 @@ namespace iceicle {
                         }
                     }
                 }
+                break;
 
+                // Use only the interior state and assume the exterior state (and gradients) match
+                case BOUNDARY_CONDITIONS::EXTRAPOLATION:
+                {
+                    // loop over quadrature points
+                    for(int iqp = 0; iqp < trace.nQP(); ++iqp){
+                        const QuadraturePoint<T, ndim - 1> &quadpt = trace.getQP(iqp);
+
+                        // calculate the jacobian and riemannian metric root det
+                        auto Jfac = trace.face->Jacobian(coord, quadpt.abscisse);
+                        T sqrtg = trace.face->rootRiemannMetric(Jfac, quadpt.abscisse);
+
+                        // calculate the normal vector 
+                        auto normal = calc_ortho(Jfac);
+                        auto unit_normal = normalize(normal);
+
+                        // calculate the physical domain position
+                        MATH::GEOMETRY::Point<T, ndim> phys_pt;
+                        trace.face->transform(quadpt.abscisse, coord, phys_pt);
+
+                        // get the function values
+                        trace.evalBasisQPL(iqp, biL.data());
+
+                        // get the gradients the physical domain
+                        auto gradBiL = trace.evalPhysGradBasisQPL(iqp, coord, gradbL_data.data());
+
+                        auto graduL = unkelL.contract_mdspan(gradBiL, graduL_data.data());
+
+                        // construct the solution on the left and right
+                        std::ranges::fill(uL, 0.0);
+                        for(int ieq = 0; ieq < neq; ++ieq){
+                            for(int ibasis = 0; ibasis < elL.nbasis(); ++ibasis)
+                                { uL[ieq] += unkelL[ibasis, ieq] * biL[ibasis]; }
+                        }
+
+                        // compute convective fluxes
+                        std::array<T, neq> fadvn = conv_nflux(uL, uL, unit_normal);
+
+                        // construct the DDG derivatives
+                        std::mdspan<T, std::extents<int, neq, ndim>> grad_ddg{grad_ddg_data.data()};
+                        for(int ieq = 0; ieq < neq; ++ieq){
+                            // construct the DDG derivatives ( just match interior gradient )
+                            for(int idim = 0; idim < ndim; ++idim){
+                                grad_ddg[ieq, idim] = (graduL[ieq, idim]);
+                            }
+                        }
+
+                        // construct the viscous fluxes 
+                        std::array<T, neq> uavg;
+                        for(int ieq = 0; ieq < neq; ++ieq) uavg[ieq] = uL[ieq];
+
+                        std::array<T, neq> fviscn = diff_flux(uavg, grad_ddg, unit_normal);
+
+                        // scale by weight and face metric tensor
+                        for(int ieq = 0; ieq < neq; ++ieq){
+                            fadvn[ieq] *= quadpt.weight * sqrtg;
+                            fviscn[ieq] *= quadpt.weight * sqrtg;
+                        }
+
+                        // scatter contribution 
+                        for(int itest = 0; itest < elL.nbasis(); ++itest){
+                            for(int ieq = 0; ieq < neq; ++ieq){
+                                resL[itest, 0] += (fviscn[ieq] - fadvn[ieq]) * biL[itest];
+                            }
+                        }
+                    }
+                }
                 break;
 
                 default:

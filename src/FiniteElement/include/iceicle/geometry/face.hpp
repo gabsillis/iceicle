@@ -20,6 +20,7 @@ namespace iceicle {
         PARALLEL_COM,
         NEUMANN,
         DIRICHLET,
+        EXTRAPOLATION,
         RIEMANN,
         NO_SLIP,
         SLIP_WALL,
@@ -38,6 +39,7 @@ namespace iceicle {
             "Parallel_Communication",
             "Neumann",
             "Dirichlet",
+            "Extrapolation",
             "Riemann Solver (Characteristic)",
             "No slip",
             "Slip wall",
@@ -60,6 +62,10 @@ namespace iceicle {
 
         if(eq_icase(bcname, "neumann")){
             return BOUNDARY_CONDITIONS::NEUMANN;
+        }
+
+        if(eq_icase(bcname, "extrapolation")){
+            return BOUNDARY_CONDITIONS::EXTRAPOLATION;
         }
 
         return BOUNDARY_CONDITIONS::INTERIOR;
