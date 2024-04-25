@@ -5,20 +5,23 @@
 #include <fstream>
 #include <format>
 #include <filesystem>
+#include <memory>
 #include <string>
 namespace iceicle::io {
 
     template<class T, class IDX, int ndim>
     class DatWriter{
 
-        struct writable_field {
+        struct writeable_field {
             virtual void write_data(std::ofstream &out, FESpace<T, IDX, ndim> &fespace) const = 0;
 
-            virtual ~writable_field(){}
+            virtual auto clone() const -> std::unique_ptr<writeable_field> = 0;
+
+            virtual ~writeable_field(){}
         };
 
         template< class LayoutPolicy, class AccessorPolicy>
-        struct DataField final : public writable_field {
+        struct DataField final : public writeable_field {
             /// the data view 
             fespan<T, LayoutPolicy, AccessorPolicy> fedata;
 
@@ -74,14 +77,19 @@ namespace iceicle::io {
                     }
                 }
             }
+
+            auto clone() const -> std::unique_ptr<writeable_field> override {
+                return std::make_unique<DataField<LayoutPolicy, AccessorPolicy>>(*this);
+            }
         };
 
         private:
         AbstractMesh<T, IDX, ndim> *meshptr;
         FESpace<T, IDX, ndim> *fespace_ptr;
-        std::vector<std::unique_ptr<writable_field>> fields;
+        std::vector<std::unique_ptr<writeable_field>> fields;
 
         public:
+        using value_type = T;
 
         std::string collection_name = "iceicle_data";
         std::filesystem::path data_directory;
@@ -90,6 +98,16 @@ namespace iceicle::io {
         : fespace_ptr{&fespace}, meshptr{fespace.meshptr}, data_directory{std::filesystem::current_path()}{
             data_directory /= "iceicle_data";
         }
+
+        DatWriter(const DatWriter<T, IDX, ndim>& other) 
+            : meshptr(other.meshptr), fespace_ptr(other.fespace_ptr), fields{}, 
+              collection_name(other.collection_name), data_directory(other.data_directory) 
+        {
+            for(const std::unique_ptr<writeable_field>& field : other.fields){
+                fields.push_back(field->clone());
+            }
+        };
+        DatWriter(DatWriter<T, IDX, ndim>&& other) = default;
 
         /// @brief register an fespace to this writer 
         /// will overwrite the registered mesh to the one in the fespace

@@ -6,13 +6,17 @@
 
 #include "iceicle/disc/conservation_law.hpp"
 #include "Numtool/tmp_flow_control.hpp"
+#include "iceicle/dat_writer.hpp"
 #include "iceicle/mesh/mesh_lua_interface.hpp"
 #include "iceicle/fespace/fespace_lua_interface.hpp"
 #include "iceicle/program_args.hpp"
 #include "iceicle/anomaly_log.hpp"
+#include "iceicle/solvers_lua_interface.hpp"
 #include "iceicle/string_utils.hpp"
 #include "iceicle/initialization.hpp"
 #include "iceicle/pvd_writer.hpp"
+#include "iceicle/disc/bc_lua_interface.hpp"
+#include "iceicle/writer.hpp"
 #ifdef ICEICLE_USE_PETSC 
 #include "iceicle/petsc_newton.hpp"
 #elifdef ICEICLE_USE_MPI
@@ -32,6 +36,39 @@ using namespace iceicle::tmp;
 // cmake configuration
 using T = build_config::T;
 using IDX = build_config::IDX;
+
+/// @brief class for testing dirichlet implementation
+/// TODO: move to a unit test
+template<class T, int ndim, int neq>
+class test_dirichlet{
+    public:
+    using value_type = T;
+    static constexpr int nv_comp = neq;
+    static constexpr int dimensionality = ndim;
+
+    std::vector< std::function<void(const T*, T*)> > dirichlet_callbacks;
+
+    auto operator()() -> void {
+        std::array<T, ndim> x{};
+        std::cout << "x: [ ";
+        for(int idim = 0; idim < ndim; ++idim){
+            x[idim] = (0.125) * (idim + 1);
+            std::cout << x[idim] << " ";
+        }
+        std::cout << "]" << std::endl;
+
+        for(auto f : dirichlet_callbacks){
+            std::cout << "f: [ ";
+            std::array<T, neq> fval{};
+            f(x.data(), fval.data());
+            for(int ieq = 0; ieq < neq; ++ieq){
+                std::cout << fval[ieq] << " ";
+            }
+            std::cout << " ]" << std::endl;
+        }
+        std::cout << std::endl;
+    }
+};
 
 template<class T, class IDX, int ndim, class pflux, class cflux, class dflux>
 void initialize_and_solve(
@@ -58,6 +95,21 @@ void initialize_and_solve(
         pvd_writer.collection_name = "initial_condition";
         pvd_writer.write_vtu(0, 0.0);
     }
+
+    // ==================================
+    // = Set up the Boundary Conditions =
+    // ==================================
+    sol::optional<sol::table> bc_desc_opt = config_tbl["boundary_conditions"];
+    if(bc_desc_opt){
+        sol::table bc_tbl = bc_desc_opt.value();
+        add_dirichlet_callbacks(conservation_law, bc_tbl);
+    }
+
+    // =========
+    // = Solve =
+    // =========
+    solvers::lua_solve(config_tbl, fespace, conservation_law, u);
+
 }
 
 int main(int argc, char* argv[]){

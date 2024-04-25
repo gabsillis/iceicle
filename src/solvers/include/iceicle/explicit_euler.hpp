@@ -72,7 +72,7 @@ public:
         const StopCondition &stop_condition
     )
     requires specifies_ncomp<disc_class> && TerminationCondition<StopCondition>
-    : res_data(fespace.dg_map.calculate_size_requirement(disc_class::dnv_comp)),
+    : res_data(fespace.dg_map.calculate_size_requirement(disc_class::nv_comp)),
       timestep{timestep}, stop_condition{stop_condition}
     {}
 
@@ -115,7 +115,7 @@ public:
             PermutationMatrix<unsigned int> pi = decompose_lu(mass);
 
             const IDX ndof = el.nbasis();
-            for(IDX ieqn = 0; ieqn < disc_class::dnv_comp; ++ieqn){
+            for(IDX ieqn = 0; ieqn < disc_class::nv_comp; ++ieqn){
 
                 // copy the residual for each degree of freedom to the rhs 
                 for(IDX idof = 0; idof < el.nbasis(); ++idof){

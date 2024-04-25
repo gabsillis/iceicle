@@ -57,4 +57,34 @@ namespace iceicle::tmp {
     /// @brief tag when constructing from range
     struct from_range_t{};
 
+
+    // ===============
+    // = sized tuple =
+    // ===============
+
+    namespace impl{
+        template<std::size_t remaining, typename T, typename... Types>
+        struct sized_tuple_helper{
+            using type = sized_tuple_helper<remaining - 1, T, Types..., T>::type;
+        };
+
+        template<typename T, typename... Types>
+        struct sized_tuple_helper<0, T, Types...> {
+            using type = std::tuple<Types...>;
+        };
+    }
+
+    /// @brief expands into a std::tuple of nvalues type T 
+    /// i.e sized_tuple<double, 3>::type is std::tuple<double, double, double>
+    template<typename T, std::size_t nvalues>
+    struct sized_tuple {
+        using type = impl::sized_tuple_helper<nvalues, T>::type;
+    };
+
+    /// @brief expands into a std::tuple of nvalues type T 
+    /// sized_tuple_t<double, 3> is std::tuple<double, double, double>
+    template<typename T, std::size_t nvalues>
+    using sized_tuple_t = sized_tuple<T, nvalues>::type;
+
+    static_assert(std::same_as<sized_tuple_t<double, 4>, std::tuple<double, double, double, double>>);
 }

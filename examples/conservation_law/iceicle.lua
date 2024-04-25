@@ -1,13 +1,17 @@
+local fourier_nr = 0.0001
+
+local nelem_arg = 8;
+
 return {
     -- specify the number of dimensions (REQUIRED)
-    ndim = 2,
+    ndim = 1,
 
     -- create a uniform mesh
     uniform_mesh = {
-        nelem = { 2, 1 },
+        nelem = { nelem_arg },
         bounding_box = {
-            min = { 0.0, 0.0 },
-            max = { 1.0, 1.0 }
+            min = { 0.0 },
+            max = { 2 * math.pi }
         },
         -- set boundary conditions
         boundary_conditions = {
@@ -15,18 +19,14 @@ return {
             -- in order of direction and side
             types = {
                 "dirichlet", -- left side
-                "dirichlet", -- bottom side
                 "dirichlet", -- right side
-                "dirichlet", -- top side
             },
 
             -- the boundary condition flags
             -- used to identify user defined state
             flags = {
-                1,  -- left
-                1,  -- bottom
-                -1, -- right
-                1,  -- top
+                0, -- left
+                0, -- right
             },
         },
         geometry_order = 1,
@@ -35,7 +35,7 @@ return {
     -- define the finite element domain
     fespace = {
         -- the basis function type (optional: default = lagrange)
-        basis = "lagrange",
+        basis = "legendre",
 
         -- the quadrature type (optional: default = gauss)
         quadrature = "gauss",
@@ -47,12 +47,33 @@ return {
     -- describe the conservation law
     conservation_law = {
         -- the name of the conservation law being solved
-        name = "burgers"
+        name = "burgers",
+        mu = 1.0,
+
     },
 
     -- initial condition
-    initial_condition = function(x, y)
-        print("x: ", x, " | y: ", y)
-        return x + y
-    end
+    initial_condition = function(x)
+        return math.sin(x)
+    end,
+
+    -- boundary conditions
+    boundary_conditions = {
+        dirichlet = {
+            0.0,
+        },
+    },
+
+    -- solver
+    solver = {
+        type = "rk3-tvd",
+        dt = fourier_nr * (2 * math.pi / nelem_arg) ^ 2,
+        tfinal = 1.0,
+        ivis = 1000
+    },
+
+    -- output
+    output = {
+        writer = "dat"
+    }
 }
