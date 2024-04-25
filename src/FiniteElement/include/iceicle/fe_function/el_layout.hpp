@@ -8,7 +8,7 @@
 #include "iceicle/fe_function/layout_enums.hpp"
 #include <span>
 #include <type_traits>
-namespace FE {
+namespace iceicle {
 
     /**
      * @brief memory layout for data that is compact to a single element 
@@ -49,7 +49,7 @@ namespace FE {
          */
         template<class T, int ndim>
         constexpr compact_layout_right(
-            const ELEMENT::FiniteElement<T, IDX, ndim> &el,
+            const FiniteElement<T, IDX, ndim> &el,
             index_type nv_d
         ) noexcept requires(is_dynamic_size<vextent>::value) 
         : nv_d(nv_d), _ndof{el.nbasis()}{}
@@ -60,7 +60,7 @@ namespace FE {
          */
         template<typename T, int ndim>
         constexpr compact_layout_right(
-            const ELEMENT::FiniteElement<T, IDX, ndim> &el
+            const FiniteElement<T, IDX, ndim> &el
         ) noexcept requires(!is_dynamic_size<vextent>::value)
         : _ndof{el.nbasis()}{}
 
@@ -169,7 +169,7 @@ namespace FE {
 
     // Deduction Guides
     template<class T, class IDX, int ndim>
-    compact_layout_right(const ELEMENT::FiniteElement<T, IDX, ndim> &, IDX) -> compact_layout_right<IDX, std::dynamic_extent>;
+    compact_layout_right(const FiniteElement<T, IDX, ndim> &, IDX) -> compact_layout_right<IDX, std::dynamic_extent>;
     template<class index_type>
     compact_layout_right( index_type )  -> compact_layout_right<index_type, std::dynamic_extent> ;
 

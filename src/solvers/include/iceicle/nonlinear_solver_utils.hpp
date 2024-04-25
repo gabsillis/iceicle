@@ -9,7 +9,7 @@
 #include <variant>
 #include <cmath>
 
-namespace ICEICLE::SOLVERS {
+namespace iceicle::solvers {
 
     /**
      * @brief Criteria for convergence of a nonlinear solve 
@@ -208,6 +208,14 @@ namespace ICEICLE::SOLVERS {
             return wolfe_ls(fcn, alpha_max, alpha_initial, max_it, c1, c2);
         }
 
+    };
+
+    /// @brief a linesearch class that can set a linesearch multipler (alpha)
+    /// through class members alpha_initial and alpha_max
+    template< class ls_class >
+    concept variable_alpha_ls = requires( ls_class ls){
+        {ls.alpha_initial} -> std::convertible_to<typename ls_class::value_type>;
+        {ls.alpha_max} -> std::convertible_to<typename ls_class::value_type>;
     };
 
     template<class T, class IDX>

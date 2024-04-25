@@ -4,24 +4,23 @@
  * @brief geometric face definition
  */
 #pragma once
-#include "iceicle/fe_function/nodal_fe_function.hpp"
-#include <iceicle/geometry/geometry_enums.hpp>
 #include <iceicle/string_utils.hpp>
 #include <Numtool/point.hpp>
 #include <Numtool/MathUtils.hpp>
-#include <iceicle/fe_enums.hpp>
+#include <iceicle/fe_definitions.hpp>
 #include <Numtool/fixed_size_tensor.hpp>
 #include <string>
 #include <span>
 #include <string_view>
 
-namespace ELEMENT {
+namespace iceicle {
     
-    enum BOUNDARY_CONDITIONS {
+    enum class BOUNDARY_CONDITIONS : int {
         PERIODIC = 0,
         PARALLEL_COM,
         NEUMANN,
         DIRICHLET,
+        EXTRAPOLATION,
         RIEMANN,
         NO_SLIP,
         SLIP_WALL,
@@ -40,6 +39,7 @@ namespace ELEMENT {
             "Parallel_Communication",
             "Neumann",
             "Dirichlet",
+            "Extrapolation",
             "Riemann Solver (Characteristic)",
             "No slip",
             "Slip wall",
@@ -54,17 +54,21 @@ namespace ELEMENT {
     }
 
     constexpr inline BOUNDARY_CONDITIONS get_bc_from_name(std::string_view bcname){
-        using namespace ICEICLE::UTIL;
+        using namespace iceicle::util;
 
         if(eq_icase(bcname, "dirichlet")){
-            return DIRICHLET;
+            return BOUNDARY_CONDITIONS::DIRICHLET;
         }
 
         if(eq_icase(bcname, "neumann")){
-            return NEUMANN;
+            return BOUNDARY_CONDITIONS::NEUMANN;
         }
 
-        return INTERIOR;
+        if(eq_icase(bcname, "extrapolation")){
+            return BOUNDARY_CONDITIONS::EXTRAPOLATION;
+        }
+
+        return BOUNDARY_CONDITIONS::INTERIOR;
     }
 
     /// face_info / this gives the face number 
@@ -148,7 +152,7 @@ namespace ELEMENT {
 
         using Point = MATH::GEOMETRY::Point<T, ndim>;
         using FacePoint = MATH::GEOMETRY::Point<T, ndim - 1>;
-        using JacobianType = NUMTOOL::TENSOR::FIXED_SIZE::Tensor<T, ndim, ndim - 1>;
+        using JacobianType = NUMTOOL::TENSOR::FIXED_SIZE::Tensor<T, (std::size_t) ndim, (std::size_t) ndim - 1>;
         using MetricTensorType = NUMTOOL::TENSOR::FIXED_SIZE::Tensor<T, ndim - 1, ndim - 1>;
         public:
 
@@ -168,7 +172,7 @@ namespace ELEMENT {
         explicit
         Face(
             IDX elemL, IDX elemR, unsigned int face_infoL, unsigned int face_infoR,
-            BOUNDARY_CONDITIONS bctype = INTERIOR, int bcflag = 0
+            BOUNDARY_CONDITIONS bctype = BOUNDARY_CONDITIONS::INTERIOR, int bcflag = 0
         ) : elemL(elemL), elemR(elemR),
             face_infoL(face_infoL), face_infoR(face_infoR),
             bctype(bctype), bcflag(bcflag)
@@ -178,7 +182,7 @@ namespace ELEMENT {
 
         /** @brief get the shape that defines the reference domain */
         virtual 
-        constexpr FE::DOMAIN_TYPE domain_type() const = 0;
+        constexpr DOMAIN_TYPE domain_type() const = 0;
 
         /** @brief get the geometry polynomial order */
         virtual 
@@ -205,8 +209,8 @@ namespace ELEMENT {
         virtual 
         void transform(
             const FacePoint &s,
-            FE::NodalFEFunction<T, ndim> &coord, 
-            T *result
+            NodeArray<T, ndim> &coord, 
+            Point& result
         ) const = 0;
 
         /**
@@ -219,7 +223,7 @@ namespace ELEMENT {
         virtual
         void transform_xiL(
             const FacePoint &s,
-            T *result
+            Point& result
         ) const = 0;
 
         /**
@@ -232,7 +236,7 @@ namespace ELEMENT {
         virtual 
         void transform_xiR(
             const FacePoint &s,
-            T *result
+            Point& result
         ) const = 0;
 
         /**
@@ -248,7 +252,7 @@ namespace ELEMENT {
          */
         virtual 
         JacobianType Jacobian(
-            FE::NodalFEFunction<T, ndim> &node_coords,
+            NodeArray<T, ndim> &node_coords,
             const FacePoint &s
         ) const = 0;
 

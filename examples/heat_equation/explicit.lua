@@ -3,12 +3,12 @@
 -- define the mesh as a uniform quad mesh
 uniform_mesh = {
 	-- specify the number of elements in each direction
-	nelem = { 2, 2 },
+	nelem = { 8, 1 },
 
 	-- specify the bounding box of the uniform mesh domain
 	bounding_box = {
 		min = { 0.0, 0.0 },
-		max = { math.pi, math.pi },
+		max = { 1.0, math.pi },
 	},
 
 	-- set boundary conditions
@@ -46,12 +46,14 @@ fespace = {
 	order = 2,
 }
 
-mu = 0.1;
+mu = 1e-4;
+a_adv = { 1.0, 0.0 };
 
 -- initial condition
 -- initial_condition = "zero"
 initial_condition = function(x, y)
-	return math.sin(x)
+	-- return math.sin(x)
+	return math.exp(-0.5 * ((x - 0.5) / 0.1) ^ 2) / 0.1;
 end
 
 -- exact solution (transient)
@@ -78,7 +80,8 @@ boundary_conditions = {
 }
 
 solver = {
-	type = "rk3-ssp",
-	cfl = 0.001,
-	ntime = 1
+	type = "rk3-tvd",
+	dt = 1e-5,
+	ntime = 10000,
+	ivis = 1000
 }

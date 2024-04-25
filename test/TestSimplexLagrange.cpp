@@ -6,7 +6,8 @@
 #include "gtest/gtest.h"
 #include <iceicle/transformations/SimplexElementTransformation.hpp>
 
-using namespace BASIS;
+using namespace iceicle;
+
 TEST(test_simplex_lagrange, test_nbasis){
     SimplexLagrangeBasis<double, int, 4, 3> basis1{};
     ASSERT_EQ(basis1.nbasis(), 35);
@@ -114,7 +115,7 @@ TEST(test_simplex_lagrange, test_eval){
         return 4*lambda3*x;
     };
 
-    ELEMENT::TRANSFORMATIONS::SimplexElementTransformation<double, int, 2, 10> nodegen{};
+    transformations::SimplexElementTransformation<double, int, 2, 10> nodegen{};
 
     for(int inode = 0; inode < nodegen.nnodes(); ++inode){
         const double *pt = nodegen.reference_nodes()[inode];

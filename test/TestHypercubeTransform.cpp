@@ -2,12 +2,12 @@
 #include "Numtool/polydefs/LagrangePoly.hpp"
 #include <Numtool/tmp_flow_control.hpp>
 #include <Numtool/matrixT.hpp>
-#include "iceicle/fe_function/nodal_fe_function.hpp"
-#include <iceicle/transformations/HypercubeElementTransformation.hpp>
+#include <iceicle/transformations/HypercubeTransformations.hpp>
 #include "gtest/gtest.h"
 #include <random>
 
-using namespace ELEMENT::TRANSFORMATIONS;
+using namespace iceicle;
+using namespace transformations;
 
 TEST(test_hypercube_transform, test_get_face_nodes){
   { // Linear 2D element
@@ -100,7 +100,7 @@ TEST(test_hypercube_orient_transform, test_transform){
         //      - domain_trans.n_nodes_face(attached_face);
 
       // Generate the first element nodes
-      FE::NodalFEFunction<double, ndim> coord{n_nodes_total};
+      NodeArray<double, ndim> coord{n_nodes_total};
       
       for(int inode = 0; inode < domain_trans.n_nodes(); ++inode){
         coord[inode][0] = dotprod<double, ndim>(xdir.data(), domain_trans.reference_nodes()[inode]); 
@@ -263,7 +263,7 @@ TEST(test_hypercube_trace_transform, test_jacobian){
     static constexpr int ndim = 3;
     HypercubeElementTransformation<double, int, ndim, 1> trans_cube{};
 
-    FE::NodalFEFunction<double, 3> coord{trans_cube.n_nodes()};
+    NodeArray<double, 3> coord{trans_cube.n_nodes()};
 
     // unpeturbed coordinates 
     for(int inode = 0; inode < trans_cube.n_nodes(); ++inode){
@@ -323,7 +323,7 @@ TEST(test_hypercube_trace_transform, test_jacobian){
     // Generate a cube
     HypercubeElementTransformation<double, int, ndim, Pn> trans_cube{};
 
-    FE::NodalFEFunction<double, ndim> coord{trans_cube.n_nodes()};
+    NodeArray<double, ndim> coord{trans_cube.n_nodes()};
 
     // peturbed coordinates 
     for(int inode = 0; inode < trans_cube.n_nodes(); ++inode){
@@ -547,7 +547,7 @@ TEST( test_hypercube_transform, test_transform ){
 
   { // linear 2d transformation test
     int node_indices[trans_lin2d.n_nodes()];
-    FE::NodalFEFunction<double, 2> node_coords(trans_lin2d.n_nodes());
+    NodeArray<double, 2> node_coords(trans_lin2d.n_nodes());
 
     // randomly peturb
     for(int inode = 0; inode < trans_lin2d.n_nodes(); ++inode){
@@ -580,7 +580,7 @@ TEST( test_hypercube_transform, test_transform ){
   HypercubeElementTransformation<double, int, 2, 3> trans1{};
 
   int node_indices[trans1.n_nodes()];
-  FE::NodalFEFunction<double, 2> node_coords(trans1.n_nodes());
+  NodeArray<double, 2> node_coords(trans1.n_nodes());
 
   // randomly peturb
   for(int inode = 0; inode < trans1.n_nodes(); ++inode){
@@ -825,7 +825,7 @@ TEST( test_hypercube_transform, test_jacobian ){
   {
     static constexpr int ndim = 2;
     static constexpr int Pn = 1;
-    FE::NodalFEFunction<double, ndim> coord{
+    NodeArray<double, ndim> coord{
       {0, 0},
       {0.0, 1.0},
       {1.0, 0.0},
@@ -858,7 +858,7 @@ TEST( test_hypercube_transform, test_jacobian ){
       HypercubeElementTransformation<double, int, ndim, Pn> trans1{};
 
       int node_indices[trans1.n_nodes()];
-      FE::NodalFEFunction<double, ndim> node_coords(trans1.n_nodes());
+      NodeArray<double, ndim> node_coords(trans1.n_nodes());
 
       for(int k = 0; k < 50; ++k){ // repeat test 50 times
         // randomly peturb
@@ -928,7 +928,7 @@ TEST( test_hypercube_transform, test_hessian ) {
       HypercubeElementTransformation<double, int, ndim, Pn> trans1{};
 
       int node_indices[trans1.n_nodes()];
-      FE::NodalFEFunction<double, ndim> node_coords(trans1.n_nodes());
+      NodeArray<double, ndim> node_coords(trans1.n_nodes());
 
       for(int k = 0; k < ntest; ++k){ // repeat test 50 times
         // randomly peturb

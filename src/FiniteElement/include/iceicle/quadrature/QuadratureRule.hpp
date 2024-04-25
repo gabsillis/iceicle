@@ -11,7 +11,7 @@
 #pragma once
 #include <Numtool/point.hpp>
 
-namespace QUADRATURE {
+namespace iceicle {
    
     /**
      * @brief a QuadraturePoint which contains the abscisse and the quadrature weight

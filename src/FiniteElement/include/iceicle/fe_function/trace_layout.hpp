@@ -6,7 +6,7 @@
 #include <type_traits>
 #include "iceicle/element/TraceSpace.hpp"
 
-namespace FE {
+namespace iceicle {
 
     /**
      * @brief memory layout for data that is compact to a single trace 
@@ -38,7 +38,7 @@ namespace FE {
          */
         template<class T>
         constexpr trace_layout_right(
-            const ELEMENT::TraceSpace<T, index_type, (int) vextent> &trace
+            const TraceSpace<T, index_type, (int) vextent> &trace
         ) noexcept : _ndof{trace.nbasis_trace()} {}
 
         trace_layout_right(const trace_layout_right<IDX, vextent>& other) noexcept = default;
@@ -109,5 +109,5 @@ namespace FE {
 
     // Deduction Guides 
     template<class T, class IDX, int ndim>
-    trace_layout_right(const ELEMENT::TraceSpace<T, IDX, ndim>) -> trace_layout_right<IDX, (std::size_t) ndim>;
+    trace_layout_right(const TraceSpace<T, IDX, ndim>) -> trace_layout_right<IDX, (std::size_t) ndim>;
 }

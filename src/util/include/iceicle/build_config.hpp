@@ -9,7 +9,7 @@
  * 
  */
 #pragma once
-namespace BUILD_CONFIG {
+namespace iceicle::build_config {
     #ifdef T_QUAD_PRECISION
     using T = long double;
     #endif

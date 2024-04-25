@@ -1,0 +1,8 @@
+#...
+INPUT = "@DOXYGEN_INPUT_DIR@"
+#...
+OUTPUT_DIRECTORY = "@DOXYGEN_OUTPUT_DIR@"
+PROJECT_NAME           = "ICEicle"
+PROJECT_BRIEF          = "Research Finite Element code for MDG-ICE"
+RECURSIVE = YES
+GENERATE_XML = YES

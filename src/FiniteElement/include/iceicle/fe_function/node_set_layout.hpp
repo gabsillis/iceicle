@@ -3,10 +3,13 @@
  * can be used to represent MDG unknowns and residuals
  * @author Gianni Absillis (gabsill@ncsu.edu)
  */
-
+#pragma once
+#include "iceicle/fespace/fespace.hpp"
+#include <ranges>
 #include <type_traits>
 #include <vector>
-namespace FE {
+#include <stdexcept>
+namespace iceicle {
 
     /**
      * @brief this maps a set of selected faces and their corresponding nodes to 
@@ -27,15 +30,68 @@ namespace FE {
         // =================
 
         /// @brief the indices of traces to add dof's for 
-        std::vector<index_type> selected_traces;
+        std::vector<index_type> selected_traces{};
 
         /// @brief the global node indices of the nodes to represent dofs for 
-        std::vector<index_type> selected_nodes;
+        std::vector<index_type> selected_nodes{};
 
         /// @brief index in the selected node dofs each gdof maps to, or size() if not included
-        std::vector<index_type> inv_selected_nodes;
+        std::vector<index_type> inv_selected_nodes{};
+
+        // ================
+        // = Constructors =
+        // ================
+
+        template<std::ranges::forward_range R1, typename T, int ndim>
+        nodeset_dof_map(R1&& trace_indices, FESpace<T, IDX, ndim>& fespace)
+#ifdef __cpp_lib_containers_ranges
+        : selected_traces(std::from_range, trace_indices) 
+#else 
+        : selected_traces{std::ranges::begin(trace_indices), std::ranges::end(trace_indices)}
+#endif
+        {
+            // helper array to keep track of which global node indices to select
+            std::vector<bool> to_select(fespace.meshptr->n_nodes(), false);
+            using trace_type = std::remove_reference_t<decltype(fespace)>::TraceType;
+
+            // loop over selected faces and select nodes
+            for(index_type trace_idx : trace_indices){
+                const trace_type& trace = fespace.traces[trace_idx];
+                for(index_type inode : trace.face->nodes_span()){
+                    to_select[inode] = true;
+                }
+            }
+
+            // loop over the boundary faces and deactivate all boundary nodes 
+            // since some may be connected to an active interior face 
+            for(const trace_type &trace : fespace.get_boundary_traces()){
+                for(index_type inode : trace.face->nodes_span()){
+                    to_select[inode] = false;
+                }
+            }
+
+            // construct the selected nodes list 
+            for(int inode = 0; inode < fespace.meshptr->n_nodes(); ++inode){
+                if(to_select[inode]) selected_nodes.push_back(inode);
+            }
+
+            // default value for nodes that aren't selected is to map to selected_nodes.size()
+            inv_selected_nodes = std::vector<index_type>(fespace.meshptr->n_nodes(), selected_nodes.size());
+            for(int idof = 0; idof < selected_nodes.size(); ++idof){
+                inv_selected_nodes[selected_nodes[idof]] = idof;
+            }
+        }
+
+        nodeset_dof_map() = default;
+        nodeset_dof_map(const nodeset_dof_map<IDX>& other) = default;
+        nodeset_dof_map(nodeset_dof_map<IDX>&& other) = default;
+        nodeset_dof_map<IDX>& operator=(const nodeset_dof_map<IDX>& other) = default;
+        nodeset_dof_map<IDX>& operator=(nodeset_dof_map<IDX>&& other) = default;
 
     };
+
+    template<std::ranges::forward_range R, typename T, int ndim>
+    nodeset_dof_map(R&&, FESpace<T, std::ranges::range_value_t<R>, ndim>&) -> nodeset_dof_map<std::ranges::range_value_t<R>>;
 
 
     template<class IDX, std::size_t vextent>
@@ -101,7 +157,10 @@ namespace FE {
             index_type iv
         ) const noexcept(index_noexcept) -> index_type {
 #ifndef NDEBUG
-            // Bounds checking version in debug
+            // Bounds checking version in debug 
+            // NOTE: allow indexing ndof()
+            // for nodes that arent in inv_selected_nodes but still 
+            // valid gdofs
             if(idof < 0  || idof >= ndof()  ) throw std::out_of_range("Dof index out of range");
             if(iv < 0    || iv >= nv()      ) throw std::out_of_range("Vector compoenent index out of range");
 #endif

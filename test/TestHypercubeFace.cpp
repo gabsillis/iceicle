@@ -1,9 +1,10 @@
-#include "iceicle/fe_function/nodal_fe_function.hpp"
 #include "iceicle/geometry/face.hpp"
+#include <iceicle/fe_definitions.hpp>
 #include "iceicle/geometry/hypercube_element.hpp"
 #include <iceicle/geometry/hypercube_face.hpp>
 #include "gtest/gtest.h"
 
+using namespace iceicle;
 
 TEST(test_hypercube_face, test_transform){
     static constexpr int ndim = 2;
@@ -12,7 +13,7 @@ TEST(test_hypercube_face, test_transform){
     using namespace NUMTOOL::TENSOR::FIXED_SIZE;
 
     std::size_t n_nodes = 6;
-    FE::NodalFEFunction<T, ndim> coord{6};
+    NodeArray<T, ndim> coord{6};
     coord[0][0] = -1;
     coord[0][1] = 0;
 
@@ -31,7 +32,7 @@ TEST(test_hypercube_face, test_transform){
     coord[5][0] = 1;
     coord[5][1] = 1;
 
-    ELEMENT::HypercubeElement<T, IDX, ndim, 1> elL{}, elR{};
+    HypercubeElement<T, IDX, ndim, 1> elL{}, elR{};
     elL.setNode(0, 0);
     elL.setNode(1, 3);
     elL.setNode(2, 1);
@@ -45,7 +46,7 @@ TEST(test_hypercube_face, test_transform){
     auto transL = decltype(elL)::transformation;
     auto transR = decltype(elR)::transformation;
 
-    using FaceType = ELEMENT::HypercubeFace<T, IDX, ndim, 1>;
+    using FaceType = HypercubeFace<T, IDX, ndim, 1>;
 
     int face_nr_l = ndim + 0; // positive side
     int face_nr_r = 0;
@@ -71,15 +72,15 @@ TEST(test_hypercube_face, test_transform){
     ASSERT_EQ(face_nr_l, transL.get_face_nr(elL.nodes(), face_vert_l));
     ASSERT_EQ(face_nr_r, transR.get_face_nr(elR.nodes(), face_vert_r));
 
-    FaceType face(0, 1, face_nr_l, face_nr_r, orientationr, ELEMENT::BOUNDARY_CONDITIONS::PERIODIC, 0);
+    FaceType face(0, 1, face_nr_l, face_nr_r, orientationr, BOUNDARY_CONDITIONS::PERIODIC, 0);
 
     using FacePoint = MATH::GEOMETRY::Point<T, ndim-1>;
     using DomainPoint = MATH::GEOMETRY::Point<T, ndim>;
 
     DomainPoint xiL, xiR;
     FacePoint s = {-0.8};
-    face.transform_xiL(s, xiL.data());
-    face.transform_xiR(s, xiR.data());
+    face.transform_xiL(s, xiL);
+    face.transform_xiR(s, xiR);
 
     ASSERT_EQ(xiL[0],  1.0);
     ASSERT_EQ(xiL[1], -0.8);

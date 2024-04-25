@@ -5,7 +5,7 @@
 #include <GLFW/glfw3.h>
 #include <map>
 
-namespace ICEICLE_GL {
+namespace iceicle::gl {
 
     /**
      * @brief get the data type enumeration from the built-in type

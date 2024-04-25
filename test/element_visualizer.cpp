@@ -1,6 +1,6 @@
 
 #include "iceicle/geometry/hypercube_element.hpp"
-#include <iceicle/transformations/HypercubeTransformUtility.hpp>
+#include <iceicle/geometry/hypercube_element_utility.hpp>
 #include <iceicle/fe_function/opengl_fe_function_utils.hpp>
 #include <iceicle/load_shaders.hpp>
 
@@ -17,9 +17,9 @@
 
 using namespace glm;
 using namespace std;
-using namespace ELEMENT;
-using namespace ELEMENT::TRANSFORMATIONS;
-using namespace ICEICLE_GL;
+using namespace iceicle;
+using namespace iceicle::transformations;
+using namespace iceicle::gl;
 
 struct Example {
     virtual void draw_in_loop() = 0;
@@ -95,7 +95,7 @@ struct DrawQuads : public Example {
     GLuint element_buffer;
 
     std::vector<HypercubeElement<double, int, 2, Pn>> quads;
-    FE::NodalFEFunction<double, 2> coords;
+    NodeArray<double, 2> coords;
 
     // GL buffer arrays
     std::vector< glm::vec3 > vertices;
@@ -134,7 +134,8 @@ struct DrawQuads : public Example {
                 << " " << centroid[1] << " ]" << std::endl;
         }
 
-        coords.random_perturb(-0.05, 0.05);
+        // TODO:
+        // coords.random_perturb(-0.05, 0.05);
 
         // decompose each quad into triangles 
         for(auto &quad : quads){
@@ -346,7 +347,7 @@ int main(int argc, char**argv){
             // resize viewport and framebuffer 
             // TODO: use a callback
             GLfloat aspect_ratio = 1.0;
-            ICEICLE_GL::set_viewport_maintain_aspect_ratio(
+            gl::set_viewport_maintain_aspect_ratio(
                     wSize.x, wSize.y, aspect_ratio);
             fbo1.rescale_frame_buffer(wSize.x, wSize.y);
 

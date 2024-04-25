@@ -15,7 +15,7 @@
 
 #include <iostream>
 #include <iomanip>
-namespace ICEICLE::SOLVERS {
+namespace iceicle::solvers {
 
 /**
  * @brief Explicit 3-stage Strong Stability Preserving Runge-Kutta
@@ -81,17 +81,17 @@ public:
      */
     template<int ndim, class disc_class>
     RK3SSP(
-        FE::FESpace<T, IDX, ndim> &fespace,
+        FESpace<T, IDX, ndim> &fespace,
         disc_class &disc,
         const TimestepClass &timestep,
         const StopCondition &stop_condition
     )
     requires specifies_ncomp<disc_class> && TerminationCondition<StopCondition>
-    : res_data(fespace.dg_map.calculate_size_requirement(disc_class::dnv_comp)),
-      res1_data(fespace.dg_map.calculate_size_requirement(disc_class::dnv_comp)),
-      res2_data(fespace.dg_map.calculate_size_requirement(disc_class::dnv_comp)),
-      res3_data(fespace.dg_map.calculate_size_requirement(disc_class::dnv_comp)),
-      u_stage_data(fespace.dg_map.calculate_size_requirement(disc_class::dnv_comp)),
+    : res_data(fespace.dg_map.calculate_size_requirement(disc_class::nv_comp)),
+      res1_data(fespace.dg_map.calculate_size_requirement(disc_class::nv_comp)),
+      res2_data(fespace.dg_map.calculate_size_requirement(disc_class::nv_comp)),
+      res3_data(fespace.dg_map.calculate_size_requirement(disc_class::nv_comp)),
+      u_stage_data(fespace.dg_map.calculate_size_requirement(disc_class::nv_comp)),
       timestep{timestep}, stop_condition{stop_condition}
     {}
 
@@ -104,7 +104,7 @@ public:
      * @param [in/out] u the solution as an fespan view
      */
     template<int ndim, class disc_class, class LayoutPolicy, class uAccessorPolicy>
-    void step(FE::FESpace<T, IDX, ndim> &fespace, disc_class &disc, FE::fespan<T, LayoutPolicy, uAccessorPolicy> u)
+    void step(FESpace<T, IDX, ndim> &fespace, disc_class &disc, fespan<T, LayoutPolicy, uAccessorPolicy> u)
     requires TimestepT<TimestepClass, T, IDX, ndim, disc_class, LayoutPolicy, uAccessorPolicy>
     {
        
@@ -115,7 +115,7 @@ public:
         dt = stop_condition.limit_dt(dt, time);
 
         // create view of the residual using the same Layout as u 
-        FE::fespan res{res_data.data(), u.get_layout()};
+        fespan res{res_data.data(), u.get_layout()};
 
         // storage for rhs of mass matrix equation
         int max_ndof = fespace.dg_map.max_el_size_reqirement(1);
@@ -123,7 +123,7 @@ public:
         std::vector<T> du(max_ndof);
 
         // function to get the residual for a single stage
-        auto stage_residual = [&](FE::fespan<T, LayoutPolicy> u_stage, FE::fespan<T, LayoutPolicy> res_stage){
+        auto stage_residual = [&](fespan<T, LayoutPolicy> u_stage, fespan<T, LayoutPolicy> res_stage){
             // zero out
             res_stage = 0;
 
@@ -133,14 +133,14 @@ public:
             // invert mass matrices
             // TODO: prestore mass matrix with the reference element 
             // TODO: need to build a global mass matrix if doing CG (but not for DG)
-            for(const ELEMENT::FiniteElement<T, IDX, ndim> &el : fespace.elements){
+            for(const FiniteElement<T, IDX, ndim> &el : fespace.elements){
                 using namespace MATH::MATRIX;
                 using namespace MATH::MATRIX::SOLVERS;
-                DenseMatrix<T> mass = ELEMENT::calculate_mass_matrix(el, fespace.meshptr->nodes);
+                DenseMatrix<T> mass = calculate_mass_matrix(el, fespace.meshptr->nodes);
                 PermutationMatrix<unsigned int> pi = decompose_lu(mass);
 
                 const std::size_t ndof = el.nbasis();
-                for(IDX ieqn = 0; ieqn < disc_class::dnv_comp; ++ieqn){
+                for(IDX ieqn = 0; ieqn < disc_class::nv_comp; ++ieqn){
 
                     // copy the residual for each degree of freedom to the rhs 
                     for(IDX idof = 0; idof < ndof; ++idof){
@@ -158,30 +158,30 @@ public:
         };
 
         // describe fespans for intermediate states 
-        FE::fespan res1{res1_data.data(), u.get_layout()};
-        FE::fespan res2{res2_data.data(), u.get_layout()};
-        FE::fespan res3{res3_data.data(), u.get_layout()};
-        FE::fespan u_stage{u_stage_data.data(), u.get_layout()};
+        fespan res1{res1_data.data(), u.get_layout()};
+        fespan res2{res2_data.data(), u.get_layout()};
+        fespan res3{res3_data.data(), u.get_layout()};
+        fespan u_stage{u_stage_data.data(), u.get_layout()};
 
 
         // stage 1 
         stage_residual(u, res1);
 
         // stage 2 
-        FE::copy_fespan(u, u_stage);
-        FE::axpy(dt, res1, u_stage);
+        copy_fespan(u, u_stage);
+        axpy(dt, res1, u_stage);
         stage_residual(u_stage, res2);
 
         // stage 3
-        FE::copy_fespan(u, u_stage);
-        FE::axpy(0.25 * dt, res1, u_stage);
-        FE::axpy(0.25 * dt, res2, u_stage);
+        copy_fespan(u, u_stage);
+        axpy(0.25 * dt, res1, u_stage);
+        axpy(0.25 * dt, res2, u_stage);
         stage_residual(u_stage, res3);
 
         // update u 
-        FE::axpy(1.0 / 6.0 * dt, res1, u);
-        FE::axpy(1.0 / 6.0 * dt, res2, u);
-        FE::axpy(2.0 / 3.0 * dt, res3, u);
+        axpy(1.0 / 6.0 * dt, res1, u);
+        axpy(1.0 / 6.0 * dt, res2, u);
+        axpy(2.0 / 3.0 * dt, res3, u);
 
         // update the timestep and time
         itime++;
@@ -200,7 +200,7 @@ public:
      * @param [in/out] u the solution as an fespan view
      */
     template<int ndim, class disc_class, class LayoutPolicy, class uAccessorPolicy>
-    void solve(FE::FESpace<T, IDX, ndim> &fespace, disc_class &disc, FE::fespan<T, LayoutPolicy, uAccessorPolicy> u) {
+    void solve(FESpace<T, IDX, ndim> &fespace, disc_class &disc, fespan<T, LayoutPolicy, uAccessorPolicy> u) {
 
         // visualization callback on initial state (0 % anything == 0) 
         vis_callback(*this);
@@ -217,7 +217,7 @@ public:
 
 // template argument deduction
 template<class T, class IDX, int ndim, class disc_class, class TimestepClass, class StopCondition>
-RK3SSP(FE::FESpace<T, IDX, ndim> &, disc_class &,
+RK3SSP(FESpace<T, IDX, ndim> &, disc_class &,
     const TimestepClass &, const StopCondition &) -> RK3SSP<T, IDX, TimestepClass, StopCondition>;
 
 }

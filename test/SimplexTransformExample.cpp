@@ -1,11 +1,11 @@
 #include <iceicle/transformations/SimplexElementTransformation.hpp>
-#include <iceicle/fe_function/nodal_fe_function.hpp>
 #include <fstream>
 #include <matplot/matplot.h>
 #include <iostream>
 #include <cmath>
 
-using namespace ELEMENT::TRANSFORMATIONS;
+using namespace iceicle;
+using namespace iceicle::transformations;
 using namespace std;
 using namespace matplot;
 using Point2D = MATH::GEOMETRY::Point<double, 2>;
@@ -80,7 +80,7 @@ void example2(){
     cin.get();
 
     // make a curved triangley boi with vortex
-    FE::NodalFEFunction<double, 2> points{trans.nnodes()};
+    NodeArray<double, 2> points{trans.nnodes()};
     std::vector<int> node_numbers{};
     for(int inode = 0; inode < trans.nnodes(); ++inode){
         Point2D pt = trans.reference_nodes()[inode];
@@ -119,7 +119,7 @@ void example3(){
     SimplexElementTransformation<double, int, 2, 2> trans{};
     SimplexTraceOrientTransformation<double, int, 2> orient_trans{};
     SimplexTraceTransformation<double, int, 2> trace_trans{};
-    FE::NodalFEFunction<double, 2> nodes = {
+    NodeArray<double, 2> nodes = {
         {0.0, 0.0}, // 0
         {1.0, 0.0}, // 1
         {2.0, 0.0}, // 2
@@ -207,7 +207,7 @@ void example4(){
     cin.get();
 
     // make a curved triangley boi with vortex
-    FE::NodalFEFunction<double, 3> points{};
+    NodeArray<double, 3> points{};
     std::vector<int> node_numbers{};
     for(int inode = 0; inode < trans.nnodes(); ++inode){
         Point3D pt = trans.reference_nodes()[inode];
@@ -250,7 +250,7 @@ void example5(){
     SimplexElementTransformation<double, int, 3, 2> trans{};
     SimplexTraceOrientTransformation<double, int, 3> orient_trans{};
     SimplexTraceTransformation<double, int, 3> trace_trans{};
-    FE::NodalFEFunction<double, 3> nodes = {
+    NodeArray<double, 3> nodes = {
         {0.0, 0.0, 0.0}, // 0
         {1.0, 0.0, 0.0}, // 1
         {1.0, 1.0, 0.0}, // 2

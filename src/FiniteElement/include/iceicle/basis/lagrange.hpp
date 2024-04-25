@@ -11,12 +11,12 @@
 #pragma once
 #include "iceicle/basis/lagrange_1d.hpp"
 #include "iceicle/basis/tensor_product.hpp"
-#include "iceicle/fe_enums.hpp"
+#include "iceicle/fe_definitions.hpp"
 #include <algorithm>
 #include <iceicle/basis/basis.hpp>
 #include <iceicle/transformations/SimplexElementTransformation.hpp>
 #include <mdspan/mdspan.hpp>
-namespace BASIS {
+namespace iceicle {
     
     /**
      * @brief Lagrange Basis functions on simplex elements
@@ -31,7 +31,7 @@ namespace BASIS {
     class SimplexLagrangeBasis final : public Basis<T, ndim>{
         private:
 
-        static inline ELEMENT::TRANSFORMATIONS::SimplexElementTransformation<T, IDX, ndim, Pn> transform;
+        static inline transformations::SimplexElementTransformation<T, IDX, ndim, Pn> transform;
 
         public:
 
@@ -41,7 +41,7 @@ namespace BASIS {
 
         int nbasis() const override { return transform.nnodes(); }
 
-        constexpr FE::DOMAIN_TYPE domain_type() const noexcept override { return FE::DOMAIN_TYPE::SIMPLEX; }
+        constexpr DOMAIN_TYPE domain_type() const noexcept override { return DOMAIN_TYPE::SIMPLEX; }
 
         void evalBasis(const T *xi, T *Bi) const override {
             for(int inode = 0; inode < transform.nnodes(); ++inode){
@@ -70,9 +70,9 @@ namespace BASIS {
     template<typename T, typename IDX, int ndim, int Pn>
     class HypercubeLagrangeBasis final: public Basis<T, ndim> {
 
-        static inline BASIS::UniformLagrangeInterpolation<T, Pn> lagrange_1d;
+        static inline UniformLagrangeInterpolation<T, Pn> lagrange_1d;
         using Basis1DType = decltype(lagrange_1d);
-        static inline BASIS::QTypeProduct<T, ndim, Basis1DType::nbasis> tensor_prod;
+        static inline QTypeProduct<T, ndim, Basis1DType::nbasis> tensor_prod;
         using TensorProdType = decltype(tensor_prod);
 
         using Point = MATH::GEOMETRY::Point<T, ndim>;
@@ -84,7 +84,7 @@ namespace BASIS {
 
         int nbasis() const override { return TensorProdType::nvalues; }
 
-        constexpr FE::DOMAIN_TYPE domain_type() const noexcept override { return FE::DOMAIN_TYPE::HYPERCUBE; }
+        constexpr DOMAIN_TYPE domain_type() const noexcept override { return DOMAIN_TYPE::HYPERCUBE; }
 
         void evalBasis(const T*xi, T *Bi) const override {
             Point xipt{};

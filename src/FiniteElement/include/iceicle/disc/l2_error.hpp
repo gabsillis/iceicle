@@ -14,7 +14,7 @@
 #include <iceicle/fespace/fespace.hpp>
 #include <functional>
 
-namespace DISC {
+namespace iceicle {
 
     /**
      * @tparam T the floating point type
@@ -42,10 +42,10 @@ namespace DISC {
     >
     T l2_error(
         std::function<void(T*, T*)> exact_sol,
-        FE::FESpace<T, IDX, ndim> &fespace,
-        FE::fespan<T, uLayoutPolicy, uAccessorPolicy> &fedata
+        FESpace<T, IDX, ndim> &fespace,
+        fespan<T, uLayoutPolicy, uAccessorPolicy> &fedata
     ) {
-        using Element = ELEMENT::FiniteElement<T, IDX, ndim>;
+        using Element = FiniteElement<T, IDX, ndim>;
         using Point = MATH::GEOMETRY::Point<T, ndim>;
        
         auto coord = fespace.meshptr->nodes;
@@ -59,7 +59,7 @@ namespace DISC {
         for(const Element &el : fespace.elements) {
             for(int iqp = 0; iqp < el.nQP(); ++iqp) {
                 // convert the quadrature point to the physical domain
-                const QUADRATURE::QuadraturePoint<T, ndim> quadpt = el.getQP(iqp);
+                const QuadraturePoint<T, ndim> quadpt = el.getQP(iqp);
                 Point phys_pt{};
                 el.transform(coord, quadpt.abscisse, phys_pt);
 

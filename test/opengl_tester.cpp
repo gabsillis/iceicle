@@ -8,7 +8,7 @@
 
 using namespace glm;
 using namespace std;
-using namespace ICEICLE_GL;
+using namespace iceicle::gl;
 
 
 static void glfw_error_callback(int error, const char* description)

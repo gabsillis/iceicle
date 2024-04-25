@@ -11,9 +11,8 @@
 #pragma once
 #include <iceicle/quadrature/QuadratureRule.hpp>
 #include <iceicle/quadrature/quadrules_1d.hpp>
-#include <iceicle/geometry/point.hpp>
 #include <Numtool/integer_utils.hpp>
-namespace QUADRATURE {
+namespace iceicle {
 
     template<typename T, typename IDX, int ndim, int npoin1d>
     class HypercubeGaussLegendre final : public QuadratureRule<T, IDX, ndim> {

@@ -1,5 +1,4 @@
 #pragma once 
-#include <iceicle/fe_function/nodal_fe_function.hpp>
 #include <iceicle/load_shaders.hpp>
 #include <iceicle/geometry/face.hpp>
 #include <iceicle/mesh/mesh.hpp>
@@ -14,7 +13,7 @@
 #endif // !NDEBUG
 
 
-namespace ICEICLE_GL{
+namespace iceicle::gl {
 
     struct FrameBuffer {
         GLuint fbo; /// frame buffer id
@@ -145,14 +144,14 @@ namespace ICEICLE_GL{
     };
 
     template<typename T, typename IDX, int ndim>
-    BoundingBox get_mesh_bounds(MESH::AbstractMesh<T, IDX, ndim> &mesh){
+    BoundingBox get_mesh_bounds(AbstractMesh<T, IDX, ndim> &mesh){
         BoundingBox box = {{0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}};
    
         for(int idim = 0; idim < ndim; ++idim){
             box.xmin[idim] = mesh.nodes[0][idim];
             box.xmax[idim] = mesh.nodes[0][idim];
         }
-        for(int inode = 1; inode < mesh.nodes.n_nodes(); ++inode){
+        for(int inode = 1; inode < mesh.n_nodes(); ++inode){
             for(int idim = 0; idim  < ndim; ++idim){
                 box.xmin[idim] = std::min(box.xmin[idim], (GLfloat) mesh.nodes[inode][idim]);
                 box.xmax[idim] = std::max(box.xmax[idim], (GLfloat) mesh.nodes[inode][idim]);
@@ -163,14 +162,14 @@ namespace ICEICLE_GL{
     }
 
     template<typename T, typename IDX>
-    Curve create_curve(ELEMENT::Face<T, IDX, 2> *facptr, FE::NodalFEFunction<T, 2> &coord, int nsegment=4){
+    Curve create_curve(Face<T, IDX, 2> *facptr, NodeArray<T, 2> &coord, int nsegment=4){
         Curve out;
 
         double dx = 2.0 / nsegment;
         for(int ipt = 0; ipt < nsegment + 1; ++ipt){
             MATH::GEOMETRY::Point<T, 1> s = {dx * ipt - 1.0};
             MATH::GEOMETRY::Point<T, 2> x;
-            facptr->transform(s, coord, x.data());
+            facptr->transform(s, coord, x);
             out.pts.emplace_back(static_cast<GLfloat>(x[0]), static_cast<GLfloat>(x[1]), 0.0);
         }
 
@@ -225,8 +224,8 @@ namespace ICEICLE_GL{
          * @param nsegment the number of segments to split each face into
          */
         void add_face(
-            ELEMENT::Face<T, IDX, 2> *facptr,
-            FE::NodalFEFunction<T, 2> &coord,
+            Face<T, IDX, 2> *facptr,
+            NodeArray<T, 2> &coord,
             BoundingBox mesh_bounds,
             BoundingBox scaled_bounds,
             int nsegment=4 
@@ -318,11 +317,8 @@ namespace ICEICLE_GL{
         }
     };
 
-}
-
-namespace FE {
     template<typename T>
-    std::vector< glm::vec3 > to_opengl_vertices(const FE::NodalFEFunction<T, 2> &nodes){
+    std::vector< glm::vec3 > to_opengl_vertices(const NodeArray<T, 2> &nodes){
         std::vector< glm::vec3 > out;
         out.reserve(nodes.n_nodes());
         for(int i = 0; i < nodes.n_nodes(); ++i){

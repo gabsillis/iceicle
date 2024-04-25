@@ -1,7 +1,7 @@
 #include "iceicle/disc/projection.hpp"
 #include "iceicle/element/finite_element.hpp"
 #include "iceicle/element/reference_element.hpp"
-#include "iceicle/fe_enums.hpp"
+#include "iceicle/fe_definitions.hpp"
 #include "iceicle/fe_function/dglayout.hpp"
 #include "iceicle/fe_function/el_layout.hpp"
 #include "iceicle/fe_function/layout_right.hpp"
@@ -10,13 +10,15 @@
 #include "iceicle/mesh/mesh_utils.hpp"
 #include "iceicle/quadrature/HypercubeGaussLegendre.hpp"
 #include "iceicle/quadrature/quadrules_1d.hpp"
-#include "iceicle/solvers/element_linear_solve.hpp"
+#include "iceicle/element_linear_solve.hpp"
 #include "iceicle/tmp_utils.hpp"
 #include <iceicle/fespace/fespace.hpp>
 #include <iceicle/fe_utils.hpp>
 
 #include <gtest/gtest.h>
 #include <pstl/glue_execution_defs.h>
+
+using namespace iceicle;
 
 TEST(test_fespace, test_element_construction){
     using T = double;
@@ -27,12 +29,12 @@ TEST(test_fespace, test_element_construction){
     static constexpr int pn_basis = 3;
 
     // create a uniform mesh
-    MESH::AbstractMesh<T, IDX, ndim> mesh({-1.0, -1.0}, {1.0, 1.0}, {2, 2}, pn_basis);
+    AbstractMesh<T, IDX, ndim> mesh({-1.0, -1.0}, {1.0, 1.0}, {2, 2}, pn_basis);
 
-    FE::FESpace<T, IDX, ndim> fespace{
-        &mesh, FE::FESPACE_ENUMS::LAGRANGE,
-        FE::FESPACE_ENUMS::GAUSS_LEGENDRE, 
-        ICEICLE::TMP::compile_int<pn_basis>()
+    FESpace<T, IDX, ndim> fespace{
+        &mesh, FESPACE_ENUMS::LAGRANGE,
+        FESPACE_ENUMS::GAUSS_LEGENDRE, 
+        tmp::compile_int<pn_basis>()
     };
 
     ASSERT_EQ(fespace.elements.size(), 4);
@@ -40,7 +42,7 @@ TEST(test_fespace, test_element_construction){
     ASSERT_EQ(fespace.dg_map.calculate_size_requirement(2), 4 * 2 * std::pow(pn_basis + 1, pn_geo));
 }
 
-class test_geo_el : public ELEMENT::GeometricElement<double, int, 2>{
+class test_geo_el : public GeometricElement<double, int, 2>{
     static constexpr int ndim = 2;
     using T = double;
     using IDX = int;
@@ -52,14 +54,14 @@ public:
     
     constexpr int n_nodes() const override {return 0;};
 
-    constexpr FE::DOMAIN_TYPE domain_type() const noexcept override {return FE::DOMAIN_TYPE::DYNAMIC;};
+    constexpr DOMAIN_TYPE domain_type() const noexcept override {return DOMAIN_TYPE::DYNAMIC;};
 
     constexpr int geometry_order() const noexcept override {return 1;};
 
     const IDX *nodes() const override { return nullptr; }
 
     void transform(
-        FE::NodalFEFunction<T, ndim> &node_coords,
+        NodeArray<T, ndim> &node_coords,
         const Point &pt_ref,
         Point &pt_phys
     ) const override {
@@ -71,7 +73,7 @@ public:
     }
 
     NUMTOOL::TENSOR::FIXED_SIZE::Tensor<T, ndim, ndim> Jacobian(
-        FE::NodalFEFunction<T, ndim> &node_coords,
+        NodeArray<T, ndim> &node_coords,
         const Point &xi_arg
     ) const override {
         T xi = xi_arg[0];
@@ -84,7 +86,7 @@ public:
     }
 
     HessianType Hessian(
-        FE::NodalFEFunction<T, ndim> &node_coords,
+        NodeArray<T, ndim> &node_coords,
         const Point &xi
     ) const override {
         HessianType hess;
@@ -99,20 +101,20 @@ public:
         return hess;
     }
     auto regularize_interior_nodes(
-        FE::NodalFEFunction<T, ndim>& coord /// [in/out] the node coordinates array 
+        NodeArray<T, ndim>& coord /// [in/out] the node coordinates array 
     ) const -> void override{
         // do nothing: no interior nodes
     }
 };
 
-class test_basis : public BASIS::Basis<double, 2> {
+class test_basis : public Basis<double, 2> {
     static constexpr int ndim = 2;
     using T = double;
 public:
 
     int nbasis() const override {return 1;}
 
-    constexpr FE::DOMAIN_TYPE domain_type() const noexcept override { return FE::DOMAIN_TYPE::DYNAMIC;}
+    constexpr DOMAIN_TYPE domain_type() const noexcept override { return DOMAIN_TYPE::DYNAMIC;}
 
     void evalBasis(const T *xi_vec, T *Bi) const override {
         T xi = xi_vec[0];
@@ -150,15 +152,15 @@ public:
 TEST(test_finite_element, test_hess_basis){
     static constexpr int ndim = 2;
 
-    QUADRATURE::HypercubeGaussLegendre<double, int, 2, 1> unused{};
+    HypercubeGaussLegendre<double, int, 2, 1> unused{};
     test_basis basis{};
     test_geo_el geo_el{};
 
-    FE::NodalFEFunction<double, 2> coord{};
+    NodeArray<double, 2> coord{};
 
-    ELEMENT::FEEvaluation<double, int, 2> evals_unused{};
+    FEEvaluation<double, int, 2> evals_unused{};
 
-    ELEMENT::FiniteElement<double, int, 2> el{&geo_el, &basis, &unused, &evals_unused, 0};
+    FiniteElement<double, int, 2> el{&geo_el, &basis, &unused, &evals_unused, 0};
 
     double xi = -0.2;
     double eta = 0.5;
@@ -187,30 +189,33 @@ TEST(test_fespace, test_dg_projection){
     // create a uniform mesh
     int nx = 50;
     int ny = 10;
-    MESH::AbstractMesh<T, IDX, ndim> mesh({-1.0, -1.0}, {1.0, 1.0}, {nx, ny}, pn_geo);
-    mesh.nodes.random_perturb(-0.4 * 1.0 / std::max(nx, ny), 0.4*1.0/std::max(nx, ny));
+    AbstractMesh<T, IDX, ndim> mesh({-1.0, -1.0}, {1.0, 1.0}, {nx, ny}, pn_geo);
+    auto fixed_nodes = flag_boundary_nodes(mesh);
+    
+    PERTURBATION_FUNCTIONS::random_perturb<T, ndim> perturb_fcn(-0.4 * 1.0 / std::max(nx, ny), 0.4*1.0/std::max(nx, ny));
+    perturb_nodes(mesh, perturb_fcn, fixed_nodes);
 
 //    // taylor vortex warped mesh
 //    TODO: investigate hessian accuracy with this case 
 //
 //    int nx = 8;
 //    int ny = 8;
-//    MESH::AbstractMesh<T, IDX, ndim> mesh({0.0, 0.0}, {1.0, 1.0}, {nx, ny}, pn_geo);
+//    AbstractMesh<T, IDX, ndim> mesh({0.0, 0.0}, {1.0, 1.0}, {nx, ny}, pn_geo);
 //    std::function< void(std::span<T, ndim>, std::span<T, ndim>) > perturb_fcn;
-//    perturb_fcn = MESH::PERTURBATION_FUNCTIONS::TaylorGreenVortex<T, ndim>{
+//    perturb_fcn = PERTURBATION_FUNCTIONS::TaylorGreenVortex<T, ndim>{
 //        .v0 = 0.5,
 //        .xmin = { 0.0, 0.0 },
 //        .xmax = { 1.0, 1.0 },
 //        .L = 1
 //    };
-//    std::vector<bool> fixed_nodes = MESH::flag_boundary_nodes(mesh);
-//    MESH::perturb_nodes(mesh, perturb_fcn, fixed_nodes);
+//    std::vector<bool> fixed_nodes = flag_boundary_nodes(mesh);
+//    perturb_nodes(mesh, perturb_fcn, fixed_nodes);
 
 
-    FE::FESpace<T, IDX, ndim> fespace{
-        &mesh, FE::FESPACE_ENUMS::LAGRANGE,
-        FE::FESPACE_ENUMS::GAUSS_LEGENDRE, 
-        ICEICLE::TMP::compile_int<pn_basis>()
+    FESpace<T, IDX, ndim> fespace{
+        &mesh, FESPACE_ENUMS::LAGRANGE,
+        FESPACE_ENUMS::GAUSS_LEGENDRE, 
+        tmp::compile_int<pn_basis>()
     };
 
     // define a pn_basis order polynomial function to project onto the space 
@@ -251,32 +256,32 @@ TEST(test_fespace, test_dg_projection){
 
 
     // create the projection discretization
-    DISC::Projection<double, int, ndim, neq> projection{projfunc};
+    Projection<double, int, ndim, neq> projection{projfunc};
 
     T *u = new T[fespace.ndof_dg() * neq](); // 0 initialized
-    FE::fe_layout_right felayout{fespace.dg_map, ICEICLE::TMP::to_size<neq>{}};
-    FE::fespan u_span{u, felayout};
+    fe_layout_right felayout{fespace.dg_map, tmp::to_size<neq>{}};
+    fespan u_span{u, felayout};
 
     // solve the projection 
     std::for_each(fespace.elements.begin(), fespace.elements.end(),
-        [&](const ELEMENT::FiniteElement<T, IDX, ndim> &el){
-            FE::compact_layout_right<IDX, 1> el_layout{el};
+        [&](const FiniteElement<T, IDX, ndim> &el){
+            compact_layout_right<IDX, 1> el_layout{el};
             T *u_local = new T[el_layout.size()](); // 0 initialized 
-            FE::dofspan<T, FE::compact_layout_right<IDX, 1>> u_local_span(u_local, el_layout);
+            dofspan<T, compact_layout_right<IDX, 1>> u_local_span(u_local, el_layout);
 
             T *res_local = new T[el_layout.size()](); // 0 initialized 
-            FE::dofspan<T, FE::compact_layout_right<IDX, 1>> res_local_span(res_local, el_layout);
+            dofspan<T, compact_layout_right<IDX, 1>> res_local_span(res_local, el_layout);
             
             // projection residual
-            projection.domainIntegral(el, fespace.meshptr->nodes, res_local_span);
+            projection.domain_integral(el, fespace.meshptr->nodes, res_local_span);
 
             // solve 
-            SOLVERS::ElementLinearSolver<T, IDX, ndim, neq> solver{el, fespace.meshptr->nodes};
+            solvers::ElementLinearSolver<T, IDX, ndim, neq> solver{el, fespace.meshptr->nodes};
             solver.solve(u_local_span, res_local_span);
 
             // test a bunch of random locations
             for(int k = 0; k < 50; ++k){
-                MATH::GEOMETRY::Point<T, ndim> ref_pt = FE::random_domain_point(el.geo_el);
+                MATH::GEOMETRY::Point<T, ndim> ref_pt = random_domain_point(el.geo_el);
                 MATH::GEOMETRY::Point<T, ndim> phys_pt;
                 el.transform(fespace.meshptr->nodes, ref_pt, phys_pt);
                 
@@ -327,7 +332,4 @@ TEST(test_fespace, test_dg_projection){
     );
 
     delete[] u;
-
-
-
 }

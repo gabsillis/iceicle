@@ -7,17 +7,15 @@
 
 #pragma once
 #include "iceicle/build_config.hpp"
-#include "iceicle/fe_enums.hpp"
-#include <iceicle/fe_function/nodal_fe_function.hpp>
-#include <Numtool/point.hpp>
+#include <iceicle/fe_definitions.hpp>
 #include <Numtool/matrixT.hpp>
 #include <Numtool/fixed_size_tensor.hpp>
 #include <mdspan/mdspan.hpp>
 
-namespace ELEMENT{
+namespace iceicle {
 
     // the maximum dynamic element order that is generated
-    static constexpr int MAX_DYNAMIC_ORDER = BUILD_CONFIG::FESPACE_BUILD_PN;
+    static constexpr int MAX_DYNAMIC_ORDER = build_config::FESPACE_BUILD_PN;
     
     /**
      * @brief A Geometric element
@@ -49,7 +47,7 @@ namespace ELEMENT{
          * @return what refernce domain this maps to 
          */
         virtual
-        constexpr FE::DOMAIN_TYPE domain_type() const noexcept = 0;
+        constexpr DOMAIN_TYPE domain_type() const noexcept = 0;
 
         /**
          * @brief calculate the centroid in the reference domain 
@@ -61,12 +59,12 @@ namespace ELEMENT{
             MATH::GEOMETRY::Point<T, ndim> refpt;
             // get the centroid in the reference domain based on domain type
             switch(domain_type()){
-                case FE::DOMAIN_TYPE::HYPERCUBE:
+                case DOMAIN_TYPE::HYPERCUBE:
                     for(int idim = 0; idim < ndim; ++idim) 
                         { refpt[idim] = 0.0; }
                     break;
 
-                case FE::DOMAIN_TYPE::SIMPLEX:
+                case DOMAIN_TYPE::SIMPLEX:
                     for(int idim = 0; idim < ndim; ++idim) 
                         { refpt[idim] = 1.0 / 3.0; }
                     break;
@@ -86,7 +84,7 @@ namespace ELEMENT{
          */
         virtual 
         MATH::GEOMETRY::Point<T, ndim> centroid(
-            FE::NodalFEFunction<T, ndim> &node_coords
+            NodeArray<T, ndim> &node_coords
         ) const {
             MATH::GEOMETRY::Point<T, ndim> physpt;
             
@@ -131,7 +129,7 @@ namespace ELEMENT{
          */
         virtual 
         void transform(
-            FE::NodalFEFunction<T, ndim> &node_coords,
+            NodeArray<T, ndim> &node_coords,
             const Point &pt_ref,
             Point &pt_phys
         ) const = 0;
@@ -145,7 +143,7 @@ namespace ELEMENT{
          */
         virtual
         NUMTOOL::TENSOR::FIXED_SIZE::Tensor<T, ndim, ndim> Jacobian(
-            FE::NodalFEFunction<T, ndim> &node_coords,
+            NodeArray<T, ndim> &node_coords,
             const Point &xi
         ) const = 0;
 
@@ -159,7 +157,7 @@ namespace ELEMENT{
          */
         virtual
         HessianType Hessian(
-            FE::NodalFEFunction<T, ndim> &node_coords,
+            NodeArray<T, ndim> &node_coords,
             const Point &xi
         ) const = 0;
 
@@ -169,7 +167,7 @@ namespace ELEMENT{
          */
         virtual 
         auto regularize_interior_nodes(
-            FE::NodalFEFunction<T, ndim>& coord /// [in/out] the node coordinates array 
+            NodeArray<T, ndim>& coord /// [in/out] the node coordinates array 
         ) const -> void = 0;
 
         /**

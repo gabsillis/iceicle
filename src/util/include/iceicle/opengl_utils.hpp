@@ -9,16 +9,16 @@
 #include <Numtool/point.hpp>
 #include <Numtool/fixed_size_tensor.hpp>
 
-namespace ICEICLE_GL {
+namespace iceicle::gl {
 
     /**
      * @brief convert a Numtool Point to a opengl vec3
      */
-    template<typename T, std::size_t ndim>
+    template<typename T, int ndim>
     glm::vec3 to_vec3(const MATH::GEOMETRY::Point<T, ndim> &pt){
         glm::vec3 out;
         std::fill_n(&out[0], 3, 0.0);
-        for(int i = 0; i < std::min(ndim, (std::size_t) 3); ++i){
+        for(int i = 0; i < std::min(ndim, 3); ++i){
             out[i] = static_cast<GLfloat>(pt[i]);
         }
         return out;

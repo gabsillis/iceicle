@@ -6,7 +6,7 @@
 #include <glm/glm.hpp>
 #include <GLFW/glfw3.h>
 
-namespace ICEICLE_GL {
+namespace iceicle::gl {
     
 
     /**

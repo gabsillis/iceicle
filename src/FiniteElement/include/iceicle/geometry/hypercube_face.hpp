@@ -4,24 +4,21 @@
  * @author Gianni Absillis (gabsill@ncsu.edu)
  */
 #pragma once
-#include <iceicle/transformations/HypercubeElementTransformation.hpp>
+#include <iceicle/transformations/HypercubeTransformations.hpp>
 #include <iceicle/geometry/face.hpp>
-
-#include "iceicle/fe_enums.hpp"
-#include "iceicle/fe_function/nodal_fe_function.hpp"
-#include "iceicle/transformations/HypercubeElementTransformation.hpp"
-namespace ELEMENT {
+namespace iceicle {
     template<typename T, typename IDX, int ndim, int Pn>
     class HypercubeFace final : public Face<T, IDX, ndim> {
         template<int size>
         using IndexArrayType = NUMTOOL::TENSOR::FIXED_SIZE::Tensor<IDX, size>;
         using FaceBase = Face<T, IDX, ndim>;
+        using Point = FaceBase::Point;
         using FacePoint = FaceBase::FacePoint;
         using JacobianType = FaceBase::JacobianType;
 
         public:
-        inline static TRANSFORMATIONS::HypercubeTraceOrientTransformation<T, IDX, ndim> orient_trans{};
-        inline static TRANSFORMATIONS::HypercubeTraceTransformation<T, IDX, ndim, Pn> trans{};
+        inline static transformations::HypercubeTraceOrientTransformation<T, IDX, ndim> orient_trans{};
+        inline static transformations::HypercubeTraceTransformation<T, IDX, ndim, Pn> trans{};
 
         /// The global node coordinates
         IndexArrayType<trans.n_nodes> _nodes;
@@ -62,57 +59,54 @@ namespace ELEMENT {
             bctype, bcflag)
         {}
 
-        constexpr FE::DOMAIN_TYPE domain_type() const override { return FE::DOMAIN_TYPE::HYPERCUBE; }
+        constexpr DOMAIN_TYPE domain_type() const override { return DOMAIN_TYPE::HYPERCUBE; }
 
         constexpr int geometry_order() const noexcept override { return Pn; }
         void transform(
             const FacePoint &s,
-            FE::NodalFEFunction<T, ndim> &coord,
-            T *result
+            NodeArray<T, ndim> &coord,
+            Point& result
         ) const override {
-            MATH::GEOMETRY::PointView<T, ndim> result_view{result};
             trans.transform_physical(
                 _nodes.data(),
-                this->face_infoL / ELEMENT::FACE_INFO_MOD,
-                s, coord, result_view
+                this->face_infoL / FACE_INFO_MOD,
+                s, coord, result
             );
         }
 
         void transform_xiL(
             const FacePoint &s,
-            T *result
+            Point& result
         ) const override {
-            MATH::GEOMETRY::PointView<T, ndim> result_view{result};
             trans.transform(
                 _nodes.data(),
-                this->face_infoL / ELEMENT::FACE_INFO_MOD,
-                s.data(), result_view);
+                this->face_infoL / FACE_INFO_MOD,
+                s.data(), result);
         }
 
         void transform_xiR(
             const FacePoint &s,
-            T *result
+            Point& result
         ) const override {
             FacePoint sR;
             orient_trans.transform(
-                this->face_infoR % ELEMENT::FACE_INFO_MOD,
+                this->face_infoR % FACE_INFO_MOD,
                 s, sR);
-            MATH::GEOMETRY::PointView<T, ndim> result_view{result};
             trans.transform(
                 _nodes.data(),
-                this->face_infoR / ELEMENT::FACE_INFO_MOD,
-                sR.data(), result_view);
+                this->face_infoR / FACE_INFO_MOD,
+                sR.data(), result);
         }
 
 
         JacobianType Jacobian(
-            FE::NodalFEFunction<T, ndim> &node_coords,
+            NodeArray<T, ndim> &node_coords,
             const FacePoint &s
         ) const override {
             return trans.Jacobian(
                 node_coords,
                 _nodes.data(),
-                this->face_infoL / ELEMENT::FACE_INFO_MOD,
+                this->face_infoL / FACE_INFO_MOD,
                 s
             );
         }
@@ -120,6 +114,5 @@ namespace ELEMENT {
         int n_nodes() const override { return trans.n_nodes; }
 
         const IDX *nodes() const override { return _nodes.data(); }
-
     };
 }

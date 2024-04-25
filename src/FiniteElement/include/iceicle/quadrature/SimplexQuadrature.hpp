@@ -7,7 +7,7 @@
 #include <iceicle/quadrature/QuadratureRule.hpp>
 #include <Numtool/integer_utils.hpp>
 
-namespace QUADRATURE {
+namespace iceicle {
 
 
     /**

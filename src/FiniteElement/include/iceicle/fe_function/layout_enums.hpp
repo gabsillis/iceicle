@@ -6,7 +6,7 @@
 #include <cstdlib>
 #include <span>
 
-namespace FE {
+namespace iceicle {
 
     /**
      * @brief defines how degrees of freedom are organized wrt vector components
@@ -111,7 +111,7 @@ namespace FE {
     struct has_equivalent_el_layout 
     : is_equivalent_el_layout<
         typename local_span::layout_type,
-        class global_span::layout_type
+        typename global_span::layout_type
     >{};
 
 }

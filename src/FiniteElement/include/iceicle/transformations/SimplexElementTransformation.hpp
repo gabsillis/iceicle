@@ -2,14 +2,12 @@
 
 #include <Numtool/integer_utils.hpp>
 #include <Numtool/fixed_size_tensor.hpp>
-#include <Numtool/point.hpp>
+#include <iceicle/fe_definitions.hpp>
 #include <algorithm>
-#include <iceicle/fe_function/nodal_fe_function.hpp>
 #include <vector>
-#include <span>
 #include <string>
 #include <sstream>
-namespace ELEMENT::TRANSFORMATIONS {
+namespace iceicle::transformations {
 
     /**
      * @brief Transformation for an arbitrary simplex to the reference simplex
@@ -550,7 +548,7 @@ namespace ELEMENT::TRANSFORMATIONS {
          * @param [out] x the position in the physical domain
          */
         void transform(
-                FE::NodalFEFunction<T, ndim> &node_coords,
+                NodeArray<T, ndim> &node_coords,
                 const IDX *node_indices,
                 const Point &xi, Point &x
         ) const {
@@ -573,7 +571,7 @@ namespace ELEMENT::TRANSFORMATIONS {
          * @return the Jacobian matrix
          */
         NUMTOOL::TENSOR::FIXED_SIZE::Tensor<T, ndim, ndim> Jacobian(
-            FE::NodalFEFunction<T, ndim> &node_coords,
+            NodeArray<T, ndim> &node_coords,
             const IDX *node_indices,
             const Point &xi
         ) const {
@@ -583,7 +581,7 @@ namespace ELEMENT::TRANSFORMATIONS {
 
             for(int inode = 0; inode < nnode; ++inode){
                 IDX global_inode = node_indices[inode];
-                PointView node{node_coords[global_inode]};
+                const Point& node{node_coords[global_inode]};
                 for(int idim = 0; idim < ndim; ++idim) { // idim corresponds to x
                     for(int jdim = 0; jdim < ndim; ++jdim) { // jdim corresponds to \xi
                         J[idim][jdim] += dshp(xi, inode, jdim) * node[idim];
@@ -603,7 +601,7 @@ namespace ELEMENT::TRANSFORMATIONS {
          * @param [out] the Hessian in tensor form indexed [k][i][j] as described above
          */
         void Hessian(
-            FE::NodalFEFunction<T, ndim> &node_coords,
+            NodeArray<T, ndim> &node_coords,
             const IDX *node_indices,
             const Point &xi,
             T hess[ndim][ndim][ndim]
@@ -616,7 +614,7 @@ namespace ELEMENT::TRANSFORMATIONS {
 
             for(int inode = 0; inode < nnode; ++inode){
                 IDX global_inode = node_indices[inode];
-                PointView node{node_coords[global_inode]};
+                const Point& node{node_coords[global_inode]};
                 for(int kdim = 0; kdim < ndim; ++kdim) { // k corresponds to xi
                     for(int idim = 0; idim < ndim; ++idim) {
                         for(int jdim = idim; jdim < ndim; ++jdim) { // fill symmetric part later
@@ -697,7 +695,7 @@ namespace ELEMENT::TRANSFORMATIONS {
 
         std::vector<std::vector<IDX>> vertex_permutations;
 
-        using TracePointView = MATH::GEOMETRY::PointView<T, trace_ndim>;
+        using TracePoint = MATH::GEOMETRY::Point<T, trace_ndim>;
         public:
 
         static constexpr int norient = MATH::factorial<nvert_tr>(); // number of permutations
@@ -765,8 +763,8 @@ namespace ELEMENT::TRANSFORMATIONS {
          */
         void transform(
             int orientationR,
-            const TracePointView &s,
-            TracePointView sR
+            const TracePoint& s,
+            TracePoint& sR
         ) const {
             // use the property of the barycentric coordinates of triangles
             // that we can copy the barycentric coordinates for matching nodes to get the oriented barycentric coords
@@ -802,8 +800,8 @@ namespace ELEMENT::TRANSFORMATIONS {
         static constexpr int ntrace = nvert_el;
 
         private:
-        using ElPointView = MATH::GEOMETRY::PointView<T, ndim>;
-        using TracePoint = MATH::GEOMETRY::PointView<T, trace_ndim>;
+        using ElPoint = MATH::GEOMETRY::Point<T, ndim>;
+        using TracePoint = MATH::GEOMETRY::Point<T, trace_ndim>;
         using FaceNodeTensorType = NUMTOOL::TENSOR::FIXED_SIZE::Tensor<long, ntrace, nvert_tr + 1>;
 
         // the face node incides that preserve ccw orientation
@@ -864,7 +862,7 @@ namespace ELEMENT::TRANSFORMATIONS {
                 IDX *node_indices,
                 int traceNr,
                 const TracePoint &s,
-                ElPointView xi
+                ElPoint& xi
         ) const {
             // Generate the barycentric coordinates for the TracePoint
             T sbary[trace_ndim + 1];

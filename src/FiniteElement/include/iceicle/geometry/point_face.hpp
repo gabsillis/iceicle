@@ -5,11 +5,10 @@
  *
  */
 #pragma once
-#include "iceicle/fe_enums.hpp"
-#include "iceicle/geometry/geometry_enums.hpp"
+#include "iceicle/fe_definitions.hpp"
 #include <iceicle/geometry/face.hpp>
 
-namespace ELEMENT {
+namespace iceicle {
     
     template<typename T, typename IDX>
     class PointFace final : public Face<T, IDX, 1> {
@@ -36,7 +35,7 @@ namespace ELEMENT {
             int faceNrR,
             IDX node,
             bool positiveNormal,
-            BOUNDARY_CONDITIONS bctype = INTERIOR,
+            BOUNDARY_CONDITIONS bctype = BOUNDARY_CONDITIONS::INTERIOR,
             int bcflag = 0
         ) : Face<T, IDX, 1>(
                 elemL, elemR,
@@ -50,7 +49,7 @@ namespace ELEMENT {
            else normal = -1.0;
         }
 
-        constexpr FE::DOMAIN_TYPE domain_type() const override { return FE::DOMAIN_TYPE::HYPERCUBE; }
+        constexpr DOMAIN_TYPE domain_type() const override { return DOMAIN_TYPE::HYPERCUBE; }
 
         constexpr int geometry_order() const noexcept override { return 1; }
 
@@ -58,29 +57,29 @@ namespace ELEMENT {
 
         void transform(
             const FacePoint &s,
-            FE::NodalFEFunction<T,ndim> &nodeCoords,
-            T *result
+            NodeArray<T,ndim> &nodeCoords,
+            Point& result
         ) const override {
             result[0] = nodeCoords[node][0];
         }
 
         void transform_xiL(
             const FacePoint &s,
-            T *result
+            Point& result
         ) const override {
             result[0] = -1.0;
         }
 
         void transform_xiR(
             const FacePoint &s,
-            T *result
+            Point& result
         ) const override {
             result[0] = 1.0;
         }
 
 
         NUMTOOL::TENSOR::FIXED_SIZE::Tensor<T, ndim, ndim-1> Jacobian(
-            FE::NodalFEFunction<T, ndim> &node_coords,
+            NodeArray<T, ndim> &node_coords,
             const FacePoint &s
         ) const override {
             NUMTOOL::TENSOR::FIXED_SIZE::Tensor<T, ndim, ndim-1> ret;

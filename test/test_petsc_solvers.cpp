@@ -3,10 +3,11 @@
 #include "iceicle/build_config.hpp"
 #include "iceicle/disc/heat_eqn.hpp"
 #include "iceicle/disc/projection.hpp"
-#include <iceicle/solvers/element_linear_solve.hpp>
+#include <iceicle/element_linear_solve.hpp>
 #include <petscmat.h>
 #include "iceicle/form_petsc_jacobian.hpp"
 
+using namespace iceicle;
 TEST(test_petsc_solvers, test_form_jacobian){
 
     feenableexcept(FE_ALL_EXCEPT & ~FE_INEXACT);
@@ -16,8 +17,8 @@ TEST(test_petsc_solvers, test_form_jacobian){
 
     // Get the floating point and index types from 
     // cmake configuration
-    using T = BUILD_CONFIG::T;
-    using IDX = BUILD_CONFIG::IDX;
+    using T = build_config::T;
+    using IDX = build_config::IDX;
 
     // 2 dimensional simulation
     static constexpr int ndim = 2;
@@ -33,11 +34,11 @@ TEST(test_petsc_solvers, test_form_jacobian){
     // top right corner
     T xmax[ndim] = {1.0, 1.0};
     // boundary conditions
-    Tensor<ELEMENT::BOUNDARY_CONDITIONS, 2 * ndim> bctypes = {{
-        ELEMENT::BOUNDARY_CONDITIONS::DIRICHLET, // left side 
-        ELEMENT::BOUNDARY_CONDITIONS::NEUMANN,   // bottom side 
-        ELEMENT::BOUNDARY_CONDITIONS::DIRICHLET, // right side 
-        ELEMENT::BOUNDARY_CONDITIONS::NEUMANN    // top side
+    Tensor<BOUNDARY_CONDITIONS, 2 * ndim> bctypes = {{
+        BOUNDARY_CONDITIONS::DIRICHLET, // left side 
+        BOUNDARY_CONDITIONS::NEUMANN,   // bottom side 
+        BOUNDARY_CONDITIONS::DIRICHLET, // right side 
+        BOUNDARY_CONDITIONS::NEUMANN    // top side
     }};
     int bcflags[2 * ndim] = {
         0, // left side 
@@ -47,7 +48,7 @@ TEST(test_petsc_solvers, test_form_jacobian){
     };
     int geometry_order = 1;
 
-    MESH::AbstractMesh<T, IDX, ndim> mesh{xmin, xmax, 
+    AbstractMesh<T, IDX, ndim> mesh{xmin, xmax, 
         nelem_arr, geometry_order, bctypes, bcflags};
 
     // ===================================
@@ -56,10 +57,10 @@ TEST(test_petsc_solvers, test_form_jacobian){
 
     static constexpr int basis_order = 1;
 
-    FE::FESpace<T, IDX, ndim> fespace{
+    FESpace<T, IDX, ndim> fespace{
         &mesh, 
-        FE::FESPACE_ENUMS::FESPACE_BASIS_TYPE::LAGRANGE, 
-        FE::FESPACE_ENUMS::FESPACE_QUADRATURE::GAUSS_LEGENDRE, 
+        FESPACE_ENUMS::FESPACE_BASIS_TYPE::LAGRANGE, 
+        FESPACE_ENUMS::FESPACE_QUADRATURE::GAUSS_LEGENDRE, 
         std::integral_constant<int, basis_order>{}
     };
 
@@ -67,7 +68,7 @@ TEST(test_petsc_solvers, test_form_jacobian){
     // = set up the discretization =
     // =============================
 
-    DISC::HeatEquation<T, IDX, ndim> heat_equation{}; 
+    HeatEquation<T, IDX, ndim> heat_equation{}; 
     // Dirichlet BC: Left side = 0
     heat_equation.dirichlet_values.push_back(1.0); 
     // Dirichlet BC: Rigght side = 1
@@ -80,8 +81,8 @@ TEST(test_petsc_solvers, test_form_jacobian){
     // ============================
     constexpr int neq = decltype(heat_equation)::nv_comp;
     std::vector<T> u_data(fespace.dg_offsets.calculate_size_requirement(neq));
-    FE::dg_layout<T, neq> u_layout{fespace.dg_offsets};
-    FE::fespan u{u_data.data(), u_layout};
+    dg_layout<T, neq> u_layout{fespace.dg_offsets};
+    fespan u{u_data.data(), u_layout};
 
     // ===========================
     // = initialize the solution =
@@ -99,32 +100,32 @@ TEST(test_petsc_solvers, test_form_jacobian){
     heat_equation.dirichlet_callbacks[1] = ic;
 
 
-    DISC::Projection<T, IDX, ndim, neq> projection{ic};
+    Projection<T, IDX, ndim, neq> projection{ic};
     // TODO: extract into LinearFormSolver
     std::vector<T> u_local_data(fespace.dg_offsets.max_el_size_reqirement(neq));
     std::vector<T> res_local_data(fespace.dg_offsets.max_el_size_reqirement(neq));
     std::for_each(fespace.elements.begin(), fespace.elements.end(), 
-        [&](const ELEMENT::FiniteElement<T, IDX, ndim> &el){
+        [&](const FiniteElement<T, IDX, ndim> &el){
             // form the element local views
             // TODO: maybe instead of scatter from local view 
             // we can directly create the view on the subset of u 
             // for CG this might require a different compact Layout 
-            FE::elspan u_local{u_local_data.data(), u.create_element_layout(el.elidx)};
+            elspan u_local{u_local_data.data(), u.create_element_layout(el.elidx)};
             u_local = 0;
 
-            FE::elspan res_local{res_local_data.data(), u.create_element_layout(el.elidx)};
+            elspan res_local{res_local_data.data(), u.create_element_layout(el.elidx)};
             res_local = 0;
 
             // project
             projection.domainIntegral(el, fespace.meshptr->nodes, res_local);
 
             // solve 
-            SOLVERS::ElementLinearSolver<T, IDX, ndim, neq> solver{el, fespace.meshptr->nodes};
+            solvers::ElementLinearSolver<T, IDX, ndim, neq> solver{el, fespace.meshptr->nodes};
             solver.solve(u_local, res_local);
 
             // scatter to global array 
             // (note we use 0 as multiplier for current values in global array)
-            FE::scatter_elspan(el.elidx, 1.0, u_local, 0.0, u);
+            scatter_elspan(el.elidx, 1.0, u_local, 0.0, u);
         }
     );
 
@@ -136,10 +137,10 @@ TEST(test_petsc_solvers, test_form_jacobian){
     MatCreate(comm, &jac);
 
     std::vector<T> res_data(fespace.dg_offsets.calculate_size_requirement(neq));
-    FE::dg_layout<T, neq> res_layout{fespace.dg_offsets};
-    FE::fespan res{res_data.data(), res_layout};
+    dg_layout<T, neq> res_layout{fespace.dg_offsets};
+    fespan res{res_data.data(), res_layout};
 
-    ICEICLE::SOLVERS::form_petsc_jacobian_fd(fespace, heat_equation, u, res, jac);
+    solvers::form_petsc_jacobian_fd(fespace, heat_equation, u, res, jac);
     
 
     MatDestroy(&jac);

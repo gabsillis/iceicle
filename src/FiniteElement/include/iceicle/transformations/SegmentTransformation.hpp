@@ -8,10 +8,9 @@
 #include <Numtool/integer_utils.hpp>
 #include <Numtool/point.hpp>
 #include <Numtool/fixed_size_tensor.hpp>
-#include <iceicle/fe_function/nodal_fe_function.hpp>
-#include <vector>
+#include <iceicle/fe_definitions.hpp>
 
-namespace ELEMENT::TRANSFORMATIONS {
+namespace iceicle::transformations {
     
     /**
      * @brief Transformation to the reference bi-unit simplex
@@ -45,7 +44,7 @@ namespace ELEMENT::TRANSFORMATIONS {
          * @param [out] x the position in the physical domain
          */
         void transform(
-            FE::NodalFEFunction<T, ndim> &node_coords,
+            NodeArray<T, ndim> &node_coords,
             const IDX *node_indices,
             const Point &xi, Point &x
         ) const {
@@ -64,7 +63,7 @@ namespace ELEMENT::TRANSFORMATIONS {
          * @return the jacobian matrix
          */
         NUMTOOL::TENSOR::FIXED_SIZE::Tensor<T, ndim, ndim> Jacobian(
-            FE::NodalFEFunction<T, ndim> &node_coords,
+            NodeArray<T, ndim> &node_coords,
             const IDX *node_indices,
             const Point &xi
         ) const {
@@ -85,7 +84,7 @@ namespace ELEMENT::TRANSFORMATIONS {
          * @param [out] the Hessian in tensor form indexed [k][i][j] as described above
          */
         void Hessian(
-            FE::NodalFEFunction<T, ndim> &node_coords,
+            NodeArray<T, ndim> &node_coords,
             const IDX *node_indices,
             const Point &xi,
             T hess[ndim][ndim][ndim]

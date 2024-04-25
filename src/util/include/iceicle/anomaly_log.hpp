@@ -10,12 +10,13 @@
 #include <algorithm>
 #include <cstddef>
 #include <iostream>
+#include <limits>
 #include <vector>
 #include <memory>
 #include <ostream>
 #include <source_location>
 #include <string>
-namespace ICEICLE::UTIL {
+namespace iceicle::util {
 
     class AbstractAnomaly {
         friend class AnomalyLog;
@@ -44,7 +45,7 @@ namespace ICEICLE::UTIL {
 
         const std::string &what() const noexcept { return desc; }
         const std::source_location &where() const noexcept { return loc; }
-        const Data &data() const noexcept { return data; }
+        const Data& data() const noexcept { return user_data; }
 
         void handle_self (std::ostream &log_out) override;
     };
@@ -75,6 +76,22 @@ namespace ICEICLE::UTIL {
     /** @brief anomaly tag to mark a failed expect() statement */
     struct expectation_anomaly_tag{ using anomaly_tag = expectation_anomaly_tag; };
 
+    /** @brief anomaly tag for bounds issues */ 
+    template<class index_type, class bounds_type>
+    struct bounds_anomaly_tag{
+        using anomaly_tag = bounds_anomaly_tag<index_type, bounds_type>;
+        static constexpr bounds_type unbounded = std::numeric_limits<bounds_type>::max();
+        index_type index;
+        bounds_type bounds_lower;
+        bounds_type bounds_upper;
+    };
+
+    /// @brief Anomaly for user input text that doesn't match any implementation
+    struct text_not_found_tag { 
+        using anomaly_tag = text_not_found_tag;
+        std::string text;
+    };
+
     /** @brief tag to mark general anomalies */
     struct general_anomaly_tag{ using anomaly_tag = general_anomaly_tag; };
 
@@ -95,11 +112,25 @@ namespace ICEICLE::UTIL {
     }
 
     template<>
+    inline void handle_anomaly(const Anomaly<text_not_found_tag>& anomaly, std::ostream& log_out){
+        log_out << "Error: " << anomaly.what() << "\"" << anomaly.data().text << "\" at:" << std::endl 
+                << anomaly.where() << std::endl << std::endl;
+    }
+
+    template<>
     inline void handle_anomaly(const Anomaly<warning_anomaly_tag> &anomaly, std::ostream &log_out) {
         log_out << "Warning: " << anomaly.what() << std::endl 
                 << anomaly.where() << std::endl << std::endl;
     }
 
+    template<class index_type, class bounds_type>
+    inline void handle_anomaly(const Anomaly<bounds_anomaly_tag<index_type, bounds_type>> &anomaly,
+            std::ostream &log_out) {
+        log_out << "Index out of bounds: " << anomaly.what() << std::endl 
+                << "index " << anomaly.data().index << "is not between "
+                << anomaly.data().bounds_lower << " and " << anomaly.data().bounds_upper
+                << anomaly.where() << std::endl << std::endl;
+    }
     template<class Data>
     void Anomaly<Data>::handle_self(std::ostream &log_out){
         handle_anomaly(*this, log_out);

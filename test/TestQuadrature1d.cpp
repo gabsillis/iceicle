@@ -4,13 +4,14 @@
 #include <iostream>
 #include <iomanip>
 
+using namespace iceicle;
 TEST(test_quadrature_1d, print_gauss_legendre){
 
     NUMTOOL::TMP::constexpr_for_range<1,10>([]<int npoin>(){
         std::cout << "===================================================" << std::endl;
         std::cout << npoin << " Point Quadrature Rule" << std::endl;
 
-        QUADRATURE::GaussLegendreQuadrature<double, int, npoin> quadrule{};
+        GaussLegendreQuadrature<double, int, npoin> quadrule{};
 
         for(int ipoin = 0; ipoin < quadrule.npoints(); ++ipoin){
             auto pt = quadrule.getPoint(ipoin);

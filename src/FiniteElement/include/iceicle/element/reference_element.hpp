@@ -5,7 +5,7 @@
 #pragma once
 #include "iceicle/basis/lagrange.hpp"
 #include "iceicle/basis/legendre.hpp"
-#include "iceicle/fe_enums.hpp"
+#include "iceicle/fe_definitions.hpp"
 #include "iceicle/geometry/face.hpp"
 #include "iceicle/geometry/geo_element.hpp"
 #include "iceicle/quadrature/QuadratureRule.hpp"
@@ -13,11 +13,10 @@
 #include <iceicle/element/finite_element.hpp>
 #include <iceicle/element/TraceSpace.hpp>
 #include <iceicle/tmp_utils.hpp>
-
 #include <Numtool/tmp_flow_control.hpp>
 #include <memory>
 
-namespace FE {
+namespace iceicle {
     namespace FESPACE_ENUMS {
 
         enum FESPACE_BASIS_TYPE {
@@ -34,16 +33,13 @@ namespace FE {
             N_QUADRATURE_TYPES
         };
     }
-}
-
-namespace ELEMENT {
 
     template<typename T, typename IDX, int ndim>
     class ReferenceElement {
-        using FEEvalType = ELEMENT::FEEvaluation<T, IDX, ndim>;
-        using BasisType = BASIS::Basis<T, ndim>;
-        using QuadratureType = QUADRATURE::QuadratureRule<T, IDX, ndim>;
-        using GeoElementType = ELEMENT::GeometricElement<T, IDX, ndim>;
+        using FEEvalType = FEEvaluation<T, IDX, ndim>;
+        using BasisType = Basis<T, ndim>;
+        using QuadratureType = QuadratureRule<T, IDX, ndim>;
+        using GeoElementType = GeometricElement<T, IDX, ndim>;
 
         public:
         std::unique_ptr<BasisType> basis;
@@ -55,21 +51,20 @@ namespace ELEMENT {
         template<int basis_order>
         ReferenceElement(
             const GeoElementType *geo_el,
-            FE::FESPACE_ENUMS::FESPACE_BASIS_TYPE basis_type,
-            FE::FESPACE_ENUMS::FESPACE_QUADRATURE quadrature_type,
-            ICEICLE::TMP::compile_int<basis_order> basis_order_arg
+            FESPACE_ENUMS::FESPACE_BASIS_TYPE basis_type,
+            FESPACE_ENUMS::FESPACE_QUADRATURE quadrature_type,
+            tmp::compile_int<basis_order> basis_order_arg
         ) {
-            using namespace FE;
             using namespace FESPACE_ENUMS;
             switch(geo_el->domain_type()){
-                case FE::HYPERCUBE: {
+                case DOMAIN_TYPE::HYPERCUBE: {
                     // construct the basis 
                     switch(basis_type){
                         case LAGRANGE:
-                            basis = std::make_unique<BASIS::HypercubeLagrangeBasis<
+                            basis = std::make_unique<HypercubeLagrangeBasis<
                                 T, IDX, ndim, basis_order>>();
                         case LEGENDRE:
-                            basis = std::make_unique<BASIS::HypercubeLegendreBasis<
+                            basis = std::make_unique<HypercubeLegendreBasis<
                                 T, IDX, ndim, basis_order>>();
                             break;
                         default:
@@ -82,8 +77,8 @@ namespace ELEMENT {
                         switch(quadrature_type){
                             // number of quadrature points in 1D
                             static constexpr int nqp = geo_order + basis_order;
-                            case FE::FESPACE_ENUMS::GAUSS_LEGENDRE:
-                                quadrule = std::make_unique<QUADRATURE::HypercubeGaussLegendre<T, IDX, ndim, nqp>>();
+                            case FESPACE_ENUMS::GAUSS_LEGENDRE:
+                                quadrule = std::make_unique<HypercubeGaussLegendre<T, IDX, ndim, nqp>>();
                                 break;
                             default:
                                 break;
@@ -91,7 +86,7 @@ namespace ELEMENT {
                         return 0;
                     };
                     NUMTOOL::TMP::invoke_at_index(
-                        NUMTOOL::TMP::make_range_sequence<int, 1, ELEMENT::MAX_DYNAMIC_ORDER>{},
+                        NUMTOOL::TMP::make_range_sequence<int, 1, MAX_DYNAMIC_ORDER>{},
                         geo_el->geometry_order(),
                         el_order_dispatch
                     );
@@ -101,11 +96,11 @@ namespace ELEMENT {
 
                     break;
                 }
-                case FE::SIMPLEX:
+                case DOMAIN_TYPE::SIMPLEX:
 //                    // construct the basis 
 //                    switch(basis_type){
 //                        case LAGRANGE:
-//                            basis = std::make_unique<BASIS::SimplexLagrangeBasis<
+//                            basis = std::make_unique<SimplexLagrangeBasis<
 //                                T, IDX, ndim, basis_order>>();
 //                            break;
 //                        default:
@@ -114,8 +109,8 @@ namespace ELEMENT {
 //
 //                    // construct the quadrature rule
 //                    switch(quadrature_type){
-//                        case FE::FESPACE_ENUMS::GAUSS_LEGENDRE:
-//                            quadrule = std::make_unique<QUADRATURE::GrundmannMollerSimplexQuadrature<T, IDX, ndim, basis_order+1>>();
+//                        case FESPACE_ENUMS::GAUSS_LEGENDRE:
+//                            quadrule = std::make_unique<GrundmannMollerSimplexQuadrature<T, IDX, ndim, basis_order+1>>();
 //                            break;
 //                        default:
 //                            break;
@@ -133,10 +128,10 @@ namespace ELEMENT {
 
     template<typename T, typename IDX, int ndim>
     class ReferenceTraceSpace {
-        using Evals = ELEMENT::TraceEvaluation<T, IDX, ndim>;
-        using TraceBasisType = BASIS::Basis<T, ndim-1>;
-        using Quadrature = QUADRATURE::QuadratureRule<T, IDX, ndim - 1>;
-        using FaceType = ELEMENT::Face<T, IDX, ndim>;
+        using Evals = TraceEvaluation<T, IDX, ndim>;
+        using TraceBasisType = Basis<T, ndim-1>;
+        using Quadrature = QuadratureRule<T, IDX, ndim - 1>;
+        using FaceType = Face<T, IDX, ndim>;
 
         public:
         std::unique_ptr<Quadrature> quadrule;
@@ -148,33 +143,26 @@ namespace ELEMENT {
         template<int basis_order, int geo_order>
         ReferenceTraceSpace(
             const FaceType *fac,
-            FE::FESPACE_ENUMS::FESPACE_BASIS_TYPE btype,
-            FE::FESPACE_ENUMS::FESPACE_QUADRATURE quadrature_type,
+            FESPACE_ENUMS::FESPACE_BASIS_TYPE btype,
+            FESPACE_ENUMS::FESPACE_QUADRATURE quadrature_type,
             std::integral_constant<int, basis_order> b_order,
             std::integral_constant<int, geo_order> g_order
         ) : eval{} {
-            using namespace FE;
-            using namespace FE::FESPACE_ENUMS;
+            using namespace FESPACE_ENUMS;
 
             switch(fac->domain_type()){
-                case HYPERCUBE:
-
-                    switch(btype){
-                        case LAGRANGE:
-                            trace_basis = std::make_unique<BASIS::HypercubeLagrangeBasis<
-                                T, IDX, ndim - 1, basis_order>>();
-                        case LEGENDRE:
-                            trace_basis = std::make_unique<BASIS::HypercubeLegendreBasis<
-                                T, IDX, ndim - 1, basis_order>>();
-                            break;
-                        default:
-                            break;
-                    }
+                case DOMAIN_TYPE::HYPERCUBE:
+                        
+                    // NOTE: we want the trace basis to be in the space of the geometry 
+                    // so we use lagrange polynomials with geometry order
+                    trace_basis = std::make_unique<HypercubeLagrangeBasis<
+                        T, IDX, ndim - 1, geo_order>>();
+                    
 
                     switch(quadrature_type){
                         case GAUSS_LEGENDRE:
                             quadrule = std::make_unique<
-                                QUADRATURE::HypercubeGaussLegendre<
+                                HypercubeGaussLegendre<
                                     T, IDX, ndim - 1,
                                     (geo_order+1)+(basis_order+1)
                                 >

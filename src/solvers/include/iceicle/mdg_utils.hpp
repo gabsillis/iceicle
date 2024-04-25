@@ -3,12 +3,11 @@
  * 
  * @author Gianni Absillis (gabsill@ncsu.edu)
  */
-
+#pragma once
 #include "Numtool/point.hpp"
-#include "iceicle/fe_function/nodal_fe_function.hpp"
 #include "iceicle/fespace/fespace.hpp"
 #include <vector>
-namespace FE {
+namespace iceicle {
 
     /**
      * @brief given the current locations of surface nodes 
@@ -35,9 +34,9 @@ namespace FE {
     ) -> std::vector<T> {
         using element_t = FESpace<T, IDX, ndim>::ElementType;
         static constexpr T big_number = 1e100;
-        NodalFEFunction<T, ndim>& coord = fespace.meshptr->nodes;
+        NodeArray<T, ndim>& coord = fespace.meshptr->nodes;
         
-        std::vector<T> radii(coord.n_nodes(), big_number);
+        std::vector<T> radii(coord.size(), big_number);
 
         // NOTE: loop over elements because interior nodes exist
         for(element_t& elem: fespace.elements){
@@ -45,8 +44,8 @@ namespace FE {
             for(IDX inode : elem.geo_el->nodes_span()){
                 for(IDX jnode : elem.geo_el->nodes_span()) if (jnode != inode){
                     T distance = MATH::GEOMETRY::distance(
-                        coord[inode].clone_pt(),
-                        coord[jnode].clone_pt()
+                        coord[inode],
+                        coord[jnode]
                     );
 
                     radii[inode] = std::min(radii[inode], distance);

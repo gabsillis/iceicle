@@ -2,7 +2,7 @@
 #include <algorithm>
 #include <string_view>
 #include <cctype>
-namespace ICEICLE::UTIL {
+namespace iceicle::util {
 
     /**
      * @brief check if two string views are equivalent ignoring case 
@@ -17,5 +17,17 @@ namespace ICEICLE::UTIL {
                 std::tolower(static_cast<unsigned char> (b));
         };
         return std::ranges::equal(a, b, case_insensitive_cmp);
+    }
+
+    /// @brief compare a string_view a to a collection of other string views
+    /// ignoring case
+    /// @param a the string_view to compare to all the others 
+    /// @param to_compare the string_views to compare to 
+    /// @return true if a matches any of to_compare
+    template<class... StringTs>
+    constexpr 
+    auto eq_icase_any(std::string_view a,  StringTs... to_compare) -> bool {
+        bool any_of = (eq_icase(a, to_compare) || ...);
+        return any_of;
     }
 }

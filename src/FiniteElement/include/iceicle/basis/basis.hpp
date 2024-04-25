@@ -14,9 +14,9 @@
  */
 #pragma once
 #include <stdexcept>
-#include <iceicle/fe_enums.hpp>
+#include <iceicle/fe_definitions.hpp>
 
- namespace BASIS {
+ namespace iceicle {
 
     template<typename T, int ndim>
     class Basis {
@@ -31,7 +31,7 @@
         int nbasis() const = 0;
 
         virtual 
-        constexpr FE::DOMAIN_TYPE domain_type() const noexcept = 0;
+        constexpr DOMAIN_TYPE domain_type() const noexcept = 0;
 
         /**
          * @brief evaluate basis functions

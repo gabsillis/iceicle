@@ -3,6 +3,7 @@
  * @author Gianni Absillis (gabsill@ncsu.edu)
  * @brief Segment Mesh Implementation
  */
+#include "iceicle/geometry/face.hpp"
 #ifdef ICEICLE_USE_MPI
 #include <mpi.h>
 #endif
@@ -10,22 +11,21 @@
 #include <iceicle/geometry/point_face.hpp>
 #include <iceicle/build_config.hpp>
 
-namespace MESH {
-    using T = BUILD_CONFIG::T;
-    using IDX = BUILD_CONFIG::IDX;
+namespace iceicle {
+    using T = build_config::T;
+    using IDX = build_config::IDX;
 
     template<>
     SegmentMesh<T, IDX>::SegmentMesh(
         IDX nelem,
         T xstart,
         T dx,
-        ELEMENT::BOUNDARY_CONDITIONS bcleft,
-        ELEMENT::BOUNDARY_CONDITIONS bcright,
+        BOUNDARY_CONDITIONS bcleft,
+        BOUNDARY_CONDITIONS bcright,
         int bcflagL,
         int bcflagR
     ) : AbstractMesh<T, IDX, 1>(nelem + 1) {
         // namespaces used and type aliases
-        using namespace ELEMENT;
         // using Point = MATH::GEOMETRY::Point<T, 1>;
         static constexpr int ndim = 1;
 
@@ -56,7 +56,7 @@ namespace MESH {
 
         // Generate boundary faces
         // if periodic, make a single periodic face
-        if(bcleft == bcright && bcleft == PERIODIC){
+        if(bcleft == bcright && bcleft == BOUNDARY_CONDITIONS::PERIODIC){
             int faceNrL = 1;
             int faceNrR = 0;
             IDX elemL = nelem - 1;
@@ -65,7 +65,7 @@ namespace MESH {
             faces.push_back(new PointFace<T, IDX>(
                 elemL, elemR,
                 faceNrL, faceNrR,
-                facenode, true, ELEMENT::PERIODIC
+                facenode, true, BOUNDARY_CONDITIONS::PERIODIC
             ));
         } else {
             // left boundary face
@@ -99,8 +99,8 @@ namespace MESH {
         IDX nelem,
         T xstart,
         T dx,
-        ELEMENT::BOUNDARY_CONDITIONS bcleft,
-        ELEMENT::BOUNDARY_CONDITIONS bcright,
+        BOUNDARY_CONDITIONS bcleft,
+        BOUNDARY_CONDITIONS bcright,
         int bcflagL,
         int bcflagR
     ) {
@@ -109,15 +109,15 @@ namespace MESH {
         MPI_Comm_size(MPI_COMM_WORLD, &nproc);
 
         if(myid == 0){
-            bcright = ELEMENT::PARALLEL_COM;
+            bcright = BOUNDARY_CONDITIONS::PARALLEL_COM;
             bcflagR = 1;
         } else if (myid == nproc-1){
-            bcleft = ELEMENT::PARALLEL_COM;
+            bcleft = BOUNDARY_CONDITIONS::PARALLEL_COM;
             bcflagL = nproc - 2;
         } else {
-            bcleft = ELEMENT::PARALLEL_COM;
+            bcleft = BOUNDARY_CONDITIONS::PARALLEL_COM;
             bcflagL = myid - 1;
-            bcright = ELEMENT::PARALLEL_COM;
+            bcright = BOUNDARY_CONDITIONS::PARALLEL_COM;
             bcflagR = myid + 1;
         }
 
@@ -127,7 +127,6 @@ namespace MESH {
         xstart = myid * dx * nelem_split;
 
         // namespaces used and type aliases
-        using namespace ELEMENT;
         // using Point = MATH::GEOMETRY::Point<T, 1>;
         static constexpr int ndim = 1;
 
@@ -158,7 +157,7 @@ namespace MESH {
 
         // Generate boundary faces
         // if periodic, make a single periodic face
-        if(bcleft == bcright && bcleft == PERIODIC){
+        if(bcleft == bcright && bcleft == BOUNDARY_CONDITIONS::PERIODIC){
             int faceNrL = 1;
             int faceNrR = 0;
             IDX elemL = nelem - 1;
@@ -167,7 +166,7 @@ namespace MESH {
             faces.push_back(new PointFace<T, IDX>(
                 elemL, elemR,
                 faceNrL, faceNrR,
-                facenode, true, ELEMENT::PERIODIC
+                facenode, true, BOUNDARY_CONDITIONS::PERIODIC
             ));
         } else {
             // left boundary face

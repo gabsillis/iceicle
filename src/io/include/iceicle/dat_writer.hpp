@@ -5,35 +5,38 @@
 #include <fstream>
 #include <format>
 #include <filesystem>
+#include <memory>
 #include <string>
-namespace ICEICLE::IO {
+namespace iceicle::io {
 
     template<class T, class IDX, int ndim>
     class DatWriter{
 
-        struct writable_field {
-            virtual void write_data(std::ofstream &out, FE::FESpace<T, IDX, ndim> &fespace) const = 0;
+        struct writeable_field {
+            virtual void write_data(std::ofstream &out, FESpace<T, IDX, ndim> &fespace) const = 0;
 
-            virtual ~writable_field(){}
+            virtual auto clone() const -> std::unique_ptr<writeable_field> = 0;
+
+            virtual ~writeable_field(){}
         };
 
         template< class LayoutPolicy, class AccessorPolicy>
-        struct DataField final : public writable_field {
+        struct DataField final : public writeable_field {
             /// the data view 
-            FE::fespan<T, LayoutPolicy, AccessorPolicy> fedata;
+            fespan<T, LayoutPolicy, AccessorPolicy> fedata;
 
             /// the field name for each vector component of fespan 
             std::vector<std::string> field_names;
 
             /// @brief constructor with argument forwarding for the vector constructor
             template<class... VecArgs>
-            DataField(FE::fespan<T, LayoutPolicy, AccessorPolicy> fedata, VecArgs&&... vec_args)
+            DataField(fespan<T, LayoutPolicy, AccessorPolicy> fedata, VecArgs&&... vec_args)
             : fedata(fedata), field_names({std::forward<VecArgs>(vec_args)...}){}
 
             /// @brief adds the xml DataArray tags and data to a given vtu file 
-            void write_data(std::ofstream &out, FE::FESpace<T, IDX, ndim> &fespace) const override
+            void write_data(std::ofstream &out, FESpace<T, IDX, ndim> &fespace) const override
             {
-                using Element = ELEMENT::FiniteElement<T, IDX, ndim>;
+                using Element = FiniteElement<T, IDX, ndim>;
                 constexpr int field_width = 18;
                 constexpr int precision = 10;
                 constexpr int npoin = 30;
@@ -74,26 +77,41 @@ namespace ICEICLE::IO {
                     }
                 }
             }
+
+            auto clone() const -> std::unique_ptr<writeable_field> override {
+                return std::make_unique<DataField<LayoutPolicy, AccessorPolicy>>(*this);
+            }
         };
 
         private:
-        MESH::AbstractMesh<T, IDX, ndim> *meshptr;
-        FE::FESpace<T, IDX, ndim> *fespace_ptr;
-        std::vector<std::unique_ptr<writable_field>> fields;
+        AbstractMesh<T, IDX, ndim> *meshptr;
+        FESpace<T, IDX, ndim> *fespace_ptr;
+        std::vector<std::unique_ptr<writeable_field>> fields;
 
         public:
+        using value_type = T;
 
         std::string collection_name = "iceicle_data";
         std::filesystem::path data_directory;
 
-        DatWriter(FE::FESpace<T, IDX, ndim> &fespace)
+        DatWriter(FESpace<T, IDX, ndim> &fespace)
         : fespace_ptr{&fespace}, meshptr{fespace.meshptr}, data_directory{std::filesystem::current_path()}{
             data_directory /= "iceicle_data";
         }
 
+        DatWriter(const DatWriter<T, IDX, ndim>& other) 
+            : meshptr(other.meshptr), fespace_ptr(other.fespace_ptr), fields{}, 
+              collection_name(other.collection_name), data_directory(other.data_directory) 
+        {
+            for(const std::unique_ptr<writeable_field>& field : other.fields){
+                fields.push_back(field->clone());
+            }
+        };
+        DatWriter(DatWriter<T, IDX, ndim>&& other) = default;
+
         /// @brief register an fespace to this writer 
         /// will overwrite the registered mesh to the one in the fespace
-        void register_fespace(FE::FESpace<T, IDX, ndim> &fespace){
+        void register_fespace(FESpace<T, IDX, ndim> &fespace){
             fespace_ptr = &fespace;
             meshptr = fespace.meshptr;
         }
@@ -104,7 +122,7 @@ namespace ICEICLE::IO {
          * @param field_names the names for each field in fe_data
          */
         template< class LayoutPolicy, class AccessorPolicy, class... FieldNameTs >
-        void register_fields(FE::fespan<T, LayoutPolicy, AccessorPolicy> &fedata, FieldNameTs&&... field_names){
+        void register_fields(fespan<T, LayoutPolicy, AccessorPolicy> &fedata, FieldNameTs&&... field_names){
             // make sure the size matches
             assert(fedata.nv() == sizeof...(field_names));
 

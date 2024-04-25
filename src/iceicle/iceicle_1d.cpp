@@ -7,13 +7,13 @@
 int main(int argc, char *argv[]) {
 
 #ifdef ICEICLE_USE_MPI
+    using namespace iceicle;
     MPI_Init(&argc, &argv);
-    using namespace ELEMENT;
     // construct a segment
     Segment<double, int> seg1(0, 1);
 
     // construct a parallel segment mesh with periodic bcs
-    MESH::ParSegmentMesh<double, int> mesh(10, 0.0, 0.1);
+    ParSegmentMesh<double, int> mesh(10, 0.0, 0.1);
     int nproc, myid;
     MPI_Comm_size(MPI_COMM_WORLD, &nproc);
     MPI_Comm_rank(MPI_COMM_WORLD, &myid);

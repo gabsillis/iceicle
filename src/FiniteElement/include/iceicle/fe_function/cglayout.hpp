@@ -8,7 +8,7 @@
 
 #include <type_traits>
 
-namespace FE {
+namespace iceicle {
 
     /**
      * @brief LayoutPolicy for a CG representation of a vector-valued fe_function
@@ -23,13 +23,13 @@ namespace FE {
         /* optional stored values to index */ 
 
         /// dynamic number of vector components
-        std::enable_if<is_dynamic_ncomp<ncomp>::value, int> ncomp_d;
+        std::enable_if<is_dynamic_size<ncomp>::value, int> ncomp_d;
 
         /// store the number of degrees of freedom if DOF_RIGHT
         std::size_t ndof;
 
         inline constexpr std::size_t get_ncomp() const {
-            if constexpr(is_dynamic_ncomp<ncomp>::value){
+            if constexpr(is_dynamic_size<ncomp>::value){
                 return ncomp_d;
             } else {
                 return ncomp;
@@ -43,7 +43,7 @@ namespace FE {
          * @param ndof the number of nodes that will be represented in the layout 
          * @param ncomp_d (only used if ncomp isn't specified) the number of vector components per node 
          */
-        cg_layout(int ndof, std::enable_if<is_dynamic_ncomp<ncomp>::value, int> ncomp_d)
+        cg_layout(int ndof, std::enable_if<is_dynamic_size<ncomp>::value, int> ncomp_d)
         : ndof(ndof), ncomp_d(ncomp_d) {}
 
         inline static constexpr int is_global() { return true; }

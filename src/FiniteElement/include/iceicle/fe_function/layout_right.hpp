@@ -1,7 +1,7 @@
 #pragma once
 #include "dglayout.hpp"
 
-namespace FE {
+namespace iceicle {
 
     /**
      * @brief a dg layout of the index space where the 

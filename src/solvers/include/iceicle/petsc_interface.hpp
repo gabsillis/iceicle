@@ -6,7 +6,7 @@
 #include <petscsystypes.h>
 #include <petscvec.h>
 
-namespace ICEICLE::PETSC {
+namespace iceicle::petsc {
 
     /**
      * @brief add to a logically dense block from an mdspan to a pestc matrix A 

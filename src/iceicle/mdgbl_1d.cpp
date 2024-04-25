@@ -3,17 +3,15 @@
 #include "iceicle/build_config.hpp"
 #include "iceicle/dat_writer.hpp"
 #include "iceicle/disc/heat_eqn.hpp"
-#include "iceicle/explicit_utils.hpp"
 #include "iceicle/fe_function/fespan.hpp"
 #include "iceicle/fespace/fespace.hpp"
 #include "iceicle/geometry/face.hpp"
 #include "iceicle/disc/projection.hpp"
 #include "iceicle/geometry/geo_element.hpp"
-#include "iceicle/solvers/element_linear_solve.hpp"
+#include "iceicle/element_linear_solve.hpp"
 #include "iceicle/explicit_euler.hpp"
 #include "iceicle/program_args.hpp"
 #include "iceicle/disc/l2_error.hpp"
-#include "iceicle/ssp_rk3.hpp"
 #include "iceicle/fe_function/layout_right.hpp"
 #include "iceicle/tmp_utils.hpp"
 #include <cmath>
@@ -28,12 +26,14 @@ int main(int argc, char *argv[]){
     PetscInitialize(&argc, &argv, nullptr, nullptr);
 #endif
 
-    using T = BUILD_CONFIG::T;
-    using IDX = BUILD_CONFIG::IDX;
-
     // using declarations
     using namespace NUMTOOL::TENSOR::FIXED_SIZE;
-    using namespace ICEICLE::UTIL;
+    using namespace iceicle;
+    using namespace iceicle::util;
+    using namespace iceicle::util::program_args;
+
+    using T = build_config::T;
+    using IDX = build_config::IDX;
 
     static constexpr int ndim = 1;
     static constexpr int neq = 1;
@@ -41,7 +41,6 @@ int main(int argc, char *argv[]){
     // ===============================
     // = Command line argument setup =
     // ===============================
-    using namespace ICEICLE::UTIL::PROGRAM_ARGS;
     cli_parser cli_args{argc, argv};
     
     cli_args.add_options(
@@ -71,16 +70,16 @@ int main(int argc, char *argv[]){
         // uniform mesh from 0 to 1 
         // Dirchlet BCs 
         // flag 0 on the left, flag 1 on the right
-        MESH::AbstractMesh<T, IDX, ndim> mesh{Tensor<T, 1>{0}, Tensor<T, 1>{1}, Tensor<IDX, 1>{nelem}, 1, 
-            Tensor<ELEMENT::BOUNDARY_CONDITIONS, 2>{ELEMENT::BOUNDARY_CONDITIONS::DIRICHLET, ELEMENT::BOUNDARY_CONDITIONS::DIRICHLET},
+        AbstractMesh<T, IDX, ndim> mesh{Tensor<T, 1>{0}, Tensor<T, 1>{1}, Tensor<IDX, 1>{nelem}, 1, 
+            Tensor<BOUNDARY_CONDITIONS, 2>{BOUNDARY_CONDITIONS::DIRICHLET, BOUNDARY_CONDITIONS::DIRICHLET},
             Tensor<int, 2>{0, 1}};
 
-        FE::FESpace<T, IDX, ndim> fespace{&mesh, FE::FESPACE_ENUMS::LAGRANGE, FE::FESPACE_ENUMS::GAUSS_LEGENDRE, std::integral_constant<int, order>{}};
+        FESpace<T, IDX, ndim> fespace{&mesh, FESPACE_ENUMS::LAGRANGE, FESPACE_ENUMS::GAUSS_LEGENDRE, std::integral_constant<int, order>{}};
 
         // ========================
         // = Setup Discretization =
         // ========================
-        DISC::HeatEquation<T, IDX, ndim> disc{};
+        HeatEquation<T, IDX, ndim> disc{};
 
         /// set discretization parameters (default to Peclet Nr = 100)
         disc.mu = (cli_args["mu"]) ? cli_args["mu"].as<T>() : 0.01;
@@ -93,9 +92,9 @@ int main(int argc, char *argv[]){
         disc.dirichlet_values.push_back(0.0);
         disc.dirichlet_values.push_back(1.0);
 
-        FE::fe_layout_right u_layout{fespace.dg_map, std::integral_constant<std::size_t, neq>{}};
+        fe_layout_right u_layout{fespace.dg_map, std::integral_constant<std::size_t, neq>{}};
         std::vector<T> u_data(u_layout.size());
-        FE::fespan u{u_data.data(), u_layout};
+        fespan u{u_data.data(), u_layout};
 
         // ===========================
         // = initialize the solution =
@@ -105,37 +104,37 @@ int main(int argc, char *argv[]){
             out[0] = x[0];
         };
 
-        DISC::Projection<T, IDX, ndim, neq> projection{ic};
+        Projection<T, IDX, ndim, neq> projection{ic};
         // TODO: extract into LinearFormSolver
         std::vector<T> u_local_data(fespace.dg_map.max_el_size_reqirement(neq));
         std::vector<T> res_local_data(fespace.dg_map.max_el_size_reqirement(neq));
         std::for_each(fespace.elements.begin(), fespace.elements.end(), 
-            [&](const ELEMENT::FiniteElement<T, IDX, ndim> &el){
+            [&](const FiniteElement<T, IDX, ndim> &el){
                 // form the element local views
                 // TODO: maybe instead of scatter from local view 
                 // we can directly create the view on the subset of u 
                 // for CG this might require a different compact Layout 
-                FE::dofspan u_local{u_local_data.data(), u.create_element_layout(el.elidx)};
+                dofspan u_local{u_local_data.data(), u.create_element_layout(el.elidx)};
                 u_local = 0;
 
-                FE::dofspan res_local{res_local_data.data(), u.create_element_layout(el.elidx)};
+                dofspan res_local{res_local_data.data(), u.create_element_layout(el.elidx)};
                 res_local = 0;
 
                 // project
-                projection.domainIntegral(el, fespace.meshptr->nodes, res_local);
+                projection.domain_integral(el, fespace.meshptr->nodes, res_local);
 
                 // solve 
-                SOLVERS::ElementLinearSolver<T, IDX, ndim, neq> solver{el, fespace.meshptr->nodes};
+                solvers::ElementLinearSolver<T, IDX, ndim, neq> solver{el, fespace.meshptr->nodes};
                 solver.solve(u_local, res_local);
 
                 // scatter to global array 
                 // (note we use 0 as multiplier for current values in global array)
-                FE::scatter_elspan(el.elidx, 1.0, u_local, 0.0, u);
+                scatter_elspan(el.elidx, 1.0, u_local, 0.0, u);
             }
         );
 
 #ifdef ICEICLE_USE_PETSC
-        using namespace ICEICLE::SOLVERS;
+        using namespace iceicle::solvers;
         ConvergenceCriteria<T, IDX> conv_criteria{
             .tau_abs = std::numeric_limits<T>::epsilon(),
             .tau_rel = 1e-9,
@@ -143,7 +142,7 @@ int main(int argc, char *argv[]){
         };
         PetscNewton solver{fespace, disc, conv_criteria};
         solver.ivis = 1;
-        ICEICLE::IO::DatWriter<T, IDX, ndim> writer{fespace};
+        io::DatWriter<T, IDX, ndim> writer{fespace};
         writer.register_fields(u, "u");
         solver.vis_callback = [&](decltype(solver) &solver, IDX k, Vec res_data, Vec du_data){
             T res_norm;
@@ -163,8 +162,8 @@ int main(int argc, char *argv[]){
         std::function<void(T*, T*)> exactfunc = [Pe](T *x, T *out) -> void {
             out[0] = ( 1 - std::exp(x[0] * Pe) ) / (1 - std::exp(Pe));
         };
-        T l2_error = DISC::l2_error(exactfunc, fespace, u);
-        std::cout << "L2 error: " << std::setprecision(9) << l2_error << std::endl;
+        T error = l2_error(exactfunc, fespace, u);
+        std::cout << "L2 error: " << std::setprecision(9) << error << std::endl;
 
         // print the exact solution in dat format
         std::ofstream outexact{"iceicle_data/exact.dat"};
@@ -181,8 +180,8 @@ int main(int argc, char *argv[]){
         }
 
         // mdg selection
-        FE::nodeset_dof_map<IDX> nodeset;
-        nodeset = FE::select_nodeset(fespace, disc, u, 0.01, ICEICLE::TMP::to_size<ndim>{});
+        nodeset_dof_map<IDX> nodeset;
+        nodeset = select_nodeset(fespace, disc, u, 0.01, tmp::to_size<ndim>{});
 
         std::cout << "Selected Nodes: ";
         for(IDX inode : nodeset.selected_nodes){
@@ -194,7 +193,7 @@ int main(int argc, char *argv[]){
         return 0;
     };
 
-    return NUMTOOL::TMP::invoke_at_index(NUMTOOL::TMP::make_range_sequence<int, 1, ELEMENT::MAX_DYNAMIC_ORDER>{}, 
+    return NUMTOOL::TMP::invoke_at_index(NUMTOOL::TMP::make_range_sequence<int, 1, MAX_DYNAMIC_ORDER>{}, 
             runtime_order, mainfunc);
 }
 

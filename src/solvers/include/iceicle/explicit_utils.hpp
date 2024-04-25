@@ -7,7 +7,7 @@
 #include "iceicle/fe_function/fespan.hpp"
 #include "iceicle/fespace/fespace.hpp"
 #include <variant>
-namespace ICEICLE::SOLVERS{
+namespace iceicle::solvers{
 
     // ==========================
     // = Timestep Determination =
@@ -30,9 +30,9 @@ namespace ICEICLE::SOLVERS{
     >
     concept TimestepT = requires(
         const TimestepClass& timestep,
-        FE::FESpace<T, IDX, ndim> &fespace,
+        FESpace<T, IDX, ndim> &fespace,
         disc_T disc,
-        FE::fespan<T, uLayoutPolicy, uAccessorPolicy> u
+        fespan<T, uLayoutPolicy, uAccessorPolicy> u
         ){
         {timestep(fespace, disc, u)} -> std::same_as<T>;
     };
@@ -47,9 +47,9 @@ namespace ICEICLE::SOLVERS{
 
         template< int ndim, class disc_T, class LayoutPolicy, class AccessorPolicy >
         inline T operator()(
-            FE::FESpace<T, IDX, ndim> &fespace,
+            FESpace<T, IDX, ndim> &fespace,
             disc_T &disc,
-            FE::fespan<T, LayoutPolicy, AccessorPolicy> u
+            fespan<T, LayoutPolicy, AccessorPolicy> u
         ) const noexcept { return dt; }
     };
 
@@ -63,15 +63,15 @@ namespace ICEICLE::SOLVERS{
 
         template< int ndim, class disc_T, class LayoutPolicy, class AccessorPolicy >
         inline T operator()(
-            FE::FESpace<T, IDX, ndim> &fespace,
+            FESpace<T, IDX, ndim> &fespace,
             disc_T &disc,
-            FE::fespan<T, LayoutPolicy, AccessorPolicy> u
+            fespan<T, LayoutPolicy, AccessorPolicy> u
         ) const noexcept {
 
             // first: reference length is the minimum diagonal entry of the jacobian at the cell center
             T reflen = 1e8;
             int Pn_max = 1;
-            for(const ELEMENT::FiniteElement<T, IDX, ndim> &el : fespace.elements){
+            for(const FiniteElement<T, IDX, ndim> &el : fespace.elements){
                 MATH::GEOMETRY::Point<T, ndim> center_xi = el.geo_el->centroid_ref();
                 auto J = el.geo_el->Jacobian(fespace.meshptr->nodes, center_xi);
                 for(int idim = 0; idim < ndim; ++idim){

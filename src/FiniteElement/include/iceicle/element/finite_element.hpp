@@ -8,7 +8,6 @@
 #pragma once
 
 #include "Numtool/fixed_size_tensor.hpp"
-#include "iceicle/fe_function/nodal_fe_function.hpp"
 #include <Numtool/matrix/dense_matrix.hpp>
 #include <Numtool/matrixT.hpp>
 #include <iceicle/basis/basis.hpp>
@@ -19,7 +18,7 @@
 
 #include <mdspan/mdspan.hpp>
 
-namespace ELEMENT {
+namespace iceicle {
 
 /**
  * @brief Precomputed values of basis functions and other reference domain quantities 
@@ -33,15 +32,15 @@ private:
 
 public:
   /** @brief the basis functions */
-  const BASIS::Basis<T, ndim> *basis;
+  const Basis<T, ndim> *basis;
 
   /** @brief the quadraature rule */
-  const QUADRATURE::QuadratureRule<T, IDX, ndim> *quadrule;
+  const QuadratureRule<T, IDX, ndim> *quadrule;
 
   FEEvaluation() = default;
 
-  FEEvaluation(BASIS::Basis<T, ndim> *basisptr,
-               QUADRATURE::QuadratureRule<T, IDX, ndim> *quadruleptr)
+  FEEvaluation(Basis<T, ndim> *basisptr,
+               QuadratureRule<T, IDX, ndim> *quadruleptr)
       : data{static_cast<std::size_t>(quadruleptr->npoints())}, basis(basisptr),
         quadrule(quadruleptr) {
     // call eval basis for each quadrature point and prestore
@@ -54,8 +53,8 @@ public:
     // TODO: gradient of basis (make a DenseMatrix class)
   }
 
-  FEEvaluation(BASIS::Basis<T, ndim> &basis,
-               QUADRATURE::QuadratureRule<T, IDX, ndim> &quadrule)
+  FEEvaluation(Basis<T, ndim> &basis,
+               QuadratureRule<T, IDX, ndim> &quadrule)
       : FEEvaluation(&basis, &quadrule) {}
 
   /* @brief get the evaluations of the basis functions at the igaussth
@@ -96,10 +95,10 @@ public:
   const GeometricElement<T, IDX, ndim> *geo_el;
 
   /** @brief the basis functions */
-  const BASIS::Basis<T, ndim> *basis;
+  const Basis<T, ndim> *basis;
 
   /** @brief the quadraature rule */
-  const QUADRATURE::QuadratureRule<T, IDX, ndim> *quadrule;
+  const QuadratureRule<T, IDX, ndim> *quadrule;
 
   /** @brief precomputed evaluations of the basis functions 
    * at the quadrature points 
@@ -124,8 +123,8 @@ public:
    */
   FiniteElement(
     const GeometricElement<T, IDX, ndim> *geo_el_arg,
-    const BASIS::Basis<T, ndim> *basis_arg,
-    const QUADRATURE::QuadratureRule<T, IDX, ndim> *quadrule_arg,
+    const Basis<T, ndim> *basis_arg,
+    const QuadratureRule<T, IDX, ndim> *quadrule_arg,
     const FEEvaluation<T, IDX, ndim> *qp_evals,
     IDX elidx_arg
   ) : geo_el(geo_el_arg), basis(basis_arg), quadrule(quadrule_arg),
@@ -135,7 +134,7 @@ public:
    * @brief precompute any stored quantities
    * @param node_list the global node list which geo_el has indices into
    */
-  void precompute(FE::NodalFEFunction<T, ndim> &node_list) {}
+  void precompute(NodeArray<T, ndim> &node_list) {}
 
   // =============================
   // = Basis Function Operations =
@@ -249,7 +248,7 @@ public:
    */
   auto evalPhysGradBasis(
     const Point &xi,
-    FE::NodalFEFunction<T, ndim> &node_list,
+    NodeArray<T, ndim> &node_list,
     const JacobianType &J,
     T *dBidxj
   ) const {
@@ -293,7 +292,7 @@ public:
   /** Calculates the Jacobian: \overload */
   auto evalPhysGradBasis(
     const Point &xi,
-    FE::NodalFEFunction<T, ndim> &node_list,
+    NodeArray<T, ndim> &node_list,
     T *dbidxj 
   ) const {
     JacobianType J = geo_el->Jacobian(node_list, xi);
@@ -323,7 +322,7 @@ public:
    */
   auto evalPhysGradBasisQP(
       int quadrature_pt_idx,
-      FE::NodalFEFunction<T, ndim> &node_list,
+      NodeArray<T, ndim> &node_list,
       const JacobianType &J,
       T *dBidxj
   ) const {
@@ -336,7 +335,7 @@ public:
   /** Calculates the Jacobian: \overload */
   auto evalPhysGradBasisQP(
       int quadrature_pt_idx,
-      FE::NodalFEFunction<T, ndim> &node_list,
+      NodeArray<T, ndim> &node_list,
       T *dBidxj
   ) const {
     // TODO: prestore
@@ -375,7 +374,7 @@ public:
    */
   auto evalPhysHessBasis(
     const Point &xi,
-    FE::NodalFEFunction<T, ndim> &coord,
+    NodeArray<T, ndim> &coord,
     T *basis_hessian_data
   ) const {
     using namespace std::experimental;
@@ -460,7 +459,7 @@ public:
    */
   auto evalPhysHessBasisQP(
     int iqp,
-    FE::NodalFEFunction<T, ndim> &coord,
+    NodeArray<T, ndim> &coord,
     T *basis_hessian_data
   ) const {
     return evalPhysHessBasis((*quadrule)[iqp].abscisse, coord, basis_hessian_data);
@@ -475,7 +474,7 @@ public:
 
   /** @brief get the "QuadraturePoint" (contains point and weight) at the given
    * quadrature point index */
-  const QUADRATURE::QuadraturePoint<T, ndim> getQP(int qp_idx) const {
+  const QuadraturePoint<T, ndim> getQP(int qp_idx) const {
     return (*quadrule)[qp_idx];
   }
 
@@ -489,7 +488,7 @@ public:
    * @param [in] pt_ref the point in the refernce domain
    * @param [out] pt_phys the point in the physical domain
    */
-  inline void transform(FE::NodalFEFunction<T, ndim> &node_coords,
+  inline void transform(NodeArray<T, ndim> &node_coords,
                         const Point &pt_ref, Point &pt_phys) const {
     return geo_el->transform(node_coords, pt_ref, pt_phys);
   }
@@ -504,13 +503,13 @@ public:
 template<class T, class IDX, int ndim>
 MATH::MATRIX::DenseMatrix<T> calculate_mass_matrix(
   const FiniteElement<T, IDX, ndim> &el,
-  FE::NodalFEFunction<T, ndim> &node_coords
+  NodeArray<T, ndim> &node_coords
 ) {
   MATH::MATRIX::DenseMatrix<T> mass(el.nbasis(), el.nbasis());
   mass = 0;
 
   for(int ig = 0; ig < el.nQP(); ++ig){
-    const QUADRATURE::QuadraturePoint<T, ndim> quadpt = el.getQP(ig);
+    const QuadraturePoint<T, ndim> quadpt = el.getQP(ig);
 
     // calculate the jacobian determinant
     auto J = el.geo_el->Jacobian(node_coords, quadpt.abscisse);

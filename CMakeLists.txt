@@ -62,6 +62,9 @@ include(FetchContent)
 find_package(MPI)
 find_package(PkgConfig REQUIRED)
 
+# custom modules
+set(CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake" ${CMAKE_MODULE_PATH})
+
 # Generate Compile Commands (good for LSPs)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)	
 
@@ -193,4 +196,9 @@ IF(ENABLE_TESTING_ICEICLE)
   set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
   FetchContent_MakeAvailable(googletest)
   add_subdirectory(test)
+
+  # =================
+  # = Documentation =
+  # =================
+  add_subdirectory(doc)
 ENDIF()
