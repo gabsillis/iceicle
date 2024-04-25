@@ -11,26 +11,6 @@ project = 'ICEicle'
 copyright = '2024, Gianni Absillis'
 author = 'Gianni Absillis'
 release = 'v0.0'
-
-# -- General configuration ---------------------------------------------------
-# https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
-
-extensions = [ "breathe" ]
-
-# Breathe Configuration 
-breathe_default_project = "ICEicle"
-
-templates_path = ['_templates']
-exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store']
-
-
-
-# -- Options for HTML output -------------------------------------------------
-# https://www.sphinx-doc.org/en/master/usage/configuration.html#options-for-html-output
-
-html_theme = 'alabaster'
-html_static_path = ['_static']
-
 # -- ReadTheDocs Compatibility ------------------------------------------------
 
 def configureDoxyfile(input_dir, output_dir):
@@ -54,3 +34,24 @@ if read_the_docs_build:
     configureDoxyfile(input_dir, output_dir)
     subprocess.call('doxygen', shell=True)
     breathe_projects['ICEicle'] = output_dir + '/xml'
+    
+# -- General configuration ---------------------------------------------------
+# https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
+
+extensions = [ "breathe" ]
+
+# Breathe Configuration 
+breathe_default_project = "ICEicle"
+
+templates_path = ['_templates']
+exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store']
+
+
+
+# -- Options for HTML output -------------------------------------------------
+# https://www.sphinx-doc.org/en/master/usage/configuration.html#options-for-html-output
+
+html_theme = 'sphinx_rtd_theme'
+html_static_path = ['_static']
+
+
