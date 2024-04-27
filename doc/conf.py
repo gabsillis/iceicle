@@ -38,7 +38,7 @@ if read_the_docs_build:
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
 
-extensions = [ "breathe" ]
+extensions = [ "breathe", "sphinx.ext.mathjax" ]
 
 # Breathe Configuration 
 breathe_default_project = "ICEicle"

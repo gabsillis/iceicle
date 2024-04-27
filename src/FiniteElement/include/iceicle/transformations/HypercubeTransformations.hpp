@@ -46,6 +46,8 @@ public:
   QTypeProduct<T, ndim, BasisType::nbasis> tensor_prod{};
   using TensorProdType = decltype(tensor_prod);
 
+  using value_type = T;
+  using index_type = IDX;
 private:
   // === Constants ===
   static constexpr int nfac = 2 * ndim;
@@ -615,6 +617,8 @@ public:
   */
 template<typename T, typename IDX, int ndim>
 class HypercubeTraceOrientTransformation {
+
+  public:
   /// number of dimensions for the trace space 
   static constexpr int trace_ndim = ndim - 1;
   /// number of vertices in a face

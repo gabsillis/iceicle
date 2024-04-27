@@ -16,6 +16,8 @@ namespace iceicle {
         private:
         static constexpr int ndim = 1;
         static constexpr int nnodes = 2;
+        using index_type = IDX; 
+        using value_type = T;
 
         using Point = MATH::GEOMETRY::Point<T, ndim>;
         using HessianType = NUMTOOL::TENSOR::FIXED_SIZE::Tensor<T, ndim, ndim, ndim>;
@@ -62,5 +64,53 @@ namespace iceicle {
         ) const -> void override {
             // do nothing: no interior nodes
         }
+
+        
+        /// @brief get the number of vertices in a face
+        auto n_face_vert(
+            int face_number /// [in] the face number
+        ) const -> int {
+            return 1;
+        };
+
+        /// @brief get the vertex indices on the face
+        /// NOTE: These vertices must be in the same order as if get_element_vert() 
+        /// was called on the transformation corresponding to the face
+        auto get_face_vert(
+            int face_number,      /// [in] the face number
+            index_type* vert_fac  /// [out] the indices of the vertices of the given face
+        ) const -> void override {
+            switch (face_number) {
+                case 0:
+                    vert_fac[0] = node_idxs[0];
+                    break;
+                case 1:
+                    vert_fac[1] = node_idxs[1];
+                    break;
+            }
+        };
+
+
+        auto get_face_nodes(
+            int face_number,      /// [in] the face number
+            index_type* nodes_fac  /// [out] the indices of the nodes of the given face
+        ) const -> void override {
+            switch (face_number) {
+                case 0:
+                    nodes_fac[0] = node_idxs[0];
+                    break;
+                case 1:
+                    nodes_fac[1] = node_idxs[1];
+                    break;
+            }
+        };
+
+        /// @brief get the face number of the given vertices 
+        /// @return the face number of the face with the given vertices
+        auto get_face_nr(
+            index_type* vert_fac /// [in] the indices of the vertices of the given face
+        ) const -> int override {
+            return node_idxs[vert_fac[0]];
+        };
     };
 }

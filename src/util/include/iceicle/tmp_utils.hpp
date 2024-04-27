@@ -21,6 +21,19 @@ namespace iceicle::tmp {
     template<auto value>
     using to_size = std::integral_constant<std::size_t, static_cast<std::size_t>(value)>;
 
+    /// ================
+    /// = Type Queries =
+    /// ================
+
+    /// @brief get the index type as defined by the class
+    /// ignoring references as this should be a using statement
+    template<class T>
+    using index_type_of = std::remove_reference_t<T>::index_type;
+
+    /// @brief get the value type as defined by the class
+    /// ignoring references as this should be a using statement
+    template<class T>
+    using value_type_of = std::remove_reference_t<T>::value_type;
 
     // =====================
     // = Variant Utilities =

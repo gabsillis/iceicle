@@ -39,4 +39,13 @@ namespace iceicle::build_config {
 #else
     static constexpr int FESPACE_BUILD_PN = 5;
 #endif
+    /** 
+     * The maximum polynomial order of basis functions that gets generated at compile time 
+     * for fespace 
+     */
+#ifdef MAX_GEO_ORDER
+    static constexpr int FESPACE_BUILD_GEO_PN = MAX_GEO_ORDER
+#else
+    static constexpr int FESPACE_BUILD_GEO_PN = 2;
+#endif
 }

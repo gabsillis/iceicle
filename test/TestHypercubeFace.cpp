@@ -72,7 +72,7 @@ TEST(test_hypercube_face, test_transform){
     ASSERT_EQ(face_nr_l, transL.get_face_nr(elL.nodes(), face_vert_l));
     ASSERT_EQ(face_nr_r, transR.get_face_nr(elR.nodes(), face_vert_r));
 
-    FaceType face(0, 1, face_nr_l, face_nr_r, orientationr, BOUNDARY_CONDITIONS::PERIODIC, 0);
+    FaceType face(0, 1, face_nodes, face_nr_l, face_nr_r, orientationr, BOUNDARY_CONDITIONS::PERIODIC, 0);
 
     using FacePoint = MATH::GEOMETRY::Point<T, ndim-1>;
     using DomainPoint = MATH::GEOMETRY::Point<T, ndim>;

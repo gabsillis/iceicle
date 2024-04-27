@@ -27,13 +27,15 @@ namespace iceicle {
      */
     template<typename T, typename IDX, int ndim> 
     class GeometricElement {
-        private:
+        public:
 
-        // namespace aliases
+        // type aliases
         using Point = MATH::GEOMETRY::Point<T, ndim>;
         using HessianType = NUMTOOL::TENSOR::FIXED_SIZE::Tensor<T, ndim, ndim, ndim>;
+        using JacobianType = NUMTOOL::TENSOR::FIXED_SIZE::Tensor<T, ndim, ndim>;
+        using value_type = T;
+        using index_type = IDX;
 
-        public:
         /**
          * @brief Get the number of nodes
          * 
@@ -142,10 +144,10 @@ namespace iceicle {
          * @return the Jacobian matrix
          */
         virtual
-        NUMTOOL::TENSOR::FIXED_SIZE::Tensor<T, ndim, ndim> Jacobian(
+        auto Jacobian(
             NodeArray<T, ndim> &node_coords,
             const Point &xi
-        ) const = 0;
+        ) const -> JacobianType = 0;
 
         /**
          * @brief get the Hessian of the transformation
@@ -156,10 +158,10 @@ namespace iceicle {
          * @return the Hessian in tensor form indexed [k][i][j] as described above
          */
         virtual
-        HessianType Hessian(
+        auto Hessian(
             NodeArray<T, ndim> &node_coords,
             const Point &xi
-        ) const = 0;
+        ) const -> HessianType = 0;
 
         /**
          * @brief given surface nodes 
@@ -169,6 +171,40 @@ namespace iceicle {
         auto regularize_interior_nodes(
             NodeArray<T, ndim>& coord /// [in/out] the node coordinates array 
         ) const -> void = 0;
+
+        /// @brief get the number of vertices in a face
+        virtual 
+        auto n_face_vert(
+            int face_number /// [in] the face number
+        ) const -> int = 0;
+
+        /// @brief get the vertex indices on the face
+        /// NOTE: These vertices must be in the same order as if get_element_vert() 
+        /// was called on the transformation corresponding to the face
+        virtual 
+        auto get_face_vert(
+            int face_number,      /// [in] the face number
+            index_type* vert_fac  /// [out] the indices of the vertices of the given face
+        ) const -> void = 0;
+
+        /// @brief get the node indices on the face
+        ///
+        /// NOTE: Nodes are all the points defining geometry (vertices are endpoints)
+        ///
+        /// NOTE: These vertices must be in the same order as if get_nodes
+        /// was called on the transformation corresponding to the face
+        virtual 
+        auto get_face_nodes(
+            int face_number,      /// [in] the face number
+            index_type* nodes_fac /// [out] the indices of the nodes of the given face
+        ) const -> void = 0;
+
+        /// @brief get the face number of the given vertices 
+        /// @return the face number of the face with the given vertices
+        virtual 
+        auto get_face_nr(
+            index_type* vert_fac /// [in] the indices of the vertices of the given face
+        ) const -> int = 0;
 
         /**
          * @brief virtual destructor

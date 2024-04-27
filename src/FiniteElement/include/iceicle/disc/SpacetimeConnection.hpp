@@ -6,6 +6,7 @@
 #include "iceicle/fespace/fespace.hpp"
 #include "iceicle/geometry/face.hpp"
 #include "iceicle/mesh/mesh.hpp"
+#include "iceicle/algo.hpp"
 #include <map>
 #include <list>
 
@@ -119,7 +120,17 @@ namespace iceicle {
             }
 
             for(TraceSpace &current_trace : fespace_current.get_boundary_traces()) {
-                
+                std::vector<IDX> curr_nodes_connected_idxs{current_trace.face->nodes_span()};
+                for(IDX& inode : curr_nodes_connected_idxs) inode = curr_to_past_nodes[inode];
+
+                for(IDX ibface_past : past_bface_idxs){
+                    TraceSpace past_trace = fespace_past.traces[ibface_past];
+
+                    if(util::eqset(std::span{curr_nodes_connected_idxs}, past_trace.face->nodes_span())){
+                        // TODO: create new trace
+                    }
+
+                }
             }
 
         }
