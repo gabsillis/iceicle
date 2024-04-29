@@ -11,6 +11,7 @@
 #include <iceicle/ssp_rk3.hpp>
 #include <iceicle/tvd_rk3.hpp>
 #include <iceicle/dat_writer.hpp>
+#include <iceicle/pvd_writer.hpp>
 #include <iceicle/writer.hpp>
 #include <sol/sol.hpp>
 
@@ -108,7 +109,12 @@ namespace iceicle::solvers {
                     }
 
                     // .vtu writer 
-                    // TODO: 
+                    if(writer_name && eq_icase(writer_name.value(), "vtu")){
+                        io::PVDWriter<T, IDX, ndim> pvd_writer{};
+                        pvd_writer.register_fespace(fespace);
+                        pvd_writer.register_fields(u, "u");
+                        writer = pvd_writer;
+                    }
                 }
 
                 solver.vis_callback = [&](ExplicitSolverType& solver) mutable {

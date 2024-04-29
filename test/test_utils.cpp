@@ -35,4 +35,9 @@ TEST(test_util, test_set_ops){
     ASSERT_FALSE(subset(a5, b5));
     ASSERT_FALSE(eqset(a5, b5));
 
+    std::vector<int> a6{1, 2, 4, 5, 6};
+    std::vector<int> b6{1, 2, 4, 5};
+    ASSERT_FALSE(subset(a6, b6));
+    ASSERT_FALSE(eqset(a6, b6));
+
 }

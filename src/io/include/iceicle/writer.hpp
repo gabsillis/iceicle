@@ -2,6 +2,7 @@
 /// @author Gianni Absillis (gabsill@ncsu.edu)
 
 #pragma once
+#include "iceicle/pvd_writer.hpp"
 #include <iceicle/fespace/fespace.hpp>
 #include <iceicle/dat_writer.hpp>
 #include <memory>
@@ -13,6 +14,13 @@ namespace iceicle::io {
     template<class T, class IDX, int ndim>
     auto write_file(DatWriter<T, IDX, ndim>& writer, int itime, T time) -> void {
         writer.write_dat(itime, time);
+    }
+
+    /// @brief external function interface for type erasure to write a file 
+    /// writes the file with the given time index and time values 
+    template<class T, class IDX, int ndim>
+    auto write_file(PVDWriter<T, IDX, ndim>& writer, int itime, T time) -> void {
+        writer.write_vtu(itime, time);
     }
 
     /// @brief Type erasure class for things that can write values to file

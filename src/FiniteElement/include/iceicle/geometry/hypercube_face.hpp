@@ -58,14 +58,15 @@ namespace iceicle {
             BOUNDARY_CONDITIONS bctype,
             int bcflag
         ): Face<T, IDX, ndim>(elemL, elemR,
-            faceNrL * FACE_INFO_MOD,
-            faceNrR * FACE_INFO_MOD + [elptrL, elptrR, faceNrL, faceNrR]() -> int {
-                IndexArrayType<orient_trans.nvert_tr> vert_l{}, vert_r{};
-                elptrL->get_face_vert(faceNrL, vert_l.data());
-                elptrR->get_face_vert(faceNrR, vert_r.data());
-                return orient_trans.getOrientation(vert_l.data(), vert_r.data());
-            }(),
-            bctype, bcflag), _nodes{[elptrL, faceNrL](){
+                faceNrL * FACE_INFO_MOD,
+                faceNrR * FACE_INFO_MOD + [elptrL, elptrR, faceNrL, faceNrR]() -> int {
+                    IndexArrayType<orient_trans.nvert_tr> vert_l{}, vert_r{};
+                    elptrL->get_face_vert(faceNrL, vert_l.data());
+                    elptrR->get_face_vert(faceNrR, vert_r.data());
+                    return orient_trans.getOrientation(vert_l.data(), vert_r.data());
+                }(),
+            bctype, bcflag),
+            _nodes{[elptrL, faceNrL](){
                 IndexArrayType<trans.n_nodes> nodes{};
                 elptrL->get_face_nodes(faceNrL, nodes.data());
                 return nodes;

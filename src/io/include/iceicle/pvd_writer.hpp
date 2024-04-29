@@ -153,6 +153,9 @@ namespace iceicle::io {
          */
         template<typename T, typename IDX, int ndim>
         VTKElement<T, ndim> &get_vtk_element(const GeometricElement<T, IDX, ndim> *el, int basis_order = 1){
+
+            static VTKElement<T, ndim> NO_ELEMENT{};
+
             int max_order = std::max(el->geometry_order(), basis_order);
             if constexpr (ndim == 2){
                 switch(el->domain_type()){
@@ -211,7 +214,7 @@ namespace iceicle::io {
                 }
             } else {
                 throw std::logic_error("Unsupported dimension for pvd writer.");
-                return VTK_HEXAHEDRON<T>;
+                return NO_ELEMENT; 
             }
         }
     }
@@ -224,14 +227,16 @@ namespace iceicle::io {
         * @brief a data field for output 
         * overridable write_data function
         */
-        struct writable_field {
+        struct writeable_field {
             /// @brief adds the xml DataArray tags and data to a given vtu file 
             virtual void write_data(std::ofstream &vtu_file, FESpace<T, IDX, ndim> &fespace) const = 0;
 
             /// @brief if this data is in dg format and requires duplicated mesh nodes
             virtual auto is_dg_format() const -> bool { return true; }
 
-            virtual ~writable_field(){};
+            virtual auto clone() const -> std::unique_ptr<writeable_field> = 0;
+
+            virtual ~writeable_field(){};
         };
 
         /**
@@ -240,7 +245,7 @@ namespace iceicle::io {
         * and an fespan that points to the data 
         */
         template< class LayoutPolicy, class AccessorPolicy>
-        struct PVDDataField final : public writable_field {
+        struct PVDDataField final : public writeable_field {
             /// the data view
             fespan<T, LayoutPolicy, AccessorPolicy> fedata;
 
@@ -293,12 +298,15 @@ namespace iceicle::io {
                     // close the data array tag
                     write_close(XMLTag{"DataArray"}, vtu_file);
                 }
+            }
 
+            auto clone() const -> std::unique_ptr<writeable_field> override {
+                return std::make_unique<PVDDataField<LayoutPolicy, AccessorPolicy>>(*this);
             }
         };
 
         /**
-         * @brief a data fielf for MDG nodal vector data output 
+         * @brief a data field for MDG nodal vector data output 
          * contains field_name
          * and a node_selection_span for the data 
          *
@@ -306,7 +314,7 @@ namespace iceicle::io {
          * WARNING: do not couple with dg mesh
          */
         template< class LayoutPolicy, class AccessorPolicy>
-        struct MDGVectorDataField final : public writable_field {
+        struct MDGVectorDataField final : public writeable_field {
             using value_type = T; 
             using index_type = LayoutPolicy::index_type;
             ///  the data view 
@@ -352,15 +360,20 @@ namespace iceicle::io {
             auto is_dg_format() const -> bool override {
                 return false;
             }
+
+            auto clone() const -> std::unique_ptr<writeable_field> override {
+                return std::make_unique<MDGVectorDataField<LayoutPolicy, AccessorPolicy>>(*this);
+            }
         };
 
         private:
 
         AbstractMesh<T, IDX, ndim> *meshptr;
         FESpace<T, IDX, ndim> *fespace_ptr;
-        std::vector<std::unique_ptr<writable_field>> fields;
+        std::vector<std::unique_ptr<writeable_field>> fields;
 
         public:
+        using value_type = T;
 
         int print_precision = 8;
         std::string collection_name = "data";
@@ -374,6 +387,18 @@ namespace iceicle::io {
         : meshptr(meshptr), data_directory(std::filesystem::current_path()) {
             data_directory /= "iceicle_data";
         }
+
+        PVDWriter(const PVDWriter<T, IDX, ndim>& other)
+            : meshptr(other.meshptr), fespace_ptr(other.fespace_ptr), fields{}, print_precision(other.print_precision),
+              collection_name(other.collection_name), data_directory(other.data_directory)
+        {
+            for(const std::unique_ptr<writeable_field>& field : other.fields){
+                fields.push_back(field->clone());
+            }
+        }
+
+        PVDWriter(PVDWriter<T, IDX, ndim>&& other) = default;
+              
 
         void register_mesh(AbstractMesh<T, IDX, ndim> *newptr){
             meshptr = newptr;

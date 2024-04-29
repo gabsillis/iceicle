@@ -140,7 +140,7 @@ For example, using a sine wave as an initial condition.
    // create the FESpace
    FESpace<double, int, ndim> fespace{/* ... */};
 
-   std::map<int, int> node_connectivity
+   std::map<int, int> node_connectivity = compute_st_node_connectivity(fespace.meshptr, fespace.meshptr);
 
 Note that since the :cpp:`x` argument is just a pointer, initial conditions designed for just the spatial dimensions 
 wil have no issue being used to initilize a time-slab.

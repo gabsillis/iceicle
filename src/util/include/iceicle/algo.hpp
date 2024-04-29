@@ -17,8 +17,12 @@ namespace iceicle::util {
         std::strict_weak_order<std::less<std::ranges::range_value_t<R1>>, 
             std::ranges::range_value_t<R1>, std::ranges::range_value_t<R2>>
     ) {
-        std::vector acpy{a};
-        std::vector bcpy{b};
+        using a_value_type = std::ranges::range_value_t<R1>;
+        using b_value_type = std::ranges::range_value_t<R2>;
+        std::vector<a_value_type> acpy(a.size());
+        std::vector<b_value_type> bcpy(b.size());
+        std::ranges::copy(a, acpy.begin());
+        std::ranges::copy(b, bcpy.begin());
         std::ranges::sort(acpy);
         std::ranges::sort(bcpy);
 
@@ -44,10 +48,14 @@ namespace iceicle::util {
         std::strict_weak_order<std::less<std::ranges::range_value_t<R1>>, 
             std::ranges::range_value_t<R1>, std::ranges::range_value_t<R2>>
     ){
+        using a_value_type = std::ranges::range_value_t<R1>;
+        using b_value_type = std::ranges::range_value_t<R2>;
         if(a.size() != b.size()) return false;
 
-        std::vector acpy{a};
-        std::vector bcpy{b};
+        std::vector<a_value_type> acpy(a.size());
+        std::vector<b_value_type> bcpy(b.size());
+        std::ranges::copy(a, acpy.begin());
+        std::ranges::copy(b, bcpy.begin());
         std::ranges::sort(acpy);
         std::ranges::sort(bcpy);
         for(std::size_t i = 0; i < acpy.size(); ++i){

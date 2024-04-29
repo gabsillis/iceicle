@@ -68,6 +68,14 @@ namespace iceicle {
             return BOUNDARY_CONDITIONS::EXTRAPOLATION;
         }
 
+        if(eq_icase(bcname, "spacetime-future")){
+            return BOUNDARY_CONDITIONS::SPACETIME_FUTURE;
+        }
+
+        if(eq_icase(bcname, "spacetime-past")){
+            return BOUNDARY_CONDITIONS::SPACETIME_PAST;
+        }
+
         return BOUNDARY_CONDITIONS::INTERIOR;
     }
 
@@ -181,12 +189,23 @@ namespace iceicle {
         virtual ~Face() = default;
 
         /** @brief get the shape that defines the reference domain */
-        virtual 
-        constexpr DOMAIN_TYPE domain_type() const = 0;
+        virtual constexpr
+        auto domain_type() const -> DOMAIN_TYPE = 0;
 
         /** @brief get the geometry polynomial order */
-        virtual 
-        constexpr int geometry_order() const noexcept = 0;
+        virtual constexpr
+        auto geometry_order() const noexcept -> int = 0;
+
+        /// @brief calculate the face number for the left element from face info
+        constexpr
+        auto face_nr_l() const noexcept -> unsigned int { return face_infoL / FACE_INFO_MOD; }
+
+        /// @brief calculate the face number for the right element from face info
+        constexpr
+        unsigned int face_nr_r() const noexcept { return face_infoR / FACE_INFO_MOD; }
+
+        /// @brief calculate the orientation for the right element from face info
+        unsigned int orientation_r() const noexcept { return face_infoR % FACE_INFO_MOD; }
 
         /**
          * @brief Get the area of the face
