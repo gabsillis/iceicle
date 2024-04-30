@@ -16,20 +16,76 @@
 namespace iceicle {
     
     enum class BOUNDARY_CONDITIONS : int {
+        /// Periodic boundary condition 
         PERIODIC = 0,
+
+        /// Parallel communication - represents the boundary between processes
         PARALLEL_COM,
+
+        /// Neumann Boundary Condition 
+        ///
+        /// Lua name: neumann
+        ///
+        /// Prescribe a gradient of the solution at the boundary
+        /// NOTE: this loses meaning for non-elliptic problems so only applies to the diffusive fluxes
+        ///
+        /// The bcflag specifies the index in the list of dirichlet boundary conditions values/callbacks to use
         NEUMANN,
+
+        /// Dirichlet Boundary Condition 
+        ///
+        /// Lua name: dirichlet
+        ///
+        /// Enforce a value for the solution at the boundary
+        /// 
+        /// The bcflag specifies the index in the list of dirichlet boundary conditions values/callbacks to use
         DIRICHLET,
+
+        /// Extrapolation Boundary Condition 
+        ///
+        /// Lua name: extrapolation 
+        ///
+        /// Use the interior state as the exterior state as well
         EXTRAPOLATION,
+
+        /// Riemann Boundary Condition 
+        ///
+        /// a.k.a characteristic boundary condition 
+        ///
+        /// Use the characteristics of the pde to determine the left and right states 
         RIEMANN,
+
+        /// No-slip wall 
         NO_SLIP,
+
+        /// Slip wall 
+        ///
+        /// a.k.a Symmetric
         SLIP_WALL,
-        WALL_GENERAL, /// General Wall BC, up to the implementation of the pde
+
+        /// General Wall BC, up to the implementation of the pde
+        WALL_GENERAL, 
+
+        /// General flow inlet, uses free-stream properties
         INLET,
+
+        /// General flow outlet
         OUTLET,
-        SPACETIME_PAST, /// used for the bottom of a time slab
-        SPACETIME_FUTURE, /// used for the top of a time slab
-        INTERIOR // default condition that does nothing
+
+        /// used for the bottom of a time slab
+        ///
+        /// Lua name: spacetime-past
+        SPACETIME_PAST, 
+
+        /// used for the top of a time slab
+        ///
+        /// Lua name: sapcetime-future
+        ///
+        /// Equivalent to the EXTRAPOLATION boundary condition
+        SPACETIME_FUTURE, 
+        
+        /// default condition that does nothing
+        INTERIOR 
     };
 
     /// @brief get a human readable name for each boundary condition
