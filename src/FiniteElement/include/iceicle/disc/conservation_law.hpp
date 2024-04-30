@@ -1142,6 +1142,89 @@ namespace iceicle {
                     break;
             }
         }
+
+        template<class IDX>
+        void interface_conservation(
+            const TraceSpace<T, IDX, ndim>& trace,
+            NodeArray<T, ndim>& coord,
+            elspan auto unkelL,
+            elspan auto unkelR,
+            facspan auto res
+        ) const {
+            static constexpr int neq = nv_comp;
+            using namespace MATH::MATRIX_T;
+            using namespace NUMTOOL::TENSOR::FIXED_SIZE;
+            using FiniteElement = FiniteElement<T, IDX, ndim>;
+
+            const FiniteElement &elL = trace.elL;
+            const FiniteElement &elR = trace.elR;
+
+            // Basis function scratch space 
+            std::vector<T> biL(elL.nbasis());
+            std::vector<T> biR(elR.nbasis());
+            std::vector<T> gradbL_data(elL.nbasis() * ndim);
+            std::vector<T> gradbR_data(elR.nbasis() * ndim);
+
+            // solution scratch space 
+            std::array<T, neq> uL;
+            std::array<T, neq> uR;
+            std::array<T, neq * ndim> graduL_data;
+            std::array<T, neq * ndim> graduR_data;
+            std::array<T, neq * ndim> grad_ddg_data;
+
+            for(int iqp = 0; iqp < trace.nQP(); ++iqp){
+                const QuadraturePoint<T, ndim - 1> &quadpt = trace.getQP(iqp);
+
+                // calculate the riemannian metric tensor root
+                auto Jfac = trace.face->Jacobian(coord, quadpt.abscisse);
+                T sqrtg = trace.face->rootRiemannMetric(Jfac, quadpt.abscisse);
+
+                // calculate the normal vector 
+                auto normal = calc_ortho(Jfac);
+                auto unit_normal = normalize(normal);
+
+                // get the basis functions, derivatives, and hessians
+                // (derivatives are wrt the physical domain)
+                trace.evalBasisQPL(iqp, biL.data());
+                trace.evalBasisQPR(iqp, biR.data());
+                auto gradBiL = trace.evalPhysGradBasisQPL(iqp, coord, gradbL_data.data());
+                auto gradBiR = trace.evalPhysGradBasisQPR(iqp, coord, gradbR_data.data());
+
+                // construct the solution on the left and right
+                std::ranges::fill(uL, 0.0);
+                std::ranges::fill(uR, 0.0);
+                for(int ieq = 0; ieq < neq; ++ieq){
+                    for(int ibasis = 0; ibasis < elL.nbasis(); ++ibasis)
+                        { uL[ieq] += unkelL[ibasis, ieq] * biL[ibasis]; }
+                    for(int ibasis = 0; ibasis < elR.nbasis(); ++ibasis)
+                        { uR[ieq] += unkelR[ibasis, ieq] * biR[ibasis]; }
+                }
+
+                // get the solution gradient and hessians
+                auto graduL = unkelL.contract_mdspan(gradBiL, graduL_data.data());
+                auto graduR = unkelR.contract_mdspan(gradBiR, graduR_data.data());
+
+                // get the physical flux on the left and right
+                Tensor<T, nv_comp, ndim> fluxL = phys_flux(uL, graduL);
+                Tensor<T, nv_comp, ndim> fluxR = phys_flux(uR, graduR);
+
+                // calculate the jump in normal fluxes
+                Tensor<T, nv_comp> jumpflux{};
+                for(int ieq = 0; ieq < nv_comp; ++ieq) 
+                    jumpflux[ieq] = dot(fluxR[ieq], unit_normal) - dot(fluxL[ieq], unit_normal);
+
+                // get the norm and multiply by unit normal vector for square system
+                T jumpflux_norm = std::sqrt(norml2(jumpflux));
+
+                // scatter unit normal times interface conservation to residual
+                for(int itest = 0; itest < trace.nbasis_trace(); ++itest){
+                    T ic_res = jumpflux_norm * sqrtg * quadpt.weight;
+                    for(int idim = 0; idim < ndim; ++idim){
+                        res[itest, idim] += ic_res * unit_normal[idim];
+                    }
+                }
+            }
+        }
     };
 
     // Deduction Guides

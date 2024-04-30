@@ -522,7 +522,7 @@ namespace iceicle {
         }
 
         void interface_conservation(
-            const Trace &trace,
+            const Trace& trace,
             NodeArray<T, ndim> &coord,
             elspan auto unkelL,
             elspan auto unkelR,
@@ -531,8 +531,6 @@ namespace iceicle {
             using namespace MATH::MATRIX_T;
             using namespace NUMTOOL::TENSOR::FIXED_SIZE;
 
-            // calculate the centroids of the left and right elements
-            // in the physical domain
             const FiniteElement<T, IDX, ndim> &elL = trace.elL;
             const FiniteElement<T, IDX, ndim> &elR = trace.elR;
 
@@ -606,8 +604,7 @@ namespace iceicle {
                         // take the norm of the residual (scalar value in this case)
                         // and multiply by normal vector components 
                         for(IDX idim = 0; idim < ndim; ++idim){
-                            // TODO: can we get the right direction if we don't use abs value ???
-                            res[itest, idim] += std::abs(ic_res * unit_normal[idim]);
+                            res[itest, idim] += ic_res * unit_normal[idim];
                         }
                     } else {
                         // assume there is only one component 
