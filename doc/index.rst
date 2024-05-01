@@ -264,7 +264,67 @@ Implicit methods assume no method of lines for time, so are either steady state,
 
 * ``type`` the type of solver to use; current named solvers are:
 
-   * :cpp:`"newton"` : Newtons method (Implicit)
+   * :cpp:`"newton", "newtonls"` : Newtons method with optional linesearch (Implicit)
+
+   * :cpp:`"explicit_euler"` : Explicit Euler's method 
+
+   * :cpp:`"rk3-ssp", "rk3-tvd"` : Three stage Runge-Kutta explicit time integration. Strong Stability Preserving (SSP) or Total Variation Diminishing (TVD) versions
+
+``ivis`` The visualization (output) is run every ``ivis`` iterations of the solver
+
+--------------------------
+Explicit Solver Parameters
+--------------------------
+
+* ``dt`` set the timestep for explicit schemes
+
+* ``cfl`` the CFL number to use to determine the timestep from the conservation law 
+
+.. note::
+
+   ``dt`` and ``cfl`` are mutually exclusive
+
+* ``tfinal`` the final time value to terminate the explicit method
+
+* ``ntime`` the number of timesteps to take 
+
+.. note::
+   ``tfinal`` and ``ntime`` are mutually exclusive
+
+
+--------------------------
+Implicit Solver Parameters
+--------------------------
+
+* ``tau_abs`` the absolute tolerance for the residual norm to terminate the solve 
+
+* ``tau_rel`` the relative amount to the initial residual norm at which to terminate the solve
+
+The solve stops when the residual is less than :math:`\tau_{abs} + \tau_{rel} ||r_0||`
+
+* ``kmax`` the maximum number of nonlinear iterations to take 
+
+* ``linesearch`` perform a linesearch along the direction calculated by the implicit solver
+   * ``type`` the linesearch type. Currently only :cpp:`"wolfe"` or :cpp:`"cubic"` for cubic interpolation linesearch is supported.
+
+   * ``kmax`` (optional) the maximum number of linesearch iterations (defaults to 5)
+
+   * ``alpha_initial`` (optional) the initial multiplier in the direction (1.0 is the full newton step for Newton solver) (defaults to 1)
+
+   * ``alpha_max`` (optional) the maximum multiplier for the direction (defaults to 10)
+
+   * ``c1`` and ``c2`` (optional) linesearch coefficients (defaults to 1e-4 and 0.9 respectively)
+
+
+======
+Output
+======
+
+``output`` specifies the output format for solutions (saves in the ``iceicle_data`` directory)
+
+* ``vtu`` Paraview vtu file (2D and 3D only)
+
+* ``dat`` Space separated values along the solution in 1D (1D only)
 
 API
 ===
