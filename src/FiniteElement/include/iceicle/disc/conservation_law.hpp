@@ -1,11 +1,14 @@
 #pragma once
 
+#include "Numtool/MathUtils.hpp"
 #include "Numtool/fixed_size_tensor.hpp"
 #include "iceicle/element/finite_element.hpp"
 #include "iceicle/fe_function/fespan.hpp"
 #include "iceicle/geometry/face.hpp"
 #include "iceicle/linalg/linalg_utils.hpp"
+#include "iceicle/mesh/mesh.hpp"
 #include <cmath>
+#include <type_traits>
 #include <vector>
 namespace iceicle {
 
@@ -199,6 +202,10 @@ namespace iceicle {
     template<class T, int ndim>
     BurgersDiffusionFlux(BurgersCoefficients<T, ndim>) -> BurgersDiffusionFlux<T, ndim>;
 
+    /// ==============================
+    /// = Spacetime Burgers Equation =
+    /// ==============================
+
     template<
         class T,
         int ndim
@@ -215,7 +222,9 @@ namespace iceicle {
         static constexpr int ndim_space = ndim - 1;
         static constexpr int idim_time = ndim - 1;
 
-        BurgersCoefficients<T, ndim-1>& coeffs;
+        BurgersCoefficients<T, ndim_space>& coeffs;
+
+        mutable T lambda_max = 0.0;
 
         /**
          * @brief compute the flux 
@@ -230,21 +239,47 @@ namespace iceicle {
          */
         inline constexpr
         auto operator()(
-            T u,
-            std::span<T, ndim> gradu
-        ) const noexcept -> Tensor<T, ndim> 
+            std::array<T, nv_comp> u,
+            linalg::in_tensor auto gradu
+        ) const noexcept -> Tensor<T, nv_comp, ndim> 
         {
-            Tensor<T, ndim> flux{};
+            Tensor<T, nv_comp, ndim> flux{};
+            T lambda_norm = 0;
             for(int idim = 0; idim < ndim_space; ++idim){
-                flux[idim] = 
-                    coeffs.a[idim] * u                  // linear convection
-                    + 0.5 * coeffs.b[idim] * SQUARED(u) // nonlinear convection
-                    - coeffs.mu * gradu[idim];          // diffusion
+                T lambda = 
+                    coeffs.a[idim]          // linear advection wavespeed
+                    + 0.5 * coeffs.b[idim] * u[0];// nonlinear advection wavespeed
+                lambda_norm += lambda * lambda;
+                flux[0][idim] = 
+                    lambda * u[0]                  // advection
+                    - coeffs.mu * gradu[0, idim];  // diffusion
             }
-            flux[idim_time] = u;
+            flux[0][idim_time] = u[0];
+            lambda_norm += SQUARED(u[0]);
+            lambda_max = std::max(lambda_max, lambda_norm);
             return flux;
         }
+
+
+        /**
+         * @brief get the timestep from cfl 
+         * often this will require data to be set from the domain and boundary integrals 
+         * such as wavespeeds, which will arise naturally during residual computation
+         * WARNING: does not consider polynomial order of basis functions
+         *
+         * @param cfl the cfl condition 
+         * @param reference_length the size to use for the length of the cfl condition 
+         * @return the timestep based on the cfl condition
+         */
+        inline constexpr
+        auto dt_from_cfl(T cfl, T reference_length) const  noexcept -> T {
+            T aref = 0;
+            aref = lambda_max;
+            return (reference_length * cfl) / (coeffs.mu / reference_length + aref);
+        }
     };
+    template<class T, int ndim_space>
+    SpacetimeBurgersFlux(BurgersCoefficients<T, ndim_space>) -> SpacetimeBurgersFlux<T, ndim_space+1>;
 
     /// @brief upwind numerical flux for the convective flux in spacetime burgers equation
     template <class T, int ndim>
@@ -260,7 +295,7 @@ namespace iceicle {
         static constexpr int ndim_space = ndim - 1;
         static constexpr int idim_time = ndim - 1;
 
-        BurgersCoefficients<T, ndim-1>& coeffs;
+        BurgersCoefficients<T, ndim_space>& coeffs;
 
         /**
          * @brief compute the convective numerical flux normal to the interface
@@ -271,31 +306,97 @@ namespace iceicle {
          */
         inline constexpr
         auto operator()(
-            T uL,
-            T uR,
+            std::array<T, nv_comp> uL,
+            std::array<T, nv_comp> uR,
             Tensor<T, ndim> unit_normal
         ) const noexcept -> std::array<T, nv_comp> 
         {
             T fadvn = 0;
             for(int idim = 0; idim < ndim_space; ++idim){
                 // flux vector splitting
-                T lambdaL = unit_normal[idim] * (coeffs.a[idim] + 0.5 * coeffs.b[idim] * uL);
-                T lambdaR = unit_normal[idim] * (coeffs.a[idim] + 0.5 * coeffs.b[idim] * uR);
+                T lambdaL = unit_normal[idim] * (coeffs.a[idim] + 0.5 * coeffs.b[idim] * uL[0]);
+                T lambdaR = unit_normal[idim] * (coeffs.a[idim] + 0.5 * coeffs.b[idim] * uR[0]);
                 T lambda_l_plus = 0.5 * (lambdaL + std::abs(lambdaL));
                 T lambda_r_plus = 0.5 * (lambdaR - std::abs(lambdaR));
 
-                fadvn += uL * lambda_l_plus + uR * lambda_r_plus;
+                fadvn += uL[0] * lambda_l_plus + uR[0] * lambda_r_plus;
+            }
+            { // time FVS
+                T lambda = unit_normal[idim_time];
+                T lambda_l_plus = 0.5 * (lambda + std::abs(lambda));
+                T lambda_r_plus = 0.5 * (lambda - std::abs(lambda));
+
+                fadvn += uL[0] * lambda_l_plus + uR[0] * lambda_r_plus;
             }
             return std::array<T, nv_comp>{fadvn};
         }
     };
+
+    template<class T, int ndim_space>
+    SpacetimeBurgersUpwind(BurgersCoefficients<T, ndim_space>) -> SpacetimeBurgersUpwind<T, ndim_space+1>;
+
+    template<class T, int ndim>
+    struct SpacetimeBurgersDiffusion {
+
+        private:
+        template<class T2, std::size_t... sizes>
+        using Tensor = NUMTOOL::TENSOR::FIXED_SIZE::Tensor<T2, sizes...>;
+
+        public:
+
+        /// @brief the number of vector components
+        static constexpr std::size_t nv_comp = 1;
+        static constexpr int ndim_space = ndim - 1;
+        static constexpr int idim_time = ndim - 1;
+
+        BurgersCoefficients<T, ndim_space>& coeffs;
+
+
+        /**
+         * @brief compute the diffusive flux normal to the interface
+         * F dot n
+         * @param u the single valued solution at the interface 
+         * @param gradu the single valued gradient at the interface 
+         * @param unit normal the unit normal
+         * @return the diffusive normal flux for burgers equation
+         */
+        inline constexpr
+        auto operator()(
+            std::array<T, nv_comp> u,
+            linalg::in_tensor auto gradu,
+            Tensor<T, ndim> unit_normal
+        ) const noexcept -> std::array<T, nv_comp>
+        {
+            using namespace MATH::MATRIX_T;
+            // calculate the flux weighted by the quadrature and face metric
+            T fvisc = 0;
+            for(int idim = 0; idim < ndim_space; ++idim){
+                fvisc += coeffs.mu * gradu[0, idim] * unit_normal[idim];
+            }
+            return std::array<T, nv_comp>{fvisc};
+        }
+
+        /// @brief compute the diffusive flux normal to the interface 
+        /// given the prescribed normal gradient
+        /// TODO: consider the time dimension somehow (might need normal vector)
+        inline constexpr 
+        auto neumann_flux(
+            std::array<T, nv_comp> gradn
+        ) const noexcept -> std::array<T, nv_comp> {
+            return std::array<T, nv_comp>{coeffs.mu * gradn[0]};
+        }
+    };
+    template<class T, int ndim_space>
+    SpacetimeBurgersDiffusion(BurgersCoefficients<T, ndim_space>) -> SpacetimeBurgersDiffusion<T, ndim_space+1>;
+
 
     template<
         typename T,
         int ndim,
         class PhysicalFlux,
         class ConvectiveNumericalFlux,
-        class DiffusiveFlux
+        class DiffusiveFlux,
+        class ST_Info = std::false_type
     >
     class ConservationLawDDG {
 
@@ -311,6 +412,21 @@ namespace iceicle {
 
         using value_type = T;
 
+        // =============
+        // = Constants =
+        // =============
+
+        /// @brief access the number of dimensions through a public interface
+        static constexpr int dimensionality = ndim;
+
+        /// @brief the number of vector components
+        static constexpr std::size_t nv_comp = PhysicalFlux::nv_comp;
+        static constexpr std::size_t dnv_comp = PhysicalFlux::nv_comp;
+
+        // ==================
+        // = Public Members =
+        // ==================
+
         /// @brief switch to use the interior penalty method instead of ddg 
         bool interior_penalty = false;
 
@@ -319,13 +435,6 @@ namespace iceicle {
         /// DDGIC (sigma = 1)
         /// Default: Standard DDG (sigma = 0)
         T sigma_ic = 0.0;
-
-        /// @brief access the number of dimensions through a public interface
-        static constexpr int dimensionality = ndim;
-
-        /// @brief the number of vector components
-        static constexpr std::size_t nv_comp = PhysicalFlux::nv_comp;
-        static constexpr std::size_t dnv_comp = PhysicalFlux::nv_comp;
 
         /// @brief dirichlet value for each bcflag index
         /// as a function callback 
@@ -339,9 +448,37 @@ namespace iceicle {
         /// and output neq values in the second argument
         std::vector< std::function<void(const T*, T*)> > neumann_callbacks;
 
+        /// @brief utility for SPACETIME_PAST boundary condition
+        ST_Info spacetime_info;
+
         // ===============
         // = Constructor =
         // ===============
+        //
+        /** @brief construct from 
+         * and take ownership of the fluxes and spacetime_info
+         *
+         * @param physical_flux the actual discretization flux 
+         * F in grad(F) = 0 
+         * or for method of lines:
+         * du/dt + grad(F) = 0
+         *
+         * @param convective_numflux the numerical flux for the 
+         * convective portion (typically a Riemann Solver or Upwinding method)
+         *
+         * @param diffusive_numflux the numerical flux for the diffusive portion
+         *
+         * @param spacetime_info is the class that defines the SPACETIME_PAST connection
+         * see iceicle::SpacetimeConnection
+         */
+        constexpr ConservationLawDDG(
+            PhysicalFlux&& physical_flux,
+            ConvectiveNumericalFlux&& convective_numflux,
+            DiffusiveFlux&& diffusive_flux,
+            ST_Info&& spacetime_info
+        ) noexcept : phys_flux{physical_flux}, conv_nflux{convective_numflux}, 
+            diff_flux{diffusive_flux}, spacetime_info{spacetime_info} {}
+
 
         /** @brief construct from 
          * and take ownership of the fluxes
@@ -362,6 +499,11 @@ namespace iceicle {
             DiffusiveFlux&& diffusive_flux
         ) noexcept : phys_flux{physical_flux}, conv_nflux{convective_numflux}, 
             diff_flux{diffusive_flux} {}
+
+
+        // ============================
+        // = Discretization Interface =
+        // ============================
 
         /**
          * @brief get the timestep from cfl 
@@ -779,6 +921,153 @@ namespace iceicle {
                 }
                 break;
 
+                case BOUNDARY_CONDITIONS::SPACETIME_PAST:
+                if constexpr(!std::same_as<ST_Info, std::false_type>){
+
+                    static constexpr int neq = nv_comp;
+                    static_assert(neq == decltype(unkelL)::static_extent(), "Number of equations must match.");
+                    static_assert(neq == decltype(unkelR)::static_extent(), "Number of equations must match.");
+                    using namespace NUMTOOL::TENSOR::FIXED_SIZE;
+
+                    // Get the info from the connection
+                    TraceSpace<T, IDX, ndim>& trace_past = spacetime_info.connection_traces[trace.facidx];
+                    std::vector<T> unker_past_data{trace_past.elL.nbasis() * neq};
+                    auto uR_layout = spacetime_info.u_past.create_element_layout(trace_past.elR.elidx);
+                    dofspan unkel_past{unker_past_data, uR_layout};
+                    extract_elspan(trace_past.elR.elidx, spacetime_info.u_past, unkel_past);
+                    AbstractMesh<T, IDX, ndim>* mesh_past = spacetime_info.fespace_past.meshptr;
+
+                    // calculate the centroids of the left and right elements
+                    // in the physical domain
+                    const FiniteElement &elL = trace.elL;
+                    const FiniteElement &elR = trace_past.elR;
+                    auto centroidL = elL.geo_el->centroid(coord);
+
+                    // Basis function scratch space 
+                    std::vector<T> biL(elL.nbasis());
+                    std::vector<T> biR(elR.nbasis());
+                    std::vector<T> gradbL_data(elL.nbasis() * ndim);
+                    std::vector<T> gradbR_data(elR.nbasis() * ndim);
+                    std::vector<T> hessbL_data(elL.nbasis() * ndim * ndim);
+                    std::vector<T> hessbR_data(elR.nbasis() * ndim * ndim);
+
+                    // solution scratch space 
+                    std::array<T, neq> uL;
+                    std::array<T, neq> uR;
+                    std::array<T, neq * ndim> graduL_data;
+                    std::array<T, neq * ndim> graduR_data;
+                    std::array<T, neq * ndim> grad_ddg_data;
+                    std::array<T, neq * ndim * ndim> hessuL_data;
+                    std::array<T, neq * ndim * ndim> hessuR_data;
+
+
+                    // loop over the quadrature points 
+                    for(int iqp = 0; iqp < trace.nQP(); ++iqp){
+                        const QuadraturePoint<T, ndim - 1> &quadpt = trace.getQP(iqp);
+
+                        // calculate the riemannian metric tensor root
+                        auto Jfac = trace.face->Jacobian(coord, quadpt.abscisse);
+                        T sqrtg = trace.face->rootRiemannMetric(Jfac, quadpt.abscisse);
+
+                        // calculate the normal vector 
+                        auto normal = calc_ortho(Jfac);
+                        auto unit_normal = normalize(normal);
+
+                        // get the basis functions, derivatives, and hessians
+                        // (derivatives are wrt the physical domain)
+                        trace.evalBasisQPL(iqp, biL.data());
+                        trace_past.evalBasisQPR(iqp, biR.data());
+                        auto gradBiL = trace.evalPhysGradBasisQPL(iqp, coord, gradbL_data.data());
+                        auto gradBiR = trace_past.evalPhysGradBasisQPR(iqp, mesh_past->nodes , gradbR_data.data());
+                        auto hessBiL = trace.evalPhysHessBasisQPL(iqp, coord, hessbL_data.data());
+                        auto hessBiR = trace_past.evalPhysHessBasisQPR(iqp, mesh_past->nodes, hessbR_data.data());
+
+                        // construct the solution on the left and right
+                        std::ranges::fill(uL, 0.0);
+                        std::ranges::fill(uR, 0.0);
+                        for(int ieq = 0; ieq < neq; ++ieq){
+                            for(int ibasis = 0; ibasis < elL.nbasis(); ++ibasis)
+                                { uL[ieq] += unkelL[ibasis, ieq] * biL[ibasis]; }
+                            for(int ibasis = 0; ibasis < elR.nbasis(); ++ibasis)
+                                { uR[ieq] += unkel_past[ibasis, ieq] * biR[ibasis]; }
+                        }
+
+                        // get the solution gradient and hessians
+                        auto graduL = unkelL.contract_mdspan(gradBiL, graduL_data.data());
+                        auto graduR = unkel_past.contract_mdspan(gradBiR, graduR_data.data());
+                        auto hessuL = unkelL.contract_mdspan(hessBiL, hessuL_data.data());
+                        auto hessuR = unkel_past.contract_mdspan(hessBiR, hessuR_data.data());
+
+                        // compute convective fluxes
+                        std::array<T, neq> fadvn = conv_nflux(uL, uR, unit_normal);
+
+                        // compute a single valued gradient using DDG or IP 
+
+                        // calculate the DDG distance
+                        MATH::GEOMETRY::Point<T, ndim> phys_pt;
+                        trace.face->transform(quadpt.abscisse, coord, phys_pt);
+                        T h_ddg = 0;
+                        for(int idim = 0; idim < ndim; ++idim){
+                            h_ddg += unit_normal[idim] * (
+                                2 * (phys_pt[idim] - centroidL[idim])
+                            );
+                        }
+                        h_ddg = std::abs(h_ddg);
+                        
+                        int order = std::max(
+                            elL.basis->getPolynomialOrder(),
+                            elR.basis->getPolynomialOrder()
+                        );
+                        // Danis and Yan reccomended for NS
+                        T beta0 = std::pow(order + 1, 2);
+                        T beta1 = 1 / std::max((T) (2 * order * (order + 1)), 1.0);
+
+                        // switch to interior penalty if set
+                        if(interior_penalty) beta1 = 0.0;
+
+
+                        std::mdspan<T, std::extents<int, neq, ndim>> grad_ddg{grad_ddg_data.data()};
+                        for(int ieq = 0; ieq < neq; ++ieq){
+                            // construct the DDG derivatives
+                            T jumpu = uR[ieq] - uL[ieq];
+                            for(int idim = 0; idim < ndim; ++idim){
+                                grad_ddg[ieq, idim] = beta0 * jumpu / h_ddg * unit_normal[idim]
+                                    + 0.5 * (graduL[ieq, idim] + graduR[ieq, idim]);
+                                T hessTerm = 0;
+                                for(int jdim = 0; jdim < ndim; ++jdim){
+                                    hessTerm += (hessuR[ieq, jdim, idim] - hessuL[ieq, jdim, idim])
+                                        * unit_normal[jdim];
+                                }
+                                grad_ddg[ieq, idim] += beta1 * h_ddg * hessTerm;
+                            }
+                        }
+
+                        // construct the viscous fluxes 
+                        std::array<T, neq> uavg;
+                        for(int ieq = 0; ieq < neq; ++ieq) uavg[ieq] = 0.5 * (uL[ieq] + uR[ieq]);
+
+                        std::array<T, neq> fviscn = diff_flux(uavg, grad_ddg, unit_normal);
+
+                        // scale by weight and face metric tensor
+                        for(int ieq = 0; ieq < neq; ++ieq){
+                            fadvn[ieq] *= quadpt.weight * sqrtg;
+                            fviscn[ieq] *= quadpt.weight * sqrtg;
+                        }
+
+                        // scatter contribution 
+                        for(int itest = 0; itest < elL.nbasis(); ++itest){
+                            for(int ieq = 0; ieq < neq; ++ieq){
+                                resL[itest, 0] += (fviscn[ieq] - fadvn[ieq]) * biL[itest];
+                            }
+                        }
+                    }
+                    
+                }
+                break;
+
+                case BOUNDARY_CONDITIONS::SPACETIME_FUTURE:
+                    // NOTE: Purely upwind so continue on to use EXTRAPOLATION
+
                 // Use only the interior state and assume the exterior state (and gradients) match
                 case BOUNDARY_CONDITIONS::EXTRAPOLATION:
                 {
@@ -853,8 +1142,92 @@ namespace iceicle {
                     break;
             }
         }
+
+        template<class IDX>
+        void interface_conservation(
+            const TraceSpace<T, IDX, ndim>& trace,
+            NodeArray<T, ndim>& coord,
+            elspan auto unkelL,
+            elspan auto unkelR,
+            facspan auto res
+        ) const {
+            static constexpr int neq = nv_comp;
+            using namespace MATH::MATRIX_T;
+            using namespace NUMTOOL::TENSOR::FIXED_SIZE;
+            using FiniteElement = FiniteElement<T, IDX, ndim>;
+
+            const FiniteElement &elL = trace.elL;
+            const FiniteElement &elR = trace.elR;
+
+            // Basis function scratch space 
+            std::vector<T> biL(elL.nbasis());
+            std::vector<T> biR(elR.nbasis());
+            std::vector<T> gradbL_data(elL.nbasis() * ndim);
+            std::vector<T> gradbR_data(elR.nbasis() * ndim);
+
+            // solution scratch space 
+            std::array<T, neq> uL;
+            std::array<T, neq> uR;
+            std::array<T, neq * ndim> graduL_data;
+            std::array<T, neq * ndim> graduR_data;
+            std::array<T, neq * ndim> grad_ddg_data;
+
+            for(int iqp = 0; iqp < trace.nQP(); ++iqp){
+                const QuadraturePoint<T, ndim - 1> &quadpt = trace.getQP(iqp);
+
+                // calculate the riemannian metric tensor root
+                auto Jfac = trace.face->Jacobian(coord, quadpt.abscisse);
+                T sqrtg = trace.face->rootRiemannMetric(Jfac, quadpt.abscisse);
+
+                // calculate the normal vector 
+                auto normal = calc_ortho(Jfac);
+                auto unit_normal = normalize(normal);
+
+                // get the basis functions, derivatives, and hessians
+                // (derivatives are wrt the physical domain)
+                trace.evalBasisQPL(iqp, biL.data());
+                trace.evalBasisQPR(iqp, biR.data());
+                auto gradBiL = trace.evalPhysGradBasisQPL(iqp, coord, gradbL_data.data());
+                auto gradBiR = trace.evalPhysGradBasisQPR(iqp, coord, gradbR_data.data());
+
+                // construct the solution on the left and right
+                std::ranges::fill(uL, 0.0);
+                std::ranges::fill(uR, 0.0);
+                for(int ieq = 0; ieq < neq; ++ieq){
+                    for(int ibasis = 0; ibasis < elL.nbasis(); ++ibasis)
+                        { uL[ieq] += unkelL[ibasis, ieq] * biL[ibasis]; }
+                    for(int ibasis = 0; ibasis < elR.nbasis(); ++ibasis)
+                        { uR[ieq] += unkelR[ibasis, ieq] * biR[ibasis]; }
+                }
+
+                // get the solution gradient and hessians
+                auto graduL = unkelL.contract_mdspan(gradBiL, graduL_data.data());
+                auto graduR = unkelR.contract_mdspan(gradBiR, graduR_data.data());
+
+                // get the physical flux on the left and right
+                Tensor<T, nv_comp, ndim> fluxL = phys_flux(uL, graduL);
+                Tensor<T, nv_comp, ndim> fluxR = phys_flux(uR, graduR);
+
+                // calculate the jump in normal fluxes
+                Tensor<T, nv_comp> jumpflux{};
+                for(int ieq = 0; ieq < nv_comp; ++ieq) 
+                    jumpflux[ieq] = dot(fluxR[ieq], unit_normal) - dot(fluxL[ieq], unit_normal);
+
+                // get the norm and multiply by unit normal vector for square system
+                T jumpflux_norm = std::sqrt(norml2(jumpflux));
+
+                // scatter unit normal times interface conservation to residual
+                for(int itest = 0; itest < trace.nbasis_trace(); ++itest){
+                    T ic_res = jumpflux_norm * sqrtg * quadpt.weight;
+                    for(int idim = 0; idim < ndim; ++idim){
+                        res[itest, idim] += ic_res * unit_normal[idim];
+                    }
+                }
+            }
+        }
     };
 
+    // Deduction Guides
     template<
         class T,
         int ndim,
@@ -867,4 +1240,19 @@ namespace iceicle {
         ConvectiveNumericalFlux<T, ndim>&& convective_numflux,
         DiffusiveFlux<T, ndim>&& diffusive_flux
     ) -> ConservationLawDDG<T, ndim, PhysicalFlux<T, ndim>, ConvectiveNumericalFlux<T, ndim>, DiffusiveFlux<T, ndim>>;
+
+    template<
+        class T,
+        int ndim,
+        template<class T1, int ndim1> class PhysicalFlux,
+        template<class T1, int ndim1> class ConvectiveNumericalFlux, 
+        template<class T1, int ndim1> class DiffusiveFlux,
+        class ST_Info
+    >
+    ConservationLawDDG(
+        PhysicalFlux<T, ndim>&& physical_flux,
+        ConvectiveNumericalFlux<T, ndim>&& convective_numflux,
+        DiffusiveFlux<T, ndim>&& diffusive_flux,
+        ST_Info st_info
+    ) -> ConservationLawDDG<T, ndim, PhysicalFlux<T, ndim>, ConvectiveNumericalFlux<T, ndim>, DiffusiveFlux<T, ndim>, ST_Info>;
 }

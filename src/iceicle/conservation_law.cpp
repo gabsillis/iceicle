@@ -6,7 +6,6 @@
 
 #include "iceicle/disc/conservation_law.hpp"
 #include "Numtool/tmp_flow_control.hpp"
-#include "iceicle/dat_writer.hpp"
 #include "iceicle/mesh/mesh_lua_interface.hpp"
 #include "iceicle/fespace/fespace_lua_interface.hpp"
 #include "iceicle/program_args.hpp"
@@ -16,7 +15,6 @@
 #include "iceicle/initialization.hpp"
 #include "iceicle/pvd_writer.hpp"
 #include "iceicle/disc/bc_lua_interface.hpp"
-#include "iceicle/writer.hpp"
 #ifdef ICEICLE_USE_PETSC 
 #include "iceicle/petsc_newton.hpp"
 #elifdef ICEICLE_USE_MPI
@@ -214,6 +212,32 @@ int main(int argc, char* argv[]){
                 BurgersDiffusionFlux diffusive_flux{burgers_coeffs};
                 ConservationLawDDG disc{std::move(physical_flux), std::move(convective_flux), std::move(diffusive_flux)};
                 initialize_and_solve(script_config, fespace, disc);
+
+            } else if(eq_icase(cons_law_tbl["name"].get<std::string>(), "spacetime-burgers")) {
+                static constexpr int ndim_space = ndim - 1;
+                // get the coefficients for burgers equation
+                BurgersCoefficients<T, ndim_space> burgers_coeffs{};
+                sol::optional<T> mu_input = cons_law_tbl["mu"];
+                if(mu_input) burgers_coeffs.mu = mu_input.value();
+
+                sol::optional<sol::table> a_adv_input = cons_law_tbl["a_adv"];
+                if(a_adv_input){
+                    for(int idim = 0; idim < ndim_space; ++idim)
+                        burgers_coeffs.a[idim] = a_adv_input.value()[idim + 1];
+                }
+                sol::optional<sol::table> b_adv_input = cons_law_tbl["b_adv"];
+                if(b_adv_input){
+                    for(int idim = 0; idim < ndim_space; ++idim)
+                        burgers_coeffs.b[idim] = b_adv_input.value()[idim + 1];
+                }
+
+                // create the discretization
+                SpacetimeBurgersFlux physical_flux{burgers_coeffs};
+                SpacetimeBurgersUpwind convective_flux{burgers_coeffs};
+                SpacetimeBurgersDiffusion diffusive_flux{burgers_coeffs};
+                ConservationLawDDG disc{std::move(physical_flux), std::move(convective_flux), std::move(diffusive_flux)};
+                initialize_and_solve(script_config, fespace, disc);
+
             } else {
                 AnomalyLog::log_anomaly(Anomaly{ "No such conservation_law implemented",
                         text_not_found_tag{cons_law_tbl["name"].get<std::string>()}});

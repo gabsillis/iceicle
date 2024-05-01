@@ -106,7 +106,8 @@ namespace iceicle::io {
             for(const std::unique_ptr<writeable_field>& field : other.fields){
                 fields.push_back(field->clone());
             }
-        };
+        }
+
         DatWriter(DatWriter<T, IDX, ndim>&& other) = default;
 
         /// @brief register an fespace to this writer 

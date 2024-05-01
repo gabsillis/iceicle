@@ -1,5 +1,6 @@
 local fourier_nr = 0.0001
 
+local nelem_arg = 30
 
 local t_s = 0.5
 
@@ -11,7 +12,7 @@ return {
 
     -- create a uniform mesh
     uniform_mesh = {
-        nelem = { 100, 100 },
+        nelem = { nelem_arg, 10 },
         bounding_box = {
             min = { 0.0, 0.0 },
             max = { 1.0, 1.0 }
@@ -79,11 +80,10 @@ return {
 
     -- solver
     solver = {
-        type = "newton",
-        ivis = 1,
-        tau_abs = 1e-8,
-        tau_rel = 0,
-        kmax = 10,
+        type = "rk3-tvd",
+        dt = 1e-3,
+        tfinal = 10,
+        ivis = 100
     },
 
     -- output

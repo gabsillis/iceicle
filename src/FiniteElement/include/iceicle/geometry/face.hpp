@@ -16,20 +16,76 @@
 namespace iceicle {
     
     enum class BOUNDARY_CONDITIONS : int {
+        /// Periodic boundary condition 
         PERIODIC = 0,
+
+        /// Parallel communication - represents the boundary between processes
         PARALLEL_COM,
+
+        /// Neumann Boundary Condition 
+        ///
+        /// Lua name: neumann
+        ///
+        /// Prescribe a gradient of the solution at the boundary
+        /// NOTE: this loses meaning for non-elliptic problems so only applies to the diffusive fluxes
+        ///
+        /// The bcflag specifies the index in the list of dirichlet boundary conditions values/callbacks to use
         NEUMANN,
+
+        /// Dirichlet Boundary Condition 
+        ///
+        /// Lua name: dirichlet
+        ///
+        /// Enforce a value for the solution at the boundary
+        /// 
+        /// The bcflag specifies the index in the list of dirichlet boundary conditions values/callbacks to use
         DIRICHLET,
+
+        /// Extrapolation Boundary Condition 
+        ///
+        /// Lua name: extrapolation 
+        ///
+        /// Use the interior state as the exterior state as well
         EXTRAPOLATION,
+
+        /// Riemann Boundary Condition 
+        ///
+        /// a.k.a characteristic boundary condition 
+        ///
+        /// Use the characteristics of the pde to determine the left and right states 
         RIEMANN,
+
+        /// No-slip wall 
         NO_SLIP,
+
+        /// Slip wall 
+        ///
+        /// a.k.a Symmetric
         SLIP_WALL,
-        WALL_GENERAL, /// General Wall BC, up to the implementation of the pde
+
+        /// General Wall BC, up to the implementation of the pde
+        WALL_GENERAL, 
+
+        /// General flow inlet, uses free-stream properties
         INLET,
+
+        /// General flow outlet
         OUTLET,
-        SPACETIME_PAST, /// used for the bottom of a time slab
-        SPACETIME_FUTURE, /// used for the top of a time slab
-        INTERIOR // default condition that does nothing
+
+        /// used for the bottom of a time slab
+        ///
+        /// Lua name: spacetime-past
+        SPACETIME_PAST, 
+
+        /// used for the top of a time slab
+        ///
+        /// Lua name: sapcetime-future
+        ///
+        /// Equivalent to the EXTRAPOLATION boundary condition
+        SPACETIME_FUTURE, 
+        
+        /// default condition that does nothing
+        INTERIOR 
     };
 
     /// @brief get a human readable name for each boundary condition
@@ -66,6 +122,14 @@ namespace iceicle {
 
         if(eq_icase(bcname, "extrapolation")){
             return BOUNDARY_CONDITIONS::EXTRAPOLATION;
+        }
+
+        if(eq_icase(bcname, "spacetime-future")){
+            return BOUNDARY_CONDITIONS::SPACETIME_FUTURE;
+        }
+
+        if(eq_icase(bcname, "spacetime-past")){
+            return BOUNDARY_CONDITIONS::SPACETIME_PAST;
         }
 
         return BOUNDARY_CONDITIONS::INTERIOR;
@@ -181,12 +245,23 @@ namespace iceicle {
         virtual ~Face() = default;
 
         /** @brief get the shape that defines the reference domain */
-        virtual 
-        constexpr DOMAIN_TYPE domain_type() const = 0;
+        virtual constexpr
+        auto domain_type() const -> DOMAIN_TYPE = 0;
 
         /** @brief get the geometry polynomial order */
-        virtual 
-        constexpr int geometry_order() const noexcept = 0;
+        virtual constexpr
+        auto geometry_order() const noexcept -> int = 0;
+
+        /// @brief calculate the face number for the left element from face info
+        constexpr
+        auto face_nr_l() const noexcept -> unsigned int { return face_infoL / FACE_INFO_MOD; }
+
+        /// @brief calculate the face number for the right element from face info
+        constexpr
+        unsigned int face_nr_r() const noexcept { return face_infoR / FACE_INFO_MOD; }
+
+        /// @brief calculate the orientation for the right element from face info
+        unsigned int orientation_r() const noexcept { return face_infoR % FACE_INFO_MOD; }
 
         /**
          * @brief Get the area of the face

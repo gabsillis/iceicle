@@ -6,6 +6,7 @@
 #include "iceicle/fespace/fespace.hpp"
 #include "iceicle/geometry/face.hpp"
 #include "iceicle/mesh/mesh.hpp"
+#include "iceicle/algo.hpp"
 #include <map>
 #include <list>
 
@@ -58,15 +59,9 @@ namespace iceicle {
                 // search for a node in the past_nodes list that is close enough in all coordinates except the last 
                 // NOTE: we assume the time dimension is always the last
                 for(IDX inode_past : past_nodes){
-                    bool all_same = true;
-                    for(int idim = 0; idim < ndim - 1; ++idim){
-                        if(std::abs(mesh_current.nodes[inode_curr][idim] - mesh_past.nodes[inode_past][idim]) > 1e-8){
-                            all_same = false;
-                            break;
-                        }
-                    }
-
-                    if(all_same){
+                    std::span<T> space_coords_current = std::span{mesh_current.nodes[inode_curr].begin(), mesh_current.nodes[inode_curr].end() - 1};
+                    std::span<T> space_coords_past = std::span{mesh_past.nodes[inode_past].begin(), mesh_past.nodes[inode_past].end() - 1};
+                    if(util::eqset(space_coords_current, space_coords_past)){
                         curr_to_past_nodes[inode_curr] = inode_past;
                         break;
                     }
@@ -93,6 +88,13 @@ namespace iceicle {
         /// to nodes in the past fespace
         std::map<IDX, IDX> &curr_to_past_nodes;
 
+        /// @brief Geometric faces that represent the connection between currrent and past elements
+        std::vector< std::unique_ptr< Face<T, IDX, ndim> > > connection_faces;
+
+        /// @brief trace spaces that represent the connection between current and past elements
+        /// keyed by the current trace index
+        std::unordered_map<IDX, TraceSpace<T, IDX, ndim> > connection_traces;
+
         public:
 
         SpacetimeConnection(
@@ -118,10 +120,42 @@ namespace iceicle {
                 }
             }
 
+            IDX itrace = 0;
             for(TraceSpace &current_trace : fespace_current.get_boundary_traces()) {
-                
-            }
+                std::vector<IDX> curr_nodes_connected_idxs{current_trace.face->nodes_span()};
+                for(IDX& inode : curr_nodes_connected_idxs) inode = curr_to_past_nodes[inode];
 
+                for(IDX ibface_past : past_bface_idxs){
+                    TraceSpace past_trace = fespace_past.traces[ibface_past];
+
+                    if(util::eqset(std::span{curr_nodes_connected_idxs}, past_trace.face->nodes_span())){
+                        // make a new face
+                        Face<T, IDX, ndim>* faceptr = make_face(
+                                current_trace.elL.elidx,
+                                past_trace.elL.elidx,
+                                current_trace.elL.geo_el,
+                                past_trace.elL.geo_el,
+                                current_trace.face.face_nr_l(),
+                                past_trace.face.face_nr_l(),
+                                BOUNDARY_CONDITIONS::INTERIOR, // boundary condition doesn't have a lot of meaning here
+                                0
+                        );
+                        connection_faces.emplace_back(faceptr);
+
+                        // make a new trace space
+                        TraceSpace connecting_trace{
+                            faceptr,
+                            current_trace.elL,
+                            past_trace.elL,
+                            current_trace.trace_basis,
+                            current_trace.quadrule,
+                            current_trace.qp_evals,
+                            itrace++
+                        };
+                        connection_traces[current_trace.facidx] = connecting_trace;
+                    }
+                }
+            }
         }
     };
 

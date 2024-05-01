@@ -42,7 +42,7 @@ namespace iceicle {
         /**
          * @brief Integral over the element domains formed by 
          *        the weak form of u = f(x)
-         *        /int f(x) v dx
+         *        (f(x), v)
          * @param el the element
          * @param node_coords the node coordinates array
          * @param res the residual function (WARNING: MUST BE ZEROED OUT)

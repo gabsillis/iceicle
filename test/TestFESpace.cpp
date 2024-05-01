@@ -105,6 +105,42 @@ public:
     ) const -> void override{
         // do nothing: no interior nodes
     }
+
+        /// @brief get the number of vertices in a face
+        virtual 
+        auto n_face_vert(
+            int face_number /// [in] the face number
+        ) const -> int override {return -1;}
+
+        /// @brief get the vertex indices on the face
+        /// NOTE: These vertices must be in the same order as if get_element_vert() 
+        /// was called on the transformation corresponding to the face
+        virtual 
+        auto get_face_vert(
+            int face_number,      /// [in] the face number
+            index_type* vert_fac  /// [out] the indices of the vertices of the given face
+        ) const -> void override {}
+
+        /// @brief get the node indices on the face
+        ///
+        /// NOTE: Nodes are all the points defining geometry (vertices are endpoints)
+        ///
+        /// NOTE: These vertices must be in the same order as if get_nodes
+        /// was called on the transformation corresponding to the face
+        virtual 
+        auto get_face_nodes(
+            int face_number,      /// [in] the face number
+            index_type* nodes_fac /// [out] the indices of the nodes of the given face
+        ) const -> void override {
+            
+        }
+
+        /// @brief get the face number of the given vertices 
+        /// @return the face number of the face with the given vertices
+        virtual 
+        auto get_face_nr(
+            index_type* vert_fac /// [in] the indices of the vertices of the given face
+        ) const -> int override { return -1; };
 };
 
 class test_basis : public Basis<double, 2> {
