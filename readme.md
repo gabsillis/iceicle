@@ -3,6 +3,8 @@ Finite Element research code for Moving Discontinous Galerkin with Interface Con
 
 Main repository is at https://gitlab.com/giannigroup/iceicle (mirrored to GitHub)
 
+Checkout additional doccumentation at https://iceicle.readthedocs.io/en/latest/
+
 ## Required Libraries/Components
 - C++ 23 (Maintain builds for clang and gcc)
 - NumericalToolbox (included as a submodule)
