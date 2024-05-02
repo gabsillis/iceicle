@@ -91,6 +91,12 @@ namespace iceicle::solvers {
         /// @brief the matrix that represents the subproblem matrix
         Mat subproblem_mat;
 
+        /// @brief intermediate storage vector for J*x
+        Vec Jx;
+
+        /// @brief intermediate storage vector for J^T * r
+        Vec Jtr;
+
         /// @brief the context that may be used for the subproblem matrix
         /// in a matrix-free sense
         impl::GNSubproblemCtx subproblem_ctx;
@@ -235,6 +241,7 @@ namespace iceicle::solvers {
             MatSetSizes(this->jac, local_res_size, local_u_size, PETSC_DETERMINE, PETSC_DETERMINE);
             MatSetFromOptions(this->jac);
 
+
             // create a nxn matrix for the normal equations
             if(explicitly_form_subproblem){
                 MatSetFromOptions(subproblem_mat);
@@ -245,14 +252,17 @@ namespace iceicle::solvers {
                 MatCreate(comm, &subproblem_mat);
                 MatSetSizes(subproblem_mat, local_u_size, local_u_size, PETSC_DETERMINE, PETSC_DETERMINE);
                 // setup the context and Shell matrix
-                VecCreate(comm, &subproblem_ctx.Jx);
-                VecSetSizes(subproblem_ctx.Jx, local_res_size, PETSC_DETERMINE);
+                VecCreate(comm, &Jx);
+                VecSetSizes(Jx, local_res_size, PETSC_DETERMINE);
+                VecSetFromOptions(Jx);
 
                 subproblem_ctx.J = jac;
+                subproblem_ctx.Jx = Jx;
 
                 MatSetType(subproblem_mat, MATSHELL);
                 MatSetUp(subproblem_mat);
                 MatShellSetOperation(subproblem_mat, MATOP_MULT, (void (*)()) impl::gn_subproblem);
+                MatShellSetContext(subproblem_mat, (void *) &subproblem_ctx);
             }
 
             // Create and set up the vectors
@@ -260,6 +270,10 @@ namespace iceicle::solvers {
             VecSetSizes(res_data, local_res_size, PETSC_DETERMINE);
             VecSetFromOptions(res_data);
             
+
+            VecCreate(comm, &Jtr);
+            VecSetSizes(Jtr, local_u_size, PETSC_DETERMINE);
+            VecSetFromOptions(Jtr);
 
             VecCreate(comm, &du_data);
             VecSetSizes(du_data, local_u_size, PETSC_DETERMINE);
@@ -271,7 +285,7 @@ namespace iceicle::solvers {
 
             // default to sor preconditioner
             PetscCallAbort(comm, KSPGetPC(ksp, &pc));
-            PCSetType(pc, PCSOR);
+            PCSetType(pc, PCNONE);
 
             // Get user input (can override defaults set above)
             PetscCallAbort(comm, KSPSetFromOptions(ksp));
@@ -370,15 +384,27 @@ namespace iceicle::solvers {
 
                 MatAssemblyBegin(subproblem_mat, MAT_FINAL_ASSEMBLY);
                 MatAssemblyEnd(subproblem_mat, MAT_FINAL_ASSEMBLY);
-                
+               
+
+                // form Jtr
+                PetscCallAbort(comm, MatMultTranspose(jac, res_data, Jtr));
+
                 PetscCallAbort(comm, KSPSetOperators(ksp, subproblem_mat, subproblem_mat));
-                PetscCallAbort(comm, KSPSolve(ksp, res_data, du_data));
+                PetscCallAbort(comm, KSPSolve(ksp, Jtr, du_data));
 
                 // update u
                 if constexpr (std::is_same_v<ls_type, no_linesearch<T, IDX>>){
                     petsc::VecSpan du_view{du_data};
                     fespan du{du_view.data(), u.get_layout()};
                     axpy(-1.0, du, u);
+
+                    // x update
+                    std::vector<T> x_step_storage(mdg_layout.size());
+                    dofspan x_step{x_step_storage, mdg_layout};
+                    extract_node_selection_span(fespace.meshptr->nodes, x_step);
+                    dofspan dx{du_view.data() + u.size(), mdg_layout};
+                    axpy(-1.0, dx, x_step);
+                    scatter_node_selection_span(1.0, x_step, 0.0, fespace.meshptr->nodes);
                 } else {
                     // its linesearchin time!
 
@@ -412,11 +438,11 @@ namespace iceicle::solvers {
                         for(int idof = 0; idof < dx.ndof(); ++idof){
                             T dx_max = 0.0;
                             for(int idim = 0; idim < ndim; ++idim){
-
-                                dx_max = std::max(dx_max, std::abs(dx[idof, idim]));
+                                // dx_max = std::max(dx_max, std::abs(dx[idof, idim]));
+                                dx[idof, idim] = std::max(dx_max, std::abs(dx[idof, idim]));
                             }
-                            T node_limit = node_radius_mult * node_radii[nodeset.selected_nodes[idof]] / dx_max;
-                            alpha_node_limit = std::min(alpha_node_limit, node_limit);
+//                            T node_limit = node_radius_mult * node_radii[nodeset.selected_nodes[idof]] / dx_max;
+//                            alpha_node_limit = std::min(alpha_node_limit, node_limit);
                         }
 
                         // store the current alpha max and initial

@@ -266,6 +266,8 @@ Implicit methods assume no method of lines for time, so are either steady state,
 
    * :cpp:`"newton", "newtonls"` : Newtons method with optional linesearch (Implicit)
 
+   * :cpp:`"gauss-newton"` : Regularized Gauss-Newton method :ref:`GaussNewtonPetsc`
+
    * :cpp:`"explicit_euler"` : Explicit Euler's method 
 
    * :cpp:`"rk3-ssp", "rk3-tvd"` : Three stage Runge-Kutta explicit time integration. Strong Stability Preserving (SSP) or Total Variation Diminishing (TVD) versions
@@ -315,6 +317,16 @@ The solve stops when the residual is less than :math:`\tau_{abs} + \tau_{rel} ||
 
    * ``c1`` and ``c2`` (optional) linesearch coefficients (defaults to 1e-4 and 0.9 respectively)
 
+----------------------
+Solver Specific Params
+----------------------
+
+* ``regularization`` The regularization parameter :math:`\lambda` for regularized nonlinear solvers 
+  such as :cpp:`"gauss-newton"` type. This can be a real value or a function 
+  :code:`function f(k, res)` that takes an integer iteration number `k` and a real valued residual norm `res` 
+  and returns a real value as the regularization parameter.
+
+* ``form_subproblem_mat`` set to true if you want to explicitly form the subproblem matrix for :cpp:`"guass_newton"` type
 
 ======
 Output

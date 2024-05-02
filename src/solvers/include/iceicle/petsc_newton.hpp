@@ -65,6 +65,13 @@ namespace iceicle::solvers {
         PC pc;
 
         public:
+
+        // ============
+        // = Typedefs =
+        // ============
+        using value_type = T;
+        using index_type = IDX;
+
         /// @brief store a reference to the fespace being used 
         FESpace<T, IDX, ndim> &fespace;
 
