@@ -1,20 +1,10 @@
-/**
- * @brief newton's method solvers that use petsc as a backend
- * @author Gianni Absillis (gabsill@ncsu.edu)
- */
-#pragma once
-#include "iceicle/fe_function/fespan.hpp"
-#include "iceicle/fespace/fespace.hpp"
-#include "iceicle/form_petsc_jacobian.hpp"
-#include "iceicle/form_residual.hpp"
-#include "iceicle/nonlinear_solver_utils.hpp"
-#include "iceicle/petsc_interface.hpp"
-#include "iceicle/mdg_utils.hpp"
-#include <format>
-#include <functional>
-#include <iomanip>
-#include <iostream>
-#include <petscerror.h>
+/// @brief Regularized Gauss-Newton linesearch
+/// @author Gianni Absillis (gabsill@ncsu.edu)
+#pragma once 
+#include "iceicle/fe_function/node_set_layout.hpp"
+#include <iceicle/nonlinear_solver_utils.hpp>
+#include <iceicle/fe_function/fespan.hpp>
+#include <iceicle/petsc_interface.hpp>
 #include <petscksp.h>
 #include <petscmat.h>
 #include <petscpc.h>
@@ -23,34 +13,87 @@
 #include <petscsystypes.h>
 #include <petscvec.h>
 #include <petscviewer.h>
+#include <format>
+#include <type_traits>
 
 namespace iceicle::solvers {
 
-    /**
-     * @brief Newton solver that uses Petsc for linear solvers 
-     * @tparam T the floating point type 
-     * @tparam IDX the index type
-     * @tparam ndim the number of dimensions
-     * @tparam disc_class the discretization
-     * @tparam ls_type the linesearch type to use
-     */
+    namespace impl {
+
+        /// @brief Petsc context for the Gauss Newton subproblem
+        struct GNSubproblemCtx {
+            /// the Jacobian Matrix
+            Mat J; 
+
+            /// The vector to use as temporary storage for Jx
+            ///
+            /// WARNING: must be setup by user
+            Vec Jx;
+
+            // regularization coefficient
+            PetscScalar lambda; 
+        };
+
+        inline constexpr
+        auto gn_subproblem(Mat A, Vec x, Vec y) -> PetscErrorCode {
+            GNSubproblemCtx *ctx;
+
+            PetscFunctionBeginUser;
+            // Allocate the storage for x1
+
+            PetscCall(MatShellGetContext(A, &ctx));
+
+            // Jx = J*x
+            PetscCall(MatMult(ctx->J, x, ctx->Jx));
+
+            // y = J^T*J*x
+            PetscCall(MatMultTranspose(ctx->J, ctx->Jx, y));
+
+            // y = (J^T*J + lambda * I)*x
+            PetscCall(VecAXPY(y, ctx->lambda, x));
+
+            PetscFunctionReturn(PETSC_SUCCESS);
+        }
+    }
+
+    /// @brief Solver using a regularized Gauss-Newton method
+    /// and PETSc for matrix and vector operations
+    ///
+    /// @tparam T the real value type 
+    /// @tparam IDX the index type
     template<class T, class IDX, int ndim, class disc_class, class ls_type = no_linesearch<T, IDX>>
-    class PetscNewton {
+    class GaussNewtonPetsc {
+        public:
+
+        // ============
+        // = Typedefs =
+        // ============
+
+        using value_type = T;
+        using index_type = IDX;
+        using size_type = std::make_unsigned_t<IDX>;
 
         // ================
         // = Data Members =
         // ================
-        private:
+
         /// @brief the set of selected nodes to do mdg with 
         /// Activates mdg mode if specified 
         /// Mdg mode adds node dofs 
         /// and interface conservation equations
         nodeset_dof_map<IDX> mdg_nodeset;
 
-        bool mdg_mode;
+        // === Petsc Data Members ===
 
         /// @brief the Jacobian Matrix
         Mat jac;
+
+        /// @brief the matrix that represents the subproblem matrix
+        Mat subproblem_mat;
+
+        /// @brief the context that may be used for the subproblem matrix
+        /// in a matrix-free sense
+        impl::GNSubproblemCtx subproblem_ctx;
 
         /// @brief the storage for the residual vector
         Vec res_data;
@@ -64,7 +107,6 @@ namespace iceicle::solvers {
         /// @brief the preconditioner
         PC pc;
 
-        public:
         /// @brief store a reference to the fespace being used 
         FESpace<T, IDX, ndim> &fespace;
 
@@ -78,6 +120,7 @@ namespace iceicle::solvers {
         MPI_Comm comm;
 
         /// @brief the convergence Criteria
+        ///
         /// determines whether the solver should terminate
         ConvergenceCriteria<T, IDX> conv_criteria;
 
@@ -85,6 +128,11 @@ namespace iceicle::solvers {
         /// Then the diagnostics callback will be called every idiag timesteps
         /// (k % idiag == 0)
         IDX idiag = -1;
+
+        /// @brief set to true if you want to explicitly form the J^TJ + lambda * I matrix
+        ///
+        /// This may greatly reduce the sparsity
+        const bool explicitly_form_subproblem;
 
         /// @brief set the verbosity level to print out different diagnostic information
         ///
@@ -101,12 +149,13 @@ namespace iceicle::solvers {
         T node_radius_mult = 0.4;
 
         /// @brief diagnostics function 
+        ///
         /// very minimal by default other options are defined in this header
         /// or a custom function can be made 
         ///
         /// Passes a reference to this, the current iteration number, the residual vector, and the du vector
-        std::function<void(PetscNewton &, IDX, Vec, Vec)> diag_callback = []
-            (PetscNewton &solver, IDX k, Vec res_data, Vec du_data)
+        std::function<void(GaussNewtonPetsc&, IDX, Vec, Vec)> diag_callback = []
+            (GaussNewtonPetsc& solver, IDX k, Vec res_data, Vec du_data)
         {
             int iproc;
             MPI_Comm_rank(solver.comm, &iproc);
@@ -126,86 +175,30 @@ namespace iceicle::solvers {
         IDX ivis = -1;
 
         /// @brief the callback function for visualization during solve()
+        ///
         /// is given a reference to this when called 
         /// default is to print out a l2 norm of the residual data array
         /// Passes a reference to this, the current iteration number, the residual vector, and the du vector
-        std::function<void(PetscNewton &, IDX, Vec, Vec)> vis_callback = []
-            (PetscNewton &solver, IDX k, Vec res_data, Vec du_data)
+        std::function<void(GaussNewtonPetsc&, IDX, Vec, Vec)> vis_callback = []
+            (GaussNewtonPetsc& solver, IDX k, Vec res_data, Vec du_data)
         {
             T res_norm;
             PetscCallAbort(solver.comm, VecNorm(res_data, NORM_2, &res_norm));
-            std::cout << std::setprecision(8);
-            std::cout << "itime: " << std::setw(6) << k
-                << " | residual l2: " << std::setw(14) << res_norm
-                << std::endl;
+            std::cout << std::format("itime: {:6d} | residual l1: {:16.8f}", k, res_norm) << std::endl;
         };
+
+        /// @brief callback function for the regularization parameter
+        std::function<T(GaussNewtonPetsc&, IDX)> regularization_callback 
+            = [](GaussNewtonPetsc& solver, IDX k) -> T {
+                return 0.01;
+            };
 
         // ================
         // = Constructors =
         // ================
-
+        
         /**
-         * @brief Construct the Newton Solver 
-         * in standard (non-mdg mode) - the nodeset option is empty
-         *
-         * @param fespace the finite element space
-         * @param disc the discretization
-         * @param conv_criteria the convergence criteria for terminating the solve 
-         * @param jac (optional) give a already set up matrix to use for jacobian storage 
-         *            NOTE: this takes ownership and will destroy with destructor
-         *
-         * @param comm (optional) the MPI Communicator defaults to MPI_COMM_WORLD
-         */
-        PetscNewton(
-            FESpace<T, IDX, ndim> &fespace,
-            disc_class &disc,
-            const ConvergenceCriteria<T, IDX> &conv_criteria,
-            const ls_type& linesearch,
-            Mat jac = nullptr,
-            MPI_Comm comm = MPI_COMM_WORLD
-        ) : fespace(fespace), disc(disc), linesearch{linesearch}, mdg_nodeset{}, mdg_mode{false},
-            comm(comm), conv_criteria{conv_criteria}, jac{jac}
-        {
-            PetscInt local_res_size = fespace.dg_map.calculate_size_requirement(disc_class::dnv_comp);
-            PetscInt local_u_size = local_res_size;
-            // Create and set up the matrix if not given 
-            if(jac == nullptr){
-                MatCreate(comm, &(this->jac));
-                MatSetSizes(this->jac, local_res_size, local_u_size, PETSC_DETERMINE, PETSC_DETERMINE);
-                MatSetFromOptions(this->jac);
-            }
-
-            // Create and set up the vectors
-            VecCreate(comm, &res_data);
-            VecSetSizes(res_data, local_res_size, PETSC_DETERMINE);
-            VecSetFromOptions(res_data);
-            
-
-            VecCreate(comm, &du_data);
-            VecSetSizes(du_data, local_u_size, PETSC_DETERMINE);
-            VecSetFromOptions(du_data);
-
-            // Create the linear solver and preconditioner
-            PetscCallAbort(comm, KSPCreate(comm, &ksp));
-
-            // default to sor preconditioner
-            PetscCallAbort(comm, KSPGetPC(ksp, &pc));
-            PCSetType(pc, PCSOR);
-
-            // Get user input (can override defaults set above)
-            PetscCallAbort(comm, KSPSetFromOptions(ksp));
-        }
-
-        PetscNewton(
-            FESpace<T, IDX, ndim> &fespace,
-            disc_class &disc,
-            const ConvergenceCriteria<T, IDX> &conv_criteria,
-            Mat jac = nullptr,
-            MPI_Comm comm = MPI_COMM_WORLD
-        ) : PetscNewton(fespace, disc, conv_criteria, no_linesearch<T, IDX>{}, jac, comm) {}
-
-        /**
-         * @brief Construct the Newton Solver in MDG mode 
+         * @brief Construct the Gauss-Newton Solver in MDG mode 
          *
          * NOTE: MDG Mode:
          * - operates on a set of nodes, which is a subset of all the nodes 
@@ -220,23 +213,47 @@ namespace iceicle::solvers {
          *  @param disc the discretization 
          *  @param conv_criteria the convergence criteria for terminating the solve 
          *  @param nodeset the subset of nodes to use for mdg dofs 
+         *  @param explicitly_form_subproblem set to true if you want to form explicitly the subproblem matrix. 
+         *  This may cause a large fill as the normal equations do not preserve sparsity
          */
-        PetscNewton(
+        GaussNewtonPetsc(
             FESpace<T, IDX, ndim>& fespace,
             disc_class& disc,
             const ConvergenceCriteria<T, IDX>& conv_criteria,
             const ls_type& linesearch,
-            const nodeset_dof_map<IDX>& nodeset
+            const nodeset_dof_map<IDX>& nodeset,
+            bool explicitly_form_subproblem = false
         ) : fespace{fespace}, disc{disc}, conv_criteria{conv_criteria}, linesearch{linesearch},
-            mdg_nodeset{nodeset}, mdg_mode{true}, comm{MPI_COMM_WORLD}
+            mdg_nodeset{nodeset}, comm{PETSC_COMM_WORLD}, explicitly_form_subproblem(explicitly_form_subproblem)
         {
-            PetscInt local_res_size = fespace.dg_map.calculate_size_requirement(disc_class::dnv_comp)
+            PetscInt local_res_size = fespace.dg_map.calculate_size_requirement(disc_class::nv_comp)
                 + nodeset.selected_nodes.size() * ndim;
             PetscInt local_u_size = local_res_size;
+
             // Create and set up the matrix if not given 
             MatCreate(comm, &(this->jac));
             MatSetSizes(this->jac, local_res_size, local_u_size, PETSC_DETERMINE, PETSC_DETERMINE);
             MatSetFromOptions(this->jac);
+
+            // create a nxn matrix for the normal equations
+            if(explicitly_form_subproblem){
+                MatSetFromOptions(subproblem_mat);
+                MatProductCreate(jac, jac, NULL, &subproblem_mat);
+                MatProductSetType(subproblem_mat, MATPRODUCT_AtB);
+                MatProductSetFromOptions(subproblem_mat);
+            } else {
+                MatCreate(comm, &subproblem_mat);
+                MatSetSizes(subproblem_mat, local_u_size, local_u_size, PETSC_DETERMINE, PETSC_DETERMINE);
+                // setup the context and Shell matrix
+                VecCreate(comm, &subproblem_ctx.Jx);
+                VecSetSizes(subproblem_ctx.Jx, local_res_size, PETSC_DETERMINE);
+
+                subproblem_ctx.J = jac;
+
+                MatSetType(subproblem_mat, MATSHELL);
+                MatSetUp(subproblem_mat);
+                MatShellSetOperation(subproblem_mat, MATOP_MULT, (void (*)()) impl::gn_subproblem);
+            }
 
             // Create and set up the vectors
             VecCreate(comm, &res_data);
@@ -260,31 +277,42 @@ namespace iceicle::solvers {
             PetscCallAbort(comm, KSPSetFromOptions(ksp));
 
         }
+        /**
+         * @brief Construct the Gauss-Newton Solver 
+         * in standard (non-mdg mode) - the nodeset option is empty
+         *
+         * @param fespace the finite element space
+         * @param disc the discretization
+         * @param conv_criteria the convergence criteria for terminating the solve 
+         * @param linesearch the linesearch callable to use
+         *  @param explicitly_form_subproblem set to true if you want to form explicitly the subproblem matrix. 
+         *  This may cause a large fill as the normal equations do not preserve sparsity
+         */
+        GaussNewtonPetsc(
+            FESpace<T, IDX, ndim>& fespace,
+            disc_class &disc,
+            const ConvergenceCriteria<T, IDX>& conv_criteria,
+            const ls_type& linesearch,
+            bool explicitly_form_subproblem = false
+        ) : GaussNewtonPetsc(fespace, disc, conv_criteria, linesearch, nodeset_dof_map<IDX>{}, explicitly_form_subproblem) {}
+
         // ====================
         // = Member Functions =
         // ====================
 
-        /**
-         * @brief solve the nonlinear pde defined by disc and fespace 
-         * @tparam uLayoutPolicy the layout of the input solution 
-         * NOTE: since u is modified it must use the default accessor policy
-         *
-         * @param [in/out] u the discretized solution coefficients. 
-         * The given values are used as the initial guess to the newton method.
-         * After this function, this holds the solution 
-         * @return the number of iterations performed (can discard)
-         */
         template<class uLayoutPolicy>
         auto solve(fespan<T, uLayoutPolicy> u) -> IDX {
 
-            // TODO: find a cleaner way to do this
-
+            /// if at least one node is selected to move, we activate mdg
+            bool mdg_mode = mdg_nodeset.selected_nodes.size() > 0;
+            
             // Node selection layout for MDG (empty unless mdg active)
             node_selection_layout<IDX, ndim> mdg_layout{mdg_nodeset};
             // copy out the initial nodes
             std::vector<T> current_x_storage(mdg_layout.size());
             dofspan current_x{current_x_storage, mdg_layout};
             extract_node_selection_span(fespace.meshptr->nodes, current_x);
+
 
             // get the initial residual and jacobian
             {
@@ -299,28 +327,23 @@ namespace iceicle::solvers {
 
                     form_petsc_mdg_jacobian_fd(fespace, disc, u, mdg_res, jac);
                 }
-//                std::cout << "res_initial" << std::endl;
-//                std::cout << res;
             } // end scope of res_view
-
+            
             // set the initial residual norm
             PetscCallAbort(comm, VecNorm(res_data, NORM_2, &(conv_criteria.r0)));
 
+
             IDX k;
             for(k = 0; k < conv_criteria.kmax; ++k){
+
+                // Get the regularization parameter 
+                subproblem_ctx.lambda = regularization_callback(*this, k);
 
                 // keep around the current node locations
                 extract_node_selection_span(fespace.meshptr->nodes, current_x);
 
                 // get node radii 
                 std::vector<T> node_radii{node_freedom_radii(fespace)};
-
-                // NOTE: add regularization for geometry dofs 
-                for(IDX idiag = u.size(); idiag < mdg_layout.size(); ++idiag){
-                    T lambda = 1e-8;
-                    // idiag is a process-local index
-                    MatSetValueLocal(jac, idiag, idiag, lambda, ADD_VALUES);
-                }
 
                 // solve for du 
                 MatAssemblyBegin(jac, MAT_FINAL_ASSEMBLY);
@@ -336,7 +359,19 @@ namespace iceicle::solvers {
     //                MatView(jac, PETSC_VIEWER_STDOUT_WORLD); // for debug purposes
                 }
 
-                PetscCallAbort(comm, KSPSetOperators(ksp, this->jac, this->jac));
+                if(explicitly_form_subproblem){
+                    MatTransposeMatMult(jac, jac, MAT_REUSE_MATRIX, PETSC_DEFAULT, &subproblem_mat);
+                    PetscInt m, n;
+                    MatGetLocalSize(jac, &m, &n);
+                    for(PetscInt idiag = 0; idiag < n; ++idiag){
+                        MatSetValueLocal(jac, idiag, idiag, subproblem_ctx.lambda, ADD_VALUES);
+                    }
+                }
+
+                MatAssemblyBegin(subproblem_mat, MAT_FINAL_ASSEMBLY);
+                MatAssemblyEnd(subproblem_mat, MAT_FINAL_ASSEMBLY);
+                
+                PetscCallAbort(comm, KSPSetOperators(ksp, subproblem_mat, subproblem_mat));
                 PetscCallAbort(comm, KSPSolve(ksp, res_data, du_data));
 
                 // update u
@@ -515,39 +550,7 @@ namespace iceicle::solvers {
             }
             return k;
         }
-
-        ~PetscNewton(){
-            VecDestroy(&res_data);
-            VecDestroy(&du_data);
-            MatDestroy(&jac);
-        }
-
     };
 
-    /// Deduction guides
-    template<class T, class IDX, int ndim, class disc_class, class ls_type>
-    PetscNewton(FESpace<T, IDX, ndim> &, disc_class &,
-        const ConvergenceCriteria<T, IDX> &, const ls_type&) -> PetscNewton<T, IDX, ndim, disc_class, ls_type>;
-
-    template<class T, class IDX, int ndim, class disc_class, class ls_type>
-    PetscNewton(FESpace<T, IDX, ndim> &, disc_class &,
-        const ConvergenceCriteria<T, IDX> &, const ls_type&, Mat) -> PetscNewton<T, IDX, ndim, disc_class, ls_type>;
-
-    template<class T, class IDX, int ndim, class disc_class, class ls_type>
-    PetscNewton(FESpace<T, IDX, ndim> &, disc_class &,
-        const ConvergenceCriteria<T, IDX> &, const ls_type&, Mat, MPI_Comm) -> PetscNewton<T, IDX, ndim, disc_class, ls_type>;
-
-    /// Deduction guides
-    template<class T, class IDX, int ndim, class disc_class>
-    PetscNewton(FESpace<T, IDX, ndim> &, disc_class &,
-        const ConvergenceCriteria<T, IDX> &) -> PetscNewton<T, IDX, ndim, disc_class, no_linesearch<T, IDX>>;
-
-    template<class T, class IDX, int ndim, class disc_class>
-    PetscNewton(FESpace<T, IDX, ndim> &, disc_class &,
-        const ConvergenceCriteria<T, IDX> &, Mat) -> PetscNewton<T, IDX, ndim, disc_class, no_linesearch<T, IDX>>;
-
-    template<class T, class IDX, int ndim, class disc_class>
-    PetscNewton(FESpace<T, IDX, ndim> &, disc_class &,
-        const ConvergenceCriteria<T, IDX> &, Mat, MPI_Comm) -> PetscNewton<T, IDX, ndim, disc_class, no_linesearch<T, IDX>>;
 
 }

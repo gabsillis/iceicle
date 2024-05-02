@@ -447,6 +447,29 @@ For example, using a sine wave as an initial condition.
 Note that since the :cpp:`x` argument is just a pointer, initial conditions designed for just the spatial dimensions 
 wil have no issue being used to initilize a time-slab.
 
+=======
+Solvers
+=======
+
+----------------
+GaussNewtonPetsc
+----------------
+
+:cpp:class:`iceicle::solvers::GaussNewtonPetsc` is a nonlinear optimization solver. 
+This uses a regularized version of the Gauss-Newton method (can be seen as a hybrid between Gauss-Newton and Levenberg-Marquardt) 
+with linesearch.
+In each nonlinear iteration, it solves the following subproblem:
+
+.. math::
+
+   \Big(\mathbf{J}^T \mathbf{J} + \lambda \mathbf{I}\Big)\pmb{p} = -\mathbf{J}^T \pmb{r}
+
+and then performs a linesearch in the direction :math:`\pmb{p}` to minimize :math:`\pmb{r}`. 
+This can be viewed as Newton's method on the least squares problem using :math:`\mathbf{J}^T\mathbf{J}` as the Hessian approximation.
+
+Petsc is used for matrix operations.
+
+
 API References
 ==============
 
@@ -458,3 +481,6 @@ API References
 .. doxygentypedef:: iceicle::ProjectionFunction
 
 .. doxygenfunction:: iceicle::compute_st_node_connectivity
+
+.. doxygenclass:: iceicle::solvers::GaussNewtonPetsc
+   :members:
