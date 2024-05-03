@@ -80,12 +80,12 @@ return {
     -- solver
     solver = {
         type = "gauss-newton",
-        ivis = 1,
+        ivis = 50,
         tau_abs = 1e-8,
         tau_rel = 0,
-        kmax = 20,
+        kmax = 1000,
         regularization = function(k, res)
-            return 1e-3
+            return 0.5
         end,
         form_subproblem_mat = false,
         verbosity = 0,
@@ -96,9 +96,13 @@ return {
             alpha_max = 5,
         },
         mdg = {
-            ncycles = 200,
+            ncycles = 20,
             ic_selection_threshold = function(icycle)
-                return 0
+                if (icycle % 2 == 0) then
+                    return 1e8
+                else
+                    return 0
+                end
             end,
         },
     },

@@ -512,7 +512,7 @@ namespace iceicle::solvers {
                 }
 
                 // visualization
-                if(ivis > 0 && k % idiag == 0) {
+                if(ivis > 0 && k % ivis == 0) {
                     vis_callback(*this, k, res_data, du_data);
                 }
 

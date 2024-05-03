@@ -134,16 +134,16 @@ namespace iceicle {
             Tensor<T, ndim> unit_normal
         ) const noexcept -> std::array<T, nv_comp>
         {
-            T fadvn = 0;
+            T lambdaL = 0;
+            T lambdaR = 0;
             for(int idim = 0; idim < ndim; ++idim){
-                // flux vector splitting
-                T lambdaL = unit_normal[idim] * (coeffs.a[idim] + 0.5 * coeffs.b[idim] * uL[0]);
-                T lambdaR = unit_normal[idim] * (coeffs.a[idim] + 0.5 * coeffs.b[idim] * uR[0]);
-                T lambda_l_plus = 0.5 * (lambdaL + std::abs(lambdaL));
-                T lambda_r_plus = 0.5 * (lambdaR - std::abs(lambdaR));
-
-                fadvn += uL[0] * lambda_l_plus + uR[0] * lambda_r_plus;
+                lambdaL += unit_normal[idim] * (coeffs.a[idim] + 0.5 * coeffs.b[idim] * uL[0]);
+                lambdaR += unit_normal[idim] * (coeffs.a[idim] + 0.5 * coeffs.b[idim] * uR[0]);
             }
+
+            T lambda_l_plus = 0.5 * (lambdaL + std::abs(lambdaL));
+            T lambda_r_plus = 0.5 * (lambdaR - std::abs(lambdaR));
+            T fadvn = uL[0] * lambda_l_plus + uR[0] * lambda_r_plus;
             return std::array<T, nv_comp>{fadvn};
         }
     };
@@ -311,23 +311,19 @@ namespace iceicle {
             Tensor<T, ndim> unit_normal
         ) const noexcept -> std::array<T, nv_comp> 
         {
-            T fadvn = 0;
+            T lambdaL = 0;
+            T lambdaR = 0;
             for(int idim = 0; idim < ndim_space; ++idim){
-                // flux vector splitting
-                T lambdaL = unit_normal[idim] * (coeffs.a[idim] + 0.5 * coeffs.b[idim] * uL[0]);
-                T lambdaR = unit_normal[idim] * (coeffs.a[idim] + 0.5 * coeffs.b[idim] * uR[0]);
-                T lambda_l_plus = 0.5 * (lambdaL + std::abs(lambdaL));
-                T lambda_r_plus = 0.5 * (lambdaR - std::abs(lambdaR));
-
-                fadvn += uL[0] * lambda_l_plus + uR[0] * lambda_r_plus;
+                lambdaL += unit_normal[idim] * (coeffs.a[idim] + 0.5 * coeffs.b[idim] * uL[0]);
+                lambdaR += unit_normal[idim] * (coeffs.a[idim] + 0.5 * coeffs.b[idim] * uR[0]);
             }
-            { // time FVS
-                T lambda = unit_normal[idim_time];
-                T lambda_l_plus = 0.5 * (lambda + std::abs(lambda));
-                T lambda_r_plus = 0.5 * (lambda - std::abs(lambda));
+            // time component
+            lambdaL += unit_normal[idim_time];
+            lambdaR += unit_normal[idim_time];
 
-                fadvn += uL[0] * lambda_l_plus + uR[0] * lambda_r_plus;
-            }
+            T lambda_l_plus = 0.5 * (lambdaL + std::abs(lambdaL));
+            T lambda_r_plus = 0.5 * (lambdaR - std::abs(lambdaR));
+            T fadvn = uL[0] * lambda_l_plus + uR[0] * lambda_r_plus;
             return std::array<T, nv_comp>{fadvn};
         }
     };
