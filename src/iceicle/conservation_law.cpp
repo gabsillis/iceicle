@@ -181,7 +181,8 @@ int main(int argc, char* argv[]){
         if(cli_args["debug1"]){
             // linear advection a = [0.2, 0];
             // 2 element mesh on [0, 1]^2
-            mesh.nodes[4][0] = 0.7;
+            mesh.nodes[7][0] = 0.7;
+            mesh.nodes[4][0] = 0.55;
         }
 
         // ===================================
@@ -263,7 +264,7 @@ int main(int argc, char* argv[]){
     int ndim_arg = script_config["ndim"];
     // invoke the ndim function
     NUMTOOL::TMP::invoke_at_index(
-        NUMTOOL::TMP::make_range_sequence<int, 1, 4>{},
+        NUMTOOL::TMP::make_range_sequence<int, 1, 3>{},
         ndim_arg,
         ndim_func);
 

@@ -2,6 +2,7 @@
 
 #include "Numtool/MathUtils.hpp"
 #include "Numtool/fixed_size_tensor.hpp"
+#include "Numtool/point.hpp"
 #include "iceicle/element/finite_element.hpp"
 #include "iceicle/fe_function/fespan.hpp"
 #include "iceicle/geometry/face.hpp"

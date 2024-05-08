@@ -371,6 +371,7 @@ namespace iceicle::solvers {
                     MatView(jac, jacobian_viewer);
                     PetscViewerDestroy(&jacobian_viewer);
     //                MatView(jac, PETSC_VIEWER_STDOUT_WORLD); // for debug purposes
+                    VecView(res_data, PETSC_VIEWER_STDOUT_WORLD);
                 }
 
                 if(explicitly_form_subproblem){
@@ -429,6 +430,7 @@ namespace iceicle::solvers {
 
                     std::vector<T> r_mdg_work_storage{};
 
+
                     T ls_alpha_max_old, ls_alpha_initial_old;
                     // compute a linesearch restriction by node radius
                     // with no linesearch you'll just be YOLOing 
@@ -438,11 +440,12 @@ namespace iceicle::solvers {
                         for(int idof = 0; idof < dx.ndof(); ++idof){
                             T dx_max = 0.0;
                             for(int idim = 0; idim < ndim; ++idim){
-                                // dx_max = std::max(dx_max, std::abs(dx[idof, idim]));
-                                dx[idof, idim] = std::max(dx_max, std::abs(dx[idof, idim]));
+                                dx_max = std::max(dx_max, std::abs(dx[idof, idim]));
                             }
-//                            T node_limit = node_radius_mult * node_radii[nodeset.selected_nodes[idof]] / dx_max;
-//                            alpha_node_limit = std::min(alpha_node_limit, node_limit);
+                            T node_limit = node_radius_mult * node_radii[nodeset.selected_nodes[idof]] / dx_max;
+                            for(int idim = 0; idim < ndim; ++idim){
+                                dx[idof, idim] *= node_limit;
+                            }
                         }
 
                         // store the current alpha max and initial
