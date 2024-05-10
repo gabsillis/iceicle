@@ -129,7 +129,8 @@ int main(int argc, char* argv[]){
     cli_args.add_options(
         cli_flag{"help", "print the help text and quit."},
         cli_flag{"enable_fp_except", "enable floating point exceptions (ignoring FE_INEXACT)"},
-        cli_option{"scriptfile", "The file name for the lua script to run", parse_type<std::string_view>{}}
+        cli_option{"scriptfile", "The file name for the lua script to run", parse_type<std::string_view>{}},
+        cli_flag{"debug1", "internal debug flag"}
     );
     if(cli_args["help"]){
         cli_args.print_options(std::cout);
@@ -176,6 +177,13 @@ int main(int argc, char* argv[]){
         AbstractMesh<T, IDX, ndim> mesh =
             lua_uniform_mesh<T, IDX, ndim>(uniform_mesh_tbl.value());
         perturb_mesh(script_config, mesh);
+
+        if(cli_args["debug1"]){
+            // linear advection a = [0.2, 0];
+            // 2 element mesh on [0, 1]^2
+            mesh.nodes[7][0] = 0.7;
+            mesh.nodes[4][0] = 0.55;
+        }
 
         // ===================================
         // = create the finite element space =
@@ -256,7 +264,7 @@ int main(int argc, char* argv[]){
     int ndim_arg = script_config["ndim"];
     // invoke the ndim function
     NUMTOOL::TMP::invoke_at_index(
-        NUMTOOL::TMP::make_range_sequence<int, 1, 4>{},
+        NUMTOOL::TMP::make_range_sequence<int, 1, 3>{},
         ndim_arg,
         ndim_func);
 

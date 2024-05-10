@@ -7,33 +7,29 @@ local y_inf = 0.2
 
 return {
     -- specify the number of dimensions (REQUIRED)
-    ndim = 2,
+    ndim = 1,
 
     -- create a uniform mesh
     uniform_mesh = {
-        nelem = { 10, 10 },
+        nelem = { 10 },
         bounding_box = {
-            min = { 0.0, 0.0 },
-            max = { 1.0, 1.0 }
+            min = { 0.0 },
+            max = { 1.0 }
         },
         -- set boundary conditions
         boundary_conditions = {
             -- the boundary condition types
             -- in order of direction and side
             types = {
-                "dirichlet",       -- left side
-                "dirichlet",       -- bottom side
-                "extrapolation",   -- right side
-                "spacetime-future" -- top side
+                "dirichlet", -- left side
+                "dirichlet", -- right side
             },
 
             -- the boundary condition flags
             -- used to identify user defined state
             flags = {
                 0, -- left
-                1, -- bottom
-                0, -- right
-                0, -- top
+                1, -- right
             },
         },
         geometry_order = 1,
@@ -42,7 +38,7 @@ return {
     -- define the finite element domain
     fespace = {
         -- the basis function type (optional: default = lagrange)
-        basis = "legendre",
+        basis = "lagrange",
 
         -- the quadrature type (optional: default = gauss)
         quadrature = "gauss",
@@ -54,26 +50,22 @@ return {
     -- describe the conservation law
     conservation_law = {
         -- the name of the conservation law being solved
-        name = "spacetime-burgers",
-        mu = 1e-3,
-        a_adv = { 0.0 },
-        b_adv = { 1.0 },
+        name = "burgers",
+        mu = 0.01,
+        a_adv = { 1.0 },
+        b_adv = { 0.0 },
     },
 
     -- initial condition
-    initial_condition = function(x, t)
-        return y_inf
+    initial_condition = function(x)
+        return x
     end,
 
     -- boundary conditions
     boundary_conditions = {
         dirichlet = {
-            y_inf,
-            function(x, t)
-                -- return y_inf
-                return 1.0 / (2 * math.pi * t_s) * math.sin(2 * math.pi * x) + y_inf
-                -- return math.exp(-0.5 * ((x - 0.5) / 0.1) ^ 2) / 0.1;
-            end,
+            0.0,
+            1.0
         },
     },
 
@@ -85,7 +77,7 @@ return {
         tau_rel = 0,
         kmax = 60,
         regularization = function(k, res)
-            return 0.1
+            return 1
         end,
         form_subproblem_mat = false,
         verbosity = 0,
@@ -96,7 +88,7 @@ return {
             alpha_max = 2.0,
         },
         mdg = {
-            ncycles = 200,
+            ncycles = 2,
             ic_selection_threshold = function(icycle)
                 if (icycle % 2 == 0) then
                     return 0.0
@@ -109,6 +101,6 @@ return {
 
     -- output
     output = {
-        writer = "vtu"
+        writer = "dat"
     }
 }

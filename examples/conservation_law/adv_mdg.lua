@@ -11,7 +11,7 @@ return {
 
     -- create a uniform mesh
     uniform_mesh = {
-        nelem = { 10, 10 },
+        nelem = { 6, 6 },
         bounding_box = {
             min = { 0.0, 0.0 },
             max = { 1.0, 1.0 }
@@ -23,7 +23,7 @@ return {
             types = {
                 "dirichlet",       -- left side
                 "dirichlet",       -- bottom side
-                "extrapolation",   -- right side
+                "dirichlet",       -- right side
                 "spacetime-future" -- top side
             },
 
@@ -31,7 +31,7 @@ return {
             -- used to identify user defined state
             flags = {
                 0, -- left
-                1, -- bottom
+                0, -- bottom
                 0, -- right
                 0, -- top
             },
@@ -48,31 +48,36 @@ return {
         quadrature = "gauss",
 
         -- the basis function order
-        order = 2,
+        order = 0,
     },
 
     -- describe the conservation law
     conservation_law = {
         -- the name of the conservation law being solved
         name = "spacetime-burgers",
-        mu = 1e-3,
-        a_adv = { 0.0 },
-        b_adv = { 1.0 },
+        mu = 0.0,
+        a_adv = { 0.2 },
+        b_adv = { 0.0 },
     },
 
     -- initial condition
     initial_condition = function(x, t)
-        return y_inf
+        if (t > 5 * (x - 0.5)) then
+            return 0.0;
+        else
+            return 1.0;
+        end
     end,
 
     -- boundary conditions
     boundary_conditions = {
         dirichlet = {
-            y_inf,
             function(x, t)
-                -- return y_inf
-                return 1.0 / (2 * math.pi * t_s) * math.sin(2 * math.pi * x) + y_inf
-                -- return math.exp(-0.5 * ((x - 0.5) / 0.1) ^ 2) / 0.1;
+                if (x < 0.5) then
+                    return 0.0
+                else
+                    return 1.0
+                end
             end,
         },
     },
@@ -83,26 +88,22 @@ return {
         ivis = 1,
         tau_abs = 1e-8,
         tau_rel = 0,
-        kmax = 60,
+        kmax = 1000,
         regularization = function(k, res)
-            return 0.1
+            return 1
         end,
         form_subproblem_mat = false,
         verbosity = 0,
         linesearch = {
-            kmax = 8,
+            kmax = 3,
             type = "none",
             alpha_initial = 1.0,
-            alpha_max = 2.0,
+            alpha_max = 5,
         },
         mdg = {
-            ncycles = 200,
+            ncycles = 1,
             ic_selection_threshold = function(icycle)
-                if (icycle % 2 == 0) then
-                    return 0.0
-                else
-                    return 1e8
-                end
+                return 0
             end,
         },
     },
