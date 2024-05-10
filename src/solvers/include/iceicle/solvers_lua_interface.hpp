@@ -273,24 +273,32 @@ namespace iceicle::solvers {
                                     // offset by initial solution iteration
                                     writer.write(total_nl_vis + k + 1, (T) total_nl_vis +  k + 1);
 
-                                    // setup output for mdg data
-                                    io::PVDWriter<T, IDX, ndim> mdg_writer;
-                                    mdg_writer.register_fespace(fespace);
-                                    petsc::VecSpan res_view{res_data};
-                                    petsc::VecSpan dx_view{du_data};
+                                    sol::optional<sol::table> output_tbl_opt = config_tbl["output"];
+                                    if(output_tbl_opt){
+                                        sol::table output_tbl = output_tbl_opt.value();
+                                        sol::optional<std::string> writer_name = output_tbl["writer"];
+                                        if(writer_name && eq_icase(writer_name.value(), "vtu")){
 
-                                    // get the start indices for the petsc matrix on this processor
-                                    PetscInt proc_range_beg, proc_range_end, mdg_range_beg;
-                                    PetscCallAbort(MPI_COMM_WORLD, VecGetOwnershipRange(res_data, &proc_range_beg, &proc_range_end));
-                                    mdg_range_beg = proc_range_beg + u.size();
+                                            // setup output for mdg data
+                                            io::PVDWriter<T, IDX, ndim> mdg_writer;
+                                            mdg_writer.register_fespace(fespace);
+                                            petsc::VecSpan res_view{res_data};
+                                            petsc::VecSpan dx_view{du_data};
 
-                                    node_selection_layout<IDX, ndim> mdg_layout{nodeset};
-                                    dofspan mdg_res{res_view.data() + mdg_range_beg, mdg_layout};
-                                    dofspan mdg_dx{dx_view.data() + mdg_range_beg, mdg_layout};
-                                    mdg_writer.register_fields(mdg_res, "mdg residual");
-                                    mdg_writer.register_fields(mdg_dx, "-dx");
-                                    mdg_writer.collection_name = "mdg_data";
-                                    mdg_writer.write_vtu(total_nl_vis + k + 1, (T) total_nl_vis +  k + 1);
+                                            // get the start indices for the petsc matrix on this processor
+                                            PetscInt proc_range_beg, proc_range_end, mdg_range_beg;
+                                            PetscCallAbort(MPI_COMM_WORLD, VecGetOwnershipRange(res_data, &proc_range_beg, &proc_range_end));
+                                            mdg_range_beg = proc_range_beg + u.size();
+
+                                            node_selection_layout<IDX, ndim> mdg_layout{nodeset};
+                                            dofspan mdg_res{res_view.data() + mdg_range_beg, mdg_layout};
+                                            dofspan mdg_dx{dx_view.data() + mdg_range_beg, mdg_layout};
+                                            mdg_writer.register_fields(mdg_res, "mdg residual");
+                                            mdg_writer.register_fields(mdg_dx, "-dx");
+                                            mdg_writer.collection_name = "mdg_data";
+                                            mdg_writer.write_vtu(total_nl_vis + k + 1, (T) total_nl_vis +  k + 1);
+                                        }
+                                    }
                                 };
                                 total_nl_vis += solver.solve(u);
                             };

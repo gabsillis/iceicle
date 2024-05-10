@@ -6,6 +6,7 @@
 #include "iceicle/basis/tensor_product.hpp"
 #include "iceicle/geometry/face.hpp"
 #include "iceicle/mesh/mesh.hpp"
+#include "iceicle/geometry/geo_primitives.hpp"
 #include <random>
 #include <vector>
 #include <concepts>
@@ -123,12 +124,6 @@ namespace iceicle {
         }
     }
 
-    /// @brief a bounding box
-    template<class T, int ndim>
-    struct BoundingBox {
-        std::array<T, ndim> xmin;
-        std::array<T, ndim> xmax;
-    };
 
     /// @brief compute the bounding box of the mesh
     /// by nodes
