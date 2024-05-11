@@ -92,6 +92,12 @@ namespace iceicle::util {
         std::string text;
     };
 
+    /// @brief Anomaly when parsing a file storing the file number
+    struct file_parse_tag {
+        using anomaly_tag = file_parse_tag;
+        std::size_t line_number;
+    };
+
     /** @brief tag to mark general anomalies */
     struct general_anomaly_tag{ using anomaly_tag = general_anomaly_tag; };
 
@@ -114,6 +120,12 @@ namespace iceicle::util {
     template<>
     inline void handle_anomaly(const Anomaly<text_not_found_tag>& anomaly, std::ostream& log_out){
         log_out << "Error: " << anomaly.what() << "\"" << anomaly.data().text << "\" at:" << std::endl 
+                << anomaly.where() << std::endl << std::endl;
+    }
+
+    template<>
+    inline void handle_anomaly(const Anomaly<file_parse_tag>& anomaly, std::ostream& log_out){
+        log_out << "Error on line " << anomaly.data().line_number << ": " << anomaly.what() << "\" at:" << std::endl 
                 << anomaly.where() << std::endl << std::endl;
     }
 
