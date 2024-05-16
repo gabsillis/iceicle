@@ -34,7 +34,7 @@ namespace iceicle::solvers {
             PetscScalar lambda; 
         };
 
-        inline constexpr
+        inline
         auto gn_subproblem(Mat A, Vec x, Vec y) -> PetscErrorCode {
             GNSubproblemCtx *ctx;
 

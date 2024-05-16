@@ -36,6 +36,33 @@ namespace iceicle {
         IDX _nodes[transformation.n_nodes()];
 
         public:
+
+        // ================
+        // = Constructors =
+        // ================
+
+        constexpr
+        HypercubeElement(std::array<IDX, decltype(transformation)::n_nodes()> node_idxs)
+        {
+            std::ranges::copy(node_idxs, _nodes);
+        }
+
+        constexpr 
+        HypercubeElement() = default;
+
+        constexpr 
+        HypercubeElement(const HypercubeElement<T, IDX, ndim, Pn>&) = default;
+
+        constexpr
+        HypercubeElement(HypercubeElement<T, IDX, ndim, Pn>&&) = default;
+
+        constexpr
+        auto operator=(const HypercubeElement<T, IDX, ndim, Pn>&) -> HypercubeElement<T, IDX, ndim, Pn>& = default;
+
+        constexpr 
+        auto operator=(HypercubeElement<T, IDX, ndim, Pn>&&) -> HypercubeElement<T, IDX, ndim, Pn>& = default;
+
+
         // ====================
         // = GeometricElement =
         // =  Implementation  =
@@ -73,6 +100,10 @@ namespace iceicle {
             transformation.regularize_nodes(_nodes, node_coords);
         }
 
+        auto n_faces() const -> int override { return 2 * ndim; }
+
+        auto face_domain_type(int face_number) const -> DOMAIN_TYPE override { return DOMAIN_TYPE::HYPERCUBE; }
+
         /// @brief get the number of vertices in a face
         auto n_face_vert(
             int face_number /// [in] the face number
@@ -83,7 +114,6 @@ namespace iceicle {
         /// @brief get the vertex indices on the face
         /// NOTE: These vertices must be in the same order as if get_element_vert() 
         /// was called on the transformation corresponding to the face
-        virtual 
         auto get_face_vert(
             int face_number,      /// [in] the face number
             index_type* vert_fac  /// [out] the indices of the vertices of the given face
@@ -97,11 +127,10 @@ namespace iceicle {
         ///
         /// NOTE: These vertices must be in the same order as if get_nodes
         /// was called on the transformation corresponding to the face
-        virtual 
         auto get_face_nodes(
             int face_number,      /// [in] the face number
             index_type* nodes_fac /// [out] the indices of the nodes of the given face
-        ) const -> void {
+        ) const -> void override {
             transformation.get_face_nodes(face_number, _nodes, nodes_fac);
         };
 
@@ -115,5 +144,11 @@ namespace iceicle {
 
         /** @brief set the node index at idx to value */
         void setNode(int idx, int value){_nodes[idx] = value; }
+
+        /// @brief set the node indices from an array
+        void set_nodes(std::array<IDX, decltype(transformation)::n_nodes()> nodes_arg){
+            for(int inode = 0; inode < decltype(transformation)::n_nodes(); ++inode)
+                _nodes[inode] = nodes_arg[inode];
+        }
     };
 }

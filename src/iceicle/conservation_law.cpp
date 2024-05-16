@@ -173,9 +173,9 @@ int main(int argc, char* argv[]){
         // ==============
         // = Setup Mesh =
         // ==============
-        sol::optional<sol::table> uniform_mesh_tbl = script_config["uniform_mesh"];
-        AbstractMesh<T, IDX, ndim> mesh =
-            lua_uniform_mesh<T, IDX, ndim>(uniform_mesh_tbl.value());
+        auto mesh_opt = construct_mesh_from_config<T, IDX, ndim>(script_config);
+        if(!mesh_opt) return 1; // exit if we have no valid mesh
+        AbstractMesh<T, IDX, ndim> mesh = mesh_opt.value();
         perturb_mesh(script_config, mesh);
 
         if(cli_args["debug1"]){

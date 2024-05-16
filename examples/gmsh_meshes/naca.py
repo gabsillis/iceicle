@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 # parameters 
 
 # number of points on one of the airfoil surfaces
-npoints = 10
+npoints = 300
 
 # naca airfoil specification
 naca = [0, 0, 1, 2]
@@ -22,8 +22,8 @@ p = naca[1] / 10.0
 t = naca[2] / 10.0 + naca[3] / 100.0
 
 # mesh size parameter
-lc_airfoil = 0.1
-lc_freestream = 0.5
+lc_airfoil = 0.02
+lc_freestream = 5.0
 
 # ====================
 # = make the airfoil =
@@ -81,7 +81,7 @@ bl2 = gmsh.model.geo.addLine(bp2, bp3);
 bl3 = gmsh.model.geo.addLine(bp3, bp4);
 bl4 = gmsh.model.geo.addLine(bp4, bp1);
 bbox_loop = gmsh.model.geo.addCurveLoop([bl1, bl2,  bl3, bl4])
-gmsh.model.geo.addPlaneSurface([bbox_loop, airfoil_loop])
+domain = gmsh.model.geo.addPlaneSurface([bbox_loop, airfoil_loop])
 
 # =======================
 # = Boundary Conditions =
@@ -89,6 +89,7 @@ gmsh.model.geo.addPlaneSurface([bbox_loop, airfoil_loop])
 gmsh.model.addPhysicalGroup(1, [bl1, bl3, airfoil_spline], 1)
 gmsh.model.addPhysicalGroup(1, [bl2], 2)
 gmsh.model.addPhysicalGroup(1, [bl4], 3)
+gmsh.model.addPhysicalGroup(2, [domain], 4)
 
 gmsh.model.geo.synchronize()
 gmsh.option.setNumber("Mesh.Algorithm", 11)  

@@ -351,6 +351,77 @@ and the reference element domain with :math:`\hat{\mathcal{K}}`
 
 .. doxygenconcept:: iceicle::transformations::has_get_face_vert
 
+==================
+Geometric Entities
+==================
+There are two primary abstractions iceicle defines for geometric entities used in finite element computations:
+:cpp:class:`iceicle::GeometricElement`, which represents the physical domain in :math:`\mathbb{R}^d`, and 
+:cpp:class:`iceicle::Face`, which represents the physical domain of the intersection of two 
+:cpp:class:`iceicle::GeometricElement` s. 
+
+---------------------------------
+Element Coordinate Transformation
+---------------------------------
+:cpp:class:`iceicle::GeometricElement` implementations must implement the transformation :math:`T:\mathbf{\xi}\mapsto\mathbf{x}`
+from a reference domain :math:`\hat{\mathcal{K}} \subset \mathbb{R}^d` 
+to the physical domain :math:`\mathcal{K} \subset \mathbb{R}^d` 
+where :math:`\mathbf{\xi}\in\hat{\mathcal{K}}, \mathbf{x}\in\mathcal{K}`. 
+The degrees of freedom that define the physical domain are termed "nodes".
+A :cpp:class:`iceicle::GeometricElement` will just store the indices to the coordinate degrees of freedom 
+which are stored in an :cpp:type:`iceicle::NodeArray`.
+
+:cpp:func:`iceicle::GeometricElement::transform` represents the transformation :math:`T` provided the :cpp:type:`iceicle::NodeArray`.
+
+:cpp:func:`iceicle::GeometricElement::Jacobian` represents the Jacobian of the transformation :math:`\mathbf{J} = \frac{\partial T}{\partial \mathbf{\xi}}`, 
+alternatively :math:`\mathbf{J}` can be written as :math:`\frac{\partial \mathbf{x}}{\partial \mathbf{\xi}}`.
+
+:cpp:func:`iceicle::GeometricElement::Hessian` represents the hessian of the transformation 
+:math:`\mathbf{H} =\frac{\partial^2 T}{\partial \mathbf{\xi}\partial \mathbf{\xi}}` or :math:`\frac{\partial \mathbf{x}}{\partial \mathbf{\xi}\partial \mathbf{\xi}}`.
+
+
+.. tikz:: Element Transformation
+   :libs: arrows
+
+   \path[shape=circle]
+   (-1,-1) node[draw,scale=0.5](a1){}
+   ( 1,-1) node[draw,scale=0.5](a2){}
+   ( 1, 1) node[draw,scale=0.5](a3){}
+   (-1, 1) node[draw,scale=0.5](a4){};
+   \draw[thick] (a1) -- (a2) -- (a3) -- (a4) -- (a1);
+
+   \draw[->] (-2,-1.5) -- (-1.5,-1.5) node[anchor=west, scale=0.7]{$\xi$};
+   \draw[->] (-2,-1.5) -- (-2.0,-1.0) node[anchor=south, scale=0.7]{$\eta$};
+
+   \draw[->, thick] (1.5, 0.0) -- (3.0, 0.0);
+
+   \path[shape=circle]
+   (4.0,-1) node[draw,scale=0.5](b1){}
+   ( 5.8,-0.7) node[draw,scale=0.5](b2){}
+   ( 6.0, 0.9) node[draw,scale=0.5](b3){}
+   (4.2, 1.1) node[draw,scale=0.5](b4){};
+   \draw[thick] (b1) -- (b2) -- (b3) -- (b4) -- (b1);
+
+   \draw[->] (3.0,-1.5) -- (3.5,-1.5) node[anchor=west, scale=0.7]{$x$};
+   \draw[->] (3.0,-1.5) -- (3.0,-1.0) node[anchor=south, scale=0.7]{$y$};
+
+-------------------
+Element Node Access
+-------------------
+Access to the indices of the nodes is provided in the following interfaces:
+
+:cpp:func:`iceicle::GeometricElement::nodes` gives a pointer to the start of the array of indices.
+
+:cpp:func:`iceicle::GeometricElement::nodes_span` gives the array of indices as a :cpp:class`std::span`
+
+:cpp:func:`iceicle::GeometricElement::n_nodes` gives the size of the array of indices (the number of nodes)
+
+------------------
+Domain Definitions
+------------------
+
+Domains are specified by the domain type and polynomial order of basis functions for the nodes, accesible through 
+:cpp:func:`iceicle::GeometricElement::domain_type` and :cpp:func:`iceicle::GeometricElement::geometry_order` respectively.
+
 ==============
 Finite Element
 ==============
@@ -484,6 +555,14 @@ Petsc is used for matrix operations.
 
 API References
 ==============
+
+.. doxygenclass:: iceicle::GeometricElement
+   :members:
+
+.. doxygenclass:: iceicle::Face
+   :members:
+
+.. doxygentypedef:: iceicle::NodeArray
 
 .. doxygenenum:: iceicle::BOUNDARY_CONDITIONS
 

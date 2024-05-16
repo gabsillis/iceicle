@@ -210,13 +210,13 @@ public:
   }
 
   /** @brief get the number of nodes that define the transformation */
-  constexpr int n_nodes() const { return nnode; }
+  static constexpr int n_nodes() { return nnode; }
 
   /** @brief the number of element vertices */
-  constexpr int n_vert() const { return nvert; }
+  static constexpr int n_vert() { return nvert; }
 
   /** @brief the number of vertices on the given face */
-  constexpr int n_facevert(int faceNr) { return nfacevert;} 
+  constexpr int n_facevert(int faceNr) const { return nfacevert;} 
 
   /**
     * @brief get a pointer to the array of Lagrange points in the reference domain

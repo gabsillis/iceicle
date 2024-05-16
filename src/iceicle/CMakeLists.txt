@@ -1,7 +1,3 @@
-add_executable(iceicle_1d iceicle_1d.cpp)
-target_link_libraries(iceicle_1d iceicle_lib)
-target_link_libraries(iceicle_1d ${MPI_CXX_LIBRARIES})
-
 if(ICEICLE_USE_OPENGL) 
     SET(IMGUI_SOURCES 
         ${imgui_SOURCE_DIR}/imgui.cpp

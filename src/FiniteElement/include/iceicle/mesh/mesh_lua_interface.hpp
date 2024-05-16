@@ -3,7 +3,9 @@
 #include "iceicle/anomaly_log.hpp"
 #include "iceicle/geometry/face.hpp"
 #include "iceicle/mesh/mesh_utils.hpp"
+#include "iceicle/mesh/gmsh_utils.hpp"
 #include "iceicle/string_utils.hpp"
+#include <fstream>
 #include <iceicle/mesh/mesh.hpp>
 #include <iceicle/lua_utils.hpp>
 #include <optional>
@@ -58,6 +60,24 @@ namespace iceicle {
         return AbstractMesh<T, IDX, ndim>{xmin, xmax, nelem, geometry_order, bctypes, bcflags};
     }
 
+    /// @brief set up a mesh from a gmsh file 
+    /// @param mesh_table the lua table to describe the gmsh file and mesh setup
+    /// @return the mesh read from the input file
+    template<class T, class IDX, int ndim>
+    [[nodiscard]] inline 
+    auto lua_read_gmsh(sol::table& mesh_table) -> std::optional<AbstractMesh<T, IDX, ndim>> {
+        using namespace iceicle::util;
+        
+        // get the filename to read and open the file 
+        sol::optional<std::string> filename = mesh_table["file"];
+        if(filename) {
+            std::ifstream infile{filename.value()};
+            return read_gmsh<T, IDX, ndim>(infile);
+        } else {
+            AnomalyLog::log_anomaly(Anomaly{"In the gmsh table \"file\" must be specified", general_anomaly_tag{}});
+            return std::nullopt;
+        }
+    }
 
     /**
      * @brief construct a uniform mesh from inputs provided in a lua table
@@ -106,12 +126,21 @@ namespace iceicle {
     template<class T, class IDX, int ndim>
     std::optional<AbstractMesh<T, IDX, ndim>> construct_mesh_from_config(sol::table& config){
         using namespace util;
-        if(config["uniform_mesh"]){
-            return lua_uniform_mesh<T, IDX, ndim>(config["uniform_mesh"]);
-        } else {
-            AnomalyLog::log_anomaly(Anomaly{"No recognized mesh configuration found", general_anomaly_tag{}});
-            return std::nullopt;
-        }
+        // try uniform mesh
+        sol::optional<sol::table> mesh_table = config["uniform_mesh"];
+        if(mesh_table){
+            return lua_uniform_mesh<T, IDX, ndim>(mesh_table.value());
+        } 
+
+        // try gmsh
+        mesh_table = config["gmsh"];
+        if(mesh_table){
+            return lua_read_gmsh<T, IDX, ndim>(mesh_table.value());
+        } 
+
+        // no valid mesh config found
+        AnomalyLog::log_anomaly(Anomaly{"No recognized mesh configuration found", general_anomaly_tag{}});
+        return std::nullopt;
     }
 
     /// @brief perturb the nodes of the mesh if applicable

@@ -141,6 +141,11 @@ public:
         auto get_face_nr(
             index_type* vert_fac /// [in] the indices of the vertices of the given face
         ) const -> int override { return -1; };
+
+
+        auto n_faces() const -> int override { return 0; }
+
+        auto face_domain_type(int face_number) const -> DOMAIN_TYPE override { return DOMAIN_TYPE::N_DOMAIN_TYPES; }
 };
 
 class test_basis : public Basis<double, 2> {

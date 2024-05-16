@@ -13,6 +13,23 @@
 
 namespace iceicle {
 
+
+    /// @brief find and create all the interior faces for a mesh
+    template<class T, class IDX, int ndim>
+    auto find_interior_faces(
+        AbstractMesh<T, IDX, ndim>& mesh
+    ) {
+        using namespace util;
+        // if elements share at least ndim points, then they have a face
+        for(IDX ielem = 0; ielem < mesh.nelem(); ++ielem){
+            for(IDX jelem = ielem + 1; jelem < mesh.nelem(); ++jelem){
+                std::vector<IDX> node_intersect = set_intersection(
+                        mesh.elements[ielem]->nodes_span(), mesh.elements[jelem]->nodes_span());
+                
+            }
+        }
+    }
+
     /**
      * @brief create a 2 element mesh with no boundary faces 
      * This is good for testing numerical fluxes 
