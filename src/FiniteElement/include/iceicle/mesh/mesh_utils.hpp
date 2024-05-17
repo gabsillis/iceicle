@@ -22,10 +22,16 @@ namespace iceicle {
         using namespace util;
         // if elements share at least ndim points, then they have a face
         for(IDX ielem = 0; ielem < mesh.nelem(); ++ielem){
+            int max_faces = mesh.elements[ielem]->n_faces();
+            int found_faces = 0;
             for(IDX jelem = ielem + 1; jelem < mesh.nelem(); ++jelem){
-                std::vector<IDX> node_intersect = set_intersection(
-                        mesh.elements[ielem]->nodes_span(), mesh.elements[jelem]->nodes_span());
-                
+                auto face_opt = make_face(ielem, jelem, mesh.elements[ielem], mesh.elements[jelem]);
+                if(face_opt){
+                    mesh.faces.push_back(face_opt.value());
+                    // short circuit if all the faces have been found
+                    ++found_faces;
+                    if(found_faces == max_faces) break;
+                }
             }
         }
     }

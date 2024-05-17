@@ -86,9 +86,10 @@ domain = gmsh.model.geo.addPlaneSurface([bbox_loop, airfoil_loop])
 # =======================
 # = Boundary Conditions =
 # =======================
-gmsh.model.addPhysicalGroup(1, [bl1, bl3, airfoil_spline], 1)
-gmsh.model.addPhysicalGroup(1, [bl2], 2)
-gmsh.model.addPhysicalGroup(1, [bl4], 3)
+gmsh.model.addPhysicalGroup(1, [airfoil_spline], 1)
+gmsh.model.addPhysicalGroup(1, [bl1, bl3], 2)
+gmsh.model.addPhysicalGroup(1, [bl2], 3)
+gmsh.model.addPhysicalGroup(1, [bl4], 4)
 gmsh.model.addPhysicalGroup(2, [domain], 4)
 
 gmsh.model.geo.synchronize()

@@ -72,7 +72,21 @@ namespace iceicle {
         sol::optional<std::string> filename = mesh_table["file"];
         if(filename) {
             std::ifstream infile{filename.value()};
-            return read_gmsh<T, IDX, ndim>(infile);
+
+            // get the boundary definitions
+            std::map<int, std::tuple<BOUNDARY_CONDITIONS, int>> bcmap;
+            sol::optional<sol::table> bctable_opt = mesh_table["bc_definitions"];
+            if(bctable_opt){
+                sol::table bctable = bctable_opt.value();
+                for(int idef = 1; idef <= bctable.size(); ++idef){ // 1 indexed for lua
+                    sol::table def = bctable[idef];
+                    std::string bcname = def[1];
+                    sol::optional<int> bcflag = def[2];
+                    bcmap[idef] = std::tuple{get_bc_from_name(bcname), bcflag.value_or(0)};
+                }
+            }
+
+            return read_gmsh<T, IDX, ndim>(infile, bcmap);
         } else {
             AnomalyLog::log_anomaly(Anomaly{"In the gmsh table \"file\" must be specified", general_anomaly_tag{}});
             return std::nullopt;

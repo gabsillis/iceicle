@@ -118,6 +118,7 @@ namespace iceicle {
     /// @param bctype the boundary condition type 
     /// @param bcflag the integer falg for the boundary condition
     /// @return a pointer to the created face if applicable
+    /// NOTE: if a face is created, deletion of the face is the caller's responsibility
     template<class T, class IDX, int ndim>
     [[nodiscard]] inline constexpr 
     auto make_face(

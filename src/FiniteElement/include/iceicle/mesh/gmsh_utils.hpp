@@ -1,13 +1,18 @@
 /// @brief Utilities for dealing with gmsh input files 
 /// @author Gianni Absillis (gabsill@ncsu.edu)
 
+#include "iceicle/fe_definitions.hpp"
+#include "iceicle/geometry/face.hpp"
+#include "iceicle/geometry/face_utils.hpp"
 #include "iceicle/geometry/hypercube_element.hpp"
 #include "iceicle/mesh/mesh.hpp"
 #include "iceicle/anomaly_log.hpp"
+#include "iceicle/mesh/mesh_utils.hpp"
 #include "iceicle/string_utils.hpp"
 #include <cstdio>
 #include <istream>
 #include <sstream>
+#include <list>
 #include <string>
 #include <map>
 
@@ -201,11 +206,127 @@ namespace iceicle {
             }
         }
 
+        /// @brief get the number of nodes for a given gmsh element type
+        constexpr inline 
+        auto gmsh_nnode(int element_type) -> int {
+            switch(element_type){
+                case 1:
+                    return 2;
+                case 2:
+                    return 3;
+                case 3:
+                    return 4;
+                case 4:
+                    return 4;
+                case 5:
+                    return 8;
+                case 6:
+                    return 6;
+                case 7:
+                    return 5;
+                case 8:
+                    return 3;
+                case 9:
+                    return 6;
+                case 10:
+                    return 9;
+                case 11:
+                    return 10;
+                case 12:
+                    return 27;
+                case 13:
+                    return 18;
+                case 14:
+                    return 14;
+                case 15:
+                    return 1;
+                default:
+                {
+                    util::AnomalyLog::log_anomaly(util::Anomaly{
+                            "number of nodes not defined for element type: " 
+                            + std::to_string(element_type), util::general_anomaly_tag{}});
+                    return 0;
+                }
+            }
+        }
+
+        struct bdy_face_parse {
+            int entity_tag;
+            int element_type;
+            std::vector<std::size_t> nodes;
+        };
+
+        /// @brief given a boundary face info, create the face and add it to the element
+        template<class T, class IDX, int ndim>
+        auto create_boundary_faces(
+            std::vector<bdy_face_parse>& parsed_info,
+            std::map<int, std::tuple<BOUNDARY_CONDITIONS, int>>& bcmap,
+            AbstractMesh<T, IDX, ndim>& mesh
+        ) -> void {
+            using namespace util;
+            using namespace NUMTOOL::TENSOR::FIXED_SIZE;
+            // find the faces surrounding elements to reduce search space
+            std::vector<std::vector<IDX>> faces_surr_el(mesh.nelem());
+            for(IDX ifac = mesh.interiorFaceStart; ifac < mesh.interiorFaceEnd; ++ifac){
+                faces_surr_el[mesh.faces[ifac]->elemL].push_back(ifac);
+                faces_surr_el[mesh.faces[ifac]->elemR].push_back(ifac);
+            }
+
+            //indices of elements that don't have all their faces
+            std::vector<IDX> elements_missing_faces{};
+            for(IDX ielem = 0; ielem < mesh.nelem(); ++ielem){
+                if(faces_surr_el[ielem].size() < mesh.elements[ielem]->n_faces()){
+                    elements_missing_faces.push_back(ielem);
+                }
+            }
+
+            // find the boundary face
+            for(bdy_face_parse& fac_info: parsed_info){
+                for(IDX ielem : elements_missing_faces){
+                    bool found = false;
+                    GeometricElement<T, IDX, ndim> *elptr = mesh.elements[ielem];
+                    switch(fac_info.element_type){
+                        // 2 node line
+                        case 1:
+                        {
+                            if constexpr(ndim == 2){
+                                if(elptr->domain_type() == DOMAIN_TYPE::HYPERCUBE){
+                                    Tensor<IDX, 2> nodes{{(IDX) fac_info.nodes[0], (IDX) fac_info.nodes[1]}};
+                                    int face_nr = elptr->get_face_nr(nodes.data());
+                                    if(face_nr >= 0){
+                                        found = true;
+                                        using Face_t = HypercubeFace<T, IDX, ndim, 1>;
+                                        std::tuple<BOUNDARY_CONDITIONS, int> bcinfo = bcmap[fac_info.entity_tag];
+                                        auto face = new HypercubeFace<T, IDX, ndim, 1>(
+                                            ielem, ielem, nodes, face_nr, face_nr, 0, std::get<0>(bcinfo), std::get<1>(bcinfo));
+                                        mesh.faces.push_back(face);
+                                        faces_surr_el[ielem].push_back(mesh.faces.size() - 1);
+                                    }
+
+                                } else {
+                                    AnomalyLog::log_anomaly(Anomaly{"unsupported el type", general_anomaly_tag{}});
+                                }
+                            } 
+                        }
+
+                        default:
+                            AnomalyLog::log_anomaly(Anomaly{"unsupported gmsh element type", general_anomaly_tag{}});
+                        break;
+                    }
+                    if(found) break;
+                }
+            }
+
+            mesh.bdyFaceStart = mesh.interiorFaceEnd;
+            mesh.bdyFaceEnd = mesh.faces.size();
+        }
+
         template<class T, class IDX, int ndim>
         auto read_elements(
             std::string line,
             std::size_t& line_no,
             std::istream& infile,
+            std::map<int, std::tuple<BOUNDARY_CONDITIONS, int>>& bcmap,
             AbstractMesh<T, IDX, ndim>& mesh
         ) -> void {
 
@@ -214,6 +335,7 @@ namespace iceicle {
             sscanf(line.c_str(), "%ld %ld %ld %ld", &nblocks, &nelem, &min_eltag, &max_eltag);
             mesh.elements.resize(max_eltag + 1);
 
+            std::vector<bdy_face_parse> boundary_face_infos{};
             for(int iblock = 0; iblock < nblocks; ++iblock){
                 std::getline(infile, line); 
                 line_no++;
@@ -226,6 +348,20 @@ namespace iceicle {
 
                 if (entity_dim == ndim-1){
                     // these are boundary face definitions
+                    // read in the nodes and store with entity tag for later
+                    for(int ifac = 0; ifac < nelem_block; ++ifac){
+                        int nnode = gmsh_nnode(element_type);
+                        std::getline(infile, line);
+                        ++line_no;
+                        std::istringstream linestream{line};
+                        int element_tag;
+                        linestream >> element_tag;
+                        bdy_face_parse parsed_face{entity_tag, element_type, std::vector<std::size_t>(nnode)};
+                        for(int inode = 0; inode < nnode; ++inode){
+                            linestream >> parsed_face.nodes[inode];
+                        }
+                        boundary_face_infos.push_back(parsed_face);
+                    }
 
                 } else if (entity_dim == ndim){
                     // these are internal element definitions
@@ -251,14 +387,24 @@ namespace iceicle {
             }
             mesh.elements.resize(last_el + 1);
 
-            
+            // generate interior faces
+            find_interior_faces(mesh);
+            mesh.interiorFaceStart = 0;
+            mesh.interiorFaceEnd = mesh.faces.size();
+
+            // generate boundary faces
+            create_boundary_faces(boundary_face_infos, bcmap, mesh);
         }
     }
 
     /// @brief create a mesh from a gmsh file 
     /// @param infile the gmsh file stream to read
+    /// @param bcmap maps integer physical tags to boundary condition information
+    /// The first physical tag for each boundary entity will be used to determine the boundary condition 
+    /// that physical tag should have an entry in the map:
+    /// a tuple which contains the boundary condition type and integer boundary flag. 
     template<class T, class IDX, int ndim>
-    auto read_gmsh(std::istream& infile) -> AbstractMesh<T, IDX, ndim> {
+    auto read_gmsh(std::istream& infile, std::map<int, std::tuple<BOUNDARY_CONDITIONS, int>>& bcmap) -> AbstractMesh<T, IDX, ndim> {
         using namespace impl::gmsh;
         using namespace util;
 
@@ -284,6 +430,9 @@ namespace iceicle {
                     }
                     if(eq_icase(line, "$Nodes")){
                         state = READER_STATE::NODES;
+                    }
+                    if(eq_icase(line, "$Elements")){
+                        state = READER_STATE::ELEMENTS;
                     }
                     // otherwise we skip line
                     break;
@@ -326,6 +475,12 @@ namespace iceicle {
                     }
                     break;
 
+                case READER_STATE::ELEMENTS:
+                    if(eq_icase(line, "$EndElements")){
+                        state = READER_STATE::TOP_LEVEL;
+                    } else {
+                        read_elements(line, line_no, infile, bcmap, mesh);
+                    }
                 default:
                     break;
             }

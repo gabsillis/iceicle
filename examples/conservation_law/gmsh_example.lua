@@ -7,6 +7,20 @@ return {
     -- read in a mesh from gmsh
     gmsh = {
         file = "../gmsh_meshes/naca.msh",
+        bc_definitions = {
+            -- 1: airfoil boundary (dirichlet, flag 0)
+            { "dirichlet",    0 },
+
+            -- 2: top and bottom walls (dirichlet, flag 1)
+            { "dirichlet",    1 },
+
+            -- 3: inlet (neumann, flag 0)
+            { "neumann",      0 },
+
+            -- 4: outlet (extrapolation (flag omitted defaults to 0))
+            { "extrapolation" },
+
+        },
     },
 
     -- define the finite element domain
@@ -54,6 +68,6 @@ return {
 
     -- output
     output = {
-        writer = "vtu"
+        writer = "vtu",
     }
 }

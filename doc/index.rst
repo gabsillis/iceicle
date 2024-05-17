@@ -349,8 +349,6 @@ We denote the Physical domain with :math:`\Omega` and the reference domain with 
 Similarly the physical domain of a given element is notated :math:`\mathcal{K}` 
 and the reference element domain with :math:`\hat{\mathcal{K}}`
 
-.. doxygenconcept:: iceicle::transformations::has_get_face_vert
-
 ==================
 Geometric Entities
 ==================
@@ -421,6 +419,28 @@ Domain Definitions
 
 Domains are specified by the domain type and polynomial order of basis functions for the nodes, accesible through 
 :cpp:func:`iceicle::GeometricElement::domain_type` and :cpp:func:`iceicle::GeometricElement::geometry_order` respectively.
+
+---------------
+Face Generation
+---------------
+:code:`face_utils.hpp` contains a utility :cpp:func:`make_face` 
+to generate faces by finding the intersection between two elements.
+
+.. code-block:: cpp 
+   :linenos:
+
+   HypercubeElement<double, int, 2, 1> el0{{0, 1, 2, 3}};
+   HypercubeElement<double, int, 2, 1> el2{{2, 3, 4, 5}};
+
+   // find and make the face with vertices {2, 3}
+   auto face_opt = make_face(0, 2, el0, el2);
+
+   Face<double, int, 2>* face= make_face.value(); // face gets created
+
+   delete face; // ownership is transferred to caller
+
+This can detect elements with different geometric polynomial orders because this operates on vertices.
+The polynomial order of the face geometry is the minimum of the two element polynomial orders
 
 ==============
 Finite Element
