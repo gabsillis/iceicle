@@ -52,7 +52,7 @@ namespace iceicle::solvers {
             // y = (J^T*J + lambda * I)*x
             PetscCall(VecAXPY(y, ctx->lambda, x));
 
-            PetscFunctionReturn(PETSC_SUCCESS);
+            PetscFunctionReturn(EXIT_SUCCESS);
         }
     }
 

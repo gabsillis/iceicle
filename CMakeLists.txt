@@ -200,5 +200,8 @@ IF(ENABLE_TESTING_ICEICLE)
   # =================
   # = Documentation =
   # =================
-  add_subdirectory(doc)
+  option(ICEICLE_BUILD_DOC "Enables documentation with Doxygen and Sphinx" OFF)
+  if(ICEICLE_BUILD_DOC)
+    add_subdirectory(doc)
+  endif()
 ENDIF()
