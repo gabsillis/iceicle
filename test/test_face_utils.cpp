@@ -74,8 +74,6 @@ TEST(test_face_utils, test_make_face){
         HypercubeElement<T, IDX, ndim, 1> el4{{3, 4}};
         auto face3_opt = make_face(0, 4, &el1, &el4, BOUNDARY_CONDITIONS::INTERIOR, 0);
         ASSERT_FALSE((bool) face3_opt);
-        delete face1;
-        delete face2;
     }
 
     // ======
@@ -148,9 +146,6 @@ TEST(test_face_utils, test_make_face){
             ASSERT_TRUE(dot(normal, internal_l) < 0.0);
             ASSERT_TRUE(dot(normal, internal_r) > 0.0);
         }
-        
-        delete face1;
-        delete face3;
     }
 
     util::AnomalyLog::handle_anomalies();
