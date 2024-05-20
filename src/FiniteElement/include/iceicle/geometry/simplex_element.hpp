@@ -113,5 +113,10 @@ namespace iceicle {
 
         /** @brief set the node index at idx to value */
         void setNode(int idx, int value){_nodes[idx] = value; }
+
+        /// @brief clone this element
+        auto clone() const -> std::unique_ptr<GeometricElement<T, IDX, ndim>> override {
+            return std::make_unique<SimplexGeoElement<T, IDX, ndim, Pn>>(*this);
+        }
     };
 }

@@ -11,6 +11,7 @@
 #include <Numtool/matrixT.hpp>
 #include <Numtool/fixed_size_tensor.hpp>
 #include <mdspan/mdspan.hpp>
+#include <memory>
 
 namespace iceicle {
 
@@ -179,6 +180,10 @@ namespace iceicle {
             index_type* vert_fac /// [in] the indices of the vertices of the given face
         ) const -> int = 0;
 
+        // =============
+        // = Geometric =
+        // =============
+
         /**
          * @brief calculate the centroid in the reference domain 
          * @return the centroid in the reference domain 
@@ -231,6 +236,13 @@ namespace iceicle {
             NodeArray<T, ndim>& coord /// [in/out] the node coordinates array 
         ) const -> void = 0;
 
+        // ===========
+        // = Utility =
+        // ===========
+
+        /// @brief clone this geometric element (create a copy)
+        virtual 
+        auto clone() const -> std::unique_ptr<GeometricElement<T, IDX, ndim>> = 0;
 
         /**
          * @brief virtual destructor

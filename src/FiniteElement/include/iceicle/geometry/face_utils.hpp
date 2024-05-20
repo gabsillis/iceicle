@@ -38,14 +38,14 @@ namespace iceicle {
         int faceNrR,
         BOUNDARY_CONDITIONS bctype,
         int bcflag
-    ) -> Face<T, IDX, ndim>* {
+    ) -> std::unique_ptr<Face<T, IDX, ndim>> {
         using namespace NUMTOOL::TMP;
         if(elptrL->domain_type() == DOMAIN_TYPE::HYPERCUBE && elptrR->domain_type() == DOMAIN_TYPE::HYPERCUBE) {
             static constexpr int geo_pn_last = build_config::FESPACE_BUILD_GEO_PN + 1;
             return invoke_at_index<int, 0, geo_pn_last>(
                 std::max(elptrL->geometry_order(), elptrR->geometry_order()),
                 [&]<int geo_pn>{
-                    return new HypercubeFace<T, IDX, ndim, geo_pn>(
+                    return std::make_unique<HypercubeFace<T, IDX, ndim, geo_pn>>(
                         elemL, elemR, elptrL, elptrR, faceNrL, faceNrR,
                         bctype, bcflag
                     );
@@ -128,7 +128,7 @@ namespace iceicle {
         GeometricElement<T, IDX, ndim> *elptrR,
         BOUNDARY_CONDITIONS bctype = BOUNDARY_CONDITIONS::INTERIOR,
         int bcflag = 0
-    ) noexcept -> std::optional<Face<T, IDX, ndim>*> {
+    ) noexcept -> std::optional< std::unique_ptr< Face<T, IDX, ndim> > > {
 
         // look for matching vertices 
         auto face_info_match = intersect_face_info(elptrL, elptrR);
@@ -151,12 +151,12 @@ namespace iceicle {
                         min_order_elptr = elptrR;
                     }
                     
-                    auto create_face = [&]<int Pn> -> std::optional<Face<T, IDX, ndim> *>{
+                    auto create_face = [&]<int Pn> -> std::optional< std::unique_ptr< Face<T, IDX, ndim> > >{
                         using namespace NUMTOOL::TENSOR::FIXED_SIZE;
                         using FaceType = HypercubeFace<T, IDX, ndim, Pn>;
                         NUMTOOL::TENSOR::FIXED_SIZE::Tensor<IDX, FaceType::trans.n_nodes> nodes{};
                         min_order_elptr->get_face_nodes(face_nr_l, nodes.data());
-                        return std::optional{new FaceType(elemL, elemR, nodes, face_nr_l, face_nr_r, orient_r, bctype, bcflag) };
+                        return std::optional{std::make_unique<FaceType>(elemL, elemR, nodes, face_nr_l, face_nr_r, orient_r, bctype, bcflag) };
                     };
 
                     return NUMTOOL::TMP::invoke_at_index<int, 0, build_config::FESPACE_BUILD_GEO_PN>(

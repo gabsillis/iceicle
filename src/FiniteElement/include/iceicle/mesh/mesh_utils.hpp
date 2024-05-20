@@ -25,9 +25,9 @@ namespace iceicle {
             int max_faces = mesh.elements[ielem]->n_faces();
             int found_faces = 0;
             for(IDX jelem = ielem + 1; jelem < mesh.nelem(); ++jelem){
-                auto face_opt = make_face(ielem, jelem, mesh.elements[ielem], mesh.elements[jelem]);
+                auto face_opt = make_face(ielem, jelem, mesh.elements[ielem].get(), mesh.elements[jelem].get());
                 if(face_opt){
-                    mesh.faces.push_back(face_opt.value());
+                    mesh.faces.push_back(std::move(face_opt.value()));
                     // short circuit if all the faces have been found
                     ++found_faces;
                     if(found_faces == max_faces) break;
@@ -101,8 +101,7 @@ namespace iceicle {
     template<class T, class IDX, int ndim>
     std::vector<bool> flag_boundary_nodes(AbstractMesh<T, IDX, ndim> &mesh){
         std::vector<bool> is_boundary(mesh.n_nodes(), false);
-        using Face = Face<T, IDX, ndim>;
-        for(Face *face : mesh.faces){
+        for(auto& face : mesh.faces){
 
             // if its not an interior face, set all the node indices to true
             if(face->bctype != BOUNDARY_CONDITIONS::INTERIOR){

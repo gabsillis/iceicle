@@ -46,6 +46,6 @@ namespace iceicle::build_config {
 #ifdef MAX_GEO_ORDER
     static constexpr int FESPACE_BUILD_GEO_PN = MAX_GEO_ORDER
 #else
-    static constexpr int FESPACE_BUILD_GEO_PN = 2;
+    static constexpr int FESPACE_BUILD_GEO_PN = 1;
 #endif
 }

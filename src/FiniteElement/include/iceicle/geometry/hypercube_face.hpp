@@ -155,5 +155,9 @@ namespace iceicle {
         int n_nodes() const override { return trans.n_nodes; }
 
         const IDX *nodes() const override { return _nodes.data(); }
+
+        auto clone() const -> std::unique_ptr<Face<T, IDX, ndim>> override {
+            return std::make_unique<HypercubeFace<T, IDX, ndim, Pn>>(*this);
+        }
     };
 }

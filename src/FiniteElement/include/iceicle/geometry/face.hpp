@@ -12,6 +12,7 @@
 #include <string>
 #include <span>
 #include <string_view>
+#include <memory>
 
 namespace iceicle {
     
@@ -407,6 +408,14 @@ namespace iceicle {
         std::span<const IDX> nodes_span() const {
             return std::span{nodes(), static_cast<std::size_t>(n_nodes())};
         }
+
+        // ===========
+        // = Utility =
+        // ===========
+
+        /// @brief clone this face (create a copy)
+        virtual 
+        auto clone() const -> std::unique_ptr<Face<T, IDX, ndim>> = 0;
 
         virtual
         std::string printNodes() const {

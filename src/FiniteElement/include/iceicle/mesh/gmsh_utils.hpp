@@ -197,12 +197,12 @@ namespace iceicle {
                 std::istringstream linestream{line};
                 linestream >> ielem_global >> inodes[0] >> inodes[1] >> inodes[2] >> inodes[3];
 
-                auto el = new HypercubeElement<T, IDX, ndim, 1>();
+                auto el = std::make_unique<HypercubeElement<T, IDX, ndim, 1>>();
                 el->setNode(0, inodes[0]);
                 el->setNode(3, inodes[1]);
                 el->setNode(1, inodes[2]);
                 el->setNode(2, inodes[3]);
-                mesh.elements[ielem] = el;
+                mesh.elements[ielem] = std::move(el);
             }
         }
 
@@ -284,7 +284,7 @@ namespace iceicle {
             for(bdy_face_parse& fac_info: parsed_info){
                 for(IDX ielem : elements_missing_faces){
                     bool found = false;
-                    GeometricElement<T, IDX, ndim> *elptr = mesh.elements[ielem];
+                    GeometricElement<T, IDX, ndim> *elptr = mesh.elements[ielem].get();
                     switch(fac_info.element_type){
                         // 2 node line
                         case 1:
@@ -297,9 +297,9 @@ namespace iceicle {
                                         found = true;
                                         using Face_t = HypercubeFace<T, IDX, ndim, 1>;
                                         std::tuple<BOUNDARY_CONDITIONS, int> bcinfo = bcmap[fac_info.entity_tag];
-                                        auto face = new HypercubeFace<T, IDX, ndim, 1>(
+                                        auto face = std::make_unique<HypercubeFace<T, IDX, ndim, 1>>(
                                             ielem, ielem, nodes, face_nr, face_nr, 0, std::get<0>(bcinfo), std::get<1>(bcinfo));
-                                        mesh.faces.push_back(face);
+                                        mesh.faces.push_back(std::move(face));
                                         faces_surr_el[ielem].push_back(mesh.faces.size() - 1);
                                     }
 

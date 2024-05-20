@@ -368,8 +368,8 @@ namespace iceicle::io {
 
         private:
 
-        AbstractMesh<T, IDX, ndim> *meshptr;
-        FESpace<T, IDX, ndim> *fespace_ptr;
+        AbstractMesh<T, IDX, ndim> *meshptr = nullptr;
+        FESpace<T, IDX, ndim> *fespace_ptr = nullptr;
         std::vector<std::unique_ptr<writeable_field>> fields;
 
         public:

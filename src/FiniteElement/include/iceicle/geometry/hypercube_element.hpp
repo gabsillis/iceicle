@@ -150,5 +150,10 @@ namespace iceicle {
             for(int inode = 0; inode < decltype(transformation)::n_nodes(); ++inode)
                 _nodes[inode] = nodes_arg[inode];
         }
+
+        /// @brief clone this element
+        auto clone() const -> std::unique_ptr<GeometricElement<T, IDX, ndim>> override {
+            return std::make_unique<HypercubeElement<T, IDX, ndim, Pn>>(*this);
+        }
     };
 }

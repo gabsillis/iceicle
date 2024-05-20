@@ -23,7 +23,7 @@ TEST(test_face_utils, test_make_face){
 
         auto face1_opt = make_face(0, 1, &el1, &el2, BOUNDARY_CONDITIONS::INTERIOR, 0);
         ASSERT_TRUE((bool) face1_opt);
-        Face_t* face1 = face1_opt.value();
+        Face_t* face1 = face1_opt.value().get();
 
         // basic face data
         ASSERT_EQ(face1->elemL, 0);
@@ -49,7 +49,7 @@ TEST(test_face_utils, test_make_face){
         HypercubeElement<T, IDX, ndim, 2> el3{{1, 3, 4}};
         auto face2_opt = make_face(0, 2, &el1, &el3, BOUNDARY_CONDITIONS::INTERIOR, 0);
         ASSERT_TRUE((bool) face2_opt);
-        Face_t* face2 = face2_opt.value();
+        Face_t* face2 = face2_opt.value().get();
 
         // basic face data
         ASSERT_EQ(face2->elemL, 0);
@@ -90,7 +90,7 @@ TEST(test_face_utils, test_make_face){
 
         auto face1_opt = make_face(0, 1, &el0, &el1);
         ASSERT_TRUE((bool) face1_opt);
-        Face_t* face1 = face1_opt.value();
+        Face_t* face1 = face1_opt.value().get();
 
         // basic face data
         ASSERT_EQ(face1->elemL, 0);
@@ -134,7 +134,7 @@ TEST(test_face_utils, test_make_face){
         HypercubeElement<T, IDX, ndim, 2> el4{{ 2, 3, 4, 5, 6, 7, 8, 9, 10}};
         auto face3_opt = make_face(3, 4, &el3, &el4);
         ASSERT_TRUE((bool) face3_opt);
-        Face_t* face3 = face3_opt.value();
+        Face_t* face3 = face3_opt.value().get();
         ASSERT_EQ(face3->geometry_order(), 1);
 
         // normal vector 

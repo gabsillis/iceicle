@@ -14,6 +14,7 @@
 #include <ostream>
 #include <ranges>
 #include <type_traits>
+#include <memory>
 #ifndef NDEBUG
 #include <iomanip>
 #endif
@@ -46,11 +47,11 @@ namespace iceicle {
 
         /// A list of pointers to geometric elements
         /// These are owned by the mesh and destroyed when the mesh is destroyed
-        std::vector<Element *> elements;
+        std::vector<std::unique_ptr<Element>> elements;
 
         /// All faces (internal and boundary) 
         /// interior faces must be a contiguous set
-        std::vector<face_t *> faces;
+        std::vector<std::unique_ptr<face_t>> faces;
 
         /// index of the start of interior faces (interior faces must be consecutive)
         IDX interiorFaceStart;
@@ -71,7 +72,42 @@ namespace iceicle {
         AbstractMesh() 
         : nodes{}, elements{}, faces{}, interiorFaceStart(0), interiorFaceEnd(0), 
           bdyFaceStart(0), bdyFaceEnd(0) {}
-        
+
+        AbstractMesh(const AbstractMesh<T, IDX, ndim>& other) 
+        : nodes{other.nodes}, elements{}, faces{},
+          interiorFaceStart(other.interiorFaceStart), interiorFaceEnd(other.interiorFaceEnd),
+          bdyFaceStart(other.bdyFaceStart), bdyFaceEnd(other.bdyFaceEnd)
+        {
+            elements.reserve(other.elements.size());
+            faces.reserve(other.faces.size());
+            for(auto& elptr : other.elements){
+                elements.push_back(std::move(elptr->clone()));
+            }
+            for(auto& facptr : other.faces){
+                faces.push_back(std::move(facptr->clone()));
+            }
+        }
+
+        AbstractMesh<T, IDX, ndim>& operator=(const AbstractMesh<T, IDX, ndim>& other){
+            if(this != &other){
+                nodes = other.nodes;
+                elements.clear();
+                faces.clear();
+                elements.reserve(other.elements.size());
+                faces.reserve(other.faces.size());
+                for(auto& elptr : other.elements){
+                    elements.push_back(std::move(elptr->clone()));
+                }
+                for(auto& facptr : other.faces){
+                    faces.push_back(std::move(facptr->clone()));
+                }
+                interiorFaceStart = other.interiorFaceStart;
+                interiorFaceEnd = other.interiorFaceEnd;
+                bdyFaceStart = other.bdyFaceStart;
+                bdyFaceEnd = other.bdyFaceEnd;
+            }
+        }
+
         AbstractMesh(std::size_t nnode) 
         : nodes{nnode}, elements{}, faces{}, interiorFaceStart(0), interiorFaceEnd(0), 
           bdyFaceStart(0), bdyFaceEnd(0) {}
@@ -205,7 +241,7 @@ namespace iceicle {
                     for(int idim = 0; idim < ndim; ++idim) ijk[idim] = 0;
                     for(int ielem = 0; ielem < nelem; ++ielem){
                         // create the element 
-                        ElementType *el = new ElementType(); 
+                        auto el = std::make_unique<ElementType>(); 
 
                         // get the nodes 
                         auto &trans = el->transformation;
@@ -231,7 +267,7 @@ namespace iceicle {
 #endif
 
                         // assign it 
-                        elements[ielem] = el;
+                        elements[ielem] = std::move(el);
 
                         // increment
                         ++ijk[0];
@@ -319,7 +355,7 @@ namespace iceicle {
                             transr.get_face_vert(face_nr_r, elements[ier]->nodes(), vert_r);
                             int orientationr = FaceType::orient_trans.getOrientation(vert_l, vert_r);
 
-                            faces.push_back(new FaceType(
+                            faces.emplace_back(std::make_unique<FaceType>(
                                 iel, ier, face_nodes, face_nr_l, face_nr_r,
                                 orientationr, BOUNDARY_CONDITIONS::INTERIOR, 0));
 
@@ -371,7 +407,7 @@ namespace iceicle {
                             int orientationr = 0; // choose the simplest one for the boundary
 
                             int bc_idx = idim;
-                            FaceType *faceA = new FaceType(
+                            auto faceA = std::make_unique<FaceType>(
                                 iel, -1, face_nodes, face_nr_l, face_nr_r,
                                 orientationr, bctypes[bc_idx], bcflags[bc_idx]
                             );
@@ -412,7 +448,7 @@ namespace iceicle {
                             orientationr = 0; // choose the simplest one for the boundary
 
                             bc_idx = ndim + idim;
-                            FaceType *faceB = new FaceType(
+                            auto faceB = std::make_unique<FaceType>(
                                 iel, -1, face_nodes, face_nr_l, face_nr_r,
                                 orientationr, bctypes[bc_idx], bcflags[bc_idx]
                             );
@@ -440,8 +476,8 @@ namespace iceicle {
                             }
 
                             // add to the face list 
-                            faces.push_back(faceA);
-                            faces.push_back(faceB);
+                            faces.emplace_back(std::move(faceA));
+                            faces.emplace_back(std::move(faceB));
 
                             // reset ordinate of this direction
                             ijk[idim] = 0;
@@ -544,14 +580,6 @@ namespace iceicle {
            }
         }
 
-        ~AbstractMesh(){
-            for(Element *el_ptr : elements){
-                delete el_ptr;
-            }
-
-            for(face_t *fac_ptr : faces){
-                delete fac_ptr;
-            }
-        }
+        ~AbstractMesh() = default;
     };
 }
