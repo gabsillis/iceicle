@@ -371,6 +371,7 @@ namespace iceicle {
                     switch(element_type){
                         case 3:
                             read_linear_quads(nelem_block, line_no, infile, mesh);
+                            break;
                         default:
                             util::AnomalyLog::log_anomaly(util::Anomaly{"unsupported element type", util::file_parse_tag{line_no}});
 
