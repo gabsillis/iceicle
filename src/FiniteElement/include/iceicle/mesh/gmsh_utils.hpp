@@ -199,9 +199,9 @@ namespace iceicle {
 
                 auto el = std::make_unique<HypercubeElement<T, IDX, ndim, 1>>();
                 el->setNode(0, inodes[0]);
-                el->setNode(3, inodes[1]);
-                el->setNode(1, inodes[2]);
-                el->setNode(2, inodes[3]);
+                el->setNode(1, inodes[3]);
+                el->setNode(2, inodes[1]);
+                el->setNode(3, inodes[2]);
                 mesh.elements[ielem] = std::move(el);
             }
         }
@@ -308,7 +308,7 @@ namespace iceicle {
                                 }
                             } 
                         }
-
+                        break;
                         default:
                             AnomalyLog::log_anomaly(Anomaly{"unsupported gmsh element type", general_anomaly_tag{}});
                         break;
@@ -379,13 +379,18 @@ namespace iceicle {
             // compress the element list for any gaps gmsh put in
             IDX last_el = mesh.elements.size() - 1;
             for(IDX iel = 0; iel < mesh.elements.size(); ++iel){
-                if(mesh.elements[iel] == nullptr) {
+                if(!mesh.elements[iel]) {
                     // keep moving back from the end until we have a real element to swap in
                     while(mesh.elements[last_el] == nullptr) last_el--;
-                    std::swap(mesh.elements[iel], mesh.elements[last_el]);
+                    if(last_el > iel)
+                        std::swap(mesh.elements[iel], mesh.elements[last_el]);
                 }
             }
-            mesh.elements.resize(last_el + 1);
+            if(mesh.elements[last_el]){
+                mesh.elements.resize(last_el + 1);
+            } else {
+                mesh.elements.resize(last_el);
+            }
 
             // generate interior faces
             find_interior_faces(mesh);

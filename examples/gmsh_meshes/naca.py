@@ -90,7 +90,7 @@ gmsh.model.addPhysicalGroup(1, [airfoil_spline], 1)
 gmsh.model.addPhysicalGroup(1, [bl1, bl3], 2)
 gmsh.model.addPhysicalGroup(1, [bl2], 3)
 gmsh.model.addPhysicalGroup(1, [bl4], 4)
-gmsh.model.addPhysicalGroup(2, [domain], 4)
+gmsh.model.addPhysicalGroup(2, [domain], 5)
 
 gmsh.model.geo.synchronize()
 gmsh.option.setNumber("Mesh.Algorithm", 11)  

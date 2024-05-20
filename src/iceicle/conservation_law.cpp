@@ -101,6 +101,7 @@ void initialize_and_solve(
     if(bc_desc_opt){
         sol::table bc_tbl = bc_desc_opt.value();
         add_dirichlet_callbacks(conservation_law, bc_tbl);
+        add_neumann_callbacks(conservation_law, bc_tbl);
     }
 
     // =========

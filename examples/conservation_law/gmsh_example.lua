@@ -9,16 +9,16 @@ return {
         file = "../gmsh_meshes/naca.msh",
         bc_definitions = {
             -- 1: airfoil boundary (dirichlet, flag 0)
-            { "dirichlet",    0 },
+            { "neumann", 0 },
 
             -- 2: top and bottom walls (dirichlet, flag 1)
-            { "dirichlet",    1 },
+            { "neumann", 0 },
 
             -- 3: inlet (neumann, flag 0)
-            { "neumann",      0 },
+            { "neumann", 1 },
 
             -- 4: outlet (extrapolation (flag omitted defaults to 0))
-            { "extrapolation" },
+            { "neumann", 0 },
 
         },
     },
@@ -32,7 +32,7 @@ return {
         quadrature = "gauss",
 
         -- the basis function order
-        order = 2,
+        order = 1,
     },
 
     -- describe the conservation law
@@ -54,6 +54,10 @@ return {
         dirichlet = {
             0.0,
             1.0,
+        },
+        neumann = {
+            0.0,
+            1.0
         },
     },
 
