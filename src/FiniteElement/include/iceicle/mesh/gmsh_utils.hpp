@@ -293,6 +293,8 @@ namespace iceicle {
                                 if(elptr->domain_type() == DOMAIN_TYPE::HYPERCUBE){
                                     Tensor<IDX, 2> nodes{{(IDX) fac_info.nodes[0], (IDX) fac_info.nodes[1]}};
                                     int face_nr = elptr->get_face_nr(nodes.data());
+                                    // get the face nodes again, but from element so they are in order for external normal
+                                    elptr->get_face_nodes(face_nr, nodes.data());
                                     if(face_nr >= 0){
                                         found = true;
                                         using Face_t = HypercubeFace<T, IDX, ndim, 1>;
