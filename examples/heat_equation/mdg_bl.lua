@@ -77,16 +77,12 @@ boundary_conditions = {
 }
 
 solver = {
-	type = "newton",
+	type = "newton-ls",
 	mdg = {
 		-- number of times to repeat the node selection + nonlinear solve process
 		ncycles = 81,
 		ic_selection_threshold = function(icycle)
-			if (icycle % 2 == 0) then
-				return 1e8
-			else
-				return 0
-			end
+			return 0
 		end,
 	},
 	verbosity = 4,
@@ -94,7 +90,8 @@ solver = {
 	ivis = 1,
 	linesearch = {
 		type = "cubic",
-		alpha_initial = 0.01,
+		alpha_initial = 0.0001,
+		kmax = 10,
 		alpha_max = 1,
 	}
 }

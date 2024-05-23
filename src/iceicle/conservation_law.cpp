@@ -131,7 +131,8 @@ int main(int argc, char* argv[]){
         cli_flag{"help", "print the help text and quit."},
         cli_flag{"enable_fp_except", "enable floating point exceptions (ignoring FE_INEXACT)"},
         cli_option{"scriptfile", "The file name for the lua script to run", parse_type<std::string_view>{}},
-        cli_flag{"debug1", "internal debug flag"}
+        cli_flag{"debug1", "internal debug flag"},
+        cli_flag{"debug2", "internal debug flag"}
     );
     if(cli_args["help"]){
         cli_args.print_options(std::cout);
@@ -191,6 +192,9 @@ int main(int argc, char* argv[]){
             // 2 element mesh on [0, 1]^2
             mesh.nodes[7][0] = 0.7;
             mesh.nodes[4][0] = 0.55;
+        }
+        if(cli_args["debug2"]){
+            mesh.nodes[1][0] = 0.9;
         }
 
         // ===================================

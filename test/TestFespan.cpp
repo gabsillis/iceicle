@@ -1,5 +1,7 @@
 #include "iceicle/basis/lagrange.hpp"
 #include "iceicle/element/reference_element.hpp"
+#include "iceicle/fe_function/component_span.hpp"
+#include "iceicle/fe_function/geo_layouts.hpp"
 #include "iceicle/geometry/hypercube_element.hpp"
 #include "iceicle/mesh/mesh.hpp"
 #include "iceicle/tmp_utils.hpp"
@@ -334,4 +336,78 @@ TEST(test_dofspan, test_node_set_layout){
     ASSERT_EQ(nodeset2.inv_selected_nodes[22], 6);
     ASSERT_EQ(nodeset2.inv_selected_nodes[23], 6);
     ASSERT_EQ(nodeset2.inv_selected_nodes[24], 6);
+}
+
+
+TEST(test_dofspan, test_geo_dof_map){
+    using T = double;
+    using IDX = int;
+    static constexpr int ndim = 2;
+    using namespace NUMTOOL::TENSOR::FIXED_SIZE;
+
+    // set up an fespace with uniform mesh
+    AbstractMesh<T, IDX, ndim> mesh{
+        Tensor<T, 2>{{-1, -1}}, 
+        Tensor<T, 2>{{1, 1}}, 
+        Tensor<IDX, 2>{{4, 4}}
+    };
+    FESpace<T, IDX, ndim> fespace{&mesh, FESPACE_ENUMS::LAGRANGE, FESPACE_ENUMS::GAUSS_LEGENDRE, std::integral_constant<int, 1>{}};
+
+    fixed_component_constraint<T, ndim> left_wall_constraint{-1.0, 0};
+    geo_dof_map geo_map{std::vector<int>{5, 15, 17, 9, 0}, fespace};
+
+    ASSERT_TRUE(std::ranges::contains(geo_map.selected_traces, 5));
+    ASSERT_TRUE(std::ranges::contains(geo_map.selected_traces, 15));
+    ASSERT_TRUE(std::ranges::contains(geo_map.selected_traces, 17));
+    ASSERT_TRUE(std::ranges::contains(geo_map.selected_traces, 9));
+    ASSERT_TRUE(std::ranges::contains(geo_map.selected_traces, 0));
+
+    // non boundary nodes 
+    // 6, 8, 11, 12, 13, 16 
+    ASSERT_EQ(geo_map.selected_traces.size(), 5);
+    ASSERT_EQ(geo_map.selected_nodes.size(), 9);
+
+    // inverse mapping 
+    // NOTE: we don't explicitly state the ordering of selected_nodes 
+    // but implementation results in in-order
+    ASSERT_EQ(  geo_map.inv_selected_nodes[ 0], 9);
+    ASSERT_TRUE(geo_map.inv_selected_nodes[ 1] < 9);
+    ASSERT_EQ(  geo_map.inv_selected_nodes[ 2], 9);
+    ASSERT_EQ(  geo_map.inv_selected_nodes[ 3], 9);
+    ASSERT_EQ(  geo_map.inv_selected_nodes[ 4], 9);
+    ASSERT_EQ(  geo_map.inv_selected_nodes[ 5], 9);
+    ASSERT_TRUE(geo_map.inv_selected_nodes[ 6] < 9);
+    ASSERT_EQ(  geo_map.inv_selected_nodes[ 7], 9);
+    ASSERT_TRUE(geo_map.inv_selected_nodes[ 8] < 9);
+    ASSERT_TRUE(geo_map.inv_selected_nodes[ 9] < 9);
+    ASSERT_EQ(  geo_map.inv_selected_nodes[10], 9);
+    ASSERT_TRUE(geo_map.inv_selected_nodes[11] < 9);
+    ASSERT_TRUE(geo_map.inv_selected_nodes[12] < 9);
+    ASSERT_TRUE(geo_map.inv_selected_nodes[13] < 9);
+    ASSERT_EQ(  geo_map.inv_selected_nodes[14], 9);
+    ASSERT_EQ(  geo_map.inv_selected_nodes[15], 9);
+    ASSERT_TRUE(geo_map.inv_selected_nodes[16] < 9);
+    ASSERT_EQ(  geo_map.inv_selected_nodes[17], 9);
+    ASSERT_EQ(  geo_map.inv_selected_nodes[18], 9);
+    ASSERT_EQ(  geo_map.inv_selected_nodes[19], 9);
+    ASSERT_EQ(  geo_map.inv_selected_nodes[20], 9);
+    ASSERT_TRUE(geo_map.inv_selected_nodes[21] < 9);
+    ASSERT_EQ(  geo_map.inv_selected_nodes[22], 9);
+    ASSERT_EQ(  geo_map.inv_selected_nodes[23], 9);
+    ASSERT_EQ(  geo_map.inv_selected_nodes[24], 9);
+
+    geo_data_layout layout{geo_map};
+    std::vector<T> storage(layout.size());
+    component_span data{storage, layout};
+    extract_geospan(mesh, data);
+
+    // set node 12 (0.0, 0.0) to something different
+    int ldof12 = geo_map.inv_selected_nodes[12];
+    ASSERT_DOUBLE_EQ((data[ldof12, 0]), 0.0);
+    ASSERT_DOUBLE_EQ((data[ldof12, 1]), 0.0);
+    data[ldof12, 1] = 0.05;
+
+    update_mesh(data, mesh);
+    ASSERT_DOUBLE_EQ(mesh.nodes[12][1], 0.05);
+
 }

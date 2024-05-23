@@ -1,10 +1,3 @@
-local fourier_nr = 0.0001
-
-
-local t_s = 0.5
-
-local y_inf = 0.2
-
 return {
     -- specify the number of dimensions (REQUIRED)
     ndim = 1,
@@ -72,29 +65,21 @@ return {
     -- solver
     solver = {
         type = "gauss-newton",
-        ivis = 1,
+        ivis = 100,
         tau_abs = 1e-8,
         tau_rel = 0,
-        kmax = 60,
+        kmax = 20000,
+
+        -- no linesearch but regularization -> Levenberg-Marquardt
         regularization = function(k, res)
-            return 1
+            return 10.0
         end,
         form_subproblem_mat = false,
         verbosity = 0,
-        linesearch = {
-            kmax = 8,
-            type = "none",
-            alpha_initial = 1.0,
-            alpha_max = 2.0,
-        },
         mdg = {
-            ncycles = 2,
+            ncycles = 1,
             ic_selection_threshold = function(icycle)
-                if (icycle % 2 == 0) then
-                    return 0.0
-                else
-                    return 1e8
-                end
+                return 0
             end,
         },
     },

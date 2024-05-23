@@ -435,9 +435,8 @@ to generate faces by finding the intersection between two elements.
    // find and make the face with vertices {2, 3}
    auto face_opt = make_face(0, 2, el0, el2);
 
-   Face<double, int, 2>* face= make_face.value(); // face gets created
-
-   delete face; // ownership is transferred to caller
+   // unique_ptr to face is stored in the value() of optional
+   std::unique_ptr<Face<double, int, 2>> face{std::move(face_opt.value())}; 
 
 This can detect elements with different geometric polynomial orders because this operates on vertices.
 The polynomial order of the face geometry is the minimum of the two element polynomial orders
@@ -445,6 +444,32 @@ The polynomial order of the face geometry is the minimum of the two element poly
 ==============
 Finite Element
 ==============
+
+==========
+Data Views
+==========
+
+There are several view types for multidimensional data - inspired by :cpp:`std::mdspan`. 
+The multidimensional data is indexed by finite-element specific terms.
+A **degree of freedom** in ICEicle represents a basis function in the finite element space. 
+These functions may take vector valued inputs and have vector valued outputs which are indexed by **vector component**.
+For example, a node in 3D can be viewed as a geometric degree of freedom, with vector components for the x, y, and z positions.
+Often coefficients are defined for each vector component - some other implementations may refer to this as a degree of freedom.
+
+-----------
+geo_dof_map
+-----------
+
+The struct :cpp:struct:`iceicle::geo_dof_map` represents a mapping to a subset of geometric (nodal) degrees of freedom
+
+
+--------------
+component_span
+--------------
+:cpp:class:`iceicle::component_span` represents a view over a subset of vector components.
+Each degree of freedom (:cpp:`idof`) and vector component (:cpp:`idof`) index maps to an index in a one dimensional array.
+This mapping is controlled by the :cpp:`LayoutPolicy`.
+
 
 ===============
 Discretizations

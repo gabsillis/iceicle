@@ -304,7 +304,7 @@ namespace iceicle::solvers {
                             };
 
                             // set up solver and solve
-                            if(eq_icase_any(solver_type, "newton", "netwon-ls")){
+                            if(eq_icase_any(solver_type, "newton", "newton-ls")){
                                 PetscNewton solver{fespace, disc, conv_criteria, ls, nodeset};
                                 setup_and_solve(solver);
                             } else if(eq_icase_any(solver_type, "gauss-newton")) {
