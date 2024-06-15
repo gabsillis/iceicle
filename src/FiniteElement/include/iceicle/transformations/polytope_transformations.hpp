@@ -1,4 +1,5 @@
 #pragma once
+#include "Numtool/point.hpp"
 #include <algorithm>
 #include <cmath>
 #include <iceicle/bitset.hpp>
@@ -17,6 +18,10 @@ namespace iceicle {
     using tcode = bitset<ndim>;
 
     /// @brief code for an extrusion 
+    /// An extrusion represents a marker of if the given dimension of the topology is extruded
+    /// in the geometry being considered 
+    /// an extrusion of all ones is the full domain of the topology 
+    /// all other extrusions refer to facets
     /// @tparam ndim the number of dimensions
     template<std::size_t ndim>
     using ecode = bitset<ndim>;
@@ -70,12 +75,17 @@ namespace iceicle {
     }
 
     template<geo_code auto t>
-    using vertex_list = std::array<vcode<get_ndim(t)>, nvert(t)>;
+    using vertex_list = std::array<vcode<get_ndim(t)>, n_vert(t)>;
 
-    template<int ndim, bitset<ndim> t>
+    /// @brief generate the list of vertices for a given topology 
+    /// @tparam the bitcode for the topology
+    /// @return a list of bitcodes for each vertex 
+    /// The bitcodes correspond to the given coordinate being either 0.0 or 1.0;
+    template<geo_code auto t>
     constexpr
     auto gen_vert() noexcept -> vertex_list<t>
     {
+      static constexpr int ndim = get_ndim(t);
       vertex_list<t> vertices;
       std::ranges::fill(vertices, vcode<ndim>{0});
 
@@ -83,7 +93,7 @@ namespace iceicle {
       for(int idim = 0; idim < ndim; ++idim){
         if(t[idim] == simpl_ext){
           // simplex extrusion domain comes to a single point
-          vertices[nvert_current] = vcode<ndim>{std::pow(2, idim)};
+          vertices[nvert_current] = vcode<ndim>{static_cast<unsigned long long>(std::pow(2, idim))};
           ++nvert_current;
         } else {
           // prismatic extrusion extrudes all the vertices of the current domain
@@ -95,6 +105,44 @@ namespace iceicle {
         }
       }
       return vertices;
+    }
+
+    /// @brief convert a vertex code to a point in space 
+    /// @tparam T the floating point type 
+    /// @tparam ndim the number of dimensions
+    template<class T, std::size_t ndim>
+    constexpr 
+    auto vcode_to_point(vcode<ndim> v) noexcept -> MATH::GEOMETRY::Point<T, (int) ndim>
+    {
+      MATH::GEOMETRY::Point<T, (int) ndim> pt{};
+      for(int idim = 0; idim < ndim; ++idim){
+        if(v[idim] == 0){
+          pt[idim] = static_cast<T>(0.0);
+        } else {
+          pt[idim] = static_cast<T>(1.0);
+        }
+      }
+    }
+
+    // ==========
+    // = Facets =
+    // ==========
+
+    /// @brief get the number of facets of the given extrusion of the topology 
+    template<int ndim>
+    constexpr
+    auto n_facets(tcode<ndim> t, ecode<ndim> e) -> std::size_t {
+      if (e.to_ullong() == 0) return 0;
+      else {
+        std::size_t nvert = 1;
+        for(int idim = 0; idim < ndim; ++idim){
+          if(e[idim] == 1){
+            if(t[idim] == prism_ext) nvert *= 2;
+            else nvert += 1;
+          }
+        }
+        return nvert;
+      }
     }
   }
 }
