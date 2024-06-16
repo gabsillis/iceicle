@@ -1,7 +1,9 @@
 #pragma once
+#include "Numtool/fixed_size_tensor.hpp"
 #include "Numtool/point.hpp"
 #include <algorithm>
 #include <cmath>
+#include <cstddef>
 #include <iceicle/bitset.hpp>
 
 namespace iceicle {
@@ -129,7 +131,7 @@ namespace iceicle {
     // ==========
 
     /// @brief get the number of facets of the given extrusion of the topology 
-    template<int ndim>
+    template<std::size_t ndim>
     constexpr
     auto n_facets(tcode<ndim> t, ecode<ndim> e) -> std::size_t {
       if (e.to_ullong() == 0) return 0;
@@ -143,6 +145,54 @@ namespace iceicle {
         }
         return nvert;
       }
+    }
+
+    /// @brief an extrusion is said to have even parity if the sign for the 
+    /// wedge product of basis vectors that form the orientation definition of the extrusion 
+    ///
+    /// e.g (e, v) = (110, 110)
+    /// the orientation is defined by jhat /\ khat (y and z bits are set to 1 in e)
+    /// the y coordinate of v == 1, therefore the j direciton of extrusion is negative (to be interior)
+    /// the z coordinate of v == 1, therefore the k direction of extrusion is negative 
+    /// -jhat /\ -khat = + (jhat /\ khat) therefore the parity is true
+    ///
+    /// is positive (returns true)
+    /// if this is negative returns false
+    template<std::size_t ndim>
+    constexpr 
+    auto extrusion_parity(ecode<ndim> e, vcode<ndim> v) -> bool 
+    { return ( (e.count() - (e & ~v).count()) % 2 ) == 0; }
+
+    /// @brief get the parity as defined above in extrusion_parity() 
+    /// for the hodge dual of a given extrusion from a vertex
+    template<std::size_t ndim>
+    constexpr
+    auto hodge_extrusion_parity(ecode<ndim> e, vcode<ndim> v) -> bool 
+    {
+      //TODO: probably faster way to directly compute levi civita based on e
+
+      // set up the levi civita tensor for the hodge dual of the extrusion
+      std::array<std::size_t, ndim> lc_indices{};
+      int iindex = 0;
+
+      // all dimensions in order where e == 1
+      for(int idim = 0; idim < ndim; ++idim){
+        if(e[idim] == 1) {
+          lc_indices[iindex] = idim;
+          iindex++;
+        }
+      }
+
+      // all dimension in order where e == 0
+      for(int idim = 0; idim < ndim; ++idim){
+        if(e[idim] == 0) {
+          lc_indices[iindex] = idim;
+          iindex++;
+        }
+      }
+
+      return extrusion_parity(e, v) ^
+        (NUMTOOL::TENSOR::FIXED_SIZE::levi_civita<int, ndim>.list_index(lc_indices.data()) == 1);
     }
   }
 }

@@ -113,3 +113,45 @@ TEST(test_polytope, test_vertices){
         ASSERT_EQ(gen_vert<hexa_b_t>(), expected_vlist );
     }
 }
+
+TEST(test_polytope, test_extrusion_parities) {
+    {
+        ecode<3> e{"011"};
+        vcode<3> v{"100"};
+        ASSERT_TRUE(extrusion_parity(e, v));
+    }
+
+    {
+        ecode<3> e{"011"};
+        vcode<3> v{"110"};
+        ASSERT_FALSE(extrusion_parity(e, v));
+    }
+
+    // test the notion of ccw = outward normal
+    { // consider: x = 0 face of unit cube
+
+        // if we choose v = 000 and extrude y then z
+        // right hand rule tells us the normal points into the domain
+        ecode<3> e{"110"};
+        vcode<3> v1{"000"};
+
+        ASSERT_NE(
+            extrusion_parity(~e, v1), // dual extrusion 
+            hodge_extrusion_parity(e, v1)
+        );
+
+        // if we choose v = 010 or v = 100 and extrude y then z
+        // right hand rule tells use the normal points out of the domain (ccw -> outward normal)
+        vcode<3> v2{"010"};
+        vcode<3> v3{"100"};
+        ASSERT_EQ(
+            extrusion_parity(~e, v2), // dual extrusion 
+            hodge_extrusion_parity(e, v2)
+        );
+        ASSERT_EQ(
+            extrusion_parity(~e, v3), // dual extrusion 
+            hodge_extrusion_parity(e, v3)
+        );
+
+    }
+}
