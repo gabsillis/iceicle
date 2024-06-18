@@ -155,3 +155,38 @@ TEST(test_polytope, test_extrusion_parities) {
 
     }
 }
+
+TEST(test_polytope, test_node_count){
+    ASSERT_EQ(get_n_node(segment_t, full_extrusion<1>, 2), 2);
+    ASSERT_EQ(get_n_node(segment_t, full_extrusion<1>, 5), 5);
+    ASSERT_EQ(get_n_node(segmentb_t, full_extrusion<1>, 2), 2);
+    ASSERT_EQ(get_n_node(segmentb_t, full_extrusion<1>, 5), 5);
+
+
+    ASSERT_EQ(get_n_node(tri_a_t, full_extrusion<2>, 1), 1);
+    ASSERT_EQ(get_n_node(tri_a_t, full_extrusion<2>, 4), 10);
+    ASSERT_EQ(get_n_node(quad_a_t, full_extrusion<2>, 1), 1);
+    ASSERT_EQ(get_n_node(quad_a_t, full_extrusion<2>, 4), 16);
+    ASSERT_EQ(get_n_node(tri_b_t, full_extrusion<2>, 1), 1);
+    ASSERT_EQ(get_n_node(tri_b_t, full_extrusion<2>, 4), 10);
+    ASSERT_EQ(get_n_node(quad_b_t, full_extrusion<2>, 1), 1);
+    ASSERT_EQ(get_n_node(quad_b_t, full_extrusion<2>, 4), 16);
+
+
+    ASSERT_EQ(get_n_node(tet_a_t, full_extrusion<2>, 1), 1);
+    ASSERT_EQ(get_n_node(tet_a_t, full_extrusion<2>, 4), 10+6+3+1);
+    ASSERT_EQ(get_n_node(pyra_a_t, full_extrusion<2>, 1), 1);
+    ASSERT_EQ(get_n_node(pyra_a_t, full_extrusion<2>, 4), 16+9+4+1);
+    ASSERT_EQ(get_n_node(prism_a_t, full_extrusion<2>, 1), 1);
+    ASSERT_EQ(get_n_node(prism_a_t, full_extrusion<2>, 4), 40);
+    ASSERT_EQ(get_n_node(hexa_a_t, full_extrusion<2>, 1), 1);
+    ASSERT_EQ(get_n_node(hexa_a_t, full_extrusion<2>, 4), 64);
+    ASSERT_EQ(get_n_node(tet_b_t, full_extrusion<2>, 1), 1);
+    ASSERT_EQ(get_n_node(tet_b_t, full_extrusion<2>, 4), 10+6+3+1);
+    ASSERT_EQ(get_n_node(pyra_b_t, full_extrusion<2>, 1), 1);
+    ASSERT_EQ(get_n_node(pyra_b_t, full_extrusion<2>, 4), 16+9+4+1);
+    ASSERT_EQ(get_n_node(prism_b_t, full_extrusion<2>, 1), 1);
+    ASSERT_EQ(get_n_node(prism_b_t, full_extrusion<2>, 4), 40);
+    ASSERT_EQ(get_n_node(hexa_b_t, full_extrusion<2>, 1), 1);
+    ASSERT_EQ(get_n_node(hexa_b_t, full_extrusion<2>, 4), 64);
+}
