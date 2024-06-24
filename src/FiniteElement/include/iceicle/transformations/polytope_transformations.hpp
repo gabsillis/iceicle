@@ -207,19 +207,19 @@ namespace iceicle {
       /// @param t the topology code 
       /// @param e the extrusion code 
       /// @param nbasis_1d the number of basis functions in 1d 
-      /// @param idim the 1-indexed dimension number
+      /// @param idim the 0-indexed dimension number
       static constexpr 
       auto get_n_node_recursive(geo_code auto t, geo_code auto e,
           std::size_t nbasis_1d, std::size_t idim) noexcept -> std::size_t 
       {
         // NOTE: idim is the 1-indexed dimension 
         // so when using for index we subtract 1
-        if(e[idim - 1] == 0) return get_n_node_recursive(t, e, nbasis_1d, idim - 1);
-        if(nbasis_1d == 1) return 1;
-        else if(idim == 1){
+        if(e[idim] == 0) return get_n_node_recursive(t, e, nbasis_1d, idim - 1);
+        else if(nbasis_1d == 1) return 1;
+        else if(idim == 0){
           return nbasis_1d;
         } else {
-          if(t[idim - 1] == prism_ext)
+          if(t[idim] == prism_ext)
             return nbasis_1d * get_n_node_recursive(t, e, nbasis_1d, idim - 1);
           else {
             std::size_t nnode = 1;
@@ -234,14 +234,71 @@ namespace iceicle {
     /// @brief return the cumulative number of nodes of the extrusion e of topology t 
     /// up to dimension idim 
     /// @param t the topology 
-    /// @param idim the dimension to extrude to 
     /// @param nbasis_1d the number of basis functions in 1 dimension
     static constexpr
     auto get_n_node(geo_code auto t, geo_code auto e,
-        std::size_t nbasis_1d, std::size_t idim = 0) noexcept -> std::size_t 
+        std::size_t nbasis_1d) noexcept -> std::size_t 
     {
       // static_assert(get_ndim(t) == get_ndim(e), "t and e must be same dimension.");
-      return impl::get_n_node_recursive(t, e, nbasis_1d, get_ndim(t));
+      // NOTE: use ndim - 1 for the index of the last dimension
+      return impl::get_n_node_recursive(t, e, nbasis_1d, get_ndim(t) - 1);
+    }
+
+    namespace impl {
+
+      template<
+        class index_type,
+        index_type ndim,
+        index_type size_1d,
+        geo_code auto t,
+        geo_code auto e,
+        geo_code auto v
+      >
+      constexpr 
+      auto multi_index_set_recursive(std::size_t idim) noexcept 
+      {
+        std::array< std::array< index_type, ndim>, get_n_nodes(t, e, size_1d)> nodes{};
+        if(e[idim] == 0){
+          // this dimension is not extruded (set to vertex value for all nodes)
+          index_type basis_fill = (v[idim] == 0) ? 0 : size_1d - 1;
+          for(index_type inode = 0; inode < get_n_node(t, e, size_1d); ++inode)
+            nodes[inode][idim] = basis_fill;
+        } else {
+          // this dimension is extruded now we find out what kind of extrusion
+          if(t[idim] == prism_ext) {
+            index_type nfill = get_n_node_recursive(t, e, size_1d, idim - 1);
+            for(index_type ibasis = 0; ibasis < size_1d; ++ibasis) {
+              for(index_type ifill = 0; ifill < nfill; ++ifill)
+                nodes[nfill * ibasis + ifill][idim] = ibasis;
+            }
+          } else {
+            for(index_type ibasis = 0; ibasis < size_1d; ++ibasis) {
+              index_type nfill = get_n_node_recursive(t, e, ibasis + 1, idim - 1);
+              for(index_type ifill = 0; ifill < nfill; ++ifill)
+                nodes[nfill * ibasis + ifill][idim] = ibasis;
+            }
+
+          }
+        }
+      }
+    }
+
+    /// @brief generate the multi-index set for 
+    /// @param t the given topology 
+    /// @param e with the given extrusion 
+    /// @param v the given vertex to extrude from
+    template<
+      class index_type,
+      index_type ndim,
+      index_type size_1d,
+      geo_code auto t,
+      geo_code auto e,
+      geo_code auto v
+    >
+    constexpr
+    auto multi_index_set() noexcept -> std::array< std::array<index_type, ndim>, get_n_node(t, e, size_1d)>
+    {
+      
     }
 
     /// @brief the tensor product for the given topology 

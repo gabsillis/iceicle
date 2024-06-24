@@ -7,6 +7,7 @@ add_subdirectory(math)
 add_subdirectory(FiniteElement)
 add_subdirectory(io)
 add_subdirectory(solvers)
+add_subdirectory(vtk)
 
 target_link_libraries(iceicle_lib INTERFACE iceicle_fe)
 target_link_libraries(iceicle_lib INTERFACE iceicle_solvers)

@@ -54,6 +54,7 @@ option(ICEICLE_USE_HYPRE "Builds ICEicle with Hypre integration" OFF)
 option(ICEICLE_USE_MFEM  "Enables MFEM as a third party library" OFF)
 option(ICEICLE_USE_OPENGL "Enables OpenGL visualization with imgui" OFF)
 option(ICEICLE_USE_MATPLOTPLUSPLUS "Enables matplotlib-cpp" OFF)
+option(ICEICLE_USE_VTK "Enables VTK third party functionality" OFF)
 
 # ==================
 # = CMake includes =
@@ -171,6 +172,23 @@ if(ICEICLE_USE_MATPLOTPLUSPLUS)
       FetchContent_Populate(matplotplusplus)
       add_subdirectory(${matplotplusplus_SOURCE_DIR} ${matplotplusplus_BINARY_DIR} EXCLUDE_FROM_ALL)
   endif()
+endif()
+
+# === Third Party Library VTK ===
+if(ICEICLE_USE_VTK)
+  find_package(VTK REQUIRED
+    COMPONENTS 
+    CommonColor
+    CommonCore
+    FiltersSources
+    InteractionStyle
+    RenderingAnnotation
+    RenderingContextOpenGL2
+    RenderingCore
+    RenderingFreeType
+    RenderingGL2PSOpenGL2
+    RenderingOpenGL2
+  )
 endif()
 
 # Include subdirectories
