@@ -1,0 +1,5 @@
+if(ICEICLE_USE_VTK)
+    add_executable(vis_polytopes vis_polytopes.cpp)
+    target_link_libraries(vis_polytopes ${VTK_LIBRARIES})
+    target_link_libraries(vis_polytopes iceicle_fe)
+endif()
