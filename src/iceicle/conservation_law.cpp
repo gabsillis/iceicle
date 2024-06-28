@@ -194,7 +194,7 @@ int main(int argc, char* argv[]){
             mesh.nodes[4][0] = 0.55;
         }
         if(cli_args["debug2"]){
-            mesh.nodes[1][0] = 0.9;
+            mesh.nodes[4][0] = 0.51;
         }
 
         // ===================================
@@ -215,13 +215,16 @@ int main(int argc, char* argv[]){
                 sol::optional<T> mu_input = cons_law_tbl["mu"];
                 if(mu_input) burgers_coeffs.mu = mu_input.value();
 
-                sol::optional<sol::table> a_adv_input = cons_law_tbl["a_adv"];
-                if(a_adv_input){
+                // WARNING: for some reason in release mode 
+                // if we create these tables from cons_law_tbl  
+                // the second one won't read properly
+                sol::optional<sol::table> b_adv_input = script_config["conservation_law"]["b_adv"];
+                sol::optional<sol::table> a_adv_input = script_config["conservation_law"]["a_adv"];
+                if(a_adv_input.has_value()){
                     for(int idim = 0; idim < ndim; ++idim)
                         burgers_coeffs.a[idim] = a_adv_input.value()[idim + 1];
                 }
-                sol::optional<sol::table> b_adv_input = cons_law_tbl["b_adv"];
-                if(b_adv_input){
+                if(b_adv_input.has_value()){
                     for(int idim = 0; idim < ndim; ++idim)
                         burgers_coeffs.b[idim] = b_adv_input.value()[idim + 1];
                 }
@@ -240,15 +243,15 @@ int main(int argc, char* argv[]){
                 sol::optional<T> mu_input = cons_law_tbl["mu"];
                 if(mu_input) burgers_coeffs.mu = mu_input.value();
 
-                sol::optional<sol::table> a_adv_input = cons_law_tbl["a_adv"];
-                if(a_adv_input){
-                    for(int idim = 0; idim < ndim_space; ++idim)
-                        burgers_coeffs.a[idim] = a_adv_input.value()[idim + 1];
-                }
-                sol::optional<sol::table> b_adv_input = cons_law_tbl["b_adv"];
-                if(b_adv_input){
+                sol::optional<sol::table> b_adv_input = script_config["conservation_law"]["b_adv"];
+                sol::optional<sol::table> a_adv_input = script_config["conservation_law"]["a_adv"];
+                if(b_adv_input.has_value()){
                     for(int idim = 0; idim < ndim_space; ++idim)
                         burgers_coeffs.b[idim] = b_adv_input.value()[idim + 1];
+                }
+                if(a_adv_input.has_value()){
+                    for(int idim = 0; idim < ndim_space; ++idim)
+                        burgers_coeffs.a[idim] = a_adv_input.value()[idim + 1];
                 }
 
                 // create the discretization
