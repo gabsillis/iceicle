@@ -180,6 +180,7 @@ namespace iceicle::solvers {
                 MatCreate(comm, &(this->jac));
                 MatSetSizes(this->jac, local_res_size, local_u_size, PETSC_DETERMINE, PETSC_DETERMINE);
                 MatSetFromOptions(this->jac);
+                MatSetUp(this->jac);
             }
 
             // Create and set up the vectors
@@ -244,6 +245,7 @@ namespace iceicle::solvers {
             MatCreate(comm, &(this->jac));
             MatSetSizes(this->jac, local_res_size, local_u_size, PETSC_DETERMINE, PETSC_DETERMINE);
             MatSetFromOptions(this->jac);
+            MatSetUp(this->jac);
 
             // Create and set up the vectors
             VecCreate(comm, &res_data);

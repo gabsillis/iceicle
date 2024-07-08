@@ -164,7 +164,7 @@ namespace iceicle {
                             quadrule = std::make_unique<
                                 HypercubeGaussLegendre<
                                     T, IDX, ndim - 1,
-                                    (geo_order+1)+(basis_order+1)
+                                    (geo_order)+(basis_order)
                                 >
                             >();
                             break;

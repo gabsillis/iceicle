@@ -1211,13 +1211,17 @@ namespace iceicle {
                     jumpflux[ieq] = dot(fluxR[ieq], unit_normal) - dot(fluxL[ieq], unit_normal);
 
                 // get the norm and multiply by unit normal vector for square system
+                // T jumpflux_norm = jumpflux[0]; 
                 T jumpflux_norm = std::sqrt(norml2(jumpflux));
 
                 // scatter unit normal times interface conservation to residual
                 for(int itest = 0; itest < trace.nbasis_trace(); ++itest){
                     T ic_res = jumpflux_norm * sqrtg * quadpt.weight;
                     for(int idim = 0; idim < ndim; ++idim){
-                        res[itest, idim] += ic_res * unit_normal[idim];
+                        // NOTE: multiplying by signed unit normal 
+                        // adds directionality which can allow cancellation error with 
+                        // V-shaped interface intersections
+                        res[itest, idim] += ic_res; //* unit_normal[idim];
                     }
                 }
             }
