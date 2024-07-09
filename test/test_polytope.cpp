@@ -190,3 +190,37 @@ TEST(test_polytope, test_node_count){
     ASSERT_EQ(get_n_node(hexa_b_t, full_extrusion<2>, 1), 1);
     ASSERT_EQ(get_n_node(hexa_b_t, full_extrusion<2>, 4), 64);
 }
+
+TEST(test_polytope, test_facet_nodes){
+
+
+    {
+        static constexpr tcode<3> t{"010"};
+        static constexpr ecode<3> e{"101"};
+        static constexpr vcode<3> v{"011"};
+        constexpr auto nodes {facet_nodes<double, t, e, v, 3>()};
+        ASSERT_DOUBLE_EQ(nodes[0][0], 1.0);
+        ASSERT_DOUBLE_EQ(nodes[0][1], 1.0);
+        ASSERT_DOUBLE_EQ(nodes[0][2], 0.0);
+
+        ASSERT_DOUBLE_EQ(nodes[1][0], 0.5);
+        ASSERT_DOUBLE_EQ(nodes[1][1], 1.0);
+        ASSERT_DOUBLE_EQ(nodes[1][2], 0.0);
+
+        ASSERT_DOUBLE_EQ(nodes[2][0], 0.0);
+        ASSERT_DOUBLE_EQ(nodes[2][1], 1.0);
+        ASSERT_DOUBLE_EQ(nodes[2][2], 0.0);
+
+        ASSERT_DOUBLE_EQ(nodes[3][0], 0.5);
+        ASSERT_DOUBLE_EQ(nodes[3][1], 0.5);
+        ASSERT_DOUBLE_EQ(nodes[3][2], 0.5);
+
+        ASSERT_DOUBLE_EQ(nodes[4][0], 0.0);
+        ASSERT_DOUBLE_EQ(nodes[4][1], 0.5);
+        ASSERT_DOUBLE_EQ(nodes[4][2], 0.5);
+
+        ASSERT_DOUBLE_EQ(nodes[5][0], 0.0);
+        ASSERT_DOUBLE_EQ(nodes[5][1], 0.0);
+        ASSERT_DOUBLE_EQ(nodes[5][2], 1.0);
+    }
+}

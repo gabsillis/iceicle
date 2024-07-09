@@ -36,6 +36,33 @@ namespace iceicle {
     template<std::size_t ndim>
     using vcode = bitset<ndim>;
 
+    /// @brief code for a prismatic extrusion
+    static constexpr bool prism_ext = 1;
+
+    /// @brief code for a simplical extrusion 
+    static constexpr bool simpl_ext = 0;
+
+    // ======================
+    // = geo_code utilities =
+    // ======================
+
+    /// @brief convert a vertex code to a point in space 
+    /// @tparam T the floating point type 
+    /// @tparam ndim the number of dimensions
+    template<class T, std::size_t ndim>
+    constexpr 
+    auto vcode_to_point(vcode<ndim> v) noexcept -> MATH::GEOMETRY::Point<T, (int) ndim>
+    {
+      MATH::GEOMETRY::Point<T, (int) ndim> pt{};
+      for(int idim = 0; idim < ndim; ++idim){
+        if(v[idim] == 0){
+          pt[idim] = static_cast<T>(0.0);
+        } else {
+          pt[idim] = static_cast<T>(1.0);
+        }
+      }
+    }
+
     /// @brief get the number of dimensions of given code
     template<std::size_t ndim>
     constexpr
@@ -47,12 +74,6 @@ namespace iceicle {
     concept geo_code = requires(T code) {
       get_ndim(code);
     };
-
-    /// @brief code for a prismatic extrusion
-    static constexpr bool prism_ext = 1;
-
-    /// @brief code for a simplical extrusion 
-    static constexpr bool simpl_ext = 0;
 
     // ============
     // = Vertices =
@@ -110,23 +131,6 @@ namespace iceicle {
         }
       }
       return vertices;
-    }
-
-    /// @brief convert a vertex code to a point in space 
-    /// @tparam T the floating point type 
-    /// @tparam ndim the number of dimensions
-    template<class T, std::size_t ndim>
-    constexpr 
-    auto vcode_to_point(vcode<ndim> v) noexcept -> MATH::GEOMETRY::Point<T, (int) ndim>
-    {
-      MATH::GEOMETRY::Point<T, (int) ndim> pt{};
-      for(int idim = 0; idim < ndim; ++idim){
-        if(v[idim] == 0){
-          pt[idim] = static_cast<T>(0.0);
-        } else {
-          pt[idim] = static_cast<T>(1.0);
-        }
-      }
     }
 
     // ==========
@@ -246,6 +250,91 @@ namespace iceicle {
 
     namespace impl {
 
+      /// @brief extend the given array by adding the next coordinate dimension
+      template<class T, std::size_t ndim>
+      constexpr
+      auto extend_array(T value, std::array<T, ndim> arr) -> std::array<T, ndim + 1>
+      {
+        std::array<T, ndim + 1> ret{};
+        for(std::size_t i = 0; i < ndim; ++i) ret[i] = arr[i];
+        ret[ndim] = value;
+        return ret;
+      }
+
+      template<
+        class T,
+        geo_code auto t,
+        geo_code auto e,
+        geo_code auto v
+      >
+      constexpr 
+      auto facet_nodes(std::size_t nshp_1d, T domain_max) noexcept
+      -> std::vector<std::array<T, get_ndim(t)>>
+      {
+        static constexpr std::size_t ndim = get_ndim(t);
+        // the dimension index we are currently focusing on
+        // for the recursive algorithm
+        static constexpr std::size_t idim = ndim - 1; 
+
+        // denominator for number of partitions protected for divide by zero
+        T npartition_den = (nshp_1d > 1) ? nshp_1d - 1 : 1;
+
+        if constexpr (ndim > 1) {
+
+          std::vector<std::array<T, ndim>> nodes{};
+          // geometric information of slices
+          constexpr tcode<ndim - 1> t_slice{t.to_ullong()};
+          constexpr vcode<ndim - 1> v_slice{v.to_ullong()};
+          constexpr ecode<ndim - 1> e_slice{e.to_ullong()};
+
+
+          if(e[idim] == 0) {
+
+            // get the nodes from a slice
+            auto slice_nodes = facet_nodes<T, t_slice, e_slice, v_slice>(nshp_1d, domain_max);
+
+            // place the point in domain depending on v
+            T xi = (v[idim] == 0) ? 0 : domain_max;
+
+            // append coordinate to nodes from slice
+            for(auto node : slice_nodes) nodes.push_back(extend_array(xi, node));
+          } else {
+            for(std::size_t ishp = 0; ishp < nshp_1d; ++ishp){
+
+              // size of slice depends on direction if topology is simplex
+              std::size_t slice_nshp = (t[idim] == simpl_ext) ? 
+                ( (v[idim] == 0) ? nshp_1d - ishp : ishp )
+                : nshp_1d;
+              T slice_domain_max = domain_max * (slice_nshp - 1) / npartition_den;
+              auto slice_nodes = facet_nodes<T, t_slice, e_slice, v_slice>(slice_nshp, slice_domain_max);
+
+              // get the coordinate for this dimension 
+              T xi = (v[idim] == 0) ? domain_max * (ishp / npartition_den) 
+                : domain_max * ( (nshp_1d - ishp - 1) / npartition_den);
+              for(auto node : slice_nodes) nodes.push_back(extend_array(xi, node));
+            }
+          }
+          return nodes;
+        } else if constexpr (ndim == 1){
+          if(e[0] == 0) {
+            std::array<T, 1> node{(v[idim] == 0) ? 0.0 : domain_max};
+            return std::vector<std::array<T, 1>>{node};
+          } else {
+            std::vector<std::array<T, 1>> nodes{};
+            for(std::size_t ishp = 0; ishp < nshp_1d; ++ishp){
+              // get the coordinate for this dimension 
+              T xi = (v[idim] == 0) ? domain_max * (ishp / npartition_den) 
+                : domain_max * ( (nshp_1d - ishp - 1) / npartition_den);
+              nodes.push_back(std::array<T, 1>{xi});
+            }
+            return nodes;
+          }
+        } else {
+          return std::vector<std::array<T, ndim>>{};
+        }
+
+      }
+
       template<
         class index_type,
         index_type ndim,
@@ -255,7 +344,7 @@ namespace iceicle {
         geo_code auto v
       >
       constexpr 
-      auto multi_index_set_recursive(std::size_t idim) noexcept 
+      auto multi_index_set_recursive(size_t idim) noexcept 
       {
         std::array< std::array< index_type, ndim>, get_n_nodes(t, e, size_1d)> nodes{};
         if(e[idim] == 0){
@@ -282,6 +371,23 @@ namespace iceicle {
         }
       }
     }
+
+      template<
+        class T,
+        geo_code auto t,
+        geo_code auto e,
+        geo_code auto v,
+        std::size_t nshp_1d
+      >
+      constexpr 
+      auto facet_nodes() noexcept
+      -> std::array< std::array< T, get_ndim(t) >, get_n_node(t, e, nshp_1d) > 
+      { 
+        auto nodes_vec = impl::facet_nodes<T, t, e, v>(nshp_1d, 1.0);
+        std::array< std::array< T, get_ndim(t) >, get_n_node(t, e, nshp_1d) > nodes;
+        std::ranges::copy(nodes_vec, nodes.begin());
+        return nodes;
+      }
 
     /// @brief generate the multi-index set for 
     /// @param t the given topology 
