@@ -223,4 +223,27 @@ TEST(test_polytope, test_facet_nodes){
         ASSERT_DOUBLE_EQ(nodes[5][1], 0.0);
         ASSERT_DOUBLE_EQ(nodes[5][2], 1.0);
     }
+
+    {
+        static constexpr tcode<3> t{"111"};
+        static constexpr ecode<3> e{"011"};
+        static constexpr vcode<3> v{"111"};
+
+        constexpr auto nodes {facet_nodes<double, t, e, v, 2>()};
+        ASSERT_DOUBLE_EQ(nodes[0][0], 1.0);
+        ASSERT_DOUBLE_EQ(nodes[0][1], 1.0);
+        ASSERT_DOUBLE_EQ(nodes[0][2], 1.0);
+
+        ASSERT_DOUBLE_EQ(nodes[1][0], 0.0);
+        ASSERT_DOUBLE_EQ(nodes[1][1], 1.0);
+        ASSERT_DOUBLE_EQ(nodes[1][2], 1.0);
+
+        ASSERT_DOUBLE_EQ(nodes[2][0], 1.0);
+        ASSERT_DOUBLE_EQ(nodes[2][1], 0.0);
+        ASSERT_DOUBLE_EQ(nodes[2][2], 1.0);
+
+        ASSERT_DOUBLE_EQ(nodes[3][0], 0.0);
+        ASSERT_DOUBLE_EQ(nodes[3][1], 0.0);
+        ASSERT_DOUBLE_EQ(nodes[3][2], 1.0);
+    }
 }

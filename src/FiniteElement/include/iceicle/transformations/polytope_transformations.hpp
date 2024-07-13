@@ -1,6 +1,7 @@
 #pragma once
 #include "Numtool/fixed_size_tensor.hpp"
 #include "Numtool/point.hpp"
+#include "iceicle/basis/tensor_product.hpp"
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
@@ -283,7 +284,7 @@ namespace iceicle {
 
           std::vector<std::array<T, ndim>> nodes{};
           // geometric information of slices
-          constexpr tcode<ndim - 1> t_slice{t.to_ullong()};
+constexpr tcode<ndim - 1> t_slice{t.to_ullong()};
           constexpr vcode<ndim - 1> v_slice{v.to_ullong()};
           constexpr ecode<ndim - 1> e_slice{e.to_ullong()};
 
@@ -311,7 +312,7 @@ namespace iceicle {
               // get the coordinate for this dimension 
               T xi = (v[idim] == 0) ? domain_max * (ishp / npartition_den) 
                 : domain_max * ( (nshp_1d - ishp - 1) / npartition_den);
-              for(auto node : slice_nodes) nodes.push_back(extend_array(xi, node));
+for(auto node : slice_nodes) nodes.push_back(extend_array(xi, node));
             }
           }
           return nodes;
@@ -372,22 +373,91 @@ namespace iceicle {
       }
     }
 
-      template<
-        class T,
-        geo_code auto t,
-        geo_code auto e,
-        geo_code auto v,
-        std::size_t nshp_1d
-      >
-      constexpr 
-      auto facet_nodes() noexcept
-      -> std::array< std::array< T, get_ndim(t) >, get_n_node(t, e, nshp_1d) > 
-      { 
-        auto nodes_vec = impl::facet_nodes<T, t, e, v>(nshp_1d, 1.0);
-        std::array< std::array< T, get_ndim(t) >, get_n_node(t, e, nshp_1d) > nodes;
-        std::ranges::copy(nodes_vec, nodes.begin());
-        return nodes;
+    /// @brief Generate the locations in the reference domain for each node
+    /// for regularly spaced shape functions 
+    /// @tparam T the floating point type
+    /// @tparam t the topology 
+    /// @tparam e the extrusion 
+    /// @tparam v the vertex 
+    /// @tparam nshp_1d the number of shape functions
+    template<
+      class T,
+      geo_code auto t,
+      geo_code auto e,
+      geo_code auto v,
+std::size_t nshp_1d
+    >
+    constexpr 
+    auto facet_nodes() noexcept
+    -> std::array< std::array< T, get_ndim(t) >, get_n_node(t, e, nshp_1d) > 
+    { 
+      auto nodes_vec = impl::facet_nodes<T, t, e, v>(nshp_1d, 1.0);
+      std::array< std::array< T, get_ndim(t) >, get_n_node(t, e, nshp_1d) > nodes;
+      std::ranges::copy(nodes_vec, nodes.begin());
+      return nodes;
+    }
+
+    namespace impl {
+      template<class T, geo_code auto t, int ndim_total, int nbasis_total>
+      constexpr
+      auto fill_shp(
+        NUMTOOL::TENSOR::FIXED_SIZE::Tensor<T, ndim_total, nbasis_total> &evals,
+        std::size_t nshp_1d,
+        T* Bi
+      ) noexcept -> std::size_t 
+      {
+        static constexpr std::size_t ndim = get_ndim(t);
+        // the dimension index we are currently focusing on
+        // for the recursive algorithm
+        static constexpr std::size_t idim = ndim - 1; 
+        std::size_t nfilled = 0;
+
+        if constexpr (ndim > 1) {
+          constexpr tcode<ndim - 1> t_slice{t.to_ullong()};
+          T* bi_iter = Bi;
+          for(std::size_t ishp = 0; ishp < nshp_1d; ++ishp){
+            
+              // size of slice depends on if topology is simplex
+              std::size_t slice_nshp = (t[idim] == simpl_ext) ? 
+                nshp_1d - ishp : nshp_1d;
+              std::size_t slice_filled = fill_shp<T, t_slice>(evals, slice_nshp, bi_iter);
+
+              for(std::size_t ifilled = 0; ifilled < slice_filled; ++ifilled)
+                bi_iter[ifilled] = evals[idim][ishp];
+              bi_iter += slice_filled;
+              nfilled += slice_filled;
+          }
+        } else {
+          // base case, initialize the values
+          for(std::size_t ishp = 0; ishp < nshp_1d; ++ishp){
+            
+              Bi[ishp] = evals[idim][ishp];
+          }
+          nfilled = nshp_1d;
+        }
+        return nfilled;
       }
+    }
+
+    template<class T, geo_code auto t>
+    constexpr 
+    auto fill_shp( 
+        const basis_C0 auto basis,
+        const MATH::GEOMETRY::Point<T, get_ndim(t)> &xi,
+        T* Bi
+    ) noexcept -> void 
+    {
+      using namespace NUMTOOL::TENSOR::FIXED_SIZE;
+      constexpr int nbasis_1d = decltype(basis)::nbasis;
+      constexpr std::size_t ndim = get_ndim(t);
+
+      // precompute the shape function evaluations
+      Tensor<T, ndim, nbasis_1d> evals{};
+      for(int idim = 0; idim < ndim; ++idim){
+          evals[idim] = basis.eval_all(xi[idim]);
+      }
+      impl::fill_shp<T, t>(evals, nbasis_1d, Bi);
+    }
 
     /// @brief generate the multi-index set for 
     /// @param t the given topology 
