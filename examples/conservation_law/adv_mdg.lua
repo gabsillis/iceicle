@@ -10,7 +10,7 @@ return {
 
 	-- create a uniform mesh
 	uniform_mesh = {
-		nelem = { 4, 4 },
+		nelem = { 2, 2 },
 		bounding_box = {
 			min = { 0.0, 0.0 },
 			max = { 1.0, 1.0 },
@@ -55,7 +55,7 @@ return {
 		-- the name of the conservation law being solved
 		name = "spacetime-burgers",
 		mu = 0.0,
-		a_adv = { 0.1 },
+		a_adv = { 0.2 },
 		b_adv = { 0.0 },
 	},
 
@@ -90,12 +90,12 @@ return {
 		tau_rel = 0,
 		kmax = 100,
 		regularization = function(k, res)
-			return 10
+			return 0.01
 		end,
 		form_subproblem_mat = false,
 		verbosity = 0,
 		linesearch = {
-			kmax = 3,
+			kmax = 6,
 			type = "none",
 			alpha_initial = 1.0,
 			alpha_max = 5,
@@ -103,7 +103,7 @@ return {
 		mdg = {
 			ncycles = 1,
 			ic_selection_threshold = function(icycle)
-				return 0
+				return 0.0
 			end,
 		},
 	},

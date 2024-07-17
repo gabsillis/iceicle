@@ -1,6 +1,7 @@
 #pragma once
 #include "Numtool/fixed_size_tensor.hpp"
 #include "Numtool/point.hpp"
+#include "iceicle/linalg/linalg_utils.hpp"
 #include "iceicle/basis/tensor_product.hpp"
 #include <algorithm>
 #include <cmath>
@@ -284,7 +285,7 @@ namespace iceicle {
 
           std::vector<std::array<T, ndim>> nodes{};
           // geometric information of slices
-constexpr tcode<ndim - 1> t_slice{t.to_ullong()};
+          constexpr tcode<ndim - 1> t_slice{t.to_ullong()};
           constexpr vcode<ndim - 1> v_slice{v.to_ullong()};
           constexpr ecode<ndim - 1> e_slice{e.to_ullong()};
 
@@ -312,7 +313,7 @@ constexpr tcode<ndim - 1> t_slice{t.to_ullong()};
               // get the coordinate for this dimension 
               T xi = (v[idim] == 0) ? domain_max * (ishp / npartition_den) 
                 : domain_max * ( (nshp_1d - ishp - 1) / npartition_den);
-for(auto node : slice_nodes) nodes.push_back(extend_array(xi, node));
+              for(auto node : slice_nodes) nodes.push_back(extend_array(xi, node));
             }
           }
           return nodes;
@@ -406,6 +407,7 @@ std::size_t nshp_1d
         T* Bi
       ) noexcept -> std::size_t 
       {
+        // the dimensionality of the current slice
         static constexpr std::size_t ndim = get_ndim(t);
         // the dimension index we are currently focusing on
         // for the recursive algorithm
@@ -423,7 +425,7 @@ std::size_t nshp_1d
               std::size_t slice_filled = fill_shp<T, t_slice>(evals, slice_nshp, bi_iter);
 
               for(std::size_t ifilled = 0; ifilled < slice_filled; ++ifilled)
-                bi_iter[ifilled] = evals[idim][ishp];
+                bi_iter[ifilled] *= evals[idim][ishp];
               bi_iter += slice_filled;
               nfilled += slice_filled;
           }
@@ -432,6 +434,130 @@ std::size_t nshp_1d
           for(std::size_t ishp = 0; ishp < nshp_1d; ++ishp){
             
               Bi[ishp] = evals[idim][ishp];
+          }
+          nfilled = nshp_1d;
+        }
+        return nfilled;
+      }
+
+      template<class T, geo_code auto t, std::size_t ndim_total, std::size_t nbasis_total>
+      constexpr 
+      auto fill_deriv(
+        NUMTOOL::TENSOR::FIXED_SIZE::Tensor<T, ndim_total, nbasis_total> &evals,
+        NUMTOOL::TENSOR::FIXED_SIZE::Tensor<T, ndim_total, nbasis_total> &derivs,
+        std::size_t nshp_1d,
+        linalg::inout_tensor auto dBidxj,
+        std::size_t offset
+      ) noexcept -> std::size_t 
+      {
+        // the dimensionality of the current slice
+        constexpr std::size_t ndim = get_ndim(t);
+        // the dimension index we are currently focusing on
+        // for the recursive algorithm
+        constexpr std::size_t idim = ndim - 1; 
+        std::size_t nfilled = 0;
+        if constexpr (ndim > 1) {
+          constexpr tcode<ndim - 1> t_slice{t.to_ullong()};
+          for(std::size_t ishp = 0; ishp < nshp_1d; ++ishp){
+            
+              // size of slice depends on if topology is simplex
+              std::size_t slice_nshp = (t[idim] == simpl_ext) ? 
+                nshp_1d - ishp : nshp_1d;
+              std::size_t slice_filled = fill_deriv<T, t_slice>(
+                  evals, derivs, slice_nshp, dBidxj);
+
+              for(std::size_t ifilled = 0; ifilled < slice_filled; ++ifilled){
+                for(std::size_t jdim = 0; jdim < ndim_total; ++jdim){
+                  if(jdim == idim)
+                    dBidxj[offset + ifilled, jdim] *= derivs[idim][ishp];
+                  else 
+                    dBidxj[offset + ifilled, jdim] *= evals[idim][ishp];
+                }
+              }
+              offset += slice_filled;
+              nfilled += slice_filled;
+          }
+        } else {
+          // base case 
+          for(std::size_t ishp = 0; ishp < nshp_1d; ++ishp){
+            dBidxj[offset + ishp, 0] = derivs[idim][ishp];
+            for(std::size_t jdim = 1; jdim < ndim_total; ++jdim)
+              dBidxj[offset + ishp, jdim] = evals[idim][ishp];
+          }
+          nfilled = nshp_1d;
+        }
+        return nfilled;
+      }
+
+
+      template<class T, geo_code auto t, std::size_t ndim_total, std::size_t nbasis_total>
+      constexpr 
+      auto fill_hess(
+        NUMTOOL::TENSOR::FIXED_SIZE::Tensor<T, ndim_total, nbasis_total> &evals,
+        NUMTOOL::TENSOR::FIXED_SIZE::Tensor<T, ndim_total, nbasis_total> &derivs,
+        NUMTOOL::TENSOR::FIXED_SIZE::Tensor<T, ndim_total, nbasis_total> &d2s,
+        std::size_t nshp_1d,
+        linalg::inout_tensor auto hess, 
+        std::size_t offset
+      ) noexcept -> std::size_t 
+      {
+        using namespace std::experimental;
+        // the dimensionality of the current slice
+        constexpr std::size_t ndim = get_ndim(t);
+        // the dimension index we are currently focusing on
+        // for the recursive algorithm
+        constexpr std::size_t idim = ndim - 1; 
+
+        constexpr int nvalues = get_n_node(t, full_extrusion<ndim_total>, nbasis_total);
+        
+        std::size_t nfilled = 0;
+
+        if constexpr (ndim > 1) {
+          constexpr tcode<ndim - 1> t_slice{t.to_ullong()};
+          for(std::size_t ishp = 0; ishp < nshp_1d; ++ishp){
+            
+              // size of slice depends on if topology is simplex
+              std::size_t slice_nshp = (t[idim] == simpl_ext) ? 
+                nshp_1d - ishp : nshp_1d;
+              std::size_t slice_filled = fill_hess<T, t_slice>(
+                  evals, derivs, d2s, slice_nshp, hess);
+
+              for(std::size_t ifilled = 0; ifilled < slice_filled; ++ifilled){
+                for(std::size_t jdim = 0; jdim < ndim_total; ++jdim){
+                  for(std::size_t kdim = 0; kdim < ndim_total; ++kdim){
+                    if(jdim == kdim){ // diagonal
+                      if(jdim == idim)
+                        hess[offset + ifilled, jdim, kdim] *= d2s[idim][ishp];
+                      else
+                        hess[offset + ifilled, jdim, kdim] *= evals[idim][ishp];
+                    } else if (jdim == idim || kdim == idim){
+                        hess[offset + ifilled, jdim, kdim] *= derivs[idim][ishp];
+                    } else {
+                        hess[offset + ifilled, jdim, kdim] *= evals[idim][ishp];
+                    }
+                  }
+                }
+              }
+              offset += slice_filled;
+              nfilled += slice_filled;
+          }
+        } else {
+          // base case 
+          for(std::size_t ishp = 0; ishp < nshp_1d; ++ishp){
+                for(std::size_t jdim = 0; jdim < ndim_total; ++jdim){
+                  for(std::size_t kdim = 0; kdim < ndim_total; ++kdim){
+                    if(jdim == kdim){ // diagonal
+                      if(jdim == idim)
+                        hess[offset + ishp, jdim, kdim] = d2s[idim][ishp];
+                      else
+                        hess[offset + ishp, jdim, kdim] = evals[idim][ishp];
+                    } else if (jdim == idim || kdim == idim){
+                        hess[offset + ishp, jdim, kdim] = derivs[idim][ishp];
+                    } else {
+                        hess[offset + ishp, jdim, kdim] = evals[idim][ishp];
+                    }
+                  }
+                }
           }
           nfilled = nshp_1d;
         }
@@ -457,6 +583,55 @@ std::size_t nshp_1d
           evals[idim] = basis.eval_all(xi[idim]);
       }
       impl::fill_shp<T, t>(evals, nbasis_1d, Bi);
+    }
+
+    template<class T, geo_code auto t>
+    constexpr 
+    auto fill_deriv(
+        const basis_C1 auto basis,
+        const MATH::GEOMETRY::Point<T, get_ndim(t)> &xi,
+        linalg::inout_tensor auto dBidxj
+    ) noexcept -> void {
+      using namespace NUMTOOL::TENSOR::FIXED_SIZE;
+      constexpr int nbasis_1d = decltype(basis)::nbasis;
+      constexpr std::size_t ndim = get_ndim(t);
+
+      if constexpr(ndim == 0)
+        dBidxj[0, 0] = 0.0;
+      else {
+        // precompute function evaluations and derivatives
+        Tensor<T, ndim, nbasis_1d> evals{};
+        Tensor<T, ndim, nbasis_1d> derivs{};
+        for(int idim = 0; idim < ndim; ++idim){
+            evals[idim] = basis.derivs_all(xi[idim], evals[idim], derivs[idim]);
+        }
+        impl::fill_deriv<T, t>(evals, derivs, nbasis_1d, dBidxj, 0);
+      }
+    }
+
+    template<class T, geo_code auto t>
+    constexpr 
+    auto fill_hess(
+        const basis_C2 auto basis,
+        const MATH::GEOMETRY::Point<T, get_ndim(t)> &xi,
+        linalg::inout_tensor auto hess
+    ) noexcept -> void 
+    {
+      using namespace NUMTOOL::TENSOR::FIXED_SIZE;
+      constexpr int nbasis_1d = decltype(basis)::nbasis;
+      constexpr std::size_t ndim = get_ndim(t);
+      if constexpr(ndim == 0)
+        hess[0, 0, 0] = 0;
+      else {
+        Tensor<T, ndim, nbasis_1d> evals{};
+        Tensor<T, ndim, nbasis_1d> derivs{};
+        Tensor<T, ndim, nbasis_1d> d2s{};
+        for(int idim = 0; idim < ndim; ++idim){
+            evals[idim] = basis.d2_all(xi[idim], evals[idim], derivs[idim], d2s[idim]);
+        }
+        impl::fill_hess<T, t>(evals, derivs, d2s, nbasis_1d, hess, 0);
+      }
+
     }
 
     /// @brief generate the multi-index set for 

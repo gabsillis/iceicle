@@ -32,6 +32,9 @@ namespace iceicle::solvers {
 
             // regularization coefficient
             PetscScalar lambda; 
+
+            PetscInt npde;
+            PetscInt nic;
         };
 
         inline
@@ -49,9 +52,38 @@ namespace iceicle::solvers {
             // y = J^T*J*x
             PetscCall(MatMultTranspose(ctx->J, ctx->Jx, y));
 
-            // y = (J^T*J + lambda * I)*x
-            PetscCall(VecAXPY(y, ctx->lambda, x));
+            Vec lambdax;
+            VecCreate(PETSC_COMM_WORLD, &lambdax);
+            VecSetSizes(lambdax, ctx->npde + ctx->nic, PETSC_DETERMINE);
+            VecSetFromOptions(lambdax);
+            PetscScalar* lambdax_data;
+            const PetscScalar* xdata;
+            VecGetArray(lambdax, &lambdax_data);
+            VecGetArrayRead(x, &xdata);
+            for(PetscInt i = 0; i < ctx->npde; ++i){
+                lambdax_data[i] = xdata[i] * ctx->lambda;
+            }
+            for(PetscInt i = ctx->npde; i < ctx->npde + ctx->nic; ++i){
+                lambdax_data[i] = xdata[i] * 100 * ctx->lambda;
+            }
+            VecRestoreArray(lambdax, &lambdax_data);
+            VecRestoreArrayRead(x, &xdata);
 
+            // y = (J^T*J + lambda * I)*x
+            PetscCall(VecAXPY(y, 1.0, lambdax));
+
+//            VecGetArray(y, &lambdax_data);
+//            VecGetArrayRead(x, &xdata);
+//            for(PetscInt i = 0; i < ctx->npde; ++i){
+//                lambdax_data[i] = ctx->lambda * xdata[i];
+//            }
+//            for(PetscInt i = ctx->npde; i < ctx->npde + ctx->nic; ++i){
+//                lambdax_data[i] = 100 * ctx->lambda * xdata[i];
+//            }
+//            VecRestoreArray(y, &lambdax_data);
+//            VecRestoreArrayRead(x, &xdata);
+
+            VecDestroy(&lambdax);
             PetscFunctionReturn(EXIT_SUCCESS);
         }
     }
@@ -236,7 +268,7 @@ namespace iceicle::solvers {
                 + nodeset.selected_nodes.size() * ndim;
             PetscInt local_u_size = local_res_size;
 
-            // Create and set up the matrix if not given 
+// Create and set up the matrix if not given 
             MatCreate(comm, &(jac));
             MatSetSizes(jac, local_res_size, local_u_size, PETSC_DETERMINE, PETSC_DETERMINE);
             MatSetFromOptions(jac);
@@ -262,6 +294,8 @@ namespace iceicle::solvers {
 
                 subproblem_ctx.J = jac;
                 subproblem_ctx.Jx = Jx;
+                subproblem_ctx.npde = fespace.dg_map.calculate_size_requirement(disc_class::nv_comp);
+                subproblem_ctx.nic = nodeset.selected_nodes.size() * ndim;
 
                 MatSetType(subproblem_mat, MATSHELL);
                 MatSetUp(subproblem_mat);
@@ -343,13 +377,12 @@ namespace iceicle::solvers {
                     // MDG residual starts after fe residual
                     dofspan mdg_res{res_view.data() + res.size(), mdg_layout};
 
-                    form_petsc_mdg_jacobian_fd(fespace, disc, u, mdg_res, jac);
+                    form_petsc_mdg_jacobian_fd(fespace, disc, u, mdg_res, jac, 1e-4);
                 }
             } // end scope of res_view
             
             // set the initial residual norm
             PetscCallAbort(comm, VecNorm(res_data, NORM_2, &(conv_criteria.r0)));
-
 
             IDX k;
             for(k = 0; k < conv_criteria.kmax; ++k){
