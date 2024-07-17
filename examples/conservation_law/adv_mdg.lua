@@ -90,7 +90,7 @@ return {
 		tau_rel = 0,
 		kmax = 100,
 		regularization = function(k, res)
-			return 0.01
+			return 0.1
 		end,
 		form_subproblem_mat = false,
 		verbosity = 0,

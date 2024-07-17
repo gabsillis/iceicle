@@ -60,28 +60,24 @@ namespace iceicle::solvers {
             const PetscScalar* xdata;
             VecGetArray(lambdax, &lambdax_data);
             VecGetArrayRead(x, &xdata);
-            for(PetscInt i = 0; i < ctx->npde; ++i){
-                lambdax_data[i] = xdata[i] * ctx->lambda;
-            }
-            for(PetscInt i = ctx->npde; i < ctx->npde + ctx->nic; ++i){
-                lambdax_data[i] = xdata[i] * 100 * ctx->lambda;
+//            for(PetscInt i = 0; i < ctx->npde; ++i){
+//                lambdax_data[i] = xdata[i] * ctx->lambda;
+//            }
+//            for(PetscInt i = ctx->npde; i < ctx->npde + ctx->nic; ++i){
+//                lambdax_data[i] = xdata[i] * 100 * ctx->lambda;
+//            }
+//          // TODO: switch to parallel full size
+            std::vector<PetscScalar> colnorms(ctx->npde + ctx->nic);
+            // scaling using column norms (More 1977 Levenberg-Marquardt Implementation and Theory)
+            MatGetColumnNorms(ctx->J, NORM_2, colnorms.data());
+            for(PetscInt i = 0; i < ctx->npde + ctx->nic; ++i){
+                lambdax_data[i] = xdata[i] * ctx->lambda * colnorms[i];
             }
             VecRestoreArray(lambdax, &lambdax_data);
             VecRestoreArrayRead(x, &xdata);
 
             // y = (J^T*J + lambda * I)*x
             PetscCall(VecAXPY(y, 1.0, lambdax));
-
-//            VecGetArray(y, &lambdax_data);
-//            VecGetArrayRead(x, &xdata);
-//            for(PetscInt i = 0; i < ctx->npde; ++i){
-//                lambdax_data[i] = ctx->lambda * xdata[i];
-//            }
-//            for(PetscInt i = ctx->npde; i < ctx->npde + ctx->nic; ++i){
-//                lambdax_data[i] = 100 * ctx->lambda * xdata[i];
-//            }
-//            VecRestoreArray(y, &lambdax_data);
-//            VecRestoreArrayRead(x, &xdata);
 
             VecDestroy(&lambdax);
             PetscFunctionReturn(EXIT_SUCCESS);

@@ -65,10 +65,10 @@ return {
 	-- solver
 	solver = {
 		type = "gauss-newton",
-		ivis = 100,
+		ivis = 10,
 		tau_abs = 1e-8,
 		tau_rel = 0,
-		kmax = 2000,
+		kmax = 20000,
 
 		-- no linesearch but regularization -> Levenberg-Marquardt
 		regularization = function(k, res)
