@@ -6,6 +6,7 @@
 #pragma once
 #include "iceicle/fespace/fespace.hpp"
 #include "iceicle/fe_function/fespan.hpp"
+#include "iceicle/fe_function/component_span.hpp"
 #include "iceicle/geometry/face.hpp"
 #include "iceicle/petsc_interface.hpp"
 #include <cmath>
@@ -681,5 +682,46 @@ namespace iceicle::solvers {
             }
 
         }
+    }
+
+    template<
+        class T, class IDX, int ndim,
+        class disc_class, class uLayoutPolicy, class uAccessorPolicy
+    >
+    auto form_petsc_mdg_jacobian_fd(
+        FESpace<T, IDX, ndim>& fespace,
+        disc_class& disc,
+        fespan<T, uLayoutPolicy, uAccessorPolicy> u,
+        geospan auto x,
+        geospan auto mdg_residual,
+        Mat jac,
+        T epsilon = std::sqrt(std::numeric_limits<T>::epsilon()),
+        MPI_Comm comm = MPI_COMM_WORLD 
+    ) -> void 
+    {
+        using Element = FiniteElement<T, IDX, ndim>;
+        using Trace = TraceSpace<T, IDX, ndim>;
+        using index_type = IDX;
+        using namespace std::experimental;
+
+        // zero out the residual 
+        mdg_residual = 0;
+
+        // get the start indices for the petsc matrix on this processor
+        PetscInt proc_range_beg, proc_range_end, mdg_range_beg;
+        PetscCallAbort(comm, MatGetOwnershipRange(jac, &proc_range_beg, &proc_range_end));
+        mdg_range_beg = proc_range_beg + u.size();
+
+        // preallocate storage for compact views of u 
+        const std::size_t max_local_size =
+            fespace.dg_map.max_el_size_reqirement(disc_class::dnv_comp);
+        std::vector<T> uL_storage(max_local_size);
+        std::vector<T> uR_storage(max_local_size);
+        std::vector<T> jacL_storage{};
+        std::vector<T> jacR_storage{};
+        std::vector<T> res_storage{};
+        std::vector<T> resp_storage{};
+
+        const geo_dof_map<T, IDX, ndim> nodesmap;
     }
 }

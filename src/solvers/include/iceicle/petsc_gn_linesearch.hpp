@@ -73,6 +73,8 @@ namespace iceicle::solvers {
             for(PetscInt i = 0; i < ctx->npde + ctx->nic; ++i){
                 lambdax_data[i] = xdata[i] * ctx->lambda * colnorms[i];
             }
+//            for(PetscInt i = ctx->npde; i < ctx->npde + ctx->nic; ++i)
+//                lambdax_data[i] *= 100;
             VecRestoreArray(lambdax, &lambdax_data);
             VecRestoreArrayRead(x, &xdata);
 
@@ -373,7 +375,7 @@ namespace iceicle::solvers {
                     // MDG residual starts after fe residual
                     dofspan mdg_res{res_view.data() + res.size(), mdg_layout};
 
-                    form_petsc_mdg_jacobian_fd(fespace, disc, u, mdg_res, jac, 1e-4);
+                    form_petsc_mdg_jacobian_fd(fespace, disc, u, mdg_res, jac);
                 }
             } // end scope of res_view
             

@@ -37,7 +37,7 @@ return {
 		quadrature = "gauss",
 
 		-- the basis function order
-		order = 2,
+		order = 1,
 	},
 
 	-- describe the conservation law
@@ -72,7 +72,7 @@ return {
 
 		-- no linesearch but regularization -> Levenberg-Marquardt
 		regularization = function(k, res)
-			return 10.0
+			return 0.05
 		end,
 		form_subproblem_mat = false,
 		verbosity = 0,
@@ -80,7 +80,6 @@ return {
 		--			type = "cubic",
 		--		},
 		mdg = {
-			ncycles = 1,
 			ic_selection_threshold = function(icycle)
 				return 0
 			end,

@@ -47,7 +47,7 @@ return {
 		quadrature = "gauss",
 
 		-- the basis function order
-		order = 0,
+		order = 2,
 	},
 
 	-- describe the conservation law
@@ -65,7 +65,7 @@ return {
 		if t > 5 * (x - 0.5) then
 			return 0.5
 		else
-			return 1.0
+			return 0.5
 		end
 	end,
 
@@ -90,7 +90,13 @@ return {
 		tau_rel = 0,
 		kmax = 100,
 		regularization = function(k, res)
-			return 0.1
+			if k < 50 then
+				return 0.1
+			elseif k < 75 then
+				return 0.00001
+			else
+				return 1e-8
+			end
 		end,
 		form_subproblem_mat = false,
 		verbosity = 0,
