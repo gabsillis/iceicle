@@ -157,11 +157,21 @@ namespace iceicle {
 
         template<class T, class IDX, class AccessorPolicy, int ndim>
         static constexpr bool is_geospan<component_span<T, geo_data_layout<T, IDX, ndim>, AccessorPolicy>> = true; 
+
+        template<class spantype>
+        static constexpr bool is_icespan = false;
+
+        template<class T, class IDX, class AccessorPolicy, int ndim>
+        static constexpr bool is_icespan<component_span<T, ic_residual_layout<T, IDX, ndim>, AccessorPolicy>> = true;
     }
 
     /// @brief This span uses the geo_dof_map
     template<class spantype>
     concept geospan = impl::is_geospan<spantype>;
+
+    /// @brief this span uses the ic_residual_layout
+    template<class spantype>
+    concept icespan = impl::is_icespan<spantype>;
 
     template<class T, class IDX, int ndim>
     void extract_geospan(AbstractMesh<T, IDX, ndim>& mesh, geospan auto geo_data){

@@ -81,7 +81,7 @@ namespace iceicle::solvers {
 
     template<typename T>
     T zoom(function1d<T> fcn, T alpha_lo, T alpha_hi, int kmax, T c1, T c2){
-        static constexpr T EPSILON = std::sqrt(std::numeric_limits<T>::epsilon());
+        static const T EPSILON = std::sqrt(std::numeric_limits<T>::epsilon());
 
         for(int k = 0; k < kmax; k++){
             // cubic interpolation
@@ -108,7 +108,7 @@ namespace iceicle::solvers {
                 alpha_hi = aj;
             } else {
                 T dphi_aj = finite_difference(fcn, EPSILON, aj);
-                if( std::abs(dphi_aj <= -c2 * dphi_0) ){
+                if( std::abs(dphi_aj) <= -c2 * dphi_0 ){
                     return aj;
                 }
 

@@ -26,16 +26,42 @@ namespace iceicle {
         }
     };
 
+
+    /// @brief a ParametricCoordTransformation defines a parametric transformation from 
+    /// a a parametric coordinate space (s) to the physical coordinate space (x)
     template<class T, int ndim>
     class ParametricCoordTransformation {
         public:
+
+        /// @brief virtual destructor
         virtual ~ParametricCoordTransformation() = default;
 
+        /// @brief convert from the parametric coordinate space to the physical coordinate space
         virtual void s_to_x(std::span<const T> svec, std::span<T, ndim> xvec) const = 0;
 
+        /// @brief convert from the physical coordinate space to the parametric coordinate space
         virtual void x_to_s(std::span<const T, ndim> xvec, std::span<T> svec) const = 0;
 
+        /// @brief the dimensionality of the parametric coordinate space
         virtual auto s_size() const -> int = 0;
+    };
+
+    /// @brief the identity parametric transformation (x = s)
+    template<class T, int ndim>
+    class IdentityParametricTransformation final : public ParametricCoordTransformation<T, ndim> {
+        public:
+        /// @brief convert from the parametric coordinate space to the physical coordinate space
+        void s_to_x(std::span<const T> svec, std::span<T, ndim> xvec) const override {
+            std::ranges::copy(svec, xvec.begin());
+        }
+
+        /// @brief convert from the physical coordinate space to the parametric coordinate space
+        void x_to_s(std::span<const T, ndim> xvec, std::span<T> svec) const override {
+            std::ranges::copy(xvec, svec.begin());
+        }
+
+        /// @brief the dimensionality of the parametric coordinate space
+        auto s_size() const -> int override { return ndim; };
     };
 
     template<class T, int ndim>
@@ -102,9 +128,8 @@ namespace iceicle {
         /// @brief the indices that represent the start of the data for each represented dof
         std::vector<index_type> cols{};
 
-        /// @brief for degrees of freedom where the coordinates are parameterized 
         /// store the parametric_function that represents this map
-        std::map<index_type, std::unique_ptr<ParametricCoordTransformation<T, ndim>> > parametric_accessors;
+        std::vector< std::unique_ptr< ParametricCoordTransformation<T, ndim> > > parametric_accessors;
 
         /// @brief true if the given index is a parametric dof
         std::vector<bool> is_parametric;
@@ -155,6 +180,12 @@ namespace iceicle {
 
             // initialize the is_parametric array
             is_parametric = std::vector<bool>(selected_nodes.size(), false);
+
+            // initialize the parametric accessors to the identity accessor 
+            parametric_accessors = std::vector< std::unique_ptr< ParametricCoordTransformation<T, ndim> > >(
+                    selected_nodes.size());
+            for(size_type idof = 0; idof < selected_nodes.size(); ++idof)
+                parametric_accessors[idof] = std::make_unique<IdentityParametricTransformation<T, ndim>>();
 
             // this is finalized until parametric nodes are registered
             cols.reserve(ndof()+1);
@@ -218,6 +249,7 @@ namespace iceicle {
     template<std::ranges::forward_range R, typename T, int ndim>
     geo_dof_map(R&&, FESpace<T, std::ranges::range_value_t<R>, ndim>&, bool) -> geo_dof_map<T, std::ranges::range_value_t<R>, ndim>;
 
+    /// @brief layout that represents the layout of parametric geometric coordinate data in memory
     template<class T, class IDX, int ndim>
     struct geo_data_layout {
 
@@ -290,6 +322,85 @@ namespace iceicle {
 #endif
            return geo_map.cols[idof]; 
         }
+    };
+
+    /// @brief represents the layout of memeory for interface conservation residual
+    template<class T, class IDX, int ndim>
+    struct ic_residual_layout {
+        // ============
+        // = Typedefs =
+        // ============
+        using index_type = IDX;
+        using size_type = std::make_unsigned_t<IDX>;
+
+        // ===========
+        // = Members =
+        // ===========
+
+        /// @brief the number of vector components
+        index_type _nv;
+
+        /// @brief the mapping of selected degrees of freedom for MDG-ICE
+        const geo_dof_map<T, IDX, ndim>& geo_map;
+
+        // ==============
+        // = Properties =
+        // ==============
+
+        /**
+         * @brief consecutive local degrees of freedom (ignoring vector components)
+         * are contiguous in the layout
+         * meaning that the data for a an element can be block copied 
+         * to a elspan provided the layout parameters are the same
+         */
+        inline static constexpr auto local_dof_contiguous() noexcept -> bool { return true; }
+
+        // =========
+        // = Sizes =
+        // =========
+
+        /// @brief get the number of degrees of freedom
+        [[nodiscard]] inline constexpr auto ndof() const noexcept -> size_type { return geo_map.ndof(); }
+
+        /// @brief get the number of vector components
+        [[nodiscard]] inline constexpr auto nv(index_type idof) const noexcept -> size_type { 
+            return _nv;
+        }
+
+        /// @brief the size of the compact index space
+        [[nodiscard]] inline constexpr auto size() const noexcept -> size_type { return geo_map.cols[geo_map.ndof()]; }
+
+        // ============
+        // = Indexing =
+        // ============
+#ifndef NDEBUG 
+        inline static constexpr bool index_noexcept = false;
+#else 
+        inline static constexpr bool index_noexcept = true;
+#endif
+
+        /**
+         * Get the result of the mapping from an index pair 
+         * to the one dimensional index of the elment 
+         * @param idof the degree of freedom index 
+         * @param iv the vector component index
+         */
+        [[nodiscard]] constexpr auto operator[](
+            index_type idof,
+            index_type iv
+        ) const noexcept(index_noexcept) -> index_type {
+#ifndef NDEBUG
+            // Bounds checking version in debug 
+            // NOTE: allow indexing ndof()
+            // for nodes that arent in inv_selected_nodes but still 
+            // valid gdofs
+            if(idof < 0  || idof >= ndof()  ) throw std::out_of_range("Dof index out of range");
+            if(iv < 0    || iv >= nv(idof)  ) throw std::out_of_range("Vector compoenent index out of range");
+            if(!geo_map.finalized) throw std::out_of_range("indices have not been finalized");
+#endif
+           return geo_map.cols[idof]; 
+        }
+
     };
 
 }
