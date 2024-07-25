@@ -36,9 +36,21 @@ namespace iceicle {
          * over the trace basis of a given trace 
          * using the dimensionality as the number of vector components 
          */
-        template<class T>
+        template<class T, int ndim>
         constexpr trace_layout_right(
-            const TraceSpace<T, index_type, (int) vextent> &trace
+            const TraceSpace<T, index_type, ndim> &trace
+        ) noexcept : _ndof{trace.nbasis_trace()} {}
+
+        /**
+         * @brief Construct a trace layout 
+         * over the trace basis of a given trace 
+         * using the number of equations in the discretization as the 
+         * number of vector components 
+         */
+        template<class T, int ndim, class disc_class>
+        constexpr trace_layout_right(
+            const TraceSpace<T, index_type, ndim> &trace,
+            const disc_class& disc
         ) noexcept : _ndof{trace.nbasis_trace()} {}
 
         trace_layout_right(const trace_layout_right<IDX, vextent>& other) noexcept = default;
@@ -110,4 +122,7 @@ namespace iceicle {
     // Deduction Guides 
     template<class T, class IDX, int ndim>
     trace_layout_right(const TraceSpace<T, IDX, ndim>) -> trace_layout_right<IDX, (std::size_t) ndim>;
+    template<class T, class IDX, int ndim, class disc_class>
+    trace_layout_right(const TraceSpace<T, IDX, ndim>, const disc_class&)
+    -> trace_layout_right<IDX, (std::size_t) disc_class::nv_comp>;
 }

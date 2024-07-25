@@ -7,8 +7,10 @@
 #pragma once 
 #include "iceicle/element/finite_element.hpp"
 #include "iceicle/fe_function/fespan.hpp"
+#include "iceicle/fe_function/geo_layouts.hpp"
 #include "iceicle/fe_function/layout_right.hpp"
 #include "iceicle/fe_function/trace_layout.hpp"
+#include "iceicle/fe_function/component_span.hpp"
 #include "iceicle/fespace/fespace.hpp"
 #include "iceicle/tmp_utils.hpp"
 #include <type_traits>
@@ -210,6 +212,63 @@ namespace iceicle::solvers {
         }
     }
 
+
+    template<
+        class T,
+        class IDX,
+        int ndim,
+        class disc_class,
+        class uLayoutPolicy,
+        class uAccessorPolicy
+    >
+    auto form_mdg_residual(
+        FESpace<T, IDX, ndim>& fespace,
+        disc_class& disc,
+        fespan<T, uLayoutPolicy, uAccessorPolicy> u,
+        const geo_dof_map<T, IDX, ndim>& geo_map,
+        icespan auto mdg_residual
+    ) -> void {
+        using Element = FiniteElement<T, IDX, ndim>;
+        using Trace = TraceSpace<T, IDX, ndim>;
+        using index_type = IDX;
+
+        // zero out the residual 
+        mdg_residual = 0;
+
+
+        // preallocate storage for compact views of u 
+        const std::size_t max_local_size =
+            fespace.dg_map.max_el_size_reqirement(disc_class::dnv_comp);
+        std::vector<T> uL_storage(max_local_size);
+        std::vector<T> uR_storage(max_local_size);
+        std::vector<T> res_storage{};
+
+        // loop over the boundary faces in the selection 
+        for(index_type itrace : geo_map.selected_traces){
+            Trace& trace = fespace.traces[itrace];
+            
+            // set up compact data views
+            auto uL_layout = u.create_element_layout(trace.elL.elidx);
+            dofspan uL{uL_storage, uL_layout};
+            auto uR_layout = u.create_element_layout(trace.elR.elidx);
+            dofspan uR{uR_storage, uR_layout};
+
+            trace_layout_right<IDX, disc_class::nv_comp> res_layout{trace};
+            res_storage.resize(res_layout.size());
+            dofspan res{res_storage, res_layout};
+
+            // extract the compact values from the global u view
+            extract_elspan(trace.elL.elidx, u, uL);
+            extract_elspan(trace.elR.elidx, u, uR);
+
+            // zero out then get interface conservation residual 
+            res = 0;
+            disc.interface_conservation(trace, fespace.meshptr->nodes, uL, uR, res);
+
+            scatter_facspan(trace, 1.0, res, 1.0, mdg_residual);
+        }
+    }
+
     /**
      * calculate the contiguous storage requirement to represent the dg residual and 
      * selected mdg dofs in a single residual array 
@@ -251,5 +310,33 @@ namespace iceicle::solvers {
 
         form_residual(fespace, disc, u_dg, res_dg);
         form_mdg_residual(fespace, disc, u_dg, res_mdg);
+    }
+
+    template<class T, class IDX, int ndim, class disc_class>
+    auto form_residual(
+        FESpace<T, IDX, ndim>& fespace,
+        disc_class& disc,
+        geo_dof_map<T, IDX, ndim>& geo_map,
+        std::span<T> u,
+        std::span<T> res
+    ) -> void {
+
+        // create all the layouts
+        fe_layout_right dg_layout{fespace.dg_map, tmp::to_size<disc_class::nv_comp>()};
+        geo_data_layout x_layout{geo_map};
+        ic_residual_layout<T, IDX, ndim, disc_class::nv_comp> ic_layout{geo_map};
+
+
+        // create views over the u and res arrays
+        fespan u_dg{u.data(), dg_layout};
+        fespan res_dg{res.data(), dg_layout};
+        component_span x{std::span{u.begin() + dg_layout.size(), u.end()}, x_layout};
+        dofspan res_mdg{std::span{res.begin() + dg_layout.size(), res.end()}, ic_layout};
+
+        // apply the geometric parameterization to the mesh
+        update_mesh(x, *(fespace.meshptr));
+
+        form_residual(fespace, disc, u_dg, res_dg);
+        form_mdg_residual(fespace, disc, u_dg, geo_map, res_mdg);
     }
 }

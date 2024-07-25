@@ -161,8 +161,8 @@ namespace iceicle {
         template<class spantype>
         static constexpr bool is_icespan = false;
 
-        template<class T, class IDX, class AccessorPolicy, int ndim>
-        static constexpr bool is_icespan<component_span<T, ic_residual_layout<T, IDX, ndim>, AccessorPolicy>> = true;
+        template<class T, class IDX, class AccessorPolicy, int ndim, int _nv>
+        static constexpr bool is_icespan<dofspan<T, ic_residual_layout<T, IDX, ndim, _nv>, AccessorPolicy>> = true;
     }
 
     /// @brief This span uses the geo_dof_map
@@ -205,5 +205,47 @@ namespace iceicle {
         }
 
         // TODO: mesh validation and consistency operations
+    }
+
+    /**
+    * @brief perform a scatter operation to incorporate face data 
+    * back into the global data array 
+    *
+    * follows the y = alpha * x + beta * y convention
+    * inspired by BLAS interface 
+    *
+    * @param [in] trace the trace who's data is being represented
+    * @param [in] alpha the multiplier for element data 
+    * @param [in] fac_data the fac local data 
+    * @param [in] beta the multiplier for values in the global data array 
+    * @param [in/out] global_data the global data array to scatter to 
+    */
+    template< class value_type, class index_type, int ndim>
+    inline auto scatter_facspan(
+        TraceSpace<value_type, index_type, ndim> &trace,
+        value_type alpha,
+        facspan auto fac_data,
+        value_type beta,
+        icespan auto global_data
+    ) -> void {
+        static_assert(std::is_same_v<index_type, typename decltype(fac_data)::index_type> , "index_types must match");
+        static_assert(std::is_same_v<index_type, typename decltype(global_data)::index_type> , "index_types must match");
+        static_assert(decltype(fac_data)::static_extent() == decltype(global_data)::static_extent(), "static_extents must match" );
+
+        // node selection data structure 
+        const geo_dof_map<value_type, index_type, ndim>& geo_map = global_data.get_layout().geo_map;
+
+        // maps from full set of nodes -> restricted set of nodes
+        const std::vector<index_type>& inv_selected_nodes = geo_map.inv_selected_nodes;
+
+        for(index_type inode = 0; inode < trace.face->n_nodes(); ++inode){
+            index_type ignode = inv_selected_nodes[trace.face->nodes()[inode]];
+            if(ignode != geo_map.selected_nodes.size()){ // safeguard against boundary nodes
+                for(index_type iv = 0; iv < fac_data.nv(); ++iv){
+                    global_data[ignode, iv] = alpha * fac_data[inode, iv]
+                        + beta * global_data[ignode, iv];
+                }
+            }
+        }
     }
 }

@@ -741,7 +741,7 @@ namespace iceicle::solvers {
             auto uR_layout = u.create_element_layout(trace.elR.elidx);
             dofspan uR{uR_storage, uR_layout};
 
-            trace_layout_right<IDX, neq> res_layout{trace};
+            trace_layout_right res_layout{trace, disc};
             res_storage.resize(res_layout.size());
             dofspan res{res_storage, res_layout};
             resp_storage.resize(res_layout.size());
@@ -877,7 +877,7 @@ namespace iceicle::solvers {
 
                         T old_val = s[is];
                         s[is] += eps_scaled;
-                        parametrization->s_to_x(fespace.meshptr->nodes[inode]);
+                        parametrization->s_to_x(s, fespace.meshptr->nodes[inode]);
 
                         // get perturbed residual
                         resp = 0;
@@ -894,6 +894,7 @@ namespace iceicle::solvers {
 
                         // revert perturbation
                         s[is] = old_val;
+                        parametrization->s_to_x(s, fespace.meshptr->nodes[inode]);
                 }
             }
 
@@ -952,7 +953,7 @@ namespace iceicle::solvers {
 
                         T old_val = s[is];
                         s[is] += eps_scaled;
-                        parametrization->s_to_x(fespace.meshptr->nodes[inode]);
+                        parametrization->s_to_x(s, fespace.meshptr->nodes[inode]);
 
                         // get the perturbed residual
                         resLp = 0; resRp = 0;
@@ -984,12 +985,13 @@ namespace iceicle::solvers {
 
                         // revert perturbation
                         s[is] = old_val;
+                        parametrization->s_to_x(s, fespace.meshptr->nodes[inode]);
                     }
                 }
 
                 // dICE/dx
                 {
-                    auto res_layout = trace_layout_right{trace};
+                    auto res_layout = trace_layout_right{trace, disc};
                     res_storage.resize(res_layout.size());
                     dofspan res{res_storage, res_layout};
                     resp_storage.resize(res_layout.size());
@@ -1013,7 +1015,7 @@ namespace iceicle::solvers {
 
                         T old_val = s[is];
                         s[is] += eps_scaled;
-                        parametrization->s_to_x(fespace.meshptr->nodes[inode]);
+                        parametrization->s_to_x(s, fespace.meshptr->nodes[inode]);
 
                         // get the perturbed residual
                         resp = 0;
@@ -1037,6 +1039,7 @@ namespace iceicle::solvers {
 
                         // revert perturbation
                         s[is] = old_val;
+                        parametrization->s_to_x(s, fespace.meshptr->nodes[inode]);
                     }
                 }
             }
