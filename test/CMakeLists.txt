@@ -84,3 +84,6 @@ if(ICEICLE_USE_PETSC)
     target_include_directories( test_solvers PUBLIC ${MPI_CXX_INCLUDE_PATH})
     target_link_libraries( test_solvers PUBLIC ${MPI_CXX_LIBRARIES} )
 endif()
+
+add_executable(test_linalg test_linalg.cpp)
+target_link_libraries( test_linalg PUBLIC iceicle_fe )
