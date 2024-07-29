@@ -23,6 +23,50 @@
 
 namespace iceicle::solvers {
 
+    /// @brief Create a writer for output files 
+    /// given the user configuration
+    /// @param config_tbl the user configuration lua table 
+    /// @param fespace the finite element space 
+    /// @param disc the discretization
+    /// @param u the solution to write
+    template<class T, class IDX, int ndim, class DiscType, class LayoutPolicy>
+    auto lua_get_writer(
+        sol::table config_tbl,
+        FESpace<T, IDX, ndim>& fespace,
+        DiscType disc,
+        fespan<T, LayoutPolicy> u 
+    ) -> io::Writer 
+    {
+        using namespace iceicle::util;
+        io::Writer writer;
+        sol::optional<sol::table> output_tbl_opt = config_tbl["output"];
+        if(output_tbl_opt){
+            sol::table output_tbl = output_tbl_opt.value();
+            sol::optional<std::string> writer_name = output_tbl["writer"];
+
+            // .dat file writer
+            // NOTE: short circuiting &&
+            if(writer_name && eq_icase(writer_name.value(), "dat")){
+                if constexpr (ndim == 1){
+                    io::DatWriter<T, IDX, ndim> dat_writer{fespace};
+                    dat_writer.register_fields(u, "u");
+                    writer = io::Writer{dat_writer};
+                } else {
+                    AnomalyLog::log_anomaly(Anomaly{"dat writer not defined for greater than 1D", general_anomaly_tag{}});
+                }
+            }
+
+            // .vtu writer 
+            if(writer_name && eq_icase(writer_name.value(), "vtu")){
+                io::PVDWriter<T, IDX, ndim> pvd_writer{};
+                pvd_writer.register_fespace(fespace);
+                pvd_writer.register_fields(u, "u");
+                writer = pvd_writer;
+            }
+        }
+        return writer;
+    }
+
     template<class T, class IDX, int ndim, class DiscType, class LayoutPolicy>
     auto lua_solve(
         sol::table config_tbl,
@@ -97,31 +141,7 @@ namespace iceicle::solvers {
                 if(ivis_input) solver.ivis = ivis_input.value();
 
                 sol::optional<sol::table> output_tbl_opt = config_tbl["output"];
-                io::Writer writer;
-                if(output_tbl_opt){
-                    sol::table output_tbl = output_tbl_opt.value();
-                    sol::optional<std::string> writer_name = output_tbl["writer"];
-
-                    // .dat file writer
-                    // NOTE: short circuiting &&
-                    if(writer_name && eq_icase(writer_name.value(), "dat")){
-                        if constexpr (ndim == 1){
-                            io::DatWriter<T, IDX, ndim> dat_writer{fespace};
-                            dat_writer.register_fields(u, "u");
-                            writer = io::Writer{dat_writer};
-                        } else {
-                            AnomalyLog::log_anomaly(Anomaly{"dat writer not defined for greater than 1D", general_anomaly_tag{}});
-                        }
-                    }
-
-                    // .vtu writer 
-                    if(writer_name && eq_icase(writer_name.value(), "vtu")){
-                        io::PVDWriter<T, IDX, ndim> pvd_writer{};
-                        pvd_writer.register_fespace(fespace);
-                        pvd_writer.register_fields(u, "u");
-                        writer = pvd_writer;
-                    }
-                }
+                io::Writer writer{lua_get_writer(config_tbl, fespace, disc, u)};
 
                 solver.vis_callback = [&](ExplicitSolverType& solver) mutable {
                     T sum = 0.0;
@@ -200,32 +220,7 @@ namespace iceicle::solvers {
             };
 
             // Output Setup
-            sol::optional<sol::table> output_tbl_opt = config_tbl["output"];
-            io::Writer writer;
-            if(output_tbl_opt){
-                sol::table output_tbl = output_tbl_opt.value();
-                sol::optional<std::string> writer_name = output_tbl["writer"];
-
-                // .dat file writer
-                // NOTE: short circuiting &&
-                if(writer_name && eq_icase(writer_name.value(), "dat")){
-                    if constexpr (ndim == 1){
-                        io::DatWriter<T, IDX, ndim> dat_writer{fespace};
-                        dat_writer.register_fields(u, "u");
-                        writer = io::Writer{dat_writer};
-                    } else {
-                        AnomalyLog::log_anomaly(Anomaly{"dat writer not defined for greater than 1D", general_anomaly_tag{}});
-                    }
-                }
-
-                // .vtu writer 
-                if(writer_name && eq_icase(writer_name.value(), "vtu")){
-                    io::PVDWriter<T, IDX, ndim> pvd_writer{};
-                    pvd_writer.register_fespace(fespace);
-                    pvd_writer.register_fields(u, "u");
-                    writer = pvd_writer;
-                }
-            }
+            io::Writer writer{lua_get_writer(config_tbl, fespace, disc, u)};
 
             linesearch >> select_fcn{
                 [&](const auto& ls){

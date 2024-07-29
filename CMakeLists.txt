@@ -88,6 +88,8 @@ target_include_directories(mdspan INTERFACE
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/mdspan/include>
     $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
 
+# === REQUIRED Third Party Library LAPACK ===
+find_package(LAPACK REQUIRED)
 
 # MPI Dependent 3rd party libraries 
 if(MPI_FOUND)
