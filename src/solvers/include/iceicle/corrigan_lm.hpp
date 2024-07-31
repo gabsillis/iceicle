@@ -372,6 +372,17 @@ namespace iceicle::solvers {
             for(k = 0; k < conv_criteria.kmax; ++k){
 
 
+                PetscViewer jacobian_viewer;
+                PetscViewerASCIIOpen(PETSC_COMM_WORLD, ("iceicle_data/jacobian_view" + std::to_string(k) + ".dat").c_str(), &jacobian_viewer);
+                PetscViewerPushFormat(jacobian_viewer, PETSC_VIEWER_ASCII_DENSE);
+                MatView(jac, jacobian_viewer);
+
+                PetscViewer r_viewer;
+                PetscViewerASCIIOpen(PETSC_COMM_WORLD, ("iceicle_data/residual_view" + std::to_string(k) + ".dat").c_str(), &r_viewer);
+                PetscViewerPushFormat(r_viewer, PETSC_VIEWER_ASCII_DENSE);
+                VecView(res_data, r_viewer);
+
+
                 // Form the subproblem
                 if(explicitly_form_subproblem){
 
@@ -391,7 +402,7 @@ namespace iceicle::solvers {
                         for(PetscInt i = 0; i < u_layout.size(); ++i)
                             { lambda_view[i] *= lambda_u; }
                         for(PetscInt i = u_layout.size(); i < u_layout.size() + geo_layout.size(); ++i)
-                            { lambda_view[i] *= lambda_b; }
+                            { lambda_view[i] = std::max(lambda_b, lambda_view[i] * lambda_b); }
                     }
                     MatDiagonalSet(subproblem_mat, lambda, ADD_VALUES);
                     VecDestroy(&lambda);

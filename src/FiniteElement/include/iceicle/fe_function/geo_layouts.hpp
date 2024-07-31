@@ -118,7 +118,7 @@ namespace iceicle {
                 auto s_iterator = svec.begin();
 
                 for(int idim = 0; idim < ndim; ++idim){
-                    if(fixed_iterator->first == idim){
+                    if(fixed_iterator != fixed_coordinates.end() && fixed_iterator->first == idim){
                         xvec[idim] = fixed_iterator->second;
                         ++fixed_iterator;
                     } else {
@@ -134,7 +134,7 @@ namespace iceicle {
                 auto s_iterator = svec.begin();
 
                 for(int idim = 0; idim < ndim; ++idim){
-                    if(fixed_iterator->first == idim){
+                    if(fixed_iterator != fixed_coordinates.end() && fixed_iterator->first == idim){
                         ++fixed_iterator;
                     } else {
                         *s_iterator = xvec[idim];
@@ -145,6 +145,31 @@ namespace iceicle {
 
             /// @brief the dimensionality of the parametric coordinate space
             auto s_size() const -> int override { return ndim - fixed_coordinates.size(); };
+
+        };
+
+        /// @brief fix all the coordinates
+        template<class T, int ndim>
+        class Fixed final : public ParametricCoordTransformation<T, ndim> {
+            /// @brief fixed coordinate index and value pairs
+            std::array<T, ndim> fixed_coordinates;
+
+            public:
+            Fixed(std::array<T, ndim> fixed_coordinates)
+                : fixed_coordinates(fixed_coordinates) {};
+
+            /// @brief convert from the parametric coordinate space to the physical coordinate space
+            void s_to_x(std::span<const T> svec, std::span<T, ndim> xvec) const override {
+                std::ranges::copy(fixed_coordinates, xvec.begin());
+            }
+
+            /// @brief convert from the physical coordinate space to the parametric coordinate space
+            void x_to_s(std::span<const T, ndim> xvec, std::span<T> svec) const override {
+                // no-op
+            }
+
+            /// @brief the dimensionality of the parametric coordinate space
+            auto s_size() const -> int override { return 0; };
 
         };
     }
@@ -452,7 +477,8 @@ namespace iceicle {
         }
 
         /// @brief the size of the compact index space
-        [[nodiscard]] inline constexpr auto size() const noexcept -> size_type { return geo_map.cols[geo_map.ndof()]; }
+        [[nodiscard]] inline constexpr auto size() const noexcept -> size_type 
+            { return ndof() * nv(); }
 
         // ============
         // = Indexing =

@@ -620,3 +620,40 @@ API References
 
 .. doxygenclass:: iceicle::solvers::GaussNewtonPetsc
    :members:
+
+==================================================================
+Moving Discontinuous Galerkin with Interface Condition Enforcement
+==================================================================
+
+Moving Discontinuous Galerkin with Interface Condition Enforcement or (MDG-ICE) is implemented using a continuous 
+variational formulation.
+
+The first step of the algorithm is to select degrees of freedom to consider.
+We employ a selection threshold to allow the user to eliminate degrees of freedom
+where the interface conservation is enforced to a satisfactory level.
+
+.. code::
+
+   selected_traces = []
+   for trace in internal_traces and boundary_traces:
+      ic := interface conservation(u, trace, trace.centroid)
+      if norm(ic) > threshold:
+         selected_traces.append(trace)
+
+The geometry degrees of freedom are all the nodes in the selected traces parameterized by geometry restrictions
+(i.e nodes can only slide along boundary)
+
+-----------
+Boundary IC
+-----------
+
+The interface conservation (IC) on the boundary requires some special care. 
+Dirichlet-type boundary conditions will draw the exterior state from the Dirichlet boundary condition, 
+thus creating a left and right state at the evaluation point on the trace to get the IC residual.
+
+Extrapolation and Neumann type boundary conditions assume no jump in state, therefore the interface 
+conservation for convective fluxes is automatically satisfied. 
+Neumann type boundary conditions, however, may still have a jump in gradient, so the IC evaluation will 
+need to treat the diffusive terms separately.
+
+

@@ -1,9 +1,3 @@
-local fourier_nr = 0.0001
-
-local t_s = 0.5
-
-local y_inf = 0.2
-
 return {
 	-- specify the number of dimensions (REQUIRED)
 	ndim = 2,
@@ -47,7 +41,7 @@ return {
 		quadrature = "gauss",
 
 		-- the basis function order
-		order = 2,
+		order = 1,
 	},
 
 	-- describe the conservation law
@@ -55,7 +49,7 @@ return {
 		-- the name of the conservation law being solved
 		name = "spacetime-burgers",
 		mu = 0.0,
-		a_adv = { 0.2 },
+		a_adv = { 0.20 },
 		b_adv = { 0.0 },
 	},
 
@@ -63,9 +57,9 @@ return {
 	initial_condition = function(x, t)
 		-- return 0.0
 		if t > 5 * (x - 0.5) then
-			return 0.5
+			return 0.0
 		else
-			return 0.5
+			return 1.0
 		end
 	end,
 
@@ -82,36 +76,26 @@ return {
 		},
 	},
 
+	-- MDG
+	mdg = {
+		ncycles = 1,
+		ic_selection_threshold = function(icycle)
+			return 0.0
+		end,
+	},
+
 	-- solver
 	solver = {
 		type = "gauss-newton",
+		form_subproblem_mat = true,
+		linesearch = {
+			type = "none",
+		},
+		lambda_b = 1e-3,
 		ivis = 1,
 		tau_abs = 1e-15,
 		tau_rel = 0,
-		kmax = 100,
-		regularization = function(k, res)
-			if k < 50 then
-				return 0.1
-			elseif k < 75 then
-				return 0.00001
-			else
-				return 1e-8
-			end
-		end,
-		form_subproblem_mat = false,
-		verbosity = 0,
-		linesearch = {
-			kmax = 6,
-			type = "none",
-			alpha_initial = 1.0,
-			alpha_max = 5,
-		},
-		mdg = {
-			ncycles = 1,
-			ic_selection_threshold = function(icycle)
-				return 0.0
-			end,
-		},
+		kmax = 50,
 	},
 
 	-- output

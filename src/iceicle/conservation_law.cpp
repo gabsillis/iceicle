@@ -201,7 +201,7 @@ int main(int argc, char* argv[]){
             mesh.nodes[4][0] = 0.55;
         }
         if(cli_args["debug2"]){
-            mesh.nodes[4][0] = 0.55;
+            mesh.nodes[4][0] = 0.69;
         }
 
         // ===================================

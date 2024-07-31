@@ -3,8 +3,10 @@
 
 #pragma once
 #include "iceicle/fe_function/geo_layouts.hpp"
+#include "iceicle/geometry/face.hpp"
 #include "iceicle/string_utils.hpp"
 #include "iceicle/writer.hpp"
+#include <array>
 #include <iceicle/fespace/fespace.hpp>
 #include <iceicle/explicit_utils.hpp>
 #include <iceicle/anomaly_log.hpp>
@@ -144,6 +146,46 @@ namespace iceicle::solvers {
             }
 
             geo_dof_map geo_map{selected_traces, fespace};
+
+            // ========================
+            // = Geometry Constraints =
+            // ========================
+            sol::optional<sol::table> uniform_mesh_tbl_opt = config_tbl["uniform_mesh"];
+            if(uniform_mesh_tbl_opt){
+                sol::table mesh_table = uniform_mesh_tbl_opt.value();
+
+                std::array<IDX, ndim> nelem;
+                sol::table nelem_table = mesh_table["nelem"];
+                for(int idim = 0; idim < ndim; ++idim ){
+                    nelem[idim] = nelem_table[idim + 1]; // NOTE: Lua is 1-indexed
+                }
+
+                // bounding box
+                std::array<T, ndim> xmin;
+                std::array<T, ndim> xmax;
+                sol::table bounding_box_table = mesh_table["bounding_box"];
+                for(int idim = 0; idim < ndim; ++idim){
+                    xmin[idim] = bounding_box_table["min"][idim + 1];
+                    xmax[idim] = bounding_box_table["max"][idim + 1];
+                }
+                mesh_parameterizations::hyper_rectangle(nelem, xmin, xmax, geo_map);
+
+                // === Dirichlet BC => nodes cannot move ===
+                for(auto trace : fespace.get_boundary_traces()){
+                    if(trace.face->bctype == BOUNDARY_CONDITIONS::DIRICHLET){
+                        for(index_type inode : trace.face->nodes_span()){
+                            auto node_data = fespace.meshptr->nodes[inode];
+                            std::array<T, ndim> fixed_coordinates;
+                            for(int idim = 0; idim < ndim; ++idim)
+                                { fixed_coordinates[idim] = node_data[idim]; }
+                            parametric_transformations::Fixed<T, ndim> parameterization{fixed_coordinates};
+                            geo_map.register_parametric_node(inode, parameterization);
+                        }
+                    }
+                }
+                geo_map.finalize();
+            }
+
             return geo_map;
         } else {
             // select no traces 
