@@ -2,6 +2,7 @@
 /// @author Gianni Absillis (gabsill@ncsu.edu)
 
 #pragma once
+#include "iceicle/fe_function/geo_layouts.hpp"
 #include "iceicle/string_utils.hpp"
 #include "iceicle/writer.hpp"
 #include <iceicle/fespace/fespace.hpp>
@@ -17,8 +18,8 @@
 #include <sol/sol.hpp>
 
 #ifdef ICEICLE_USE_PETSC
+#include <iceicle/corrigan_lm.hpp>
 #include <iceicle/petsc_newton.hpp>
-#include <iceicle/petsc_gn_linesearch.hpp>
 #endif
 
 namespace iceicle::solvers {
@@ -67,10 +68,97 @@ namespace iceicle::solvers {
         return writer;
     }
 
+
+    template<class T, class IDX, int ndim, class disc_type, class LayoutPolicy>
+    auto lua_select_mdg_geometry(
+        sol::table config_tbl,
+        FESpace<T, IDX, ndim>& fespace,
+        disc_type disc, 
+        IDX icycle,
+        fespan<T, LayoutPolicy> u
+    ) -> geo_dof_map<T, IDX, ndim>
+    {
+        using index_type = IDX;
+        using trace_type = FESpace<T, IDX, ndim>::TraceType;
+
+        // Select relevant traces
+        sol::optional<sol::table> mdg_params_opt = config_tbl["mdg"];
+        if(mdg_params_opt){
+            sol::table mdg_params = mdg_params_opt.value();
+
+            sol::optional<sol::function> ic_selection_function{mdg_params["ic_selection_threshold"]};
+            sol::optional<T> ic_selection_value{mdg_params["ic_selection_threshold"]};
+            // select the nodes
+            T ic_selection_threshold = 0.1;
+            if(ic_selection_value){
+                ic_selection_threshold = ic_selection_value.value();
+            }
+            // selection function takes the cycle number to give dynamic threshold
+            if(ic_selection_function){ 
+                ic_selection_threshold = ic_selection_function.value()(icycle);
+            }
+
+            // we will be filling the selected traces, nodes, 
+            // and selected nodes -> gnode index map respectively
+            std::vector<index_type> selected_traces{};
+
+            std::vector<T> res_storage{};
+            // preallocate storage for compact views of u and res 
+            const std::size_t max_local_size =
+                fespace.dg_map.max_el_size_reqirement(disc_type::dnv_comp);
+            const std::size_t ncomp = disc_type::dnv_comp;
+            std::vector<T> uL_storage(max_local_size);
+            std::vector<T> uR_storage(max_local_size);
+
+            // loop over the traces and select traces and nodes based on IC residual
+            for(const trace_type &trace : fespace.get_interior_traces()){
+                // compact data views 
+                dofspan uL{uL_storage.data(), u.create_element_layout(trace.elL.elidx)};
+                dofspan uR{uR_storage.data(), u.create_element_layout(trace.elR.elidx)};
+
+                // trace data view
+                trace_layout_right<IDX, disc_type::nv_comp> ic_res_layout{trace};
+                res_storage.resize(ic_res_layout.size());
+                dofspan ic_res{res_storage, ic_res_layout};
+
+                // extract the compact values from the global u view 
+                extract_elspan(trace.elL.elidx, u, uL);
+                extract_elspan(trace.elR.elidx, u, uR);
+
+                // zero out and then get interface conservation
+                ic_res = 0.0;
+                disc.interface_conservation(trace, fespace.meshptr->nodes, uL, uR, ic_res);
+
+                std::cout << "Interface nr: " << trace.facidx; 
+                std::cout << " | nodes:";
+                for(index_type inode : trace.face->nodes_span()){
+                    std::cout << " " << inode;
+                }
+                std::cout << " | ic residual: " << ic_res.vector_norm() << std::endl; 
+
+                // if interface conservation residual is high enough,
+                // add the trace and nodes of the trace
+                if(ic_res.vector_norm() >= ic_selection_threshold){
+                    selected_traces.push_back(trace.facidx);
+                }
+            }
+
+            geo_dof_map geo_map{selected_traces, fespace};
+            return geo_map;
+        } else {
+            // select no traces 
+            geo_dof_map geo_map{std::array<IDX, 0>{}, fespace};
+            return geo_map;
+        }
+
+    }
+
+
     template<class T, class IDX, int ndim, class DiscType, class LayoutPolicy>
     auto lua_solve(
         sol::table config_tbl,
         FESpace<T, IDX, ndim>& fespace,
+        geo_dof_map<T, IDX, ndim>& geo_map,
         DiscType disc, 
         fespan<T, LayoutPolicy> u
     ) -> void {
@@ -186,7 +274,7 @@ namespace iceicle::solvers {
                     }
                 };
             }
-        } else if(eq_icase_any(solver_type, "newton", "newton-ls", "gauss-newton")) {
+        } else if(eq_icase_any(solver_type, "newton", "lm", "gauss-newton")) {
             // Newton Solvers
 #ifdef ICEICLE_USE_PETSC
             
@@ -212,6 +300,12 @@ namespace iceicle::solvers {
                     T c1 = (sol::optional<T>{ls_arg["c1"]}) ? ls_arg["c1"].get<T>() : 1e-4; 
                     T c2 = (sol::optional<T>{ls_arg["c2"]}) ? ls_arg["c2"].get<T>() : 0.9; 
                     linesearch = wolfe_linesearch{kmax, alpha_initial, alpha_max, c1, c2};
+                } else if(eq_icase(ls_arg["type"].get<std::string>(), "corrigan") ){
+                    IDX kmax = ls_arg.get_or("kmax", 5);
+                    T alpha_initial = ls_arg.get_or("alpha_initial", 1.0);
+                    T alpha_max = ls_arg.get_or("alpha_max", 1.0);
+                    T alpha_min = ls_arg.get_or("alpha_min", 0.0);
+                    linesearch = corrigan_linesearch{kmax, alpha_initial, alpha_max, alpha_min};
                 } else {
                     linesearch = no_linesearch<T, IDX>{};
                 }
@@ -225,162 +319,54 @@ namespace iceicle::solvers {
             linesearch >> select_fcn{
                 [&](const auto& ls){
 
-                    sol::optional<sol::table> mdg_params_opt = solver_params["mdg"];
-                    if(mdg_params_opt){
-                        sol::table mdg_params = mdg_params_opt.value();
-                        IDX ncycles = (sol::optional<IDX>{mdg_params["ncycles"]}) ? mdg_params["ncycles"].get<IDX>() : 1;
+                    auto setup_and_solve = [&]<class SolverT>(SolverT& solver){
 
-                        sol::optional<sol::function> ic_selection_function{mdg_params["ic_selection_threshold"]};
-                        sol::optional<T> ic_selection_value{mdg_params["ic_selection_threshold"]};
+                        // set common options between solvers
+                        sol::optional<T> idiag = solver_params["idiag"];
+                        if(idiag) solver.idiag = idiag.value();
+                        sol::optional<T> ivis = solver_params["ivis"];
+                        if(ivis) solver.ivis = ivis.value();
+                        sol::optional<T> verbosity = solver_params["verbosity"];
+                        if(verbosity) solver.verbosity = verbosity.value();
 
-
-                        nodeset_dof_map<IDX> nodeset{}; // select no nodes initially
-                        IDX total_nl_vis = 0; // cumulative index for times visualization function gets called
-                        for(IDX icycle = 0; icycle < ncycles; ++icycle){
-                            
-                            // select the nodes
-                            T ic_selection_threshold = 0.1;
-                            if(ic_selection_value){
-                                ic_selection_threshold = ic_selection_value.value();
-                            }
-                            // selection function takes the cycle number to give dynamic threshold
-                            if(ic_selection_function){ 
-                                ic_selection_threshold = ic_selection_function.value()(icycle);
-                            }
-
-                            nodeset = select_nodeset(fespace, disc, u, ic_selection_threshold, tmp::to_size<ndim>{});
-                            std::cout << "=================" << std::endl;
-                            std::cout << " MDG CYCLE : " << icycle << std::endl;
-                            std::cout << "=================" << std::endl << std::endl;
-                            
-
-                            auto setup_and_solve = [&]<class SolverT>(SolverT& solver){
-                                solver.idiag = (sol::optional<IDX>{solver_params["idiag"]}) ? solver_params["idiag"].get<IDX>() : -1;
-                                solver.ivis = (sol::optional<IDX>{solver_params["ivis"]}) ? solver_params["ivis"].get<IDX>() : 1;
-                                solver.verbosity = (sol::optional<IDX>{solver_params["verbosity"]}) ? solver_params["verbosity"].get<IDX>() : 0;
-                                solver.vis_callback = [&](decltype(solver) &solver, IDX k, Vec res_data, Vec du_data){
-                                    T res_norm;
-                                    PetscCallAbort(solver.comm, VecNorm(res_data, NORM_2, &res_norm));
-                                    std::cout << std::setprecision(8);
-                                    std::cout << "itime: " << std::setw(6) << k
-                                        << " | residual l2: " << std::setw(14) << res_norm
-                                        << std::endl;
-                                    // offset by initial solution iteration
-                                    writer.write(total_nl_vis + k + 1, (T) total_nl_vis +  k + 1);
-
-                                    sol::optional<sol::table> output_tbl_opt = config_tbl["output"];
-                                    if(output_tbl_opt){
-                                        sol::table output_tbl = output_tbl_opt.value();
-                                        sol::optional<std::string> writer_name = output_tbl["writer"];
-                                        if(writer_name && eq_icase(writer_name.value(), "vtu")){
-
-                                            // setup output for mdg data
-                                            io::PVDWriter<T, IDX, ndim> mdg_writer;
-                                            mdg_writer.register_fespace(fespace);
-                                            petsc::VecSpan res_view{res_data};
-                                            petsc::VecSpan dx_view{du_data};
-
-                                            // get the start indices for the petsc matrix on this processor
-                                            PetscInt proc_range_beg, proc_range_end, mdg_range_beg;
-                                            PetscCallAbort(MPI_COMM_WORLD, VecGetOwnershipRange(res_data, &proc_range_beg, &proc_range_end));
-                                            mdg_range_beg = proc_range_beg + u.size();
-
-                                            node_selection_layout<IDX, ndim> mdg_layout{nodeset};
-                                            dofspan mdg_res{res_view.data() + mdg_range_beg, mdg_layout};
-                                            dofspan mdg_dx{dx_view.data() + mdg_range_beg, mdg_layout};
-                                            mdg_writer.register_fields(mdg_res, "mdg residual");
-                                            mdg_writer.register_fields(mdg_dx, "-dx");
-                                            mdg_writer.collection_name = "mdg_data";
-                                            mdg_writer.write_vtu(total_nl_vis + k + 1, (T) total_nl_vis +  k + 1);
-                                        }
-                                    }
-                                };
-                                total_nl_vis += solver.solve(u);
-                            };
-
-                            // set up solver and solve
-                            if(eq_icase_any(solver_type, "newton", "newton-ls")){
-                                PetscNewton solver{fespace, disc, conv_criteria, ls, nodeset};
-                                setup_and_solve(solver);
-                            } else if(eq_icase_any(solver_type, "gauss-newton")) {
-
-                                sol::optional<bool> form_subproblem_opt = solver_params["form_subproblem_mat"];
-                                bool form_subproblem = false;
-                                if(form_subproblem_opt) form_subproblem = form_subproblem_opt.value();
-                                GaussNewtonPetsc solver{fespace, disc, conv_criteria, ls, nodeset, form_subproblem};
-
-                                sol::optional<T> regularization = solver_params["regularization"];
-                                if(regularization){
-                                    T val = regularization.value();
-                                    solver.regularization_callback = [val](decltype(solver)& solver, IDX k){
-                                        return val;
-                                    };
-                                }
-
-                                sol::optional<sol::function> regularization_as_func = solver_params["regularization"];
-                                if(regularization_as_func){
-                                    sol::function reg_f = regularization_as_func.value();
-                                    solver.regularization_callback = [reg_f](decltype(solver)& solver, IDX k) -> T {
-                                        T res_norm;
-                                        PetscCallAbort(solver.comm, VecNorm(solver.res_data, NORM_2, &res_norm));
-                                        T reg = reg_f(k, res_norm);
-                                        return reg;
-                                    };
-                                }
-                                setup_and_solve(solver);
-                            }
-                        }
-
-                    } else {
-                        auto setup_and_solve = [&]<class SolverT>(SolverT& solver){
-                            solver.idiag = (sol::optional<IDX>{solver_params["idiag"]}) ? solver_params["idiag"].get<IDX>() : -1;
-                            solver.ivis = (sol::optional<IDX>{solver_params["ivis"]}) ? solver_params["ivis"].get<IDX>() : 1;
-                            solver.verbosity = (sol::optional<IDX>{solver_params["verbosity"]}) ? solver_params["verbosity"].get<IDX>() : 0;
-                            solver.vis_callback = [&](decltype(solver) &solver, IDX k, Vec res_data, Vec du_data){
-                                T res_norm;
-                                PetscCallAbort(solver.comm, VecNorm(res_data, NORM_2, &res_norm));
+                        // visualization callback
+                        solver.vis_callback = [&](IDX k, Vec res_data, Vec du_data){
+                                 T res_norm;
+                                PetscCallAbort(PETSC_COMM_WORLD, VecNorm(res_data, NORM_2, &res_norm));
                                 std::cout << std::setprecision(8);
                                 std::cout << "itime: " << std::setw(6) << k
                                     << " | residual l2: " << std::setw(14) << res_norm
                                     << std::endl << std::endl;
                                 // offset by initial solution iteration
                                 writer.write(k + 1, (T) k + 1);
-                            };
-                            solver.solve(u);
                         };
+                        solver.solve(u);
+                    };
 
-                        // set up solver and solve
-                        if(eq_icase_any(solver_type, "newton", "netwon-ls")){
-                            PetscNewton solver{fespace, disc, conv_criteria, ls};
-                            setup_and_solve(solver);
-                        } else if(eq_icase_any(solver_type, "gauss-newton")) {
+                    if(eq_icase_any(solver_type, "lm", "gauss-newton")){
+                        bool form_subproblem = solver_params.get_or("form_subproblem_mat", true); 
+                        CorriganLM solver{fespace, disc, conv_criteria, ls, geo_map, form_subproblem};
 
-                            sol::optional<bool> form_subproblem_opt = solver_params["form_subproblem_mat"];
-                            bool form_subproblem = false;
-                            if(form_subproblem_opt) form_subproblem = form_subproblem_opt.value();
-                            GaussNewtonPetsc solver{fespace, disc, conv_criteria, ls, form_subproblem};
+                        // set options for the solver 
+                        sol::optional<T> lambda_u = solver_params["lambda_u"];
+                        if(lambda_u) solver.lambda_u = lambda_u.value();
+                        sol::optional<T> lambda_lag = solver_params["lambda_lag"];
+                        if(lambda_lag) solver.lambda_lag = lambda_lag.value();
+                        sol::optional<T> lambda_1 = solver_params["lambda_1"];
+                        if(lambda_1) solver.lambda_1 = lambda_1.value();
+                        sol::optional<T> lambda_b = solver_params["lambda_b"];
+                        if(lambda_b) solver.lambda_b = lambda_b.value();
+                        sol::optional<T> alpha = solver_params["alpha"];
+                        if(alpha) solver.alpha = alpha.value();
+                        sol::optional<T> beta = solver_params["beta"];
+                        if(beta) solver.beta = beta.value();
+                        sol::optional<T> J_min = solver_params["J_min"];
+                        if(J_min) solver.J_min = J_min.value();
 
-                            sol::optional<T> regularization = solver_params["regularization"];
-                            if(regularization){
-                                T val = regularization.value();
-                                solver.regularization_callback = [val](decltype(solver)& solver, IDX k){
-                                    return val;
-                                };
-                            }
-
-                            sol::optional<sol::function> regularization_as_func = solver_params["regularization"];
-                            if(regularization_as_func){
-                                sol::function reg_f = regularization_as_func.value();
-                                solver.regularization_callback = [reg_f](decltype(solver)& solver, IDX k) -> T {
-                                    T res_norm;
-                                    PetscCallAbort(solver.comm, VecNorm(solver.res_data, NORM_2, &res_norm));
-                                    T reg = reg_f(k, res_norm);
-                                    return reg;
-                                };
-                            }
-
-                            setup_and_solve(solver);
-                        }
+                        setup_and_solve(solver);
+                    } else if(eq_icase_any(solver_type, "newton")) {
+                        PetscNewton solver{fespace, disc, conv_criteria, ls};
+                        setup_and_solve(solver);
                     }
                 }
             };

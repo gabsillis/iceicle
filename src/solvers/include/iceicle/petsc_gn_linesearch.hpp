@@ -425,7 +425,6 @@ namespace iceicle::solvers {
 
                 // form Jtr
                 PetscCallAbort(comm, MatMultTranspose(jac, res_data, Jtr));
-
                 PetscCallAbort(comm, KSPSetOperators(ksp, subproblem_mat, subproblem_mat));
                 PetscCallAbort(comm, KSPSolve(ksp, Jtr, du_data));
 

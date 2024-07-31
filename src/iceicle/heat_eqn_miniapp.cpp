@@ -442,88 +442,22 @@ int main(int argc, char *argv[]){
                     pvd_writer.write_vtu(0, 0.0); // print the initial solution
                     
 
-                    sol::optional<sol::table> mdg_params_opt = solver_params["mdg"];
-                    if(mdg_params_opt){
-                        sol::table mdg_params = mdg_params_opt.value();
-                        IDX ncycles = (sol::optional<IDX>{mdg_params["ncycles"]}) ? mdg_params["ncycles"].get<IDX>() : 1;
-
-                        sol::optional<sol::function> ic_selection_function{mdg_params["ic_selection_threshold"]};
-                        sol::optional<T> ic_selection_value{mdg_params["ic_selection_threshold"]};
-
-                        nodeset_dof_map<IDX> nodeset{}; // select no nodes initially
-                        IDX total_nl_vis = 0; // cumulative index for times visualization function gets called
-                        for(IDX icycle = 0; icycle < ncycles; ++icycle){
-                            
-                            // select the nodes
-                            T ic_selection_threshold = 0.1;
-                            if(ic_selection_value){
-                                ic_selection_threshold = ic_selection_value.value();
-                            }
-                            // selection function takes the cycle number to give dynamic threshold
-                            if(ic_selection_function){ 
-                                ic_selection_threshold = ic_selection_function.value()(icycle);
-                            }
-
-                            nodeset = select_nodeset(fespace, heat_equation, u, ic_selection_threshold, tmp::to_size<ndim>{});
-                            std::cout << "=================" << std::endl;
-                            std::cout << " MDG CYCLE : " << icycle << std::endl;
-                            std::cout << "=================" << std::endl << std::endl;
-
-                            // set up solver and solve
-                            PetscNewton solver{fespace, heat_equation, conv_criteria, ls, nodeset};
-                            solver.idiag = (sol::optional<IDX>{solver_params["idiag"]}) ? solver_params["idiag"].get<IDX>() : -1;
-                            solver.ivis = (sol::optional<IDX>{solver_params["ivis"]}) ? solver_params["ivis"].get<IDX>() : 1;
-                            solver.verbosity = (sol::optional<IDX>{solver_params["verbosity"]}) ? solver_params["verbosity"].get<IDX>() : 0;
-                            solver.vis_callback = [&](decltype(solver) &solver, IDX k, Vec res_data, Vec du_data){
-                                T res_norm;
-                                PetscCallAbort(solver.comm, VecNorm(res_data, NORM_2, &res_norm));
-                                std::cout << std::setprecision(8);
-                                std::cout << "itime: " << std::setw(6) << k
-                                    << " | residual l2: " << std::setw(14) << res_norm
-                                    << std::endl;
-                                // offset by initial solution iteration
-                                pvd_writer.write_vtu(total_nl_vis + k + 1, (T) total_nl_vis +  k + 1);
-
-                                // setup output for mdg data
-                                io::PVDWriter<T, IDX, ndim> mdg_writer;
-                                mdg_writer.register_fespace(fespace);
-                                petsc::VecSpan res_view{res_data};
-                                petsc::VecSpan dx_view{du_data};
-
-                                // get the start indices for the petsc matrix on this processor
-                                PetscInt proc_range_beg, proc_range_end, mdg_range_beg;
-                                PetscCallAbort(MPI_COMM_WORLD, VecGetOwnershipRange(res_data, &proc_range_beg, &proc_range_end));
-                                mdg_range_beg = proc_range_beg + u.size();
-
-                                node_selection_layout<IDX, ndim> mdg_layout{nodeset};
-                                dofspan mdg_res{res_view.data() + mdg_range_beg, mdg_layout};
-                                dofspan mdg_dx{dx_view.data() + mdg_range_beg, mdg_layout};
-                                mdg_writer.register_fields(mdg_res, "mdg residual");
-                                mdg_writer.register_fields(mdg_dx, "-dx");
-                                mdg_writer.collection_name = "mdg_data";
-                                mdg_writer.write_vtu(total_nl_vis + k + 1, (T) total_nl_vis +  k + 1);
-                            };
-                            total_nl_vis += solver.solve(u);
-                        }
-
-                    } else {
-                        // setup solver and solve
-                        PetscNewton solver{fespace, heat_equation, conv_criteria, ls};
-                        solver.idiag = (sol::optional<IDX>{solver_params["idiag"]}) ? solver_params["idiag"].get<IDX>() : -1;
-                        solver.ivis = (sol::optional<IDX>{solver_params["ivis"]}) ? solver_params["ivis"].get<IDX>() : 1;
-                        solver.verbosity = (sol::optional<IDX>{solver_params["verbosity"]}) ? solver_params["verbosity"].get<IDX>() : 0;
-                        solver.vis_callback = [&](decltype(solver) &solver, IDX k, Vec res_data, Vec du_data){
-                            T res_norm;
-                            PetscCallAbort(solver.comm, VecNorm(res_data, NORM_2, &res_norm));
-                            std::cout << std::setprecision(8);
-                            std::cout << "itime: " << std::setw(6) << k
-                                << " | residual l2: " << std::setw(14) << res_norm
-                                << std::endl << std::endl;
-                            // offset by initial solution iteration
-                            pvd_writer.write_vtu(k + 1, (T) k + 1);
-                        };
-                        solver.solve(u);
-                    }
+                    // setup solver and solve
+                    PetscNewton solver{fespace, heat_equation, conv_criteria, ls};
+                    solver.idiag = (sol::optional<IDX>{solver_params["idiag"]}) ? solver_params["idiag"].get<IDX>() : -1;
+                    solver.ivis = (sol::optional<IDX>{solver_params["ivis"]}) ? solver_params["ivis"].get<IDX>() : 1;
+                    solver.verbosity = (sol::optional<IDX>{solver_params["verbosity"]}) ? solver_params["verbosity"].get<IDX>() : 0;
+                    solver.vis_callback = [&](IDX k, Vec res_data, Vec du_data){
+                        T res_norm;
+                        PetscCallAbort(PETSC_COMM_WORLD, VecNorm(res_data, NORM_2, &res_norm));
+                        std::cout << std::setprecision(8);
+                        std::cout << "itime: " << std::setw(6) << k
+                            << " | residual l2: " << std::setw(14) << res_norm
+                            << std::endl << std::endl;
+                        // offset by initial solution iteration
+                        pvd_writer.write_vtu(k + 1, (T) k + 1);
+                    };
+                    solver.solve(u);
 
                     // ========================
                     // = Compute the L2 Error =

@@ -18,6 +18,7 @@
 #include <iceicle/disc/conservation_law.hpp>
 #include <cmath>
 #include <fenv.h>
+#include <petscsys.h>
 #include <type_traits>
 
 #ifdef ICEICLE_USE_PETSC 
@@ -159,9 +160,9 @@ int main(int argc, char *argv[]){
             solver.ivis = 1;
             io::DatWriter<T, IDX, ndim> writer{fespace};
             writer.register_fields(u, "u");
-            solver.vis_callback = [&](decltype(solver) &solver, IDX k, Vec res_data, Vec du_data){
+            solver.vis_callback = [&](IDX k, Vec res_data, Vec du_data){
                 T res_norm;
-                PetscCallAbort(solver.comm, VecNorm(res_data, NORM_2, &res_norm));
+                PetscCallAbort(PETSC_COMM_WORLD, VecNorm(res_data, NORM_2, &res_norm));
                 std::cout << std::setprecision(8);
                 std::cout << "itime: " << std::setw(6) << k
                 << " | residual l2: " << std::setw(14) << res_norm

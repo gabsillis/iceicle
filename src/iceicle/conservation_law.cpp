@@ -107,7 +107,14 @@ void initialize_and_solve(
     // =========
     // = Solve =
     // =========
-    solvers::lua_solve(config_tbl, fespace, conservation_law, u);
+    IDX ncycles = config_tbl.get_or("ncycles", 1);
+    for(IDX icycle = 0; icycle < ncycles; ++icycle) {
+        std::cout << "==============" << std::endl;
+        std::cout << "Cycle: " << icycle << std::endl;
+        std::cout << "==============" << std::endl;
+        auto geo_map = solvers::lua_select_mdg_geometry(config_tbl, fespace, conservation_law, icycle, u);
+        solvers::lua_solve(config_tbl, fespace, geo_map, conservation_law, u);
+    }
 
 }
 

@@ -208,6 +208,24 @@ namespace iceicle {
     }
 
     /**
+     * @brief BLAS-like add scaled version of one dofspan to another with the same layout policy 
+     * y <= y + alpha * x
+     * @param [in] alpha the multipier for x
+     * @param [in] x the component_span to add 
+     * @param [in/out] y the component_span to add to
+     */
+    template<class T, class LayoutPolicy>
+    auto axpy(T alpha, component_span<T, LayoutPolicy> x, component_span<T, LayoutPolicy> y) -> void 
+    {
+        using index_type = decltype(y)::index_type;
+        for(index_type idof = 0; idof < x.ndof(); ++idof){
+            for(index_type iv = 0; iv < x.nv(idof); ++iv){
+                y[idof, iv] += alpha * x[idof, iv];
+            }
+        }
+    }
+
+    /**
     * @brief perform a scatter operation to incorporate face data 
     * back into the global data array 
     *

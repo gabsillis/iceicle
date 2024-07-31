@@ -1,7 +1,3 @@
-local fourier_nr = 0.0001
-
-local nelem_arg = 8
-
 local t_s = 0.5
 
 local y_inf = 0.2
@@ -12,7 +8,7 @@ return {
 
 	-- create a uniform mesh
 	uniform_mesh = {
-		nelem = { nelem_arg, 6 },
+		nelem = { 30, 30 },
 		bounding_box = {
 			min = { 0.0, 0.0 },
 			max = { 1.0, 1.0 },
@@ -81,27 +77,16 @@ return {
 
 	-- solver
 	solver = {
-		type = "gauss-newton",
+		type = "newton",
 		ivis = 1,
 		tau_abs = 1e-15,
 		tau_rel = 0,
-		kmax = 1000,
-		regularization = function(k, res)
-			return 0.1
-		end,
+		lambda_u = 0,
+		lambda_b = 0,
+		kmax = 10,
 		form_subproblem_mat = false,
-		verbosity = 0,
 		linesearch = {
-			kmax = 6,
 			type = "none",
-			alpha_initial = 1.0,
-			alpha_max = 5,
-		},
-		mdg = {
-			ncycles = 1,
-			ic_selection_threshold = function(icycle)
-				return 0.0
-			end,
 		},
 	},
 
