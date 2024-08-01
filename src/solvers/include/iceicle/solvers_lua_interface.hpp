@@ -16,6 +16,7 @@
 #include <iceicle/tvd_rk3.hpp>
 #include <iceicle/dat_writer.hpp>
 #include <iceicle/pvd_writer.hpp>
+#include <iceicle/fe_function/restart.hpp>
 #include <iceicle/writer.hpp>
 #include <sol/sol.hpp>
 
@@ -379,8 +380,11 @@ namespace iceicle::solvers {
                                 std::cout << "itime: " << std::setw(6) << k
                                     << " | residual l2: " << std::setw(14) << res_norm
                                     << std::endl << std::endl;
+
                                 // offset by initial solution iteration
                                 writer.write(k + 1, (T) k + 1);
+
+                                write_restart(fespace, u, k + 1);
                         };
                         solver.solve(u);
                     };

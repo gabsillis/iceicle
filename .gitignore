@@ -42,6 +42,7 @@ output/*
 
 # output
 iceicle_data/
+RESTART/
 
 #pybind install
 pycicle.egg-info

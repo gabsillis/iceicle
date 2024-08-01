@@ -35,7 +35,7 @@ return {
 	-- define the finite element domain
 	fespace = {
 		-- the basis function type (optional: default = lagrange)
-		basis = "legendre",
+		basis = "lagrange",
 
 		-- the quadrature type (optional: default = gauss)
 		quadrature = "gauss",
@@ -52,6 +52,8 @@ return {
 		a_adv = { 0.20 },
 		b_adv = { 0.0 },
 	},
+
+	-- restart = "restart182",
 
 	-- initial condition
 	initial_condition = function(x, t)
@@ -91,11 +93,11 @@ return {
 		linesearch = {
 			type = "none",
 		},
-		lambda_b = 1e-3,
+		lambda_b = 1e-1,
 		ivis = 1,
 		tau_abs = 1e-15,
 		tau_rel = 0,
-		kmax = 50,
+		kmax = 200,
 	},
 
 	-- output
