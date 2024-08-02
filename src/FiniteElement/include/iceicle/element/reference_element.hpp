@@ -63,6 +63,7 @@ namespace iceicle {
                         case LAGRANGE:
                             basis = std::make_unique<HypercubeLagrangeBasis<
                                 T, IDX, ndim, basis_order>>();
+                            break;
                         case LEGENDRE:
                             basis = std::make_unique<HypercubeLegendreBasis<
                                 T, IDX, ndim, basis_order>>();

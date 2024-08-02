@@ -188,7 +188,7 @@ namespace iceicle {
                 nnode_dir[idim] = directional_nelem[idim] * (order) + 1;
                 nnodes *= nnode_dir[idim];
                 nelem *= directional_nelem[idim];
-                dx[idim] = (xmax[idim] - xmin[idim]) / directional_nelem[idim];
+                dx[idim] = (xmax[idim] - xmin[idim]) / (directional_nelem[idim] * order);
             }
 
             for(int idim = 0; idim < ndim; ++idim){

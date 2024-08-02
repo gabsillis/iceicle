@@ -48,12 +48,12 @@ return {
 	conservation_law = {
 		-- the name of the conservation law being solved
 		name = "spacetime-burgers",
-		mu = 0.0,
+		mu = 0,
 		a_adv = { 0.20 },
-		b_adv = { 0.0 },
+		b_adv = { 0.00 },
 	},
 
-	-- restart = "restart182",
+	-- restart = "restart199",
 
 	-- initial condition
 	initial_condition = function(x, t)
@@ -94,10 +94,11 @@ return {
 			type = "none",
 		},
 		lambda_b = 1e-1,
+		lambda_u = 0,
 		ivis = 1,
-		tau_abs = 1e-15,
+		tau_abs = 1e-10,
 		tau_rel = 0,
-		kmax = 200,
+		kmax = 800,
 	},
 
 	-- output

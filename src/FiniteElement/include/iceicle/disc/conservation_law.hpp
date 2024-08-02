@@ -823,6 +823,7 @@ namespace iceicle {
 
                         // compute convective fluxes
                         std::array<T, neq> fadvn = conv_nflux(uL, dirichlet_vals, unit_normal);
+                        // std::array<T, neq> fadvn = conv_nflux(dirichlet_vals, dirichlet_vals, unit_normal);
 
                         // calculate the DDG distance
                         T h_ddg = 0; // uses distance to quadpt on boundary face

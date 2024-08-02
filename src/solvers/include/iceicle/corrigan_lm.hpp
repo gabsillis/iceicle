@@ -4,6 +4,7 @@
 ///
 /// @author Gianni Absillis (gabsill@ncsu.edu)
 
+#include "Numtool/fixed_size_tensor.hpp"
 #include "iceicle/anomaly_log.hpp"
 #include "iceicle/fe_function/component_span.hpp"
 #include "iceicle/fe_function/fespan.hpp"
@@ -92,8 +93,8 @@ namespace iceicle::solvers {
             for(PetscInt i = 0; i < ctx->npde; ++i){
                 lambdax_data[i] = xdata[i] * ctx->lambda_u * colnorms[i];
             }
-            for(PetscInt i = ctx->npde; i < ctx->ngeo; ++i )
-                { lambdax_data[i] = xdata[i] * ctx->lambda_b * colnorms[i]; }
+            for(PetscInt i = ctx->npde; i < ctx->npde + ctx->ngeo; ++i )
+                { lambdax_data[i] = xdata[i] * std::max(ctx->lambda_b, ctx->lambda_b * colnorms[i]); }
             VecRestoreArray(lambdax, &lambdax_data);
             VecRestoreArrayRead(x, &xdata);
 
@@ -372,15 +373,15 @@ namespace iceicle::solvers {
             for(k = 0; k < conv_criteria.kmax; ++k){
 
 
-                PetscViewer jacobian_viewer;
-                PetscViewerASCIIOpen(PETSC_COMM_WORLD, ("iceicle_data/jacobian_view" + std::to_string(k) + ".dat").c_str(), &jacobian_viewer);
-                PetscViewerPushFormat(jacobian_viewer, PETSC_VIEWER_ASCII_DENSE);
-                MatView(jac, jacobian_viewer);
-
-                PetscViewer r_viewer;
-                PetscViewerASCIIOpen(PETSC_COMM_WORLD, ("iceicle_data/residual_view" + std::to_string(k) + ".dat").c_str(), &r_viewer);
-                PetscViewerPushFormat(r_viewer, PETSC_VIEWER_ASCII_DENSE);
-                VecView(res_data, r_viewer);
+//                PetscViewer jacobian_viewer;
+//                PetscViewerASCIIOpen(PETSC_COMM_WORLD, ("iceicle_data/jacobian_view" + std::to_string(k) + ".dat").c_str(), &jacobian_viewer);
+//                PetscViewerPushFormat(jacobian_viewer, PETSC_VIEWER_ASCII_DENSE);
+//                MatView(jac, jacobian_viewer);
+//
+//                PetscViewer r_viewer;
+//                PetscViewerASCIIOpen(PETSC_COMM_WORLD, ("iceicle_data/residual_view" + std::to_string(k) + ".dat").c_str(), &r_viewer);
+//                PetscViewerPushFormat(r_viewer, PETSC_VIEWER_ASCII_DENSE);
+//                VecView(res_data, r_viewer);
 
 
                 // Form the subproblem
@@ -403,6 +404,21 @@ namespace iceicle::solvers {
                             { lambda_view[i] *= lambda_u; }
                         for(PetscInt i = u_layout.size(); i < u_layout.size() + geo_layout.size(); ++i)
                             { lambda_view[i] = std::max(lambda_b, lambda_view[i] * lambda_b); }
+
+                        for(auto el : fespace.elements){
+                            auto centroid_ref = el.geo_el->centroid_ref();
+                            auto J = el.geo_el->Jacobian(fespace.meshptr->nodes, centroid_ref);
+                            T detJ = std::max(1e-6, NUMTOOL::TENSOR::FIXED_SIZE::determinant(J));
+                            IDX nodes_size = geo_layout.geo_map.selected_nodes.size();
+                            for(auto inode : el.geo_el->nodes_span()){
+                                IDX geo_dof = geo_layout.geo_map.inv_selected_nodes[inode];
+                                if(geo_dof != nodes_size){
+                                    for(int iv = 0; iv < geo_layout.nv(geo_dof); ++iv){
+                                        lambda_view[u_layout.size() + geo_layout[geo_dof, iv]] += lambda_lag / detJ;
+                                    }
+                                }
+                            }
+                        }
                     }
                     MatDiagonalSet(subproblem_mat, lambda, ADD_VALUES);
                     VecDestroy(&lambda);

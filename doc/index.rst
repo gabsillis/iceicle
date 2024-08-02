@@ -217,7 +217,7 @@ and some physical parameters.
 
       :math:`\frac{\partial u}{\partial t} + \frac{\partial (a_j u + b_j u^2)}{\partial x_j} = \mu\frac{\partial^2 u}{\partial x^2}`
 
-* ''mu'' The viscosity coefficient for burgers equation
+* ``mu`` The viscosity coefficient for burgers equation
 
 * ``a_adv`` a table the size of the number of **spatial** dimensions for the linear advection term :math:`a_j` in burgers equation
 
@@ -238,6 +238,14 @@ For multiple equation conservation laws, this should return a table of values of
 
 If not specified, this initializes the entire domain to 0.
 
+An example for 2D code: 
+  
+.. code-block:: lua
+
+   initial_condition = function(x, y)
+      return (1 + x) * math.sin(y)
+   end
+
 ===================
 Boundary Conditions
 ===================
@@ -255,6 +263,10 @@ Boundary Conditions
    These can be real values, or functions that take ``ndim`` arguments (to represent physical space coordinates) 
    and returns the perscribed value at this location
 
+* ``extrapolation`` Extrapolate the interior value. 
+
+   Assumes that the exterior state and derivatives are equivalent to the interior state
+
 ======
 Solver
 ======
@@ -266,7 +278,7 @@ Implicit methods assume no method of lines for time, so are either steady state,
 
    * :cpp:`"newton", "newtonls"` : Newtons method with optional linesearch (Implicit)
 
-   * :cpp:`"gauss-newton"` : Regularized Gauss-Newton method :ref:`GaussNewtonPetsc`
+   * :cpp:`"lm", "gauss-newton"` : Regularized Gauss-Newton method :ref:`Gauss-Newton`
 
    * :cpp:`"explicit_euler"` : Explicit Euler's method 
 
@@ -307,7 +319,8 @@ The solve stops when the residual is less than :math:`\tau_{abs} + \tau_{rel} ||
 * ``kmax`` the maximum number of nonlinear iterations to take 
 
 * ``linesearch`` perform a linesearch along the direction calculated by the implicit solver
-   * ``type`` the linesearch type. Currently only :cpp:`"wolfe"` or :cpp:`"cubic"` for cubic interpolation linesearch is supported.
+   * ``type`` the linesearch type. Currently supported types are :cpp:`"wolfe"` or :cpp:`"cubic"` for cubic interpolation linesearch 
+     and :cpp:`"corrigan"` for the linesearch described by Ching et al. 2024 Computer Methods in Applied Mechanics and Engineering
 
    * ``kmax`` (optional) the maximum number of linesearch iterations (defaults to 5)
 
@@ -579,21 +592,22 @@ wil have no issue being used to initilize a time-slab.
 Solvers
 =======
 
-----------------
-GaussNewtonPetsc
-----------------
+------------
+Gauss-Newton
+------------
 
-:cpp:class:`iceicle::solvers::GaussNewtonPetsc` is a nonlinear optimization solver. 
+:cpp:class:`iceicle::solvers::corrigan_lm` is a nonlinear optimization solver. 
 This uses a regularized version of the Gauss-Newton method (can be seen as a hybrid between Gauss-Newton and Levenberg-Marquardt) 
 with linesearch.
 In each nonlinear iteration, it solves the following subproblem:
 
 .. math::
 
-   \Big(\mathbf{J}^T \mathbf{J} + \lambda \mathbf{I}\Big)\pmb{p} = -\mathbf{J}^T \pmb{r}
+   \Big(\mathbf{J}^T \mathbf{J} + \mathcal{R}\Big)\pmb{p} = -\mathbf{J}^T \pmb{r}
 
 and then performs a linesearch in the direction :math:`\pmb{p}` to minimize :math:`\pmb{r}`. 
 This can be viewed as Newton's method on the least squares problem using :math:`\mathbf{J}^T\mathbf{J}` as the Hessian approximation.
+:math:`\mathcal{R}` is a regularization matrix, assumed to be symmetric positive definite.
 
 Petsc is used for matrix operations.
 
