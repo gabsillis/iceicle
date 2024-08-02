@@ -823,6 +823,7 @@ namespace iceicle {
 
                         // compute convective fluxes
                         std::array<T, neq> fadvn = conv_nflux(uL, dirichlet_vals, unit_normal);
+                        // std::array<T, neq> fadvn = conv_nflux(dirichlet_vals, dirichlet_vals, unit_normal);
 
                         // calculate the DDG distance
                         T h_ddg = 0; // uses distance to quadpt on boundary face
@@ -1159,6 +1160,7 @@ namespace iceicle {
             // Basis function scratch space 
             std::vector<T> biL(elL.nbasis());
             std::vector<T> biR(elR.nbasis());
+            std::vector<T> bitrace(trace.nbasis_trace());
             std::vector<T> gradbL_data(elL.nbasis() * ndim);
             std::vector<T> gradbR_data(elR.nbasis() * ndim);
 
@@ -1184,6 +1186,7 @@ namespace iceicle {
                 // (derivatives are wrt the physical domain)
                 trace.evalBasisQPL(iqp, biL.data());
                 trace.evalBasisQPR(iqp, biR.data());
+                trace.eval_trace_basis_qp(iqp, bitrace.data());
                 auto gradBiL = trace.evalPhysGradBasisQPL(iqp, coord, gradbL_data.data());
                 auto gradBiR = trace.evalPhysGradBasisQPR(iqp, coord, gradbR_data.data());
 
@@ -1202,22 +1205,22 @@ namespace iceicle {
                 auto graduR = unkelR.contract_mdspan(gradBiR, graduR_data.data());
 
                 // get the physical flux on the left and right
-                Tensor<T, nv_comp, ndim> fluxL = phys_flux(uL, graduL);
-                Tensor<T, nv_comp, ndim> fluxR = phys_flux(uR, graduR);
+                Tensor<T, neq, ndim> fluxL = phys_flux(uL, graduL);
+                Tensor<T, neq, ndim> fluxR = phys_flux(uR, graduR);
 
                 // calculate the jump in normal fluxes
-                Tensor<T, nv_comp> jumpflux{};
-                for(int ieq = 0; ieq < nv_comp; ++ieq) 
+                Tensor<T, neq> jumpflux{};
+                for(int ieq = 0; ieq < neq; ++ieq) 
                     jumpflux[ieq] = dot(fluxR[ieq], unit_normal) - dot(fluxL[ieq], unit_normal);
-
-                // get the norm and multiply by unit normal vector for square system
-                T jumpflux_norm = std::sqrt(norml2(jumpflux));
 
                 // scatter unit normal times interface conservation to residual
                 for(int itest = 0; itest < trace.nbasis_trace(); ++itest){
-                    T ic_res = jumpflux_norm * sqrtg * quadpt.weight;
-                    for(int idim = 0; idim < ndim; ++idim){
-                        res[itest, idim] += ic_res * unit_normal[idim];
+                    for(int ieq = 0; ieq < neq; ++ieq){
+                        T ic_res = jumpflux[ieq] * sqrtg * quadpt.weight;
+                        // NOTE: multiplying by signed unit normal 
+                        // adds directionality which can allow cancellation error with 
+                        // V-shaped interface intersections
+                        res[itest, ieq] += ic_res * bitrace[itest]; 
                     }
                 }
             }

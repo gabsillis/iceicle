@@ -1,6 +1,8 @@
 #include "iceicle/build_config.hpp"
 #include "iceicle/disc/heat_eqn.hpp"
+#include "iceicle/fe_function/component_span.hpp"
 #include "iceicle/fe_function/fespan.hpp"
+#include "iceicle/fe_function/geo_layouts.hpp"
 #include "iceicle/fespace/fespace.hpp"
 #include "iceicle/fe_function/layout_right.hpp"
 #include "iceicle/form_dense_jacobian.hpp"
@@ -10,6 +12,7 @@
 #include <gtest/gtest.h>
 #include <petscmat.h>
 #include <petscsys.h>
+#include <ranges>
 
 using namespace iceicle;
 using namespace iceicle::util;
@@ -71,21 +74,44 @@ TEST(test_petsc_jacobian, test_mdg_bl){
 
 
     nodeset_dof_map<IDX> nodeset = select_all_nodes(fespace);
+
+    // create a dof map selecting all traces 
+    auto all_traces = std::views::iota( (std::size_t) 0 , fespace.traces.size());
+    geo_dof_map geo_map{all_traces, fespace};
+    mesh_parameterizations::hyper_rectangle(
+            std::array{nelemx, nelemy}, std::array{0.0, 0.0},
+            std::array{1.0, 1.0}, geo_map );
+
+
+    /// ===========================
+    /// = Set up the data vectors =
+    /// ===========================
+    ic_residual_layout<T, IDX, ndim, 1> mdg_layout{geo_map};
+    geo_data_layout<T, IDX, ndim> geo_layout{geo_map};
+
+    PetscInt local_res_size = u_layout.size() + mdg_layout.size();
+    PetscInt local_u_size = u_layout.size() + geo_layout.size();
+
+    std::vector<T> res_storage(local_res_size);
+    std::vector<T> coord_data(geo_layout.size());
+
+    fespan res{res_storage.data(), u_layout};
+    dofspan mdg_res{res_storage.data() + res.size(), mdg_layout};
+    component_span coord{coord_data, geo_layout};
+    extract_geospan(*(fespace.meshptr), coord);
+
+    /// ===========================
+    /// = Set up the Petsc matrix =
+    /// ===========================
+
     Mat jac;
     MatCreate(PETSC_COMM_WORLD, &jac);
-    PetscInt local_res_size = fespace.dg_map.calculate_size_requirement(1) + nodeset.selected_nodes.size() * ndim;
-    PetscInt local_u_size = fespace.dg_map.calculate_size_requirement(1) + nodeset.selected_nodes.size() * ndim;
     MatSetSizes(jac, local_res_size, local_u_size, PETSC_DETERMINE, PETSC_DETERMINE);
     MatSetFromOptions(jac);
 
-    std::vector<T> res_storage(local_res_size);
-    fespan res{res_storage.data(), u_layout};
-    node_selection_layout<IDX, ndim> mdg_layout{nodeset};
-    dofspan mdg_res{res_storage.data() + res.size(), mdg_layout};
-
     // get the jacobian and residual from petsc interface
     form_petsc_jacobian_fd(fespace, disc, u, res, jac);
-    form_petsc_mdg_jacobian_fd(fespace, disc, u, mdg_res, jac);
+    form_petsc_mdg_jacobian_fd(fespace, disc, u, coord, mdg_res, jac);
     MatAssemblyBegin(jac, MAT_FINAL_ASSEMBLY);
     MatAssemblyEnd(jac, MAT_FINAL_ASSEMBLY);
 
@@ -93,34 +119,28 @@ TEST(test_petsc_jacobian, test_mdg_bl){
     std::vector<T> u_dense(local_u_size);
     std::vector<T> res_dense(local_res_size);
     std::copy_n(u.data(), u.size(), u_dense.begin());
-    for(int inode = 0; inode < nodeset.selected_nodes.size(); ++inode){
-        IDX gnode = nodeset.selected_nodes[inode];
-        for(int idim = 0; idim < ndim; ++idim){
-            u_dense[u.size() + ndim * inode + idim] = fespace.meshptr->nodes[gnode][idim];
-        }
-    }
+    component_span coord_dense{u_dense.data() + u_layout.size(), geo_layout};
+    extract_geospan(*(fespace.meshptr), coord_dense);
 
     std::vector<T> jac_dense_storage(local_u_size * local_res_size);
     std::mdspan jac_dense{jac_dense_storage.data(), std::extents{local_res_size, local_u_size}};
-    form_dense_jacobian_fd(fespace, disc, nodeset, std::span{u_dense}, std::span{res_dense}, 
-            jac_dense, std::integral_constant<int, ndim>{});
+    form_dense_jacobian_fd(fespace, disc, geo_map, std::span{u_dense},
+            std::span{res_dense}, jac_dense);
 
     for(int i = 0; i < local_res_size; ++i){
-        SCOPED_TRACE("MDG indices start at: " + std::to_string(fespace.dg_map.calculate_size_requirement(1)));
         SCOPED_TRACE("ires = " + std::to_string(i));
         ASSERT_DOUBLE_EQ(res_storage[i], res_dense[i]);
     }
 
     for(int i = 0; i < local_res_size; ++i){
-        SCOPED_TRACE("MDG indices start at: " + std::to_string(fespace.dg_map.calculate_size_requirement(1)));
         SCOPED_TRACE("irow = " + std::to_string(i));
         for(int j = 0; j < local_u_size; ++j){
             SCOPED_TRACE("jcol = " + std::to_string(j));
             T petsc_mat_val;
             MatGetValue(jac, i, j, &petsc_mat_val);
-            // ASSERT_NEAR(petsc_mat_val, (jac_dense[i, j]), 1e-3);
             
             std::cout << std::format("{:>16f}", (petsc_mat_val - jac_dense[i, j])) << " ";
+            ASSERT_NEAR(petsc_mat_val, (jac_dense[i, j]), 1e-5);
         }
         std::cout << std::endl;
     }

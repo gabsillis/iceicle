@@ -54,6 +54,7 @@ option(ICEICLE_USE_HYPRE "Builds ICEicle with Hypre integration" OFF)
 option(ICEICLE_USE_MFEM  "Enables MFEM as a third party library" OFF)
 option(ICEICLE_USE_OPENGL "Enables OpenGL visualization with imgui" OFF)
 option(ICEICLE_USE_MATPLOTPLUSPLUS "Enables matplotlib-cpp" OFF)
+option(ICEICLE_USE_VTK "Enables VTK third party functionality" OFF)
 
 # ==================
 # = CMake includes =
@@ -87,6 +88,8 @@ target_include_directories(mdspan INTERFACE
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/mdspan/include>
     $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
 
+# === REQUIRED Third Party Library LAPACK ===
+find_package(LAPACK REQUIRED)
 
 # MPI Dependent 3rd party libraries 
 if(MPI_FOUND)
@@ -173,6 +176,23 @@ if(ICEICLE_USE_MATPLOTPLUSPLUS)
   endif()
 endif()
 
+# === Third Party Library VTK ===
+if(ICEICLE_USE_VTK)
+  find_package(VTK REQUIRED
+    COMPONENTS 
+    CommonColor
+    CommonCore
+    FiltersSources
+    InteractionStyle
+    RenderingAnnotation
+    RenderingContextOpenGL2
+    RenderingCore
+    RenderingFreeType
+    RenderingGL2PSOpenGL2
+    RenderingOpenGL2
+  )
+endif()
+
 # Include subdirectories
 add_subdirectory(numericaltoolbox)
 add_subdirectory(src)
@@ -200,5 +220,8 @@ IF(ENABLE_TESTING_ICEICLE)
   # =================
   # = Documentation =
   # =================
-  add_subdirectory(doc)
+  option(ICEICLE_BUILD_DOC "Enables documentation with Doxygen and Sphinx" OFF)
+  if(ICEICLE_BUILD_DOC)
+    add_subdirectory(doc)
+  endif()
 ENDIF()

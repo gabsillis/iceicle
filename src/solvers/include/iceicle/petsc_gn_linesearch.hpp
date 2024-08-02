@@ -32,9 +32,12 @@ namespace iceicle::solvers {
 
             // regularization coefficient
             PetscScalar lambda; 
+
+            PetscInt npde;
+            PetscInt nic;
         };
 
-        inline constexpr
+        inline
         auto gn_subproblem(Mat A, Vec x, Vec y) -> PetscErrorCode {
             GNSubproblemCtx *ctx;
 
@@ -49,10 +52,37 @@ namespace iceicle::solvers {
             // y = J^T*J*x
             PetscCall(MatMultTranspose(ctx->J, ctx->Jx, y));
 
-            // y = (J^T*J + lambda * I)*x
-            PetscCall(VecAXPY(y, ctx->lambda, x));
+            Vec lambdax;
+            VecCreate(PETSC_COMM_WORLD, &lambdax);
+            VecSetSizes(lambdax, ctx->npde + ctx->nic, PETSC_DETERMINE);
+            VecSetFromOptions(lambdax);
+            PetscScalar* lambdax_data;
+            const PetscScalar* xdata;
+            VecGetArray(lambdax, &lambdax_data);
+            VecGetArrayRead(x, &xdata);
+//            for(PetscInt i = 0; i < ctx->npde; ++i){
+//                lambdax_data[i] = xdata[i] * ctx->lambda;
+//            }
+//            for(PetscInt i = ctx->npde; i < ctx->npde + ctx->nic; ++i){
+//                lambdax_data[i] = xdata[i] * 100 * ctx->lambda;
+//            }
+//          // TODO: switch to parallel full size
+            std::vector<PetscScalar> colnorms(ctx->npde + ctx->nic);
+            // scaling using column norms (More 1977 Levenberg-Marquardt Implementation and Theory)
+            MatGetColumnNorms(ctx->J, NORM_2, colnorms.data());
+            for(PetscInt i = 0; i < ctx->npde + ctx->nic; ++i){
+                lambdax_data[i] = xdata[i] * ctx->lambda * colnorms[i];
+            }
+//            for(PetscInt i = ctx->npde; i < ctx->npde + ctx->nic; ++i)
+//                lambdax_data[i] *= 100;
+            VecRestoreArray(lambdax, &lambdax_data);
+            VecRestoreArrayRead(x, &xdata);
 
-            PetscFunctionReturn(PETSC_SUCCESS);
+            // y = (J^T*J + lambda * I)*x
+            PetscCall(VecAXPY(y, 1.0, lambdax));
+
+            VecDestroy(&lambdax);
+            PetscFunctionReturn(EXIT_SUCCESS);
         }
     }
 
@@ -236,10 +266,14 @@ namespace iceicle::solvers {
                 + nodeset.selected_nodes.size() * ndim;
             PetscInt local_u_size = local_res_size;
 
-            // Create and set up the matrix if not given 
-            MatCreate(comm, &(this->jac));
-            MatSetSizes(this->jac, local_res_size, local_u_size, PETSC_DETERMINE, PETSC_DETERMINE);
-            MatSetFromOptions(this->jac);
+// Create and set up the matrix if not given 
+            MatCreate(comm, &(jac));
+            MatSetSizes(jac, local_res_size, local_u_size, PETSC_DETERMINE, PETSC_DETERMINE);
+            MatSetFromOptions(jac);
+            MatSetUp(jac);
+
+            PetscInt proc_range_beg, proc_range_end;
+            PetscCallAbort(comm, MatGetOwnershipRange(jac, &proc_range_beg, &proc_range_end));
 
 
             // create a nxn matrix for the normal equations
@@ -258,6 +292,8 @@ namespace iceicle::solvers {
 
                 subproblem_ctx.J = jac;
                 subproblem_ctx.Jx = Jx;
+                subproblem_ctx.npde = fespace.dg_map.calculate_size_requirement(disc_class::nv_comp);
+                subproblem_ctx.nic = nodeset.selected_nodes.size() * ndim;
 
                 MatSetType(subproblem_mat, MATSHELL);
                 MatSetUp(subproblem_mat);
@@ -346,7 +382,6 @@ namespace iceicle::solvers {
             // set the initial residual norm
             PetscCallAbort(comm, VecNorm(res_data, NORM_2, &(conv_criteria.r0)));
 
-
             IDX k;
             for(k = 0; k < conv_criteria.kmax; ++k){
 
@@ -371,6 +406,7 @@ namespace iceicle::solvers {
                     MatView(jac, jacobian_viewer);
                     PetscViewerDestroy(&jacobian_viewer);
     //                MatView(jac, PETSC_VIEWER_STDOUT_WORLD); // for debug purposes
+                    std::cout << "residual petsc vector:" << std::endl;
                     VecView(res_data, PETSC_VIEWER_STDOUT_WORLD);
                 }
 
@@ -389,7 +425,6 @@ namespace iceicle::solvers {
 
                 // form Jtr
                 PetscCallAbort(comm, MatMultTranspose(jac, res_data, Jtr));
-
                 PetscCallAbort(comm, KSPSetOperators(ksp, subproblem_mat, subproblem_mat));
                 PetscCallAbort(comm, KSPSolve(ksp, Jtr, du_data));
 

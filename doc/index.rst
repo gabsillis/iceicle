@@ -217,7 +217,7 @@ and some physical parameters.
 
       :math:`\frac{\partial u}{\partial t} + \frac{\partial (a_j u + b_j u^2)}{\partial x_j} = \mu\frac{\partial^2 u}{\partial x^2}`
 
-* ''mu'' The viscosity coefficient for burgers equation
+* ``mu`` The viscosity coefficient for burgers equation
 
 * ``a_adv`` a table the size of the number of **spatial** dimensions for the linear advection term :math:`a_j` in burgers equation
 
@@ -238,6 +238,14 @@ For multiple equation conservation laws, this should return a table of values of
 
 If not specified, this initializes the entire domain to 0.
 
+An example for 2D code: 
+  
+.. code-block:: lua
+
+   initial_condition = function(x, y)
+      return (1 + x) * math.sin(y)
+   end
+
 ===================
 Boundary Conditions
 ===================
@@ -255,6 +263,10 @@ Boundary Conditions
    These can be real values, or functions that take ``ndim`` arguments (to represent physical space coordinates) 
    and returns the perscribed value at this location
 
+* ``extrapolation`` Extrapolate the interior value. 
+
+   Assumes that the exterior state and derivatives are equivalent to the interior state
+
 ======
 Solver
 ======
@@ -266,7 +278,7 @@ Implicit methods assume no method of lines for time, so are either steady state,
 
    * :cpp:`"newton", "newtonls"` : Newtons method with optional linesearch (Implicit)
 
-   * :cpp:`"gauss-newton"` : Regularized Gauss-Newton method :ref:`GaussNewtonPetsc`
+   * :cpp:`"lm", "gauss-newton"` : Regularized Gauss-Newton method :ref:`Gauss-Newton`
 
    * :cpp:`"explicit_euler"` : Explicit Euler's method 
 
@@ -307,7 +319,8 @@ The solve stops when the residual is less than :math:`\tau_{abs} + \tau_{rel} ||
 * ``kmax`` the maximum number of nonlinear iterations to take 
 
 * ``linesearch`` perform a linesearch along the direction calculated by the implicit solver
-   * ``type`` the linesearch type. Currently only :cpp:`"wolfe"` or :cpp:`"cubic"` for cubic interpolation linesearch is supported.
+   * ``type`` the linesearch type. Currently supported types are :cpp:`"wolfe"` or :cpp:`"cubic"` for cubic interpolation linesearch 
+     and :cpp:`"corrigan"` for the linesearch described by Ching et al. 2024 Computer Methods in Applied Mechanics and Engineering
 
    * ``kmax`` (optional) the maximum number of linesearch iterations (defaults to 5)
 
@@ -317,14 +330,17 @@ The solve stops when the residual is less than :math:`\tau_{abs} + \tau_{rel} ||
 
    * ``c1`` and ``c2`` (optional) linesearch coefficients (defaults to 1e-4 and 0.9 respectively)
 
-----------------------
-Solver Specific Params
-----------------------
+-----------------------
+Gauss-Newton Parameters
+-----------------------
 
-* ``regularization`` The regularization parameter :math:`\lambda` for regularized nonlinear solvers 
-  such as :cpp:`"gauss-newton"` type. This can be a real value or a function 
-  :code:`function f(k, res)` that takes an integer iteration number `k` and a real valued residual norm `res` 
-  and returns a real value as the regularization parameter.
+* ``lambda_u`` regularization value for pde degrees of freedom -- defaults to :math:`10^{-7}`
+
+* ``lambda_lag`` regularization value for lagrangian regularization -- defualts to :math:`10^{-5}`
+
+* ``lambda_1`` regularization value for curvature penalization -- defaults to :math:`10^{-3}`
+
+* ``lambda_b`` regularization value for geometric degrees of freedom -- defaults to :math:`10^{-2}`
 
 * ``form_subproblem_mat`` set to true if you want to explicitly form the subproblem matrix for :cpp:`"guass_newton"` type
 
@@ -349,11 +365,127 @@ We denote the Physical domain with :math:`\Omega` and the reference domain with 
 Similarly the physical domain of a given element is notated :math:`\mathcal{K}` 
 and the reference element domain with :math:`\hat{\mathcal{K}}`
 
-.. doxygenconcept:: iceicle::transformations::has_get_face_vert
+==================
+Geometric Entities
+==================
+There are two primary abstractions iceicle defines for geometric entities used in finite element computations:
+:cpp:class:`iceicle::GeometricElement`, which represents the physical domain in :math:`\mathbb{R}^d`, and 
+:cpp:class:`iceicle::Face`, which represents the physical domain of the intersection of two 
+:cpp:class:`iceicle::GeometricElement` s. 
+
+---------------------------------
+Element Coordinate Transformation
+---------------------------------
+:cpp:class:`iceicle::GeometricElement` implementations must implement the transformation :math:`T:\mathbf{\xi}\mapsto\mathbf{x}`
+from a reference domain :math:`\hat{\mathcal{K}} \subset \mathbb{R}^d` 
+to the physical domain :math:`\mathcal{K} \subset \mathbb{R}^d` 
+where :math:`\mathbf{\xi}\in\hat{\mathcal{K}}, \mathbf{x}\in\mathcal{K}`. 
+The degrees of freedom that define the physical domain are termed "nodes".
+A :cpp:class:`iceicle::GeometricElement` will just store the indices to the coordinate degrees of freedom 
+which are stored in an :cpp:type:`iceicle::NodeArray`.
+
+:cpp:func:`iceicle::GeometricElement::transform` represents the transformation :math:`T` provided the :cpp:type:`iceicle::NodeArray`.
+
+:cpp:func:`iceicle::GeometricElement::Jacobian` represents the Jacobian of the transformation :math:`\mathbf{J} = \frac{\partial T}{\partial \mathbf{\xi}}`, 
+alternatively :math:`\mathbf{J}` can be written as :math:`\frac{\partial \mathbf{x}}{\partial \mathbf{\xi}}`.
+
+:cpp:func:`iceicle::GeometricElement::Hessian` represents the hessian of the transformation 
+:math:`\mathbf{H} =\frac{\partial^2 T}{\partial \mathbf{\xi}\partial \mathbf{\xi}}` or :math:`\frac{\partial \mathbf{x}}{\partial \mathbf{\xi}\partial \mathbf{\xi}}`.
+
+
+.. tikz:: Element Transformation
+   :libs: arrows
+
+   \path[shape=circle]
+   (-1,-1) node[draw,scale=0.5](a1){}
+   ( 1,-1) node[draw,scale=0.5](a2){}
+   ( 1, 1) node[draw,scale=0.5](a3){}
+   (-1, 1) node[draw,scale=0.5](a4){};
+   \draw[thick] (a1) -- (a2) -- (a3) -- (a4) -- (a1);
+
+   \draw[->] (-2,-1.5) -- (-1.5,-1.5) node[anchor=west, scale=0.7]{$\xi$};
+   \draw[->] (-2,-1.5) -- (-2.0,-1.0) node[anchor=south, scale=0.7]{$\eta$};
+
+   \draw[->, thick] (1.5, 0.0) -- (3.0, 0.0);
+
+   \path[shape=circle]
+   (4.0,-1) node[draw,scale=0.5](b1){}
+   ( 5.8,-0.7) node[draw,scale=0.5](b2){}
+   ( 6.0, 0.9) node[draw,scale=0.5](b3){}
+   (4.2, 1.1) node[draw,scale=0.5](b4){};
+   \draw[thick] (b1) -- (b2) -- (b3) -- (b4) -- (b1);
+
+   \draw[->] (3.0,-1.5) -- (3.5,-1.5) node[anchor=west, scale=0.7]{$x$};
+   \draw[->] (3.0,-1.5) -- (3.0,-1.0) node[anchor=south, scale=0.7]{$y$};
+
+-------------------
+Element Node Access
+-------------------
+Access to the indices of the nodes is provided in the following interfaces:
+
+:cpp:func:`iceicle::GeometricElement::nodes` gives a pointer to the start of the array of indices.
+
+:cpp:func:`iceicle::GeometricElement::nodes_span` gives the array of indices as a :cpp:class`std::span`
+
+:cpp:func:`iceicle::GeometricElement::n_nodes` gives the size of the array of indices (the number of nodes)
+
+------------------
+Domain Definitions
+------------------
+
+Domains are specified by the domain type and polynomial order of basis functions for the nodes, accesible through 
+:cpp:func:`iceicle::GeometricElement::domain_type` and :cpp:func:`iceicle::GeometricElement::geometry_order` respectively.
+
+---------------
+Face Generation
+---------------
+:code:`face_utils.hpp` contains a utility :cpp:func:`make_face` 
+to generate faces by finding the intersection between two elements.
+
+.. code-block:: cpp 
+   :linenos:
+
+   HypercubeElement<double, int, 2, 1> el0{{0, 1, 2, 3}};
+   HypercubeElement<double, int, 2, 1> el2{{2, 3, 4, 5}};
+
+   // find and make the face with vertices {2, 3}
+   auto face_opt = make_face(0, 2, el0, el2);
+
+   // unique_ptr to face is stored in the value() of optional
+   std::unique_ptr<Face<double, int, 2>> face{std::move(face_opt.value())}; 
+
+This can detect elements with different geometric polynomial orders because this operates on vertices.
+The polynomial order of the face geometry is the minimum of the two element polynomial orders
 
 ==============
 Finite Element
 ==============
+
+==========
+Data Views
+==========
+
+There are several view types for multidimensional data - inspired by :cpp:`std::mdspan`. 
+The multidimensional data is indexed by finite-element specific terms.
+A **degree of freedom** in ICEicle represents a basis function in the finite element space. 
+These functions may take vector valued inputs and have vector valued outputs which are indexed by **vector component**.
+For example, a node in 3D can be viewed as a geometric degree of freedom, with vector components for the x, y, and z positions.
+Often coefficients are defined for each vector component - some other implementations may refer to this as a degree of freedom.
+
+-----------
+geo_dof_map
+-----------
+
+The struct :cpp:struct:`iceicle::geo_dof_map` represents a mapping to a subset of geometric (nodal) degrees of freedom
+
+
+--------------
+component_span
+--------------
+:cpp:class:`iceicle::component_span` represents a view over a subset of vector components.
+Each degree of freedom (:cpp:`idof`) and vector component (:cpp:`idof`) index maps to an index in a one dimensional array.
+This mapping is controlled by the :cpp:`LayoutPolicy`.
+
 
 ===============
 Discretizations
@@ -463,27 +595,36 @@ wil have no issue being used to initilize a time-slab.
 Solvers
 =======
 
-----------------
-GaussNewtonPetsc
-----------------
+------------
+Gauss-Newton
+------------
 
-:cpp:class:`iceicle::solvers::GaussNewtonPetsc` is a nonlinear optimization solver. 
+:cpp:class:`iceicle::solvers::corrigan_lm` is a nonlinear optimization solver. 
 This uses a regularized version of the Gauss-Newton method (can be seen as a hybrid between Gauss-Newton and Levenberg-Marquardt) 
 with linesearch.
 In each nonlinear iteration, it solves the following subproblem:
 
 .. math::
 
-   \Big(\mathbf{J}^T \mathbf{J} + \lambda \mathbf{I}\Big)\pmb{p} = -\mathbf{J}^T \pmb{r}
+   \Big(\mathbf{J}^T \mathbf{J} + \mathcal{R}\Big)\pmb{p} = -\mathbf{J}^T \pmb{r}
 
 and then performs a linesearch in the direction :math:`\pmb{p}` to minimize :math:`\pmb{r}`. 
 This can be viewed as Newton's method on the least squares problem using :math:`\mathbf{J}^T\mathbf{J}` as the Hessian approximation.
+:math:`\mathcal{R}` is a regularization matrix, assumed to be symmetric positive definite.
 
 Petsc is used for matrix operations.
 
 
 API References
 ==============
+
+.. doxygenclass:: iceicle::GeometricElement
+   :members:
+
+.. doxygenclass:: iceicle::Face
+   :members:
+
+.. doxygentypedef:: iceicle::NodeArray
 
 .. doxygenenum:: iceicle::BOUNDARY_CONDITIONS
 
@@ -496,3 +637,40 @@ API References
 
 .. doxygenclass:: iceicle::solvers::GaussNewtonPetsc
    :members:
+
+==================================================================
+Moving Discontinuous Galerkin with Interface Condition Enforcement
+==================================================================
+
+Moving Discontinuous Galerkin with Interface Condition Enforcement or (MDG-ICE) is implemented using a continuous 
+variational formulation.
+
+The first step of the algorithm is to select degrees of freedom to consider.
+We employ a selection threshold to allow the user to eliminate degrees of freedom
+where the interface conservation is enforced to a satisfactory level.
+
+.. code::
+
+   selected_traces = []
+   for trace in internal_traces and boundary_traces:
+      ic := interface conservation(u, trace, trace.centroid)
+      if norm(ic) > threshold:
+         selected_traces.append(trace)
+
+The geometry degrees of freedom are all the nodes in the selected traces parameterized by geometry restrictions
+(i.e nodes can only slide along boundary)
+
+-----------
+Boundary IC
+-----------
+
+The interface conservation (IC) on the boundary requires some special care. 
+Dirichlet-type boundary conditions will draw the exterior state from the Dirichlet boundary condition, 
+thus creating a left and right state at the evaluation point on the trace to get the IC residual.
+
+Extrapolation and Neumann type boundary conditions assume no jump in state, therefore the interface 
+conservation for convective fluxes is automatically satisfied. 
+Neumann type boundary conditions, however, may still have a jump in gradient, so the IC evaluation will 
+need to treat the diffusive terms separately.
+
+

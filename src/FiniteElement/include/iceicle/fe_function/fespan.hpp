@@ -1032,7 +1032,7 @@ namespace iceicle {
 
             // if interface conservation residual is high enough,
             // add the trace and nodes of the trace
-            if(ic_res.vector_norm() > residual_threshold){
+            if(ic_res.vector_norm() >= residual_threshold){
                 selected_traces.push_back(trace.facidx);
             }
         }

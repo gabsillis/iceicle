@@ -3,8 +3,10 @@
  * @author Gianni Absillis (gabsill@ncsu.edu)
  */
 #pragma once
+#include "Numtool/point.hpp"
 #include "iceicle/basis/tensor_product.hpp"
 #include "iceicle/geometry/face.hpp"
+#include "iceicle/geometry/face_utils.hpp"
 #include "iceicle/mesh/mesh.hpp"
 #include "iceicle/geometry/geo_primitives.hpp"
 #include <random>
@@ -12,6 +14,29 @@
 #include <concepts>
 
 namespace iceicle {
+
+
+    /// @brief find and create all the interior faces for a mesh
+    template<class T, class IDX, int ndim>
+    auto find_interior_faces(
+        AbstractMesh<T, IDX, ndim>& mesh
+    ) {
+        using namespace util;
+        // if elements share at least ndim points, then they have a face
+        for(IDX ielem = 0; ielem < mesh.nelem(); ++ielem){
+            int max_faces = mesh.elements[ielem]->n_faces();
+            int found_faces = 0;
+            for(IDX jelem = ielem + 1; jelem < mesh.nelem(); ++jelem){
+                auto face_opt = make_face(ielem, jelem, mesh.elements[ielem].get(), mesh.elements[jelem].get());
+                if(face_opt){
+                    mesh.faces.push_back(std::move(face_opt.value()));
+                    // short circuit if all the faces have been found
+                    ++found_faces;
+                    if(found_faces == max_faces) break;
+                }
+            }
+        }
+    }
 
     /**
      * @brief create a 2 element mesh with no boundary faces 
@@ -78,8 +103,7 @@ namespace iceicle {
     template<class T, class IDX, int ndim>
     std::vector<bool> flag_boundary_nodes(AbstractMesh<T, IDX, ndim> &mesh){
         std::vector<bool> is_boundary(mesh.n_nodes(), false);
-        using Face = Face<T, IDX, ndim>;
-        for(Face *face : mesh.faces){
+        for(auto& face : mesh.faces){
 
             // if its not an interior face, set all the node indices to true
             if(face->bctype != BOUNDARY_CONDITIONS::INTERIOR){
@@ -89,6 +113,54 @@ namespace iceicle {
             }
         }
         return is_boundary;
+    }
+
+    /// @brief check that all the normals are facing the right direction 
+    /// (normal at the face centroid should be generally pointing from 
+    /// the centroid of the face, to the centroid of the left element, 
+    /// tested with dot product)
+    /// @param [in] mesh the mesh to test 
+    /// @param [out] invalid_faces the list of invalid faces gets built (pass in an empty vector)
+    /// @return true if no invalid faces are in the list at the end of processing, false otherwise
+    template<class T, class IDX, int ndim>
+    auto validate_normals(AbstractMesh<T, IDX, ndim> &mesh, std::vector<IDX>& invalid_faces) -> bool {
+        using namespace NUMTOOL::TENSOR::FIXED_SIZE;
+        for(IDX ifac = mesh.interiorFaceStart; ifac < mesh.interiorFaceEnd; ++ifac){
+            auto faceptr = mesh.faces[ifac].get();
+            auto centroid_fac = face_centroid(*faceptr, mesh.nodes);
+            auto centroid_l = mesh.elements[faceptr->elemL]->centroid(mesh.nodes);
+            auto centroid_r = mesh.elements[faceptr->elemR]->centroid(mesh.nodes);
+            Tensor<T, ndim> internal_l, internal_r;
+            for(int idim = 0; idim < ndim; ++idim){
+                internal_l[idim] = centroid_l[idim] - centroid_fac[idim];
+                internal_r[idim] = centroid_r[idim] - centroid_fac[idim];
+            }
+            // TODO: generalize face centroid ref domain 
+            MATH::GEOMETRY::Point<T, ndim - 1> s;
+            for(int idim = 0; idim < ndim - 1; ++idim) s[idim] = 0.0; 
+            auto normal = calc_normal(*faceptr, mesh.nodes, s);
+            if(dot(normal, internal_l) > 0.0 || dot(normal, internal_r) < 0.0){
+                invalid_faces.push_back(ifac);
+            }
+        }
+
+        for(IDX ifac = mesh.bdyFaceStart; ifac < mesh.bdyFaceEnd; ++ifac){
+            auto faceptr = mesh.faces[ifac].get();
+            auto centroid_fac = face_centroid(*faceptr, mesh.nodes);
+            auto centroid_l = mesh.elements[faceptr->elemL]->centroid(mesh.nodes);
+            Tensor<T, ndim> internal_l, internal_r;
+            for(int idim = 0; idim < ndim; ++idim){
+                internal_l[idim] = centroid_l[idim] - centroid_fac[idim];
+            }
+            // TODO: generalize face centroid ref domain 
+            MATH::GEOMETRY::Point<T, ndim - 1> s;
+            for(int idim = 0; idim < ndim - 1; ++idim) s[idim] = 0.0; 
+            auto normal = calc_normal(*faceptr, mesh.nodes, s);
+            if(dot(normal, internal_l) > 0.0){
+                invalid_faces.push_back(ifac);
+            }
+        }
+        return invalid_faces.size() == 0;
     }
 
     /**

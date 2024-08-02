@@ -101,12 +101,20 @@ void initialize_and_solve(
     if(bc_desc_opt){
         sol::table bc_tbl = bc_desc_opt.value();
         add_dirichlet_callbacks(conservation_law, bc_tbl);
+        add_neumann_callbacks(conservation_law, bc_tbl);
     }
 
     // =========
     // = Solve =
     // =========
-    solvers::lua_solve(config_tbl, fespace, conservation_law, u);
+    IDX ncycles = config_tbl.get_or("ncycles", 1);
+    for(IDX icycle = 0; icycle < ncycles; ++icycle) {
+        std::cout << "==============" << std::endl;
+        std::cout << "Cycle: " << icycle << std::endl;
+        std::cout << "==============" << std::endl;
+        auto geo_map = solvers::lua_select_mdg_geometry(config_tbl, fespace, conservation_law, icycle, u);
+        solvers::lua_solve(config_tbl, fespace, geo_map, conservation_law, u);
+    }
 
 }
 
@@ -130,7 +138,8 @@ int main(int argc, char* argv[]){
         cli_flag{"help", "print the help text and quit."},
         cli_flag{"enable_fp_except", "enable floating point exceptions (ignoring FE_INEXACT)"},
         cli_option{"scriptfile", "The file name for the lua script to run", parse_type<std::string_view>{}},
-        cli_flag{"debug1", "internal debug flag"}
+        cli_flag{"debug1", "internal debug flag"},
+        cli_flag{"debug2", "internal debug flag"}
     );
     if(cli_args["help"]){
         cli_args.print_options(std::cout);
@@ -173,9 +182,16 @@ int main(int argc, char* argv[]){
         // ==============
         // = Setup Mesh =
         // ==============
-        sol::optional<sol::table> uniform_mesh_tbl = script_config["uniform_mesh"];
-        AbstractMesh<T, IDX, ndim> mesh =
-            lua_uniform_mesh<T, IDX, ndim>(uniform_mesh_tbl.value());
+        auto mesh_opt = construct_mesh_from_config<T, IDX, ndim>(script_config);
+        if(!mesh_opt) return 1; // exit if we have no valid mesh
+        AbstractMesh<T, IDX, ndim> mesh = mesh_opt.value();
+        std::vector<IDX> invalid_faces;
+        if(!validate_normals(mesh, invalid_faces)){
+            std::cout << "invalid normals on the following faces: ";
+            for(IDX ifac : invalid_faces) std::cout << ifac << ", ";
+            std::cout << "\n";
+            return 1;
+        }
         perturb_mesh(script_config, mesh);
 
         if(cli_args["debug1"]){
@@ -183,6 +199,9 @@ int main(int argc, char* argv[]){
             // 2 element mesh on [0, 1]^2
             mesh.nodes[7][0] = 0.7;
             mesh.nodes[4][0] = 0.55;
+        }
+        if(cli_args["debug2"]){
+            mesh.nodes[4][0] = 0.69;
         }
 
         // ===================================
@@ -203,13 +222,16 @@ int main(int argc, char* argv[]){
                 sol::optional<T> mu_input = cons_law_tbl["mu"];
                 if(mu_input) burgers_coeffs.mu = mu_input.value();
 
-                sol::optional<sol::table> a_adv_input = cons_law_tbl["a_adv"];
-                if(a_adv_input){
+                // WARNING: for some reason in release mode 
+                // if we create these tables from cons_law_tbl  
+                // the second one won't read properly
+                sol::optional<sol::table> b_adv_input = script_config["conservation_law"]["b_adv"];
+                sol::optional<sol::table> a_adv_input = script_config["conservation_law"]["a_adv"];
+                if(a_adv_input.has_value()){
                     for(int idim = 0; idim < ndim; ++idim)
                         burgers_coeffs.a[idim] = a_adv_input.value()[idim + 1];
                 }
-                sol::optional<sol::table> b_adv_input = cons_law_tbl["b_adv"];
-                if(b_adv_input){
+                if(b_adv_input.has_value()){
                     for(int idim = 0; idim < ndim; ++idim)
                         burgers_coeffs.b[idim] = b_adv_input.value()[idim + 1];
                 }
@@ -228,15 +250,15 @@ int main(int argc, char* argv[]){
                 sol::optional<T> mu_input = cons_law_tbl["mu"];
                 if(mu_input) burgers_coeffs.mu = mu_input.value();
 
-                sol::optional<sol::table> a_adv_input = cons_law_tbl["a_adv"];
-                if(a_adv_input){
-                    for(int idim = 0; idim < ndim_space; ++idim)
-                        burgers_coeffs.a[idim] = a_adv_input.value()[idim + 1];
-                }
-                sol::optional<sol::table> b_adv_input = cons_law_tbl["b_adv"];
-                if(b_adv_input){
+                sol::optional<sol::table> b_adv_input = script_config["conservation_law"]["b_adv"];
+                sol::optional<sol::table> a_adv_input = script_config["conservation_law"]["a_adv"];
+                if(b_adv_input.has_value()){
                     for(int idim = 0; idim < ndim_space; ++idim)
                         burgers_coeffs.b[idim] = b_adv_input.value()[idim + 1];
+                }
+                if(a_adv_input.has_value()){
+                    for(int idim = 0; idim < ndim_space; ++idim)
+                        burgers_coeffs.a[idim] = a_adv_input.value()[idim + 1];
                 }
 
                 // create the discretization

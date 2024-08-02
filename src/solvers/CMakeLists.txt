@@ -1,5 +1,6 @@
 add_library(iceicle_solvers INTERFACE)
 target_link_libraries(iceicle_solvers INTERFACE iceicle_fe)
+target_link_libraries(iceicle_solvers INTERFACE LAPACK::LAPACK)
 if(ICEICLE_USE_HYPRE)
     message("Using HYPRE in solvers")
     target_link_libraries(iceicle_solvers INTERFACE HYPRE::HYPRE)

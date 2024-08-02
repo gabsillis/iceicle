@@ -5,6 +5,7 @@
 
 #pragma once
 #include "iceicle/fe_function/layout_enums.hpp"
+#include "iceicle/pvd_writer.hpp"
 #include "iceicle/string_utils.hpp"
 #include "iceicle/tmp_utils.hpp"
 #include <iceicle/fespace/fespace.hpp>
@@ -42,38 +43,44 @@ namespace iceicle {
     {
         static constexpr std::size_t neq = decltype(u)::static_extent();
 
-        // the initial condition function (default to zero)
-        std::function<void(const T*, T*)> ic_func = [](const T* xin, T* out){
-            for(int ieq = 0; ieq < neq; ++ieq){
-                out[ieq] = 0.0;
-            }
-        };
+        // check if restart file is specified 
+        sol::optional<std::string> restart_name = config_table["restart"];
+        if(restart_name){
+            read_restart(fespace, u, restart_name.value());
+        } else {
+            // the initial condition function (default to zero)
+            std::function<void(const T*, T*)> ic_func = [](const T* xin, T* out){
+                for(int ieq = 0; ieq < neq; ++ieq){
+                    out[ieq] = 0.0;
+                }
+            };
 
-        // check if IC specified by name
-        sol::optional<std::string> ic_as_name = config_table["initial_condition"];
-        if(ic_as_name){
-            std::string ic_name = ic_as_name.value();
-            if(util::eq_icase(ic_name, "zero")){
-                // already defaulted to this case
+            // check if IC specified by name
+            sol::optional<std::string> ic_as_name = config_table["initial_condition"];
+            if(ic_as_name){
+                std::string ic_name = ic_as_name.value();
+                if(util::eq_icase(ic_name, "zero")){
+                    // already defaulted to this case
+                }
             }
-        }
 
-        // check if IC is a function
-        if constexpr (neq == 1) {
-            sol::optional<sol::function> ic_as_function = config_table["initial_condition"];
-            if(ic_as_function){
-                sol::function ic_f = ic_as_function.value();
-                ic_func = [ic_f](const T* xin, T* xout){
-                    std::integer_sequence seq = std::make_integer_sequence<int, ndim>{};
-                    auto helper = [ic_f]<int... Indices>(const T* xin, T* xout, 
-                            std::integer_sequence<int, Indices...> seq){
-                        xout[0] = ic_f(xin[Indices]...);
+            // check if IC is a function
+            if constexpr (neq == 1) {
+                sol::optional<sol::function> ic_as_function = config_table["initial_condition"];
+                if(ic_as_function){
+                    sol::function ic_f = ic_as_function.value();
+                    ic_func = [ic_f](const T* xin, T* xout){
+                        std::integer_sequence seq = std::make_integer_sequence<int, ndim>{};
+                        auto helper = [ic_f]<int... Indices>(const T* xin, T* xout, 
+                                std::integer_sequence<int, Indices...> seq){
+                            xout[0] = ic_f(xin[Indices]...);
+                        };
+                        helper(xin, xout, seq);
                     };
-                    helper(xin, xout, seq);
-                };
+                }
             }
-        }
 
-        projection_initialization(fespace, ic_func, tmp::compile_int<neq>{}, u);
+            projection_initialization(fespace, ic_func, tmp::compile_int<neq>{}, u);
+        }
     }
 }

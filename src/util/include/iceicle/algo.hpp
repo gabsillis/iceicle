@@ -64,4 +64,30 @@ namespace iceicle::util {
         return true;
     }
 
+    /// @brief create the set intersection of the given sets
+    /// @param a the first set 
+    /// @param b the second set 
+    /// @return a vector of all items that are equivalent between a and b
+    template<class T>
+    std::vector<T> set_intersection(std::span<const T> a, std::span<const T> b) {
+        std::vector<T> intersect{};
+        std::vector<T> acpy(a.size());
+        std::vector<T> bcpy(b.size());
+        std::ranges::copy(a, acpy.begin());
+        std::ranges::copy(b, bcpy.begin());
+        std::ranges::sort(acpy);
+        std::ranges::sort(bcpy);
+
+        auto bptr = bcpy.begin();
+        for(auto aptr = a.begin(); aptr != a.end(); ++aptr){
+            while(*bptr < *aptr) {
+                ++bptr;
+                if(bptr == bcpy.end()) return intersect;
+            };
+            if(*bptr == *aptr) intersect.push_back(*bptr);
+        }
+
+        return intersect;
+    }
+
 }

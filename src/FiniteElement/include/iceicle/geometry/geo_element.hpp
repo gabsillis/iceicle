@@ -11,6 +11,7 @@
 #include <Numtool/matrixT.hpp>
 #include <Numtool/fixed_size_tensor.hpp>
 #include <mdspan/mdspan.hpp>
+#include <memory>
 
 namespace iceicle {
 
@@ -36,6 +37,77 @@ namespace iceicle {
         using value_type = T;
         using index_type = IDX;
 
+
+        // =============================
+        // = Coordinate Transformation =
+        // =============================
+
+        /**
+         * @brief transform from the reference domain to the physical domain
+         * @param [in] node_coords the coordinates of all the nodes
+         * @param [in] pt_ref the point in the refernce domain
+         * @param [out] pt_phys the point in the physical domain
+         */
+        virtual 
+        void transform(
+            NodeArray<T, ndim> &node_coords,
+            const Point &pt_ref,
+            Point &pt_phys
+        ) const = 0;
+
+        /**
+         * @brief get the Jacobian matrix of the transformation
+         * J = \frac{\partial T(s)}{\partial s} = \frac{\partial x}[\partial \xi}
+         * @param [in] node_coords the coordinates of all the nodes
+         * @param [in] xi the position in the reference domain at which to calculate the Jacobian
+         * @return the Jacobian matrix
+         */
+        virtual
+        auto Jacobian(
+            NodeArray<T, ndim> &node_coords,
+            const Point &xi
+        ) const -> JacobianType = 0;
+
+        /**
+         * @brief get the Hessian of the transformation
+         * H_{kij} = \frac{\partial T(s)_k}{\partial s_i \partial s_j} 
+         *         = \frac{\partial x_k}{\partial \xi_i \partial \xi_j}
+         * @param [in] node_coords the coordinates of all the nodes
+         * @param [in] xi the position in the reference domain at which to calculate the hessian
+         * @return the Hessian in tensor form indexed [k][i][j] as described above
+         */
+        virtual
+        auto Hessian(
+            NodeArray<T, ndim> &node_coords,
+            const Point &xi
+        ) const -> HessianType = 0;
+
+        // ===============
+        // = Node Access =
+        // ===============
+
+        /**
+         * @brief Get the nodes array for this element
+         * 
+         * @return pointer to the start of the array of nodes
+         */
+        virtual
+        const IDX *nodes() const = 0;
+
+
+        /**
+         * @brief get the array of node indices as a span 
+         *
+         * This array should be garuanteed to be in the same order as the reference degres of freedom
+         * for the reference domain corresponding to this face
+         * This is so nodal basis functions can be mapped to the global node dofs
+         *
+         * @return the node indices in the mesh nodes array
+         */
+        std::span<const IDX> nodes_span() const {
+            return std::span{nodes(), static_cast<std::size_t>(n_nodes())};
+        }
+
         /**
          * @brief Get the number of nodes
          * 
@@ -44,12 +116,73 @@ namespace iceicle {
         virtual
         constexpr int n_nodes() const = 0;
 
+        // =====================
+        // = Domain Definition =
+        // =====================
+
         /**
          * @brief get the domain type 
          * @return what refernce domain this maps to 
          */
         virtual
         constexpr DOMAIN_TYPE domain_type() const noexcept = 0;
+
+        /**
+         * @brief get the polynomial order of the geometry definition 
+         * this is used to map to output
+         */
+        virtual 
+        constexpr int geometry_order() const noexcept = 0;
+
+        // =====================
+        // = Face Connectivity =
+        // =====================
+        
+        /// @brief get the number of faces
+        virtual
+        auto n_faces() const -> int = 0;
+
+        /// @brief get the domain type of the face at the given face number
+        virtual 
+        auto face_domain_type(int face_number) const -> DOMAIN_TYPE = 0;
+
+        /// @brief get the number of vertices in a face
+        virtual 
+        auto n_face_vert(
+            int face_number /// [in] the face number
+        ) const -> int = 0;
+
+        /// @brief get the vertex indices on the face
+        /// NOTE: These vertices must be in the same order as if get_element_vert() 
+        /// was called on the transformation corresponding to the face
+        virtual 
+        auto get_face_vert(
+            int face_number,      /// [in] the face number
+            index_type* vert_fac  /// [out] the indices of the vertices of the given face
+        ) const -> void = 0;
+
+        /// @brief get the node indices on the face
+        ///
+        /// NOTE: Nodes are all the points defining geometry (vertices are endpoints)
+        ///
+        /// NOTE: These vertices must be in the same order as if get_nodes
+        /// was called on the transformation corresponding to the face
+        virtual 
+        auto get_face_nodes(
+            int face_number,      /// [in] the face number
+            index_type* nodes_fac /// [out] the indices of the nodes of the given face
+        ) const -> void = 0;
+
+        /// @brief get the face number of the given vertices 
+        /// @return the face number of the face with the given vertices
+        virtual 
+        auto get_face_nr(
+            index_type* vert_fac /// [in] the indices of the vertices of the given face
+        ) const -> int = 0;
+
+        // =============
+        // = Geometric =
+        // =============
 
         /**
          * @brief calculate the centroid in the reference domain 
@@ -95,75 +228,6 @@ namespace iceicle {
         }
 
         /**
-         * @brief get the polynomial order of the geometry definition 
-         * this is used to map to output
-         */
-        virtual 
-        constexpr int geometry_order() const noexcept = 0;
-
-        /**
-         * @brief Get the nodes array for this element
-         * 
-         * @return std::ptrdiff_t* the array of nodes
-         */
-        virtual
-        const IDX *nodes() const = 0;
-
-
-        /**
-         * @brief get the array of node indices as a span 
-         *
-         * This array should be garuanteed to be in the same order as the reference degres of freedom
-         * for the reference domain corresponding to this face
-         * This is so nodal basis functions can be mapped to the global node dofs
-         *
-         * @return the node indices in the mesh nodes array
-         */
-        std::span<const IDX> nodes_span() const {
-            return std::span{nodes(), static_cast<std::size_t>(n_nodes())};
-        }
-
-        /**
-         * @brief transform from the reference domain to the physical domain
-         * @param [in] node_coords the coordinates of all the nodes
-         * @param [in] pt_ref the point in the refernce domain
-         * @param [out] pt_phys the point in the physical domain
-         */
-        virtual 
-        void transform(
-            NodeArray<T, ndim> &node_coords,
-            const Point &pt_ref,
-            Point &pt_phys
-        ) const = 0;
-
-        /**
-         * @brief get the Jacobian matrix of the transformation
-         * J = \frac{\partial T(s)}{\partial s} = \frac{\partial x}[\partial \xi}
-         * @param [in] node_coords the coordinates of all the nodes
-         * @param [in] xi the position in the reference domain at which to calculate the Jacobian
-         * @return the Jacobian matrix
-         */
-        virtual
-        auto Jacobian(
-            NodeArray<T, ndim> &node_coords,
-            const Point &xi
-        ) const -> JacobianType = 0;
-
-        /**
-         * @brief get the Hessian of the transformation
-         * H_{kij} = \frac{\partial T(s)_k}{\partial s_i \partial s_j} 
-         *         = \frac{\partial x_k}{\partial \xi_i \partial \xi_j}
-         * @param [in] node_coords the coordinates of all the nodes
-         * @param [in] xi the position in the reference domain at which to calculate the hessian
-         * @return the Hessian in tensor form indexed [k][i][j] as described above
-         */
-        virtual
-        auto Hessian(
-            NodeArray<T, ndim> &node_coords,
-            const Point &xi
-        ) const -> HessianType = 0;
-
-        /**
          * @brief given surface nodes 
          * find interior nodes according to their barycentric weights
          */
@@ -172,39 +236,13 @@ namespace iceicle {
             NodeArray<T, ndim>& coord /// [in/out] the node coordinates array 
         ) const -> void = 0;
 
-        /// @brief get the number of vertices in a face
-        virtual 
-        auto n_face_vert(
-            int face_number /// [in] the face number
-        ) const -> int = 0;
+        // ===========
+        // = Utility =
+        // ===========
 
-        /// @brief get the vertex indices on the face
-        /// NOTE: These vertices must be in the same order as if get_element_vert() 
-        /// was called on the transformation corresponding to the face
+        /// @brief clone this geometric element (create a copy)
         virtual 
-        auto get_face_vert(
-            int face_number,      /// [in] the face number
-            index_type* vert_fac  /// [out] the indices of the vertices of the given face
-        ) const -> void = 0;
-
-        /// @brief get the node indices on the face
-        ///
-        /// NOTE: Nodes are all the points defining geometry (vertices are endpoints)
-        ///
-        /// NOTE: These vertices must be in the same order as if get_nodes
-        /// was called on the transformation corresponding to the face
-        virtual 
-        auto get_face_nodes(
-            int face_number,      /// [in] the face number
-            index_type* nodes_fac /// [out] the indices of the nodes of the given face
-        ) const -> void = 0;
-
-        /// @brief get the face number of the given vertices 
-        /// @return the face number of the face with the given vertices
-        virtual 
-        auto get_face_nr(
-            index_type* vert_fac /// [in] the indices of the vertices of the given face
-        ) const -> int = 0;
+        auto clone() const -> std::unique_ptr<GeometricElement<T, IDX, ndim>> = 0;
 
         /**
          * @brief virtual destructor

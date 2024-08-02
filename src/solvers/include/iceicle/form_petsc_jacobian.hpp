@@ -6,6 +6,7 @@
 #pragma once
 #include "iceicle/fespace/fespace.hpp"
 #include "iceicle/fe_function/fespan.hpp"
+#include "iceicle/fe_function/component_span.hpp"
 #include "iceicle/geometry/face.hpp"
 #include "iceicle/petsc_interface.hpp"
 #include <cmath>
@@ -485,7 +486,6 @@ namespace iceicle::solvers {
             }
         }
 
-
         std::vector<T> resL_storage(fespace.dg_map.max_el_size_reqirement(u.nv()));
         std::vector<T> resLp_storage(fespace.dg_map.max_el_size_reqirement(u.nv()));
         std::vector<T> resR_storage(fespace.dg_map.max_el_size_reqirement(u.nv()));
@@ -676,6 +676,370 @@ namespace iceicle::solvers {
 
                         // revert perturbation
                         fespace.meshptr->nodes[inode][idim] = old_val;
+                    }
+                }
+            }
+
+        }
+    }
+
+    /// @brief from the jacobian terms due to the interface condition enforcement 
+    /// NOTE: this works with the non-square matrix
+    template<
+        class T, class IDX, int ndim,
+        class disc_class, class uLayoutPolicy, class uAccessorPolicy
+    >
+    auto form_petsc_mdg_jacobian_fd(
+        FESpace<T, IDX, ndim>& fespace,
+        disc_class& disc,
+        fespan<T, uLayoutPolicy, uAccessorPolicy> u,
+        geospan auto x,
+        icespan auto mdg_residual,
+        Mat jac,
+        T epsilon = std::sqrt(std::numeric_limits<T>::epsilon()),
+        MPI_Comm comm = MPI_COMM_WORLD 
+    ) -> void 
+    {
+        using Element = FiniteElement<T, IDX, ndim>;
+        using Trace = TraceSpace<T, IDX, ndim>;
+        using index_type = IDX;
+        using namespace std::experimental;
+
+        static constexpr int neq = disc_class::nv_comp;
+
+        // zero out the residual 
+        mdg_residual = 0;
+
+        // get the start indices for the petsc matrix on this processor
+        PetscInt proc_range_beg, proc_range_end, mdg_range_beg;
+        PetscCallAbort(comm, MatGetOwnershipRange(jac, &proc_range_beg, &proc_range_end));
+        mdg_range_beg = proc_range_beg + u.size();
+
+        // preallocate storage for compact views of u 
+        const std::size_t max_local_size =
+            fespace.dg_map.max_el_size_reqirement(neq);
+        std::vector<T> uL_storage(max_local_size);
+        std::vector<T> uR_storage(max_local_size);
+        std::vector<T> jacL_storage{};
+        std::vector<T> jacR_storage{};
+        std::vector<T> res_storage{};
+        std::vector<T> resp_storage{};
+
+        // get the selected geometry to apply interface condition to
+        const geo_dof_map<T, IDX, ndim>& geo_map = x.get_layout().geo_map;
+
+        // apply the x coordinates to the mesh
+        update_mesh(x, *(fespace.meshptr));
+
+        // jacobian of ice residual wrt u
+        for(index_type itrace: geo_map.selected_traces){
+            Trace& trace = fespace.traces[itrace];
+
+            // set up compact data views
+            auto uL_layout = u.create_element_layout(trace.elL.elidx);
+            dofspan uL{uL_storage, uL_layout};
+            auto uR_layout = u.create_element_layout(trace.elR.elidx);
+            dofspan uR{uR_storage, uR_layout};
+
+            trace_layout_right res_layout{trace, disc};
+            res_storage.resize(res_layout.size());
+            dofspan res{res_storage, res_layout};
+            resp_storage.resize(res_layout.size());
+            dofspan resp{resp_storage, res_layout};
+
+            // get the global index to the start of the contiguous component x dof range for L/R elem
+            std::size_t glob_index_L = u.get_layout()[trace.elL.elidx, 0, 0];
+            std::size_t glob_index_R = u.get_layout()[trace.elR.elidx, 0, 0];
+
+            // extract the compact values from the global u view
+            extract_elspan(trace.elL.elidx, u, uL);
+            extract_elspan(trace.elR.elidx, u, uR);
+
+            // get the unperturbed residual and send to full residual
+            res = 0;
+            disc.interface_conservation(trace, fespace.meshptr->nodes, uL, uR, res);
+            scatter_facspan(trace, 1.0, res, 1.0, mdg_residual);
+
+            // set up the perturbation amount scaled by unperturbed residual 
+            T eps_scaled = std::max(epsilon, res.vector_norm() * epsilon);
+
+            // form local jacobian wrt uL
+            for(IDX idofu = 0; idofu < uL.ndof(); ++idofu){
+                for(IDX iequ = 0; iequ < uL.nv(); ++iequ){
+                    IDX jcol = proc_range_beg + glob_index_L + uL.get_layout()[idofu, iequ];
+
+                    // perturb 
+                    T old_val = uL[idofu, iequ];
+                    uL[idofu, iequ] += eps_scaled;
+
+                    // get the perturbed residual
+                    resp = 0;
+                    disc.interface_conservation(trace, fespace.meshptr->nodes, uL, uR, resp);
+
+                    // fill jacobian for this perturbation 
+                    for(IDX idoff = 0; idoff < res.ndof(); ++idoff) {
+
+                        // only do perturbation if node is actually in nodeset 
+                        IDX ignode = trace.face->nodes()[idoff];
+                        IDX igdof = geo_map.inv_selected_nodes[ignode];
+
+                        if(igdof != geo_map.selected_nodes.size()){
+                            for(IDX ieqf = 0; ieqf < neq; ++ieqf) {
+                                // get the global row index based on the dof in node selection
+                                IDX irow = mdg_range_beg + mdg_residual.get_layout()[igdof, ieqf];
+                                T fd_val = (resp[idoff, ieqf] - res[idoff, ieqf]) / eps_scaled;
+                                MatSetValue(jac, irow, jcol, fd_val, ADD_VALUES);
+                            }
+                        }
+                    }
+                    // undo the perturbation
+                    uL[idofu, iequ] = old_val;
+                }
+            }
+
+            // form local jacobian wrt uR
+            for(IDX idofu = 0; idofu < uR.ndof(); ++idofu){
+                for(IDX iequ = 0; iequ < uR.nv(); ++iequ){
+                    IDX jcol = proc_range_beg + glob_index_R + uR.get_layout()[idofu, iequ];
+
+                    // perturb 
+                    T old_val = uR[idofu, iequ];
+                    uR[idofu, iequ] += eps_scaled;
+
+                    // get the perturbed residual
+                    resp = 0;
+                    disc.interface_conservation(trace, fespace.meshptr->nodes, uL, uR, resp);
+
+                    // fill jacobian for this perturbation 
+                    for(IDX idoff = 0; idoff < res.ndof(); ++idoff) {
+
+                        // only do perturbation if node is actually in nodeset 
+                        IDX ignode = trace.face->nodes()[idoff];
+                        IDX igdof = geo_map.inv_selected_nodes[ignode];
+
+                        if(igdof != geo_map.selected_nodes.size()){
+                            for(IDX ieqf = 0; ieqf < neq; ++ieqf) {
+                                // get the global row index based on the dof in node selection
+                                IDX irow = mdg_range_beg + mdg_residual.get_layout()[igdof, ieqf];
+                                T fd_val = (resp[idoff, ieqf] - res[idoff, ieqf]) / eps_scaled;
+                                MatSetValue(jac, irow, jcol, fd_val, ADD_VALUES);
+                            }
+                        }
+                    }
+                    // undo the perturbation
+                    uR[idofu, iequ] = old_val;
+                }
+            }
+        }
+
+        std::vector<T> resL_storage(fespace.dg_map.max_el_size_reqirement(u.nv()));
+        std::vector<T> resLp_storage(fespace.dg_map.max_el_size_reqirement(u.nv()));
+        std::vector<T> resR_storage(fespace.dg_map.max_el_size_reqirement(u.nv()));
+        std::vector<T> resRp_storage(fespace.dg_map.max_el_size_reqirement(u.nv()));
+
+        // Jacobian wrt x 
+        for(IDX jmdg = 0; jmdg < mdg_residual.ndof(); ++jmdg){
+            // the global node index corresponding to this mdg dof
+            IDX inode = geo_map.selected_nodes[jmdg];
+
+            // loop over element surrounding for domain integral
+            for(IDX iel : fespace.el_surr_nodes.rowspan(inode)) {
+                const Element& el = fespace.elements[iel];
+
+                // set up compact data views
+                auto el_layout = u.create_element_layout(iel);
+                dofspan u_el{uL_storage, el_layout};
+                dofspan res{resL_storage, u.create_element_layout(iel)};
+                dofspan resp{resLp_storage, u.create_element_layout(iel)};
+
+                // get the global index to the start of the contiguous component x dof range
+                std::size_t glob_index_el = u.get_layout()[iel, 0, 0];
+
+                // extract the compact values from the global u view
+                extract_elspan(iel, u, u_el);
+
+                // get the unperturbed residual
+                res = 0;
+                disc.domain_integral(el, fespace.meshptr->nodes, u_el, res);
+
+                // set up the perturbation amount scaled by unperturbed residual 
+                T eps_scaled = std::max(epsilon, res.vector_norm() * epsilon);
+
+                // get the original parameterization 
+                auto* parametrization = geo_map.parametric_accessors[jmdg].get();
+                std::vector<T> s(parametrization->s_size());
+                parametrization->x_to_s(fespace.meshptr->nodes[inode], s);
+
+                // loop over dimension of the geometric parameterization and peturb
+                for(int is = 0; is < x.nv(jmdg); ++is){
+                    
+                        IDX jcol = mdg_range_beg + geo_map.cols[jmdg] + is;
+
+                        T old_val = s[is];
+                        s[is] += eps_scaled;
+                        parametrization->s_to_x(s, fespace.meshptr->nodes[inode]);
+
+                        // get perturbed residual
+                        resp = 0;
+                        disc.domain_integral(el, fespace.meshptr->nodes, u_el, resp);
+
+                        // jacobian contribution 
+                        for(IDX idoff = 0; idoff < res.ndof(); ++idoff){
+                            for(IDX ieqf = 0; ieqf < res.nv(); ++ieqf){
+                                IDX irow = proc_range_beg + glob_index_el + res.get_layout()[idoff, ieqf];
+                                T fd_val = (resp[idoff, ieqf] - res[idoff, ieqf]) / eps_scaled;
+                                MatSetValue(jac, irow, jcol, fd_val, ADD_VALUES);
+                            }
+                        }
+
+                        // revert perturbation
+                        s[is] = old_val;
+                        parametrization->s_to_x(s, fespace.meshptr->nodes[inode]);
+                }
+            }
+
+            // build the extended stencil of face indices around the node
+            // use a set to prevent repeats
+            std::set<IDX>traces_to_visit{};
+            for(IDX iel : fespace.el_surr_nodes.rowspan(inode)){
+                for(IDX itrace : fespace.fac_surr_el.rowspan(iel)){
+                    traces_to_visit.insert(itrace);
+                }
+            }
+
+            // loop over traces in extended stencil around the node
+            for(IDX itrace : traces_to_visit){
+                const Trace& trace = fespace.traces[itrace];
+
+                // set up compact data views
+                auto uL_layout = u.create_element_layout(trace.elL.elidx);
+                dofspan uL{uL_storage, uL_layout};
+                auto uR_layout = u.create_element_layout(trace.elR.elidx);
+                dofspan uR{uR_storage, uR_layout};
+
+                // get the global index to the start of the contiguous component x dof range for L/R elem
+                std::size_t glob_index_L = u.get_layout()[trace.elL.elidx, 0, 0];
+                std::size_t glob_index_R = u.get_layout()[trace.elR.elidx, 0, 0];
+
+                // extract the compact values from the global u view
+                extract_elspan(trace.elL.elidx, u, uL);
+                extract_elspan(trace.elR.elidx, u, uR);
+                // du/dx  (L and R)
+                {
+                    dofspan resL{resL_storage, u.create_element_layout(trace.elL.elidx)};
+                    dofspan resLp{resLp_storage, u.create_element_layout(trace.elL.elidx)};
+                    dofspan resR{resR_storage, u.create_element_layout(trace.elR.elidx)};
+                    dofspan resRp{resRp_storage, u.create_element_layout(trace.elR.elidx)};
+                    resL = 0; resR = 0;
+
+                    // get the unperturbed residual
+                    if(trace.face->bctype == BOUNDARY_CONDITIONS::INTERIOR){
+                        disc.trace_integral(trace, fespace.meshptr->nodes, uL, uR, resL, resR);
+                    } else {
+                        disc.boundaryIntegral(trace, fespace.meshptr->nodes, uL, uR, resL);
+                    }
+
+                    // set up the perturbation amount scaled by unperturbed residual 
+                    T eps_scaled = std::max(epsilon, std::max(resL.vector_norm(), resR.vector_norm()) * epsilon);
+
+                    // get the original parameterization 
+                    auto* parametrization = geo_map.parametric_accessors[jmdg].get();
+                    std::vector<T> s(parametrization->s_size());
+                    parametrization->x_to_s(fespace.meshptr->nodes[inode], s);
+
+                    // loop over dimension of the geometric parameterization and peturb
+                    for(int is = 0; is < x.nv(jmdg); ++is){
+                        IDX jcol = mdg_range_beg + geo_map.cols[jmdg] + is;
+
+                        T old_val = s[is];
+                        s[is] += eps_scaled;
+                        parametrization->s_to_x(s, fespace.meshptr->nodes[inode]);
+
+                        // get the perturbed residual
+                        resLp = 0; resRp = 0;
+                        if(trace.face->bctype == BOUNDARY_CONDITIONS::INTERIOR){
+                            disc.trace_integral(trace, fespace.meshptr->nodes, uL, uR, resLp, resRp);
+                        } else {
+                            disc.boundaryIntegral(trace, fespace.meshptr->nodes, uL, uR, resLp);
+                        }
+
+                        // resL
+                        for(IDX idoff = 0; idoff < resL.ndof(); ++idoff){
+                            for(IDX ieqf = 0; ieqf < resL.nv(); ++ieqf){
+                                IDX irow = proc_range_beg + glob_index_L + resL.get_layout()[idoff, ieqf];
+                                T fd_val = (resLp[idoff, ieqf] - resL[idoff, ieqf]) / eps_scaled;
+                                MatSetValue(jac, irow, jcol, fd_val, ADD_VALUES);
+                            }
+                        }
+
+                        // resR (only for interior traces)
+                        if(trace.face->bctype == BOUNDARY_CONDITIONS::INTERIOR){
+                            for(IDX idoff = 0; idoff < resR.ndof(); ++idoff){
+                                for(IDX ieqf = 0; ieqf < resR.nv(); ++ieqf){
+                                    IDX irow = proc_range_beg + glob_index_R + resR.get_layout()[idoff, ieqf];
+                                    T fd_val = (resRp[idoff, ieqf] - resR[idoff, ieqf]) / eps_scaled;
+                                    MatSetValue(jac, irow, jcol, fd_val, ADD_VALUES);
+                                }
+                            }
+                        }
+
+                        // revert perturbation
+                        s[is] = old_val;
+                        parametrization->s_to_x(s, fespace.meshptr->nodes[inode]);
+                    }
+                }
+
+                // dICE/dx
+                {
+                    auto res_layout = trace_layout_right{trace, disc};
+                    res_storage.resize(res_layout.size());
+                    dofspan res{res_storage, res_layout};
+                    resp_storage.resize(res_layout.size());
+                    dofspan resp{resp_storage, res_layout};
+
+                    // get the unperturbed residual
+                    res = 0;
+                    disc.interface_conservation(trace, fespace.meshptr->nodes, uL, uR, res);
+                    // set up the perturbation amount scaled by unperturbed residual 
+                    T eps_scaled = std::max(epsilon, res.vector_norm() * epsilon);
+
+                    // get the original parameterization 
+                    auto* parametrization = geo_map.parametric_accessors[jmdg].get();
+                    std::vector<T> s(parametrization->s_size());
+                    parametrization->x_to_s(fespace.meshptr->nodes[inode], s);
+
+                    // loop over dimension of the geometric parameterization and peturb
+                    for(int is = 0; is < x.nv(jmdg); ++is){
+
+                        IDX jcol = mdg_range_beg + geo_map.cols[jmdg] + is;
+
+                        T old_val = s[is];
+                        s[is] += eps_scaled;
+                        parametrization->s_to_x(s, fespace.meshptr->nodes[inode]);
+
+                        // get the perturbed residual
+                        resp = 0;
+                        disc.interface_conservation(trace, fespace.meshptr->nodes, uL, uR, resp);
+
+                        for(IDX idoff = 0; idoff < res.ndof(); ++idoff){
+
+                            // only scatter if node is actually in nodeset 
+                            IDX ignode = trace.face->nodes()[idoff];
+                            IDX igdof = geo_map.inv_selected_nodes[ignode];
+                            
+                            if(igdof != geo_map.selected_nodes.size()){
+                                for(IDX ieqf = 0; ieqf < neq; ++ieqf){
+                                    // get the global row index based on the dof in node selection
+                                    IDX irow = mdg_range_beg + mdg_residual.get_layout()[igdof, ieqf];
+                                    T fd_val = (resp[idoff, ieqf] - res[idoff, ieqf]) / eps_scaled;
+                                    MatSetValue(jac, irow, jcol, fd_val, ADD_VALUES);
+                                }
+                            }
+                        }
+
+                        // revert perturbation
+                        s[is] = old_val;
+                        parametrization->s_to_x(s, fespace.meshptr->nodes[inode]);
                     }
                 }
             }

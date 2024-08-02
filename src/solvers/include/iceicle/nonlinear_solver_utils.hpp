@@ -81,7 +81,7 @@ namespace iceicle::solvers {
 
     template<typename T>
     T zoom(function1d<T> fcn, T alpha_lo, T alpha_hi, int kmax, T c1, T c2){
-        static constexpr T EPSILON = std::sqrt(std::numeric_limits<T>::epsilon());
+        static const T EPSILON = std::sqrt(std::numeric_limits<T>::epsilon());
 
         for(int k = 0; k < kmax; k++){
             // cubic interpolation
@@ -108,7 +108,7 @@ namespace iceicle::solvers {
                 alpha_hi = aj;
             } else {
                 T dphi_aj = finite_difference(fcn, EPSILON, aj);
-                if( std::abs(dphi_aj <= -c2 * dphi_0) ){
+                if( std::abs(dphi_aj) <= -c2 * dphi_0 ){
                     return aj;
                 }
 
@@ -169,12 +169,33 @@ namespace iceicle::solvers {
         return a_i;
     }
 
+    template<typename T>
+    T corrigan_ls(function1d<T> fcn, T alpha_max, T alpha1, int kmax, T alpha_min){
+        T alpha_a = alpha_min, alpha_b = alpha_max;
+        T alpha = alpha1;
+        for(int k = 0; k < kmax; ++k){
+            T phi_0 = fcn(0); // TODO: pass in unchanged residual value 
+                              // because this is already calculated when getting jacobian in NL solver 
+            if(k > 0)
+                alpha = (alpha_a + alpha_b) / 2;
+            T phi_star = fcn(alpha);
+            if(std::abs(phi_star) < std::abs(phi_0)){
+                if(alpha == alpha1) 
+                    break;
+                alpha_a = alpha;
+            } else {
+                alpha_b = alpha;
+            }
+        }
+        return alpha;
+    }
+
     /**
      * @brief no linesearch strategy - take the full step 
      */
     template<typename T, typename IDX>
     struct no_linesearch {
-        auto operator()(function1d<T> fcn) -> T { return 1.0; }
+        auto operator()(function1d<T> fcn) const -> T { return 1.0; }
     };
 
     /**
@@ -204,8 +225,33 @@ namespace iceicle::solvers {
         /// @brief the second linesearch constant (reccomend 0.9)
         value_type c2 = 0.9;
 
-        auto operator()(function1d<T> fcn) -> T {
+        auto operator()(function1d<T> fcn) const -> T {
             return wolfe_ls(fcn, alpha_max, alpha_initial, max_it, c1, c2);
+        }
+
+    };
+
+    /// @brief the linesearch strategy described in 
+    /// MDG paper by Ching et al 2024 Computer Methods in Applied Mechanics and Engineering
+    template<typename T, typename IDX>
+    struct corrigan_linesearch {
+        using value_type = T;
+        using index_type = IDX;
+        /// @brief maximum number of iterations for linesearch
+        index_type max_it = 20;
+
+        /// @brief the initial linesearch multiplier 
+        /// (reccomend 1.0 for Newton or scaled for CG)
+        value_type alpha_initial = 1;
+
+        ///@brief the maximum linesurch multiplier
+        value_type alpha_max = 10;
+
+        /// @brief the minimum increment
+        value_type alpha_min = 0;
+
+        auto operator()(function1d<T> fcn) const -> T {
+            return corrigan_ls(fcn, alpha_max, alpha_initial, max_it, alpha_min);
         }
 
     };
@@ -219,7 +265,7 @@ namespace iceicle::solvers {
     };
 
     template<class T, class IDX>
-    using LinesearchVariant = std::variant<no_linesearch<T, IDX>, wolfe_linesearch<T, IDX>>;
+    using LinesearchVariant = std::variant<no_linesearch<T, IDX>, corrigan_linesearch<T, IDX>, wolfe_linesearch<T, IDX>>;
 
 } 
 

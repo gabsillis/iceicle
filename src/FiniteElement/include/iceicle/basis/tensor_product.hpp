@@ -9,6 +9,7 @@
 #include "Numtool/tmp_flow_control.hpp"
 #include "Numtool/constexpr_math.hpp"
 #include <Numtool/point.hpp>
+#include <algorithm>
 #include <cstddef>
 #include <mdspan/mdspan.hpp>
 #include <stdexcept>
@@ -16,6 +17,50 @@
 #include <sstream>
 
 namespace iceicle{
+
+    /// @brief Cartesian Product of indicies 
+    /// defined by the size of the indices in each dimension
+    ///
+    /// e.g CartesianIndexProduct{std::array{3, 2, 2}} represents 
+    ///     {0, 0, 0}
+    ///     {0, 0, 1}
+    ///     {0, 1, 0}
+    ///     ...
+    ///     {2, 1, 1}
+    ///
+    /// @tparam index_type the data type of the indices 
+    /// @tparam ndim the number of dimensions 
+    /// @param sizes the extents of the indices in each dimension
+    template<class index_type, std::size_t ndim>
+    constexpr
+    auto cartesian_index_product(std::array<index_type, ndim> sizes) noexcept 
+    -> std::vector<std::array<index_type, ndim>>
+    {
+        std::vector<std::array<index_type, ndim>> ijk_poin{};
+        std::array<index_type, ndim> ijk;
+        std::ranges::fill(ijk, 0);
+        ijk_poin.push_back(ijk);
+
+        auto increment = [sizes](std::array<index_type, ndim> &ijk) {
+            ijk[0]++;
+            for(std::size_t idim = 0; idim < ndim - 1; ++idim) {
+                if(ijk[idim] == sizes[idim]){
+                    ijk[idim] = 0;
+                    ijk[idim+1]++;
+                } else {
+                    break;
+                }
+            }
+
+            if(ijk[ndim - 1] == sizes[ndim - 1]) 
+                return false;
+            else 
+                return true;
+        };
+
+        while(increment(ijk)) ijk_poin.push_back(ijk);
+        return ijk_poin;
+    }
 
     /**
      * @brief represents a multi-index set for a Q-type tensor product
@@ -53,8 +98,8 @@ namespace iceicle{
         static constexpr size_type cardinality = MATH::power_T<size_1d, ndim>::value;
 
         /// Basis function indices by dimension for each node
-        static constexpr std::array<std::array<int, ndim>, cardinality> ijk_poin = []() {
-            std::array<std::array<int, ndim>, cardinality> ret{};
+        static constexpr std::array<std::array<index_type, ndim>, cardinality> ijk_poin = []() {
+            std::array<std::array<index_type, ndim>, cardinality> ret{};
 
             NUMTOOL::TMP::constexpr_for_range<0, ndim>([&ret]<int idim>() {
                 // number of times to repeat the loop over basis functions

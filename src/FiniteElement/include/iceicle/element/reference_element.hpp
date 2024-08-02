@@ -63,6 +63,7 @@ namespace iceicle {
                         case LAGRANGE:
                             basis = std::make_unique<HypercubeLagrangeBasis<
                                 T, IDX, ndim, basis_order>>();
+                            break;
                         case LEGENDRE:
                             basis = std::make_unique<HypercubeLegendreBasis<
                                 T, IDX, ndim, basis_order>>();
@@ -164,7 +165,7 @@ namespace iceicle {
                             quadrule = std::make_unique<
                                 HypercubeGaussLegendre<
                                     T, IDX, ndim - 1,
-                                    (geo_order+1)+(basis_order+1)
+                                    (geo_order)+(basis_order)
                                 >
                             >();
                             break;

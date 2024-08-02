@@ -38,13 +38,16 @@ if read_the_docs_build:
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
 
-extensions = [ "breathe", "sphinx.ext.mathjax", "sphinx.ext.autosectionlabel" ]
+extensions = [ "breathe", "sphinx.ext.mathjax", "sphinx.ext.autosectionlabel", "sphinxcontrib.tikz" ]
 
 # Breathe Configuration 
 breathe_default_project = "ICEicle"
 
 templates_path = ['_templates']
 exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store']
+
+# tikz config 
+tikz_proc_suite = 'GhostScript'
 
 
 

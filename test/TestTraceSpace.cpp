@@ -46,7 +46,7 @@ TEST(test_trace_space, test_basis_eval){
     QuadTypeL quadratureL{};
     FEEvaluation<T, IDX, ndim> evalsL{&basisL, &quadratureL};
     FiniteElement elL {
-        mesh.elements[0],
+        mesh.elements[0].get(),
         &basisL,
         &quadratureL,
         &evalsL,
@@ -58,7 +58,7 @@ TEST(test_trace_space, test_basis_eval){
     QuadTypeR quadratureR{};
     FEEvaluation<T, IDX, ndim> evalsR{&basisR, &quadratureR};
     FiniteElement elR {
-        mesh.elements[1],
+        mesh.elements[1].get(),
         &basisR,
         &quadratureR,
         &evalsR,
@@ -70,7 +70,7 @@ TEST(test_trace_space, test_basis_eval){
     TraceQuadrature trace_quadrule{};
     TraceEvaluation<T, IDX, ndim> trace_eval{};
     TraceSpace trace {
-        mesh.faces[mesh.interiorFaceStart],
+        mesh.faces[mesh.interiorFaceStart].get(),
         &elL,
         &elR,
         &trace_basis,

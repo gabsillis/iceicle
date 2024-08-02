@@ -4,6 +4,7 @@
 #include "iceicle/dat_writer.hpp"
 #include "iceicle/disc/heat_eqn.hpp"
 #include "iceicle/fe_function/fespan.hpp"
+#include "iceicle/fe_function/node_set_layout.hpp"
 #include "iceicle/fespace/fespace.hpp"
 #include "iceicle/geometry/face.hpp"
 #include "iceicle/disc/projection.hpp"
@@ -14,8 +15,10 @@
 #include "iceicle/disc/l2_error.hpp"
 #include "iceicle/fe_function/layout_right.hpp"
 #include "iceicle/tmp_utils.hpp"
+#include <iceicle/disc/conservation_law.hpp>
 #include <cmath>
 #include <fenv.h>
+#include <petscsys.h>
 #include <type_traits>
 
 #ifdef ICEICLE_USE_PETSC 
@@ -49,7 +52,7 @@ int main(int argc, char *argv[]){
         cli_option{"mu", "The diffusion coefficient (positive)", parse_type<T>{}}, 
         cli_option{"a-adv", "The linear advection coefficient", parse_type<T>{}}, 
         cli_option{"b-adv", "The nonlinear advection coefficient", parse_type<T>{}}, 
-        cli_option{"nelem", "The number of elements", parse_type<IDX>{}},
+//        cli_option{"nelem", "The number of elements", parse_type<IDX>{}},
         cli_option{"order", "The polynomial order of the basis functions", parse_type<int>{}},
         cli_option{"ivis", "the number of timesteps between outputs", parse_type<IDX>{}},
         cli_option{"ddgic_mult", "multiplier for ddgic", parse_type<T>{}}, 
@@ -63,7 +66,7 @@ int main(int argc, char *argv[]){
         feenableexcept(FE_ALL_EXCEPT & ~FE_INEXACT);
     }
     int runtime_order = (cli_args["order"].has_value()) ? cli_args["order"].as<int>() : 1;
-    IDX nelem = (cli_args["nelem"].has_value()) ? cli_args["nelem"].as<IDX>() : 8;
+    IDX nelem = 2;
 
     auto mainfunc = [&]<int order>->int{
 
@@ -79,18 +82,24 @@ int main(int argc, char *argv[]){
         // ========================
         // = Setup Discretization =
         // ========================
-        HeatEquation<T, IDX, ndim> disc{};
+        BurgersCoefficients<T, ndim> burgers_coeffs{};
 
         /// set discretization parameters (default to Peclet Nr = 100)
-        disc.mu = (cli_args["mu"]) ? cli_args["mu"].as<T>() : 0.01;
-        disc.a[0] = (cli_args["a-adv"]) ? cli_args["a-adv"].as<T>() : 1.0;
-        disc.b[0] = (cli_args["b-adv"]) ? cli_args["b-adv"].as<T>() : 0.0;
+        burgers_coeffs.mu = (cli_args["mu"]) ? cli_args["mu"].as<T>() : 0.01;
+        burgers_coeffs.a[0] = (cli_args["a-adv"]) ? cli_args["a-adv"].as<T>() : 1.0;
+        burgers_coeffs.b[0] = (cli_args["b-adv"]) ? cli_args["b-adv"].as<T>() : 0.0;
+
+
+        BurgersFlux physical_flux{burgers_coeffs};
+        BurgersUpwind convective_flux{burgers_coeffs};
+        BurgersDiffusionFlux diffusive_flux{burgers_coeffs};
+        ConservationLawDDG disc{std::move(physical_flux), std::move(convective_flux), std::move(diffusive_flux)};
         disc.sigma_ic = (cli_args["ddgic_mult"]) ? cli_args["ddgic_mult"].as<T>() : 0.0;
         disc.interior_penalty = cli_args["interior_penalty"];
 
         // left bc u = 0, right bc u = 1
-        disc.dirichlet_values.push_back(0.0);
-        disc.dirichlet_values.push_back(1.0);
+        disc.dirichlet_callbacks.push_back([](const T*x, T*out){ out[0] = 0.0; });
+        disc.dirichlet_callbacks.push_back([](const T*x, T*out){ out[0] = 1.0; });
 
         fe_layout_right u_layout{fespace.dg_map, std::integral_constant<std::size_t, neq>{}};
         std::vector<T> u_data(u_layout.size());
@@ -130,35 +139,52 @@ int main(int argc, char *argv[]){
                 // scatter to global array 
                 // (note we use 0 as multiplier for current values in global array)
                 scatter_elspan(el.elidx, 1.0, u_local, 0.0, u);
+
             }
         );
 
 #ifdef ICEICLE_USE_PETSC
-        using namespace iceicle::solvers;
-        ConvergenceCriteria<T, IDX> conv_criteria{
-            .tau_abs = std::numeric_limits<T>::epsilon(),
-            .tau_rel = 1e-9,
-            .kmax = 5
-        };
-        PetscNewton solver{fespace, disc, conv_criteria};
-        solver.ivis = 1;
-        io::DatWriter<T, IDX, ndim> writer{fespace};
-        writer.register_fields(u, "u");
-        solver.vis_callback = [&](decltype(solver) &solver, IDX k, Vec res_data, Vec du_data){
-            T res_norm;
-            PetscCallAbort(solver.comm, VecNorm(res_data, NORM_2, &res_norm));
-            std::cout << std::setprecision(8);
-            std::cout << "itime: " << std::setw(6) << k
-            << " | residual l2: " << std::setw(14) << res_norm
-            << std::endl;
 
-            writer.write_dat(k, (T) k);
-        };
+        std::ofstream ic_out{"ic_residuals.dat"};
 
-        solver.solve(u);
+
+        for(int i = 1; i <= 999; ++i){
+            mesh.nodes[1][0] = 0.001 * i;
+            using namespace iceicle::solvers;
+            ConvergenceCriteria<T, IDX> conv_criteria{
+                .tau_abs = std::numeric_limits<T>::epsilon(),
+                .tau_rel = 1e-9,
+                .kmax = 5
+            };
+            PetscNewton solver{fespace, disc, conv_criteria};
+            solver.ivis = 1;
+            io::DatWriter<T, IDX, ndim> writer{fespace};
+            writer.register_fields(u, "u");
+            solver.vis_callback = [&](IDX k, Vec res_data, Vec du_data){
+                T res_norm;
+                PetscCallAbort(PETSC_COMM_WORLD, VecNorm(res_data, NORM_2, &res_norm));
+                std::cout << std::setprecision(8);
+                std::cout << "itime: " << std::setw(6) << k
+                << " | residual l2: " << std::setw(14) << res_norm
+                << std::endl;
+
+                writer.write_dat(k, (T) k);
+            };
+
+            solver.solve(u);
+
+            std::vector<IDX> selected_traces = {0};
+            nodeset_dof_map selected_dofs{selected_traces, fespace};
+            std::vector<T> r_mdg_data{0.0};
+            node_selection_layout<IDX, 1> mdg_layout{selected_dofs};
+            dofspan r_mdg{r_mdg_data, mdg_layout};
+            form_mdg_residual(fespace, disc, u, r_mdg);
+            ic_out << mesh.nodes[1][0] << " " << r_mdg[0, 0] << std::endl;;
+        }
+
 #endif
         // compute L2 error
-        T Pe = disc.a[0] / disc.mu;
+        T Pe = burgers_coeffs.a[0] / burgers_coeffs.mu;
         std::function<void(T*, T*)> exactfunc = [Pe](T *x, T *out) -> void {
             out[0] = ( 1 - std::exp(x[0] * Pe) ) / (1 - std::exp(Pe));
         };

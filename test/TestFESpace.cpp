@@ -16,6 +16,7 @@
 #include <iceicle/fe_utils.hpp>
 
 #include <gtest/gtest.h>
+#include <memory>
 #include <pstl/glue_execution_defs.h>
 
 using namespace iceicle;
@@ -141,6 +142,17 @@ public:
         auto get_face_nr(
             index_type* vert_fac /// [in] the indices of the vertices of the given face
         ) const -> int override { return -1; };
+
+
+        auto n_faces() const -> int override { return 0; }
+
+        auto face_domain_type(int face_number) const -> DOMAIN_TYPE override { return DOMAIN_TYPE::N_DOMAIN_TYPES; }
+
+        /// @brief clone this element
+        auto clone() const -> std::unique_ptr<GeometricElement<double, int, 2>> override {
+            return std::make_unique<test_geo_el>(*this);
+        }
+
 };
 
 class test_basis : public Basis<double, 2> {

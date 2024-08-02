@@ -187,7 +187,7 @@ namespace iceicle {
 
             // Generate the Finite Elements
             elements.reserve(meshptr->elements.size());
-            for(const GeoElementType *geo_el : meshptr->elements){
+            for(const auto& geo_el : meshptr->elements){
                 // create the Element Domain type key
                 FETypeKey fe_key = {
                     .basis_order = basis_order,
@@ -199,13 +199,13 @@ namespace iceicle {
 
                 // check if an evaluation doesn't exist yet
                 if(ref_el_map.find(fe_key) == ref_el_map.end()){
-                    ref_el_map[fe_key] = ReferenceElementType(geo_el, basis_type, quadrature_type, basis_order_arg);
+                    ref_el_map[fe_key] = ReferenceElementType(geo_el.get(), basis_type, quadrature_type, basis_order_arg);
                 }
                 ReferenceElementType &ref_el = ref_el_map[fe_key];
                
                 // create the finite element
                 ElementType fe(
-                    geo_el,
+                    geo_el.get(),
                     ref_el.basis.get(),
                     ref_el.quadrule.get(),
                     &(ref_el.eval),
@@ -218,7 +218,7 @@ namespace iceicle {
 
             // Generate the Trace Spaces
             traces.reserve(meshptr->faces.size());
-            for(const GeoFaceType *fac : meshptr->faces){
+            for(const auto& fac : meshptr->faces){
                 // NOTE: assuming element indexing is the same as the mesh still
 
                 bool is_interior = fac->bctype == BOUNDARY_CONDITIONS::INTERIOR;
@@ -236,7 +236,7 @@ namespace iceicle {
                     };
 
                     if(ref_trace_map.find(trace_key) == ref_trace_map.end()){
-                        ref_trace_map[trace_key] = ReferenceTraceType(fac,
+                        ref_trace_map[trace_key] = ReferenceTraceType(fac.get(),
                             basis_type, quadrature_type, 
                             std::integral_constant<int, basis_order>{},
                             std::integral_constant<int, geo_order>{});
@@ -244,11 +244,11 @@ namespace iceicle {
                     ReferenceTraceType &ref_trace = ref_trace_map[trace_key];
                     
                     if(is_interior){
-                        TraceType trace{ fac, &elL, &elR, ref_trace.trace_basis.get(),
+                        TraceType trace{ fac.get(), &elL, &elR, ref_trace.trace_basis.get(),
                             ref_trace.quadrule.get(), &(ref_trace.eval), (IDX) traces.size() };
                         traces.push_back(trace);
                     } else {
-                        TraceType trace = TraceType::make_bdy_trace_space(fac, &elL, ref_trace.trace_basis.get(), 
+                        TraceType trace = TraceType::make_bdy_trace_space(fac.get(), &elL, ref_trace.trace_basis.get(), 
                             ref_trace.quadrule.get(), &(ref_trace.eval), (IDX) traces.size());
                         traces.push_back(trace);
                     }

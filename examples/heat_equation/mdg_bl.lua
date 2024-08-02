@@ -72,34 +72,34 @@ boundary_conditions = {
 	neumann = {
 		values = {
 			0.0, -- flag 1
-		}
-	}
+		},
+	},
 }
 
 solver = {
-	type = "newton",
+	type = "gauss-newton",
 	mdg = {
 		-- number of times to repeat the node selection + nonlinear solve process
-		ncycles = 81,
+		ncycles = 1,
 		ic_selection_threshold = function(icycle)
-			if (icycle % 2 == 0) then
-				return 1e8
-			else
-				return 0
-			end
+			return 0
 		end,
 	},
+	regularization = function(k, res)
+		return 0.01
+	end,
 	verbosity = 4,
-	kmax = 1,
+	kmax = 100,
 	ivis = 1,
 	linesearch = {
-		type = "cubic",
-		alpha_initial = 0.01,
+		type = "none",
+		alpha_initial = 0.0001,
+		kmax = 10,
 		alpha_max = 1,
-	}
+	},
 }
 
 -- initial condition
 initial_condition = function(x, y)
-	return x;
+	return x
 end

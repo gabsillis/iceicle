@@ -1,7 +1,3 @@
-add_executable(iceicle_1d iceicle_1d.cpp)
-target_link_libraries(iceicle_1d iceicle_lib)
-target_link_libraries(iceicle_1d ${MPI_CXX_LIBRARIES})
-
 if(ICEICLE_USE_OPENGL) 
     SET(IMGUI_SOURCES 
         ${imgui_SOURCE_DIR}/imgui.cpp
@@ -46,5 +42,7 @@ add_executable(sine_diffusion_1d sine_diffusion_1d.cpp)
 target_link_libraries(sine_diffusion_1d iceicle_lib)
 
 
-add_executable(mdgbl_1d mdgbl_1d.cpp)
-target_link_libraries(mdgbl_1d iceicle_lib)
+if(ICEICLE_USE_PETSC)
+    add_executable(mdgbl_1d mdgbl_1d.cpp)
+    target_link_libraries(mdgbl_1d iceicle_lib)
+endif()

@@ -9,8 +9,13 @@
 #include <iceicle/geometry/face.hpp>
 #include <valarray>
 namespace iceicle {
+
+    template<class T, class IDX, int ndim>
+    inline static transformations::HypercubeTraceOrientTransformation<T, IDX, ndim> hypercube_orient_trans{};
+
     template<typename T, typename IDX, int ndim, int Pn>
     class HypercubeFace final : public Face<T, IDX, ndim> {
+        public:
         template<int size>
         using IndexArrayType = NUMTOOL::TENSOR::FIXED_SIZE::Tensor<IDX, size>;
         using FaceBase = Face<T, IDX, ndim>;
@@ -18,8 +23,7 @@ namespace iceicle {
         using FacePoint = FaceBase::FacePoint;
         using JacobianType = FaceBase::JacobianType;
 
-        public:
-        inline static transformations::HypercubeTraceOrientTransformation<T, IDX, ndim> orient_trans{};
+        inline static auto orient_trans = hypercube_orient_trans<T, IDX, ndim>;
         inline static transformations::HypercubeTraceTransformation<T, IDX, ndim, Pn> trans{};
 
         /// The global node coordinates
@@ -151,5 +155,9 @@ namespace iceicle {
         int n_nodes() const override { return trans.n_nodes; }
 
         const IDX *nodes() const override { return _nodes.data(); }
+
+        auto clone() const -> std::unique_ptr<Face<T, IDX, ndim>> override {
+            return std::make_unique<HypercubeFace<T, IDX, ndim, Pn>>(*this);
+        }
     };
 }
