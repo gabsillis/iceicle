@@ -330,14 +330,17 @@ The solve stops when the residual is less than :math:`\tau_{abs} + \tau_{rel} ||
 
    * ``c1`` and ``c2`` (optional) linesearch coefficients (defaults to 1e-4 and 0.9 respectively)
 
-----------------------
-Solver Specific Params
-----------------------
+-----------------------
+Gauss-Newton Parameters
+-----------------------
 
-* ``regularization`` The regularization parameter :math:`\lambda` for regularized nonlinear solvers 
-  such as :cpp:`"gauss-newton"` type. This can be a real value or a function 
-  :code:`function f(k, res)` that takes an integer iteration number `k` and a real valued residual norm `res` 
-  and returns a real value as the regularization parameter.
+* ``lambda_u`` regularization value for pde degrees of freedom -- defaults to :math:`10^{-7}`
+
+* ``lambda_lag`` regularization value for lagrangian regularization -- defualts to :math:`10^{-5}`
+
+* ``lambda_1`` regularization value for curvature penalization -- defaults to :math:`10^{-3}`
+
+* ``lambda_b`` regularization value for geometric degrees of freedom -- defaults to :math:`10^{-2}`
 
 * ``form_subproblem_mat`` set to true if you want to explicitly form the subproblem matrix for :cpp:`"guass_newton"` type
 
