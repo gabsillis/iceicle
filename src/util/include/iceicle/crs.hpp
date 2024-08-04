@@ -5,6 +5,7 @@
 
 #pragma once 
 
+#include <numeric>
 #include <type_traits>
 #include <vector>
 #include <span>
@@ -50,11 +51,30 @@ namespace iceicle::util {
         
         constexpr crs() noexcept = default;
 
+        /// @brief consruct a crs from the indices for the start of each row 
+        /// allocates enough data to accomodate 
+        /// @param cols the indices for of the start of each row 
+        ///             starting with zero 
+        ///             also includes 1 past the end of the last row as the last entry
+        constexpr 
+        crs(std::span<const index_type> cols)
+        : _nrow{(size_type) cols.size() - 1}, _cols{new index_type[cols.size()]}
+        {
+            // get the number of nonzeros
+            _nnz = cols.back();
+
+            // copy over the columns
+            std::ranges::copy(cols, _cols);
+
+            // allocate the _data 
+            _data = new T[_nnz];
+        }
+
         /**
          * @brief construct from existing ragged data 
          * @param ragged_data a 2D ragged array of data to copy
          */
-        constexpr crs(std::vector<std::vector<T>> &ragged_data)
+        constexpr crs(const std::vector<std::vector<T>> &ragged_data)
         : _nnz{0}, _nrow{ragged_data.size()}, _cols{new index_type[_nrow + 1]}{
             // count up the number of nonzeros and row lengths
             _cols[0] = 0;
@@ -201,8 +221,43 @@ namespace iceicle::util {
                 _data + _cols[irow + 1]
             };
         }
+
+        /// @brief get the raw data pointer
+        inline constexpr 
+        auto data() noexcept
+        -> value_type*
+        { return _data; }
+
+        /// @brief get the raw data pointer
+        inline constexpr 
+        auto data() const noexcept
+        -> const value_type*
+        { return _data; }
+
+        /// @brief get the raw column index array pointer 
+        inline constexpr 
+        auto cols() noexcept
+        -> index_type*
+        { return _cols; }
+
+        /// @brief get the raw column index array pointer 
+        inline constexpr 
+        auto cols() const noexcept
+        -> const index_type*
+        { return _cols; }
     };
 
     template<class T>
     crs(std::vector<std::vector<T>>) -> crs<T>;
+
+    template<class Tnew, class IDXnew, class T, class IDX>
+    constexpr
+    auto convert_crs(const crs<T, IDX>& crs_old)
+    -> crs<Tnew, IDXnew>{
+        std::vector<IDXnew> colsnew(crs_old.nrow() + 1);
+        std::copy_n(crs_old.cols(), crs_old.nrow() + 1, colsnew.begin());
+        crs<Tnew, IDXnew> crs_new{colsnew};
+        std::copy_n(crs_old.data(), crs_old.nnz(), crs_new.data());
+        return crs_new;
+    }
 }

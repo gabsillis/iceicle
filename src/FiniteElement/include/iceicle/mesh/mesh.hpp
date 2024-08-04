@@ -6,11 +6,14 @@
  */
 #pragma once
 #include "Numtool/fixed_size_tensor.hpp"
+#include "iceicle/anomaly_log.hpp"
+#include "iceicle/build_config.hpp"
 #include "iceicle/geometry/hypercube_face.hpp"
 #include "iceicle/tmp_utils.hpp"
 #include <iceicle/geometry/face.hpp>
 #include <iceicle/geometry/geo_element.hpp>
 #include <iceicle/geometry/hypercube_element.hpp>
+#include <iceicle/crs.hpp>
 #include <ostream>
 #include <ranges>
 #include <type_traits>
@@ -19,6 +22,78 @@
 #include <iomanip>
 #endif
 namespace iceicle {
+
+    /// @brief generate the node connectivity matrix in crs format from the element list
+    /// elsup -> elements surrounding points
+    /// @param element_list 
+    template<class T, class IDX, int ndim>
+    constexpr
+    auto to_elsup(const std::span< const std::unique_ptr< GeometricElement<T, IDX, ndim> > > element_list)
+    -> util::crs<IDX, IDX>
+    {
+        std::vector<IDX> cols{};
+        cols.reserve(element_list.size() + 1);
+        IDX icol = 0;
+        cols.push_back(icol);
+        for(const auto& el : element_list){
+            icol += el->n_nodes();
+            cols.push_back(icol);
+        }
+        return util::crs<IDX, IDX>{cols};
+    }
+
+    /// @brief generate the element connectivity matrix from the face list 
+    /// elsuel -> elements surrounding elements 
+    /// @param face_list the list of faces 
+    /// @param nelem - the number of elements
+    /// @return the connectivity of elements to elements
+    template<class T, class IDX, int ndim>
+    constexpr
+    auto to_elsuel(IDX nelem, const std::span< const std::unique_ptr< Face<T, IDX, ndim> > >& face_list)
+    -> util::crs<IDX> 
+    {
+        std::vector<std::vector<IDX>> elsuel_dynamic(nelem, std::vector<IDX>{});
+
+        for(const auto& face : face_list){
+            IDX elemL = face->elemL;
+            IDX elemR = face->elemR;
+            if(elemR != -1){
+                elsuel_dynamic[elemL].push_back(elemR);  
+                elsuel_dynamic[elemR].push_back(elemL);  
+            }
+        }
+        return util::crs{elsuel_dynamic};
+    }
+
+    template<class T, class IDX, int ndim>
+    constexpr
+    auto create_element(DOMAIN_TYPE domain, int geo_order, std::span<IDX> nodes)
+    -> std::unique_ptr<GeometricElement<T, IDX, ndim>>
+    {
+        switch(domain){
+            case DOMAIN_TYPE::HYPERCUBE:
+                {
+                    return NUMTOOL::TMP::invoke_at_index(
+                        NUMTOOL::TMP::make_range_sequence<int, 1, build_config::FESPACE_BUILD_GEO_PN>{},
+                        geo_order,
+                        [&]<int order>{
+                            HypercubeElement<T, IDX, ndim, order> el{};
+                            for(int inode = 0; inode < el.n_nodes(); ++inode){
+                                el.setNode(inode, nodes[inode]);
+                            }
+                            return std::make_unique<HypercubeElement<T, IDX, ndim, order>>(el);
+                        }
+                    );
+                }
+                break;
+
+            default:
+                util::AnomalyLog::log_anomaly(util::Anomaly("Unsupported Domain Type", util::general_anomaly_tag{}));
+                return nullptr;
+                break;
+        }
+    }
+
 
     /**
      * @brief Abstract class that defines a mesh
