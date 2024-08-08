@@ -241,6 +241,9 @@ public:
                 vis_callback(*this);
             }
         }
+
+        // output the final timestep
+        vis_callback(*this);
     }
 };
 

@@ -3,6 +3,7 @@
 
 #pragma once
 #include "iceicle/fe_function/geo_layouts.hpp"
+#include "iceicle/disc/l2_error.hpp"
 #include "iceicle/geometry/face.hpp"
 #include "iceicle/string_utils.hpp"
 #include "iceicle/writer.hpp"
@@ -19,6 +20,7 @@
 #include <iceicle/fe_function/restart.hpp>
 #include <iceicle/writer.hpp>
 #include <sol/sol.hpp>
+#include <utility>
 
 #ifdef ICEICLE_USE_PETSC
 #include <iceicle/corrigan_lm.hpp>
@@ -324,9 +326,9 @@ namespace iceicle::solvers {
             // default is machine zero convergence 
             // with maximum of 5 nonlinear iterations
             ConvergenceCriteria<T, IDX> conv_criteria{
-                .tau_abs = (sol::optional<T>{solver_params["tau_abs"]}) ? solver_params["tau_abs"].get<T>() : std::numeric_limits<T>::epsilon(),
-                .tau_rel = (sol::optional<T>{solver_params["tau_rel"]}) ? solver_params["tau_rel"].get<T>() : 0.0,
-                .kmax = (sol::optional<IDX>{solver_params["kmax"]}) ? solver_params["kmax"].get<IDX>() : 5 
+                .tau_abs = solver_params.get_or("tau_abs", std::numeric_limits<T>::epsilon()),
+                .tau_rel = solver_params.get_or("tau_rel", 0.0),
+                .kmax = solver_params.get_or("kmax", 5)
             };
 
             // select the linesearch type
@@ -337,11 +339,11 @@ namespace iceicle::solvers {
                 if(eq_icase(ls_arg["type"].get<std::string>(), "wolfe") 
                         || eq_icase(ls_arg["type"].get<std::string>(), "cubic"))
                 {
-                    IDX kmax = (sol::optional<IDX>{ls_arg["kmax"]}) ? ls_arg["kmax"].get<IDX>() : 5; 
-                    T alpha_initial = (sol::optional<T>{ls_arg["alpha_initial"]}) ? ls_arg["alpha_initial"].get<T>() : 1; 
-                    T alpha_max = (sol::optional<T>{ls_arg["alpha_max"]}) ? ls_arg["alpha_max"].get<T>() : 10.0; 
-                    T c1 = (sol::optional<T>{ls_arg["c1"]}) ? ls_arg["c1"].get<T>() : 1e-4; 
-                    T c2 = (sol::optional<T>{ls_arg["c2"]}) ? ls_arg["c2"].get<T>() : 0.9; 
+                    IDX kmax = ls_arg.get_or("kmax", 5);
+                    T alpha_initial = ls_arg.get_or("alpha_initial", 1.0);
+                    T alpha_max = ls_arg.get_or("alpha_max", 10.0);
+                    T c1 = ls_arg.get_or("c1", 1e-4);
+                    T c2 = ls_arg.get_or("c2", 0.9);
                     linesearch = wolfe_linesearch{kmax, alpha_initial, alpha_max, c1, c2};
                 } else if(eq_icase(ls_arg["type"].get<std::string>(), "corrigan") ){
                     IDX kmax = ls_arg.get_or("kmax", 5);
@@ -382,11 +384,13 @@ namespace iceicle::solvers {
                                     << std::endl << std::endl;
 
                                 // offset by initial solution iteration
-                                writer.write(k + 1, (T) k + 1);
+                                writer.write(k, (T) k);
 
-                                write_restart(fespace, u, k + 1);
+                                write_restart(fespace, u, k);
                         };
-                        solver.solve(u);
+                        // write the final iteration
+                        IDX kfinal = solver.solve(u);
+                        writer.write(kfinal, (T) kfinal);
                     };
 
                     if(eq_icase_any(solver_type, "lm", "gauss-newton")){
@@ -421,5 +425,70 @@ namespace iceicle::solvers {
 #endif
 
         }
+    }
+
+
+    template<class T, class IDX, int ndim, class DiscType, class LayoutPolicy>
+    auto lua_error_analysis(
+        sol::table config_tbl,
+        FESpace<T, IDX, ndim>& fespace,
+        DiscType disc, 
+        fespan<T, LayoutPolicy> u
+    ) -> void {
+        using namespace iceicle::util;
+
+        sol::optional<sol::table> post_opt = config_tbl["post"];
+        if(post_opt){
+            sol::table post_config = post_opt.value();
+
+            // get the exact solution and convert to std::vunction
+            sol::optional<sol::function> exact_opt = post_config["exact_solution"];
+            sol::optional<sol::table> tasks_opt = post_config["tasks"];
+
+            if(exact_opt) {
+                sol::function exact = exact_opt.value();
+
+                if(tasks_opt){
+                    sol::table task_list = tasks_opt.value();
+                    for(auto o : task_list){
+                        std::string task_name = o.second.as<std::string>();
+                        if(eq_icase(task_name, "l2_error")){
+                            // =================
+                            // = L2 error Task =
+                            // =================
+                            
+                            std::function<void(T*, T*)> exactfunc = [exact](T *x, T *u_exact){
+                                if constexpr(DiscType::nv_comp == 1){
+                                    // 1 equation case 
+                                    std::integer_sequence x_idx_seq = std::make_integer_sequence<int, ndim>();
+                                    auto helper = [exact]<int... Indices>(T *x, T *u_exact, std::integer_sequence<int, Indices...> seq){
+                                        u_exact[0] = exact(x[Indices]...);
+                                    };
+                                    helper(x, u_exact, x_idx_seq);
+                                } else {
+                                    std::integer_sequence x_idx_seq = std::make_integer_sequence<int, ndim>();
+                                    auto helper = [exact]<int... Indices>(T *x, T *u_exact, std::integer_sequence<int, Indices...> seq){
+                                        sol::table fout = exact(x[Indices]...);
+                                        for(int i = 0; i < DiscType::nv_comp; ++i)
+                                            u_exact[i] = fout[i + 1]; // lua 1-index
+                                    };
+                                    helper(x, u_exact, x_idx_seq);
+                                }
+                            };
+
+                            T error = l2_error(exactfunc, fespace, u);
+                            std::cout << "L2 error: " << std::setprecision(12) << error << std::endl;
+                        }
+                    }
+                }
+
+            } else {
+                util::AnomalyLog::check(!tasks_opt,
+                    util::Anomaly{"Post processing tasks require `exact_solution` to be set", util::general_anomaly_tag{}});
+            }
+            
+        }
+        
+
     }
 }

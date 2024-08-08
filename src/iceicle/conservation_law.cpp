@@ -118,6 +118,11 @@ void initialize_and_solve(
         solvers::lua_solve(config_tbl, fespace, geo_map, conservation_law, u);
     }
 
+    // ============================
+    // = Post-Processing/Analysis =
+    // ============================
+    solvers::lua_error_analysis(config_tbl, fespace, conservation_law, u);
+
 }
 
 int main(int argc, char* argv[]){

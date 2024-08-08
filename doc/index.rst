@@ -358,6 +358,27 @@ API
 ===
 
 ===============
+Post Processing
+===============
+Post processing and error analysis is important for verification and validation. 
+This module gives the ability to specify analytical solutions, get domain-wide error values, or plot error fields.
+
+To use this module specify parameters in the ``post`` table.
+
+Specify an analytical or baseline solution with the ``exact_solution`` field.
+The value in this field can be a string referring to a precoded exact solution, 
+or a function that takes in a parameter for each directional coordinate, and returns a value for single equation systems 
+or a table for muti-equation systems.
+
+Specify post processing tasks in a table of strings called ``tasks``
+
+--------------------------
+:math:`L^2` Error Analysis
+--------------------------
+
+
+
+===============
 Transformations
 ===============
 Transformations are responsible for taking coordinates from a reference domain to a physical domain.
