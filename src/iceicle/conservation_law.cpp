@@ -16,6 +16,7 @@
 #include "iceicle/pvd_writer.hpp"
 #include "iceicle/disc/bc_lua_interface.hpp"
 #include "iceicle/mesh/mesh_partition.hpp"
+#include "iceicle/disc/navier_stokes.hpp"
 #ifdef ICEICLE_USE_PETSC 
 #include "iceicle/petsc_newton.hpp"
 #elifdef ICEICLE_USE_MPI
@@ -244,6 +245,7 @@ int main(int argc, char* argv[]){
                 BurgersUpwind convective_flux{burgers_coeffs};
                 BurgersDiffusionFlux diffusive_flux{burgers_coeffs};
                 ConservationLawDDG disc{std::move(physical_flux), std::move(convective_flux), std::move(diffusive_flux)};
+                disc.field_names = std::vector<std::string>{"u"};
                 initialize_and_solve(script_config, fespace, disc);
 
             } else if(eq_icase(cons_law_tbl["name"].get<std::string>(), "spacetime-burgers")) {
@@ -269,8 +271,24 @@ int main(int argc, char* argv[]){
                 SpacetimeBurgersUpwind convective_flux{burgers_coeffs};
                 SpacetimeBurgersDiffusion diffusive_flux{burgers_coeffs};
                 ConservationLawDDG disc{std::move(physical_flux), std::move(convective_flux), std::move(diffusive_flux)};
+                disc.field_names = std::vector<std::string>{"u"};
                 initialize_and_solve(script_config, fespace, disc);
 
+            } else if(eq_icase_any( cons_law_tbl["name"].get<std::string>(), "navier-stokes", "euler")) {
+
+                T gamma = cons_law_tbl.get_or("gamma", 1.4);
+
+                navier_stokes::Physics<T, ndim> physics{gamma};
+
+                navier_stokes::Flux<T, ndim> physical_flux{physics};
+                navier_stokes::VanLeer<T, ndim> convective_flux{physics};
+                navier_stokes::DiffusionFlux<T, ndim> diffusive_flux{physics};
+                ConservationLawDDG disc{std::move(physical_flux), std::move(convective_flux), std::move(diffusive_flux)};
+                disc.field_names = std::vector<std::string>{"rho", "rhou"};
+                if(ndim >= 2) disc.field_names.push_back("rhov");
+                if(ndim >= 3) disc.field_names.push_back("rhow");
+                disc.field_names.push_back("rhoe");
+                initialize_and_solve(script_config, fespace, disc);
             } else {
                 AnomalyLog::log_anomaly(Anomaly{ "No such conservation_law implemented",
                         text_not_found_tag{cons_law_tbl["name"].get<std::string>()}});

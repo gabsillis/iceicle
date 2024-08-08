@@ -78,6 +78,25 @@ namespace iceicle {
                         helper(xin, xout, seq);
                     };
                 }
+            } else {
+                sol::optional<sol::function> ic_as_function = config_table["initial_condition"];
+                if(ic_as_function){
+                    sol::function ic_f = ic_as_function.value();
+                    ic_func = [ic_f](const T* xin, T* xout){
+                        std::integer_sequence seq = std::make_integer_sequence<int, ndim>{};
+                        auto helper = [ic_f]<int... Indices>(const T* xin, T* xout, 
+                                std::integer_sequence<int, Indices...> seq){
+//                            tmp::sized_tuple_t<T, neq> fout = ic_f(xin[Indices]...);
+//                            std::array<T, neq> vals = tmp::get_array_from_tuple(fout);
+//                            std::ranges::copy(vals, xout);
+                            sol::table fout = ic_f(xin[Indices]...);
+                            for(int i = 0; i < neq; ++i)
+                                xout[i] = fout[i + 1];
+                        };
+                        helper(xin, xout, seq);
+                    };
+                }
+
             }
 
             projection_initialization(fespace, ic_func, tmp::compile_int<neq>{}, u);

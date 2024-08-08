@@ -14,6 +14,7 @@
 #include <iceicle/geometry/geo_element.hpp>
 #include <iceicle/geometry/hypercube_element.hpp>
 #include <iceicle/crs.hpp>
+#include <optional>
 #include <ostream>
 #include <ranges>
 #include <type_traits>
@@ -68,28 +69,31 @@ namespace iceicle {
     template<class T, class IDX, int ndim>
     constexpr
     auto create_element(DOMAIN_TYPE domain, int geo_order, std::span<IDX> nodes)
-    -> std::unique_ptr<GeometricElement<T, IDX, ndim>>
+    -> std::optional< std::unique_ptr<GeometricElement<T, IDX, ndim>> >
     {
+        // validate nodes 
+        for(IDX node : nodes)
+            if(node < 0) return std::nullopt;
+
         switch(domain){
             case DOMAIN_TYPE::HYPERCUBE:
                 {
                     return NUMTOOL::TMP::invoke_at_index(
                         NUMTOOL::TMP::make_range_sequence<int, 1, build_config::FESPACE_BUILD_GEO_PN>{},
                         geo_order,
-                        [&]<int order>{
+                        [&]<int order> -> std::optional< std::unique_ptr< GeometricElement<T, IDX, ndim> > >{
                             HypercubeElement<T, IDX, ndim, order> el{};
                             for(int inode = 0; inode < el.n_nodes(); ++inode){
                                 el.setNode(inode, nodes[inode]);
                             }
-                            return std::make_unique<HypercubeElement<T, IDX, ndim, order>>(el);
+                            return std::optional{std::make_unique<HypercubeElement<T, IDX, ndim, order>>(el)};
                         }
                     );
                 }
                 break;
 
             default:
-                util::AnomalyLog::log_anomaly(util::Anomaly("Unsupported Domain Type", util::general_anomaly_tag{}));
-                return nullptr;
+                return std::nullopt;
                 break;
         }
     }
@@ -181,6 +185,7 @@ namespace iceicle {
                 bdyFaceStart = other.bdyFaceStart;
                 bdyFaceEnd = other.bdyFaceEnd;
             }
+            return *this;
         }
 
         AbstractMesh(std::size_t nnode) 
@@ -619,6 +624,15 @@ namespace iceicle {
         // ================
         // = Diagonostics =
         // ================
+        void printNodes(std::ostream &out){
+            for(IDX inode = 0; inode < nodes.size(); ++inode){
+                out << "Node: " << inode << " { ";
+                for(int idim = 0; idim < ndim; ++idim)
+                    out << nodes[inode][idim] << " ";
+                out << "}" << std::endl;
+            }
+        }
+
         void printElements(std::ostream &out){
             int iel = 0;
             for(auto &elptr : elements){
@@ -637,12 +651,6 @@ namespace iceicle {
             for(int ifac = interiorFaceStart; ifac < interiorFaceEnd; ++ifac){
                 face_t &fac = *(faces[ifac]);
                 out << "Face index: " << ifac << "\n";
-                if constexpr(ndim == 2){
-                    MATH::GEOMETRY::Point<T, 1> s = {0};
-                    Point normal;
-                    fac.getNormal(nodes, s, normal);
-                    out << "normal at s=0: (" <<  normal[0] << ", " << normal[1] << ")\n";
-                }
                 out << "Nodes: { ";
                 std::span<const IDX> nodeslist = fac.nodes_span();
                 for(int inode = 0; inode < fac.n_nodes(); ++inode){
@@ -651,6 +659,23 @@ namespace iceicle {
                 out << "}\n";
                 out << "ElemL: " << fac.elemL << " | ElemR: " << fac.elemR << "\n"; 
                 out << "FaceNrL: " << fac.face_infoL / FACE_INFO_MOD << " | FaceNrR: " << fac.face_infoR / FACE_INFO_MOD << "\n";
+                out << "bctype: " << bc_name(fac.bctype) << " | bcflag: " << fac.bcflag << std::endl;
+                out << "-------------------------\n";
+           }
+
+            out << "\nBoundary Faces\n";
+            for(int ifac = bdyFaceStart; ifac < bdyFaceEnd; ++ifac){
+                face_t &fac = *(faces[ifac]);
+                out << "Face index: " << ifac << "\n";
+                out << "Nodes: { ";
+                std::span<const IDX> nodeslist = fac.nodes_span();
+                for(int inode = 0; inode < fac.n_nodes(); ++inode){
+                    out << nodeslist[inode] << " ";
+                }
+                out << "}\n";
+                out << "ElemL: " << fac.elemL << " | ElemR: " << fac.elemR << "\n"; 
+                out << "FaceNrL: " << fac.face_infoL / FACE_INFO_MOD << " | FaceNrR: " << fac.face_infoR / FACE_INFO_MOD << "\n";
+                out << "bctype: " << bc_name(fac.bctype) << " | bcflag: " << fac.bcflag << std::endl;
                 out << "-------------------------\n";
            }
         }

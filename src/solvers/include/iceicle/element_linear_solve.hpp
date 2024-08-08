@@ -77,7 +77,18 @@ namespace iceicle::solvers {
             elspan auto u, 
             const elspan auto res
         ){
-            MATH::MATRIX::SOLVERS::sub_lu(mass, pi, res.data(), u.data());
+            for(int ieq = 0; ieq < decltype(u)::static_extent(); ++ieq){
+                std::vector<T> ueq(u.ndof());
+                std::vector<T> reseq(u.ndof());
+
+                for(int idof = 0; idof < u.ndof(); ++idof){
+                    reseq[idof] = res[idof, ieq];
+                }
+                MATH::MATRIX::SOLVERS::sub_lu(mass, pi, reseq.data(), ueq.data());
+                for(int idof = 0; idof < u.ndof(); ++idof){
+                    u[idof, ieq] = ueq[idof];
+                }
+            }
         }
     };
 }

@@ -127,7 +127,12 @@ namespace iceicle {
                     for(int inode = 0; inode < el.n_nodes(); ++inode){
                         elnodes[inode] = inv_gnode_idxs[el.nodes()[inode]];
                     }
-                    pmesh.elements.push_back(create_element<T, IDX, ndim>(el.domain_type(), el.geometry_order(), elnodes));
+                    auto el_opt = create_element<T, IDX, ndim>(el.domain_type(), el.geometry_order(), elnodes);
+                    if(el_opt)
+                        pmesh.elements.push_back(std::move(el_opt.value()));
+                    else 
+                        util::AnomalyLog::log_anomaly(
+                                util::Anomaly{"Could not create valid element.", util::general_anomaly_tag{}});
                 } else {
                     GeometricElement<T, IDX, ndim> &el = *(mesh.elements[iel]);
 
@@ -153,7 +158,7 @@ namespace iceicle {
                 MPI_Send(&stop_signal, 1, MPI_INT, iproc, 1, MPI_COMM_WORLD);
             }
 
-            // === Step 3: Faces ===
+            // === Step 3: Interior Faces ===
             MPI_Status status;
             for(IDX iface = mesh.interiorFaceStart; iface < mesh.interiorFaceEnd; ++iface) {
                 Face<T, IDX, ndim>& face = *(mesh.faces[iface]);
@@ -176,7 +181,6 @@ namespace iceicle {
                             pmesh.faces.push_back(std::move(face_parallel.value()));
                         } else {
                             util::AnomalyLog::log_anomaly(util::Anomaly{"could not find face", util::general_anomaly_tag{}});
-                            return pmesh;
                         }
                     } else {
                         // boundary with another process
@@ -186,37 +190,46 @@ namespace iceicle {
                         MPI_Send(&domain_type, 1, MPI_INT, rank_other, 0, MPI_COMM_WORLD);
 
                         // send the rank of the left element and reight element 
-                        MPI_Send(&rank_l, 1, MPI_INT, rank_other, 0, MPI_COMM_WORLD);
-                        MPI_Send(&rank_r, 1, MPI_INT, rank_other, 0, MPI_COMM_WORLD);
+                        MPI_Send(&rank_l, 1, MPI_INT, rank_other, 1, MPI_COMM_WORLD);
+                        MPI_Send(&rank_r, 1, MPI_INT, rank_other, 2, MPI_COMM_WORLD);
+
+                        // send the global element indices of the left and right element
+                        MPI_Send(&iel, 1, mpi_get_type<IDX>(), rank_other, 3, MPI_COMM_WORLD);
+                        MPI_Send(&ier, 1, mpi_get_type<IDX>(), rank_other, 4, MPI_COMM_WORLD);
 
                         // exchange local element index 
                         IDX iel_local = inv_gnode_idxs[iel];
                         IDX ier_local;
                         MPI_Sendrecv(
-                            &iel_local, 1, mpi_get_type<IDX>(), rank_other, 1,
-                            &ier_local, 1, mpi_get_type<IDX>(), rank_other, 1, 
+                            &iel_local, 1, mpi_get_type<IDX>(), rank_other, 5,
+                            &ier_local, 1, mpi_get_type<IDX>(), rank_other, 5, 
                             MPI_COMM_WORLD, &status
                         );
 
                         // send the geometry order 
                         int geo_order = face.geometry_order();
-                        MPI_Send(&geo_order, 1, MPI_INT, rank_other, 0, MPI_COMM_WORLD);
+                        MPI_Send(&geo_order, 1, MPI_INT, rank_other, 6, MPI_COMM_WORLD);
 
                         // send the face nodes 
                         int n_face_nodes = face.n_nodes();
-                        MPI_Send(&n_face_nodes, 1, MPI_INT, rank_other, 0, MPI_COMM_WORLD);
-                        MPI_Send(face.nodes(), n_face_nodes, mpi_get_type<IDX>(), rank_other, 0, MPI_COMM_WORLD);
+                        MPI_Send(&n_face_nodes, 1, MPI_INT, rank_other, 7, MPI_COMM_WORLD);
+                        MPI_Send(face.nodes(), n_face_nodes, mpi_get_type<IDX>(), rank_other, 8, MPI_COMM_WORLD);
+
+                        // create a list of local nodes
+                        std::vector<IDX> local_face_nodes(n_face_nodes);
+                        for(int inode = 0; inode < n_face_nodes; ++inode)
+                            local_face_nodes[inode] = inv_gnode_idxs[face.nodes()[inode]];
 
                         // send the face numbers and orientation 
                         int face_nr_l = face.face_nr_l(), face_nr_r = face.face_nr_r();
                         int orient_r = face.orientation_r();
-                        MPI_Send(&face_nr_l, 1, MPI_INT, rank_other, 0, MPI_COMM_WORLD);
-                        MPI_Send(&face_nr_r, 1, MPI_INT, rank_other, 0, MPI_COMM_WORLD);
-                        MPI_Send(&orient_r, 1, MPI_INT, rank_other, 0, MPI_COMM_WORLD);
+                        MPI_Send(&face_nr_l, 1, MPI_INT, rank_other, 9, MPI_COMM_WORLD);
+                        MPI_Send(&face_nr_r, 1, MPI_INT, rank_other, 10, MPI_COMM_WORLD);
+                        MPI_Send(&orient_r, 1, MPI_INT, rank_other, 11, MPI_COMM_WORLD);
 
                         auto face_opt = make_face<T, IDX, ndim>(
                             static_cast<DOMAIN_TYPE>(domain_type), geo_order, iel_local, ier_local, 
-                            std::span{face.nodes(), (std::size_t) n_face_nodes}, face_nr_l, face_nr_r, orient_r,
+                            local_face_nodes, face_nr_l, face_nr_r, orient_r,
                             BOUNDARY_CONDITIONS::PARALLEL_COM, rank_other
                         );
 
@@ -224,7 +237,6 @@ namespace iceicle {
                             pmesh.faces.push_back(std::move(face_opt.value()));
                         } else {
                             util::AnomalyLog::log_anomaly(util::Anomaly{"could not find face", util::general_anomaly_tag{}});
-                            return pmesh;
                         }
                     }
 
@@ -236,38 +248,47 @@ namespace iceicle {
                     int domain_type = static_cast<int>(face.domain_type());
                     MPI_Send(&domain_type, 1, MPI_INT, rank_other, 0, MPI_COMM_WORLD);
 
-                    // send the rank of the left element and reight element 
-                    MPI_Send(&rank_l, 1, MPI_INT, rank_other, 0, MPI_COMM_WORLD);
-                    MPI_Send(&rank_r, 1, MPI_INT, rank_other, 0, MPI_COMM_WORLD);
+                    // send the rank of the left element and right element 
+                    MPI_Send(&rank_l, 1, MPI_INT, rank_other, 1, MPI_COMM_WORLD);
+                    MPI_Send(&rank_r, 1, MPI_INT, rank_other, 2, MPI_COMM_WORLD);
+
+                    // send the global element indices of the left and right element
+                    MPI_Send(&iel, 1, mpi_get_type<IDX>(), rank_other, 3, MPI_COMM_WORLD);
+                    MPI_Send(&ier, 1, mpi_get_type<IDX>(), rank_other, 4, MPI_COMM_WORLD);
 
                     // exchange local element index 
                     IDX iel_local;
                     IDX ier_local = inv_gnode_idxs[iel];
                     MPI_Sendrecv(
-                        &ier_local, 1, mpi_get_type<IDX>(), rank_other, 1,
-                        &iel_local, 1, mpi_get_type<IDX>(), rank_other, 1, 
+                        &ier_local, 1, mpi_get_type<IDX>(), rank_other, 5,
+                        &iel_local, 1, mpi_get_type<IDX>(), rank_other, 5, 
                         MPI_COMM_WORLD, &status
                     );
 
                     // send the geometry order 
                     int geo_order = face.geometry_order();
-                    MPI_Send(&geo_order, 1, MPI_INT, rank_other, 0, MPI_COMM_WORLD);
+                    MPI_Send(&geo_order, 1, MPI_INT, rank_other, 6, MPI_COMM_WORLD);
 
                     // send the face nodes 
                     int n_face_nodes = face.n_nodes();
-                    MPI_Send(&n_face_nodes, 1, MPI_INT, rank_other, 0, MPI_COMM_WORLD);
-                    MPI_Send(face.nodes(), n_face_nodes, mpi_get_type<IDX>(), rank_other, 0, MPI_COMM_WORLD);
+                    MPI_Send(&n_face_nodes, 1, MPI_INT, rank_other, 7, MPI_COMM_WORLD);
+                    MPI_Send(face.nodes(), n_face_nodes, mpi_get_type<IDX>(), rank_other, 8, MPI_COMM_WORLD);
+
+                    // create a list of local nodes
+                    std::vector<IDX> local_face_nodes(n_face_nodes);
+                    for(int inode = 0; inode < n_face_nodes; ++inode)
+                        local_face_nodes[inode] = inv_gnode_idxs[face.nodes()[inode]];
 
                     // send the face numbers and orientation 
                     int face_nr_l = face.face_nr_l(), face_nr_r = face.face_nr_r();
                     int orient_r = face.orientation_r();
-                    MPI_Send(&face_nr_l, 1, MPI_INT, rank_other, 0, MPI_COMM_WORLD);
-                    MPI_Send(&face_nr_r, 1, MPI_INT, rank_other, 0, MPI_COMM_WORLD);
-                    MPI_Send(&orient_r, 1, MPI_INT, rank_other, 0, MPI_COMM_WORLD);
+                    MPI_Send(&face_nr_l, 1, MPI_INT, rank_other, 9, MPI_COMM_WORLD);
+                    MPI_Send(&face_nr_r, 1, MPI_INT, rank_other, 10, MPI_COMM_WORLD);
+                    MPI_Send(&orient_r, 1, MPI_INT, rank_other, 11, MPI_COMM_WORLD);
 
                     auto face_opt = make_face<T, IDX, ndim>(
                         static_cast<DOMAIN_TYPE>(domain_type), geo_order, iel_local, ier_local, 
-                        std::span{face.nodes(), (std::size_t) n_face_nodes}, face_nr_l, face_nr_r, orient_r,
+                        local_face_nodes, face_nr_l, face_nr_r, orient_r,
                         BOUNDARY_CONDITIONS::PARALLEL_COM, -rank_other // NOTE: negative rank because we are right
                     );
 
@@ -275,53 +296,163 @@ namespace iceicle {
                         pmesh.faces.push_back(std::move(face_opt.value()));
                     } else {
                         util::AnomalyLog::log_anomaly(util::Anomaly{"could not find face", util::general_anomaly_tag{}});
-                        return pmesh;
                     }
                 } else {
                     // both ranks are on another process 
 
-                    // send all the information needed for them to make the face 
-                    int domain_type = static_cast<int>(face.domain_type());
-                    MPI_Send(&domain_type, 1, MPI_INT, rank_l, 0, MPI_COMM_WORLD);
-                    MPI_Send(&domain_type, 1, MPI_INT, rank_r, 0, MPI_COMM_WORLD);
+                    if(rank_l != rank_r){
+                        // send all the information needed for them to make the face 
+                        int domain_type = static_cast<int>(face.domain_type());
+                        MPI_Send(&domain_type, 1, MPI_INT, rank_l, 0, MPI_COMM_WORLD);
+                        MPI_Send(&domain_type, 1, MPI_INT, rank_r, 0, MPI_COMM_WORLD);
 
-                    // send the rank of the left element and reight element 
-                    MPI_Send(&rank_l, 1, MPI_INT, rank_l, 0, MPI_COMM_WORLD);
-                    MPI_Send(&rank_r, 1, MPI_INT, rank_l, 0, MPI_COMM_WORLD);
-                    MPI_Send(&rank_l, 1, MPI_INT, rank_r, 0, MPI_COMM_WORLD);
-                    MPI_Send(&rank_r, 1, MPI_INT, rank_r, 0, MPI_COMM_WORLD);
+                        // send the rank of the left element and reight element 
+                        MPI_Send(&rank_l, 1, MPI_INT, rank_l, 1, MPI_COMM_WORLD);
+                        MPI_Send(&rank_r, 1, MPI_INT, rank_l, 2, MPI_COMM_WORLD);
+                        MPI_Send(&rank_l, 1, MPI_INT, rank_r, 1, MPI_COMM_WORLD);
+                        MPI_Send(&rank_r, 1, MPI_INT, rank_r, 2, MPI_COMM_WORLD);
 
-                    // send the geometry order 
-                    int geo_order = face.geometry_order();
-                    MPI_Send(&geo_order, 1, MPI_INT, rank_l, 0, MPI_COMM_WORLD);
-                    MPI_Send(&geo_order, 1, MPI_INT, rank_r, 0, MPI_COMM_WORLD);
+                        // send the global element indices of the left and right element
+                        MPI_Send(&iel, 1, mpi_get_type<IDX>(), rank_l, 3, MPI_COMM_WORLD);
+                        MPI_Send(&ier, 1, mpi_get_type<IDX>(), rank_l, 4, MPI_COMM_WORLD);
+                        MPI_Send(&iel, 1, mpi_get_type<IDX>(), rank_r, 3, MPI_COMM_WORLD);
+                        MPI_Send(&ier, 1, mpi_get_type<IDX>(), rank_r, 4, MPI_COMM_WORLD);
 
-                    // send the face nodes 
-                    int n_face_nodes = face.n_nodes();
-                    MPI_Send(&n_face_nodes, 1, MPI_INT, rank_l, 0, MPI_COMM_WORLD);
-                    MPI_Send(&n_face_nodes, 1, MPI_INT, rank_r, 0, MPI_COMM_WORLD);
-                    MPI_Send(face.nodes(), n_face_nodes, mpi_get_type<IDX>(), rank_l, 0, MPI_COMM_WORLD);
-                    MPI_Send(face.nodes(), n_face_nodes, mpi_get_type<IDX>(), rank_r, 0, MPI_COMM_WORLD);
+                        // send the geometry order 
+                        int geo_order = face.geometry_order();
+                        MPI_Send(&geo_order, 1, MPI_INT, rank_l, 6, MPI_COMM_WORLD);
+                        MPI_Send(&geo_order, 1, MPI_INT, rank_r, 6, MPI_COMM_WORLD);
 
-                    // send the face numbers and orientation 
-                    int face_nr_l = face.face_nr_l(), face_nr_r = face.face_nr_r();
-                    int orient_r = face.orientation_r();
-                    MPI_Send(&face_nr_l, 1, MPI_INT, rank_l, 0, MPI_COMM_WORLD);
-                    MPI_Send(&face_nr_r, 1, MPI_INT, rank_l, 0, MPI_COMM_WORLD);
-                    MPI_Send(&orient_r, 1, MPI_INT, rank_l, 0, MPI_COMM_WORLD);
-                    MPI_Send(&face_nr_l, 1, MPI_INT, rank_r, 0, MPI_COMM_WORLD);
-                    MPI_Send(&face_nr_r, 1, MPI_INT, rank_r, 0, MPI_COMM_WORLD);
-                    MPI_Send(&orient_r, 1, MPI_INT, rank_r, 0, MPI_COMM_WORLD);
+                        // send the face nodes 
+                        int n_face_nodes = face.n_nodes();
+                        MPI_Send(&n_face_nodes, 1, MPI_INT, rank_l, 7, MPI_COMM_WORLD);
+                        MPI_Send(&n_face_nodes, 1, MPI_INT, rank_r, 7, MPI_COMM_WORLD);
+                        MPI_Send(face.nodes(), n_face_nodes, mpi_get_type<IDX>(), rank_l, 8, MPI_COMM_WORLD);
+                        MPI_Send(face.nodes(), n_face_nodes, mpi_get_type<IDX>(), rank_r, 8, MPI_COMM_WORLD);
+
+                        // send the face numbers and orientation 
+                        int face_nr_l = face.face_nr_l(), face_nr_r = face.face_nr_r();
+                        int orient_r = face.orientation_r();
+                        MPI_Send(&face_nr_l, 1, MPI_INT, rank_l, 9, MPI_COMM_WORLD);
+                        MPI_Send(&face_nr_r, 1, MPI_INT, rank_l, 10, MPI_COMM_WORLD);
+                        MPI_Send(&orient_r, 1, MPI_INT, rank_l, 11, MPI_COMM_WORLD);
+                        MPI_Send(&face_nr_l, 1, MPI_INT, rank_r, 9, MPI_COMM_WORLD);
+                        MPI_Send(&face_nr_r, 1, MPI_INT, rank_r, 10, MPI_COMM_WORLD);
+                        MPI_Send(&orient_r, 1, MPI_INT, rank_r, 11, MPI_COMM_WORLD);
+                    } else {
+                        // send all the information needed for them to make the face 
+                        int domain_type = static_cast<int>(face.domain_type());
+                        MPI_Send(&domain_type, 1, MPI_INT, rank_l, 0, MPI_COMM_WORLD);
+
+                        // send the rank of the left element and reight element 
+                        MPI_Send(&rank_l, 1, MPI_INT, rank_l, 1, MPI_COMM_WORLD);
+                        MPI_Send(&rank_r, 1, MPI_INT, rank_l, 2, MPI_COMM_WORLD);
+
+                        // send the global element indices of the left and right element
+                        MPI_Send(&iel, 1, mpi_get_type<IDX>(), rank_l, 3, MPI_COMM_WORLD);
+                        MPI_Send(&ier, 1, mpi_get_type<IDX>(), rank_l, 4, MPI_COMM_WORLD);
+
+                        // send the geometry order 
+                        int geo_order = face.geometry_order();
+                        MPI_Send(&geo_order, 1, MPI_INT, rank_l, 6, MPI_COMM_WORLD);
+
+                        // send the face nodes 
+                        int n_face_nodes = face.n_nodes();
+                        MPI_Send(&n_face_nodes, 1, MPI_INT, rank_l, 7, MPI_COMM_WORLD);
+                        MPI_Send(face.nodes(), n_face_nodes, mpi_get_type<IDX>(), rank_l, 8, MPI_COMM_WORLD);
+
+                        // send the face numbers and orientation 
+                        int face_nr_l = face.face_nr_l(), face_nr_r = face.face_nr_r();
+                        int orient_r = face.orientation_r();
+                        MPI_Send(&face_nr_l, 1, MPI_INT, rank_l, 9, MPI_COMM_WORLD);
+                        MPI_Send(&face_nr_r, 1, MPI_INT, rank_l, 10, MPI_COMM_WORLD);
+                        MPI_Send(&orient_r, 1, MPI_INT, rank_l, 11, MPI_COMM_WORLD);
+                    }
                 }
             }
 
             // send signal to stop to each process (domain type = N_DOMAIN_TYPES)
-            for(int iproc = 1; iproc < nproc; ++iproc)
-            {
+            for(int iproc = 1; iproc < nproc; ++iproc) {
                 int stop_signal = (int) DOMAIN_TYPE::N_DOMAIN_TYPES;
-                MPI_Send(&stop_signal, 1, MPI_INT, iproc, 1, MPI_COMM_WORLD);
+                MPI_Send(&stop_signal, 1, MPI_INT, iproc, 0, MPI_COMM_WORLD);
             }
 
+            // reorganize the faces so that the now boundary faces (PARALLEL_COM) are at the end
+            IDX boundary_faces_begin = pmesh.faces.size();
+            for(IDX iface = 0; iface < boundary_faces_begin; ++iface) {
+                if(pmesh.faces[iface]->bctype == BOUNDARY_CONDITIONS::PARALLEL_COM)
+                {
+                    --boundary_faces_begin;
+                    std::swap(pmesh.faces[iface], pmesh.faces[boundary_faces_begin]);
+                    --iface;
+                }
+            }
+            pmesh.interiorFaceStart = 0;
+            pmesh.interiorFaceEnd = boundary_faces_begin;
+            pmesh.bdyFaceStart = boundary_faces_begin;
+
+            // === Step 4: Boundary Faces ===
+
+            for(IDX iface = mesh.bdyFaceStart; iface < mesh.bdyFaceEnd; ++iface) {
+
+                Face<T, IDX, ndim>& face = *(mesh.faces[iface]);
+
+                IDX iel = face.elemL;
+                int rank_l = el_partition[iel];
+
+                if(rank_l == 0) {
+                    // face is local
+                    auto face_opt = make_face<T, IDX, ndim>(
+                        face.domain_type(), face.geometry_order(), inv_gel_idxs[iel], 0,
+                        std::span{face.nodes(), (std::size_t) face.n_nodes()}, 
+                        face.face_nr_l(), face.face_nr_r(), face.orientation_r(),
+                        face.bctype, face.bcflag
+                    );
+
+                    if(face_opt) {
+                        pmesh.faces.push_back(std::move(face_opt.value()));
+                    } else {
+                        util::AnomalyLog::log_anomaly(util::Anomaly{"could not find face", util::general_anomaly_tag{}});
+                    }
+                } else {
+                    // send all the information needed for them to make the face 
+                    int domain_type = static_cast<int>(face.domain_type());
+                    MPI_Send(&domain_type, 1, MPI_INT, rank_l, 0, MPI_COMM_WORLD);
+
+                    // send the global element indices of the left element
+                    MPI_Send(&iel, 1, mpi_get_type<IDX>(), rank_l, 1, MPI_COMM_WORLD);
+
+                    // send the geometry order 
+                    int geo_order = face.geometry_order();
+                    MPI_Send(&geo_order, 1, MPI_INT, rank_l, 2, MPI_COMM_WORLD);
+
+                    // send the face nodes 
+                    int n_face_nodes = face.n_nodes();
+                    MPI_Send(&n_face_nodes, 1, MPI_INT, rank_l, 3, MPI_COMM_WORLD);
+                    MPI_Send(face.nodes(), n_face_nodes, mpi_get_type<IDX>(), rank_l, 4, MPI_COMM_WORLD);
+
+                    // send the face numbers and orientation 
+                    int face_nr_l = face.face_nr_l(), face_nr_r = face.face_nr_r();
+                    int orient_r = face.orientation_r();
+                    MPI_Send(&face_nr_l, 1, MPI_INT, rank_l, 5, MPI_COMM_WORLD);
+                    MPI_Send(&face_nr_r, 1, MPI_INT, rank_l, 6, MPI_COMM_WORLD);
+                    MPI_Send(&orient_r, 1, MPI_INT, rank_l, 7, MPI_COMM_WORLD);
+
+                    // send the boundary condition information 
+                    int bctype = static_cast<int>(face.bctype);
+                    int bcflag = face.bcflag;
+                    MPI_Send(&bctype, 1, MPI_INT, rank_l, 8, MPI_COMM_WORLD);
+                    MPI_Send(&bcflag, 1, MPI_INT, rank_l, 9, MPI_COMM_WORLD);
+                }
+            }
+
+            // send signal to stop to each process (domain type = N_DOMAIN_TYPES)
+            for(int iproc = 1; iproc < nproc; ++iproc) {
+                int stop_signal = (int) DOMAIN_TYPE::N_DOMAIN_TYPES;
+                MPI_Send(&stop_signal, 1, MPI_INT, iproc, 0, MPI_COMM_WORLD);
+            }
+
+            pmesh.bdyFaceEnd = pmesh.faces.size();
         } else {
             // ====================================
             // = Generate the Partitioned Meshes  =
@@ -367,69 +498,73 @@ namespace iceicle {
                 for(int inode = 0; inode < n_nodes; ++inode){
                     elnodes[inode] = inv_gnode_idxs[elnodes[inode]];
                 }
-                pmesh.elements.push_back(create_element<T, IDX, ndim>(
-                    static_cast<DOMAIN_TYPE>(domain_type), geo_order, elnodes));
+                auto el_opt = create_element<T, IDX, ndim>(
+                    static_cast<DOMAIN_TYPE>(domain_type), geo_order, elnodes);
+                if(el_opt)
+                    pmesh.elements.push_back(std::move(el_opt.value()));
+                else 
+                    util::AnomalyLog::log_anomaly(
+                            util::Anomaly{"Could not create valid element.", util::general_anomaly_tag{}});
 
                 // get the next domain type
                 MPI_Recv(&domain_type, 1, MPI_INT, 0, 1, MPI_COMM_WORLD, &status);
             } 
 
-            // === Step 3: Faces ===
+            // === Step 3: Interior Faces ===
 
-            MPI_Recv(&domain_type, 1, MPI_INT, 0, 1, MPI_COMM_WORLD, &status);
+            MPI_Recv(&domain_type, 1, MPI_INT, 0, 0, MPI_COMM_WORLD, &status);
             while (domain_type != (int) DOMAIN_TYPE::N_DOMAIN_TYPES) {
 
                 // get the rank of the left element then right element
                 int rank_l, rank_r;
-                MPI_Recv(&rank_l, 1, MPI_INT, 0, 0, MPI_COMM_WORLD, &status);
-                MPI_Recv(&rank_r, 1, MPI_INT, 0, 0, MPI_COMM_WORLD, &status);
+                MPI_Recv(&rank_l, 1, MPI_INT, 0, 1, MPI_COMM_WORLD, &status);
+                MPI_Recv(&rank_r, 1, MPI_INT, 0, 2, MPI_COMM_WORLD, &status);
 
                 bool im_left = (rank_l == iproc);
                 int rank_other = (im_left) ? rank_r : rank_l;
 
                 // get the global element indices for the left and right element 
                 IDX iel, ier;
-                MPI_Recv(&iel, 1, mpi_get_type<IDX>(), 0, 0, MPI_COMM_WORLD, &status);
-                MPI_Recv(&ier, 1, mpi_get_type<IDX>(), 0, 0, MPI_COMM_WORLD, &status);
+                MPI_Recv(&iel, 1, mpi_get_type<IDX>(), 0, 3, MPI_COMM_WORLD, &status);
+                MPI_Recv(&ier, 1, mpi_get_type<IDX>(), 0, 4, MPI_COMM_WORLD, &status);
 
                 // one of these will be -1, we will overwrite with the local from the other rank
                 IDX iel_local = inv_gel_idxs[iel];
                 IDX ier_local = inv_gel_idxs[ier];
 
                 if(rank_l != rank_r){
-                    // exchange local element index with othe rank
+                    // exchange local element index with other rank
                     if(im_left)
                         MPI_Sendrecv(
-                            &iel_local, 1, mpi_get_type<IDX>(), rank_other, 1,
-                            &ier_local, 1, mpi_get_type<IDX>(), rank_other, 1, 
+                            &iel_local, 1, mpi_get_type<IDX>(), rank_other, 5,
+                            &ier_local, 1, mpi_get_type<IDX>(), rank_other, 5, 
                             MPI_COMM_WORLD, &status
                         );
                     else
                         MPI_Sendrecv(
-                            &ier_local, 1, mpi_get_type<IDX>(), rank_other, 1,
-                            &iel_local, 1, mpi_get_type<IDX>(), rank_other, 1, 
+                            &ier_local, 1, mpi_get_type<IDX>(), rank_other, 5,
+                            &iel_local, 1, mpi_get_type<IDX>(), rank_other, 5, 
                             MPI_COMM_WORLD, &status
                         );
                 }
 
                 // get the geometry_order
                 int geo_order;
-                MPI_Recv(&geo_order, 1, MPI_INT, 0, 0, MPI_COMM_WORLD, &status);
+                MPI_Recv(&geo_order, 1, MPI_INT, 0, 6, MPI_COMM_WORLD, &status);
 
                 // get the face_nodes
                 int n_face_nodes;
-                MPI_Recv(&n_face_nodes, 1, MPI_INT, 0, 0, MPI_COMM_WORLD, &status);
+                MPI_Recv(&n_face_nodes, 1, MPI_INT, 0, 7, MPI_COMM_WORLD, &status);
                 std::vector<IDX> face_nodes(n_face_nodes);
-                MPI_Recv(face_nodes.data(), n_face_nodes, mpi_get_type<IDX>(), 0, 0, MPI_COMM_WORLD, &status);
-                for(int inode = 0; inode < n_face_nodes; ++inode){
+                MPI_Recv(face_nodes.data(), n_face_nodes, mpi_get_type<IDX>(), 0, 8, MPI_COMM_WORLD, &status);
+                for(int inode = 0; inode < n_face_nodes; ++inode)
                     face_nodes[inode] = inv_gnode_idxs[face_nodes[inode]];
-                }
 
                 // get the face numbers and orientation
                 int face_nr_l, face_nr_r, orient_r;
-                MPI_Recv(&face_nr_l, 1, MPI_INT, 0, 0, MPI_COMM_WORLD, &status);
-                MPI_Recv(&face_nr_r, 1, MPI_INT, 0, 0, MPI_COMM_WORLD, &status);
-                MPI_Recv(&orient_r, 1, MPI_INT, 0, 0, MPI_COMM_WORLD, &status);
+                MPI_Recv(&face_nr_l, 1, MPI_INT, 0, 9, MPI_COMM_WORLD, &status);
+                MPI_Recv(&face_nr_r, 1, MPI_INT, 0, 10, MPI_COMM_WORLD, &status);
+                MPI_Recv(&orient_r, 1, MPI_INT, 0, 11, MPI_COMM_WORLD, &status);
 
                 // the boundary flag is the rank of the other process, 
                 // negated if we are the right side of the face
@@ -446,12 +581,102 @@ namespace iceicle {
                     pmesh.faces.push_back(std::move(face_opt.value()));
                 } else {
                     util::AnomalyLog::log_anomaly(util::Anomaly{"could not find face", util::general_anomaly_tag{}});
-                    return pmesh;
                 }
+
+                // get the next domain type
+                MPI_Recv(&domain_type, 1, MPI_INT, 0, 0, MPI_COMM_WORLD, &status);
             }
 
+            // reorganize the faces so that the now boundary faces (PARALLEL_COM) are at the end
+            IDX boundary_faces_begin = pmesh.faces.size();
+            for(IDX iface = 0; iface < boundary_faces_begin; ++iface)
+            {
+                if(pmesh.faces[iface]->bctype == BOUNDARY_CONDITIONS::PARALLEL_COM)
+                {
+                    --boundary_faces_begin;
+                    std::swap(pmesh.faces[iface], pmesh.faces[boundary_faces_begin]);
+                    --iface;
+                }
+            }
+            pmesh.interiorFaceStart = 0;
+            pmesh.interiorFaceEnd = boundary_faces_begin;
+            pmesh.bdyFaceStart = boundary_faces_begin;
 
+            // === Step 4: Boundary Faces ===
+            MPI_Recv(&domain_type, 1, MPI_INT, 0, 0, MPI_COMM_WORLD, &status);
+            while (domain_type != (int) DOMAIN_TYPE::N_DOMAIN_TYPES) {
+                IDX iel;
 
+                // get the global element index
+                MPI_Recv(&iel, 1, mpi_get_type<IDX>(), 0, 1, MPI_COMM_WORLD, &status);
+                IDX iel_local = inv_gel_idxs[iel];
+
+                // get the geometry_order
+                int geo_order;
+                MPI_Recv(&geo_order, 1, MPI_INT, 0, 2, MPI_COMM_WORLD, &status);
+
+                // get the face_nodes
+                int n_face_nodes;
+                MPI_Recv(&n_face_nodes, 1, MPI_INT, 0, 3, MPI_COMM_WORLD, &status);
+                std::vector<IDX> face_nodes(n_face_nodes);
+                MPI_Recv(face_nodes.data(), n_face_nodes, mpi_get_type<IDX>(), 0, 4, MPI_COMM_WORLD, &status);
+                for(int inode = 0; inode < n_face_nodes; ++inode){
+                    face_nodes[inode] = inv_gnode_idxs[face_nodes[inode]];
+                }
+
+                // get the face numbers and orientation
+                int face_nr_l, face_nr_r, orient_r;
+                MPI_Recv(&face_nr_l, 1, MPI_INT, 0, 5, MPI_COMM_WORLD, &status);
+                MPI_Recv(&face_nr_r, 1, MPI_INT, 0, 6, MPI_COMM_WORLD, &status);
+                MPI_Recv(&orient_r, 1, MPI_INT, 0, 7, MPI_COMM_WORLD, &status);
+
+                // get the boundary condition information
+                int bctype, bcflag;
+                MPI_Recv(&bctype, 1, MPI_INT, 0, 8, MPI_COMM_WORLD, &status);
+                MPI_Recv(&bcflag, 1, MPI_INT, 0, 9, MPI_COMM_WORLD, &status);
+
+                auto face_opt = make_face<T, IDX, ndim>(
+                    static_cast<DOMAIN_TYPE>(domain_type), geo_order, iel_local, 0,
+                    face_nodes, face_nr_l, face_nr_r, orient_r, 
+                    static_cast<BOUNDARY_CONDITIONS>(bctype), bcflag
+                );
+
+                if(face_opt) {
+                    pmesh.faces.push_back(std::move(face_opt.value()));
+                } else {
+                    util::AnomalyLog::log_anomaly(util::Anomaly{"could not find face", util::general_anomaly_tag{}});
+                }
+
+                // get the next domain type
+                MPI_Recv(&domain_type, 1, MPI_INT, 0, 0, MPI_COMM_WORLD, &status);
+            }
+            pmesh.bdyFaceEnd = pmesh.faces.size();
+
+        }
+
+#ifndef NDEBUG 
+        for(int i = 0; i < nproc; ++i){
+            MPI_Barrier(MPI_COMM_WORLD);
+            if(i == iproc){
+                std::cout << "====== Mesh " << iproc << " ======" << std::endl;
+                pmesh.printNodes(std::cout);
+                pmesh.printElements(std::cout);
+                pmesh.printFaces(std::cout);
+                std::cout << std::endl;
+            }
+        }
+#endif
+
+        for(int i = 0; i < nproc; ++i){
+            MPI_Barrier(MPI_COMM_WORLD);
+            if(i == iproc){
+                if(util::AnomalyLog::size() > 0) {
+                    std::cout << "====== Errors on rank: " << iproc << " ======" << std::endl;
+                    util::AnomalyLog::handle_anomalies();
+                    // clear out the erronous mesh
+                    pmesh = AbstractMesh<T, IDX, ndim>{};
+                }
+            }
         }
         return pmesh;
 

@@ -200,6 +200,18 @@ namespace iceicle {
     ) noexcept -> std::optional< std::unique_ptr< Face<T, IDX, ndim> > > 
     {
         using namespace NUMTOOL::TMP;
+
+        // check validity of elements 
+        if(elemL < 0){
+            return std::nullopt;
+        } if(bctype == BOUNDARY_CONDITIONS::INTERIOR && elemR < 0){
+            return std::nullopt;
+        }
+
+        // check validity of nodes 
+        for(IDX node : nodes)
+            if(node < 0) return std::nullopt;
+
         switch(domain_type){
             case DOMAIN_TYPE::HYPERCUBE:
             {

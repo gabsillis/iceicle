@@ -411,6 +411,15 @@ namespace iceicle {
                 return _accessor.access(_ptr, _layout[idof, iv]);
             }
 
+            /** @brief index into the data using the set order
+             * @param idof the degree of freedom index 
+             * @param iv the vector index
+             * @return a reference to the data 
+             */
+            constexpr const reference operator[](index_type idof, index_type iv) const {
+                return _accessor.access(_ptr, _layout[idof, iv]);
+            }
+
             /**
              * @brief if using the default accessor, allow access to the underlying storage
              * @return the underlying storage 

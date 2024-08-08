@@ -169,6 +169,11 @@ namespace iceicle::util {
                 anomalies.push_back(std::make_unique<Anomaly<Data>>(std::move(anomaly)));
             }
 
+            template<class Data>
+            static void check(bool condition, Anomaly<Data> anomaly_on_failure){
+                if(!condition) log_anomaly(std::move(anomaly_on_failure));
+            }
+
             // can't get forwarding and source location to play nice
 //            template<class... anomaly_argsT>
 //            static void log_anomaly(anomaly_argsT&&... args, std::source_location loc = std::source_location::current()){
@@ -192,6 +197,9 @@ namespace iceicle::util {
                 }
                 anomalies.clear();
             }
+
+            static auto size() -> std::size_t 
+            { return anomalies.size(); }
     };
 
 

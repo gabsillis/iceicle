@@ -53,7 +53,7 @@ namespace iceicle::solvers {
             if(writer_name && eq_icase(writer_name.value(), "dat")){
                 if constexpr (ndim == 1){
                     io::DatWriter<T, IDX, ndim> dat_writer{fespace};
-                    dat_writer.register_fields(u, "u");
+                    dat_writer.register_fields(u, disc.field_names);
                     writer = io::Writer{dat_writer};
                 } else {
                     AnomalyLog::log_anomaly(Anomaly{"dat writer not defined for greater than 1D", general_anomaly_tag{}});

@@ -134,14 +134,14 @@ public:
         // number of TVD Stages
         static constexpr int nstag = 3;
 
+        // create view of the residual using the same Layout as u 
+        fespan res{res_data.data(), u.get_layout()};
+
         // calculate the timestep 
         T dt = timestep(fespace, disc, u);
 
         // Termination Condiditon restrictions on dt 
         dt = stop_condition.limit_dt(dt, time);
-
-        // create view of the residual using the same Layout as u 
-        fespan res{res_data.data(), u.get_layout()};
 
         // storage for rhs of mass matrix equation
         int max_ndof = fespace.dg_map.max_el_size_reqirement(1);
@@ -221,6 +221,15 @@ public:
      */
     template<int ndim, class disc_class, class LayoutPolicy, class uAccessorPolicy>
     void solve(FESpace<T, IDX, ndim> &fespace, disc_class &disc, fespan<T, LayoutPolicy, uAccessorPolicy> u) {
+
+        // call initial residual to get initial wavespeeds for dt 
+        {
+            // create view of the residual using the same Layout as u 
+            fespan res{res_data.data(), u.get_layout()};
+
+            // get the rhs
+            form_residual(fespace, disc, u, res);
+        }
 
         // visualization callback on initial state (0 % anything == 0) 
         vis_callback(*this);

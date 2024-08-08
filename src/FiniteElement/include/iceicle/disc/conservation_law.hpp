@@ -9,6 +9,7 @@
 #include "iceicle/linalg/linalg_utils.hpp"
 #include "iceicle/mesh/mesh.hpp"
 #include <cmath>
+#include <string>
 #include <type_traits>
 #include <vector>
 namespace iceicle {
@@ -448,6 +449,9 @@ namespace iceicle {
         /// @brief utility for SPACETIME_PAST boundary condition
         ST_Info spacetime_info;
 
+        /// @brief human readable names for each vector component of the variables
+        std::vector<std::string> field_names;
+
         // ===============
         // = Constructor =
         // ===============
@@ -721,12 +725,12 @@ namespace iceicle {
                 // scatter contribution 
                 for(int itest = 0; itest < elL.nbasis(); ++itest){
                     for(int ieq = 0; ieq < neq; ++ieq){
-                        resL[itest, 0] += (fviscn[ieq] - fadvn[ieq]) * biL[itest];
+                        resL[itest, ieq] += (fviscn[ieq] - fadvn[ieq]) * biL[itest];
                     }
                 }
                 for(int itest = 0; itest < elR.nbasis(); ++itest){
                     for(int ieq = 0; ieq < neq; ++ieq){
-                        resR[itest, 0] -= (fviscn[ieq] - fadvn[ieq]) * biR[itest];
+                        resR[itest, ieq] -= (fviscn[ieq] - fadvn[ieq]) * biR[itest];
                     }
                 }
             }
@@ -865,7 +869,7 @@ namespace iceicle {
                         // scatter contribution 
                         for(int itest = 0; itest < elL.nbasis(); ++itest){
                             for(int ieq = 0; ieq < neq; ++ieq){
-                                resL[itest, 0] += (fviscn[ieq] - fadvn[ieq]) * biL[itest];
+                                resL[itest, ieq] += (fviscn[ieq] - fadvn[ieq]) * biL[itest];
                             }
                         }
                     }
@@ -912,7 +916,7 @@ namespace iceicle {
                         // scatter contribution 
                         for(int itest = 0; itest < elL.nbasis(); ++itest){
                             for(int ieq = 0; ieq < neq; ++ieq){
-                                resL[itest, 0] += (fviscn[ieq]) * biL[itest];
+                                resL[itest, ieq] += (fviscn[ieq]) * biL[itest];
                             }
                         }
                     }
@@ -1055,7 +1059,7 @@ namespace iceicle {
                         // scatter contribution 
                         for(int itest = 0; itest < elL.nbasis(); ++itest){
                             for(int ieq = 0; ieq < neq; ++ieq){
-                                resL[itest, 0] += (fviscn[ieq] - fadvn[ieq]) * biL[itest];
+                                resL[itest, ieq] += (fviscn[ieq] - fadvn[ieq]) * biL[itest];
                             }
                         }
                     }
@@ -1127,7 +1131,7 @@ namespace iceicle {
                         // scatter contribution 
                         for(int itest = 0; itest < elL.nbasis(); ++itest){
                             for(int ieq = 0; ieq < neq; ++ieq){
-                                resL[itest, 0] += (fviscn[ieq] - fadvn[ieq]) * biL[itest];
+                                resL[itest, ieq] += (fviscn[ieq] - fadvn[ieq]) * biL[itest];
                             }
                         }
                     }
