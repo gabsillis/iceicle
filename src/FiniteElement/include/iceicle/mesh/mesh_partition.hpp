@@ -26,16 +26,22 @@ namespace iceicle {
     -> AbstractMesh<T, IDX, ndim>
     {
         // get mpi information
-        int nproc, iproc;
-        MPI_Comm_rank(MPI_COMM_WORLD, &iproc);
-        MPI_Comm_size(MPI_COMM_WORLD, &nproc);
+        int nrank, myrank;
+        MPI_Comm_rank(MPI_COMM_WORLD, &myrank);
+        MPI_Comm_size(MPI_COMM_WORLD, &nrank);
 
         // metis will floating point exception when partitioning into 1 partition
         // ...
         // ...
         //
         // :3
-        if(nproc == 1) return mesh;
+        if(nrank == 1) {
+            // set up empty communication arrays that are used in parallel structures
+            mesh.el_send_list = std::vector<std::vector<IDX>>(nrank, std::vector<IDX>());
+            mesh.el_recv_list = std::vector<std::vector<IDX>>(nrank, std::vector<IDX>());
+            mesh.communicated_elements.resize(nrank);
+            return mesh;
+        }
 
         /// @brief create an empty mesh -- this will be the partitioned mesh
         AbstractMesh<T, IDX, ndim> pmesh{};
@@ -43,20 +49,34 @@ namespace iceicle {
         // Broadcast all the node data 
         NodeArray<T, ndim> gcoord{};
         unsigned long n_nodes_total;
-        if(iproc == 0)
+        if(myrank == 0)
         { 
             gcoord = mesh.nodes;
             n_nodes_total = mesh.nodes.size();
         }
         MPI_Bcast(&n_nodes_total, 1, MPI_UNSIGNED_LONG, 0, MPI_COMM_WORLD);
-        if(iproc != 0)
+        if(myrank != 0)
         { gcoord.resize(n_nodes_total); }
 
         // WARNING: assumption about size of Point type
         MPI_Bcast(gcoord[0].data(), gcoord.size() * ndim, mpi_get_type<T>(), 0, MPI_COMM_WORLD);
 
+        // global node index for each local node
+        std::vector<long unsigned int> gnode_idxs;
+
+        // local node index for each global node index;
+        std::vector<IDX> inv_gnode_idxs(n_nodes_total, -1);
+
+        // for each global element index, store the local index, or -1
+        std::vector<IDX> inv_gel_idxs(mesh.elements.size(), -1);
+
+        // initialize the communication requirement matrix
+        pmesh.el_send_list = std::vector<std::vector<IDX>>(nrank, std::vector<IDX>());
+        pmesh.el_recv_list = std::vector<std::vector<IDX>>(nrank, std::vector<IDX>());
+        pmesh.communicated_elements.resize(nrank);
+
         // only the first processor will perform the partitioning
-        if(iproc == 0){
+        if(myrank == 0){
             IDX nelem = mesh.elements.size();
             util::crs elsuel{util::convert_crs<idx_t, idx_t>(to_elsuel<T, IDX, ndim>(nelem, mesh.faces))};
 
@@ -72,7 +92,7 @@ namespace iceicle {
             std::vector<idx_t> el_partition(nelem);
 
             METIS_PartGraphKway(&nelem, &ncon, elsuel.cols(), elsuel.data(),
-                    NULL, NULL, NULL, &nproc, NULL, NULL,
+                    NULL, NULL, NULL, &nrank, NULL, NULL,
                     options, &obj_val, el_partition.data());
 
             // ====================================
@@ -81,42 +101,39 @@ namespace iceicle {
 
             // === Step 1: Node List ===
 
-            std::vector<std::vector<unsigned long>> node_idxs(nproc, std::vector<unsigned long>{});
+            std::vector<std::vector<unsigned long>> all_node_idxs(nrank, std::vector<unsigned long>{});
 
             // build each processor node list
             for(IDX iel = 0; iel < nelem; ++iel){
                 IDX element_rank = el_partition[iel];
                 for(IDX inode : mesh.elements[iel]->nodes_span()){
-                    node_idxs[element_rank].push_back(inode);
+                    all_node_idxs[element_rank].push_back(inode);
                 }
             }
 
             // send the node lists to each processor 
-            for(int irank = 1; irank < nproc; ++irank){
+            for(int irank = 1; irank < nrank; ++irank){
                 // send the size 
-                unsigned long sz = node_idxs[irank].size();
+                unsigned long sz = all_node_idxs[irank].size();
                 MPI_Send(&sz, 1, MPI_UNSIGNED_LONG, irank, 0, MPI_COMM_WORLD);
-                MPI_Send(node_idxs[irank].data(), sz, MPI_UNSIGNED_LONG, irank, 0, MPI_COMM_WORLD);
+                MPI_Send(all_node_idxs[irank].data(), sz, MPI_UNSIGNED_LONG, irank, 0, MPI_COMM_WORLD);
             }
 
-            std::vector<unsigned long>& my_node_idxs{node_idxs[0]};
-            std::ranges::sort(my_node_idxs);
-            auto unique_subrange = std::ranges::unique(my_node_idxs);
-            my_node_idxs.erase(unique_subrange.begin(), unique_subrange.end());
+            gnode_idxs = all_node_idxs[0];
+            std::ranges::sort(gnode_idxs);
+            auto unique_subrange = std::ranges::unique(gnode_idxs);
+            gnode_idxs.erase(unique_subrange.begin(), unique_subrange.end());
 
-            std::vector<IDX> inv_gnode_idxs(n_nodes_total, -1);
-            for(IDX ilocal = 0; ilocal < my_node_idxs.size(); ++ilocal)
-                { inv_gnode_idxs[my_node_idxs[ilocal]] = ilocal; }
+            for(IDX ilocal = 0; ilocal < gnode_idxs.size(); ++ilocal)
+                { inv_gnode_idxs[gnode_idxs[ilocal]] = ilocal; }
 
 
-            pmesh.nodes.reserve(my_node_idxs.size());
-            for(unsigned long inode : my_node_idxs)
+            pmesh.nodes.reserve(gnode_idxs.size());
+            for(unsigned long inode : gnode_idxs)
                 { pmesh.nodes.push_back(gcoord[inode]); }
 
             // === Step 2: Elements ===
 
-            // for each global element index, store the local index, or -1
-            std::vector<IDX> inv_gel_idxs(mesh.elements.size(), -1);
 
             for(IDX iel = 0; iel < nelem; ++iel){ 
                 IDX element_rank = el_partition[iel];
@@ -152,10 +169,10 @@ namespace iceicle {
             }
 
             // send signal to stop to each process (domain type = N_DOMAIN_TYPES)
-            for(int iproc = 1; iproc < nproc; ++iproc)
+            for(int myrank = 1; myrank < nrank; ++myrank)
             {
                 int stop_signal = (int) DOMAIN_TYPE::N_DOMAIN_TYPES;
-                MPI_Send(&stop_signal, 1, MPI_INT, iproc, 1, MPI_COMM_WORLD);
+                MPI_Send(&stop_signal, 1, MPI_INT, myrank, 1, MPI_COMM_WORLD);
             }
 
             // === Step 3: Interior Faces ===
@@ -198,13 +215,15 @@ namespace iceicle {
                         MPI_Send(&ier, 1, mpi_get_type<IDX>(), rank_other, 4, MPI_COMM_WORLD);
 
                         // exchange local element index 
-                        IDX iel_local = inv_gnode_idxs[iel];
+                        IDX iel_local = inv_gel_idxs[iel];
                         IDX ier_local;
                         MPI_Sendrecv(
                             &iel_local, 1, mpi_get_type<IDX>(), rank_other, 5,
                             &ier_local, 1, mpi_get_type<IDX>(), rank_other, 5, 
                             MPI_COMM_WORLD, &status
                         );
+                        pmesh.el_send_list[rank_other].push_back(iel_local);
+                        pmesh.el_recv_list[rank_other].push_back(ier_local);
 
                         // send the geometry order 
                         int geo_order = face.geometry_order();
@@ -230,7 +249,7 @@ namespace iceicle {
                         auto face_opt = make_face<T, IDX, ndim>(
                             static_cast<DOMAIN_TYPE>(domain_type), geo_order, iel_local, ier_local, 
                             local_face_nodes, face_nr_l, face_nr_r, orient_r,
-                            BOUNDARY_CONDITIONS::PARALLEL_COM, rank_other
+                            BOUNDARY_CONDITIONS::PARALLEL_COM, encode_mpi_bcflag(rank_other, true)
                         );
 
                         if(face_opt) {
@@ -258,12 +277,14 @@ namespace iceicle {
 
                     // exchange local element index 
                     IDX iel_local;
-                    IDX ier_local = inv_gnode_idxs[iel];
+                    IDX ier_local = inv_gel_idxs[ier];
                     MPI_Sendrecv(
                         &ier_local, 1, mpi_get_type<IDX>(), rank_other, 5,
                         &iel_local, 1, mpi_get_type<IDX>(), rank_other, 5, 
                         MPI_COMM_WORLD, &status
                     );
+                    pmesh.el_send_list[rank_other].push_back(ier_local);
+                    pmesh.el_recv_list[rank_other].push_back(iel_local);
 
                     // send the geometry order 
                     int geo_order = face.geometry_order();
@@ -289,7 +310,7 @@ namespace iceicle {
                     auto face_opt = make_face<T, IDX, ndim>(
                         static_cast<DOMAIN_TYPE>(domain_type), geo_order, iel_local, ier_local, 
                         local_face_nodes, face_nr_l, face_nr_r, orient_r,
-                        BOUNDARY_CONDITIONS::PARALLEL_COM, -rank_other // NOTE: negative rank because we are right
+                        BOUNDARY_CONDITIONS::PARALLEL_COM, encode_mpi_bcflag(rank_other, false)
                     );
 
                     if(face_opt) {
@@ -372,9 +393,9 @@ namespace iceicle {
             }
 
             // send signal to stop to each process (domain type = N_DOMAIN_TYPES)
-            for(int iproc = 1; iproc < nproc; ++iproc) {
+            for(int myrank = 1; myrank < nrank; ++myrank) {
                 int stop_signal = (int) DOMAIN_TYPE::N_DOMAIN_TYPES;
-                MPI_Send(&stop_signal, 1, MPI_INT, iproc, 0, MPI_COMM_WORLD);
+                MPI_Send(&stop_signal, 1, MPI_INT, myrank, 0, MPI_COMM_WORLD);
             }
 
             // reorganize the faces so that the now boundary faces (PARALLEL_COM) are at the end
@@ -447,9 +468,9 @@ namespace iceicle {
             }
 
             // send signal to stop to each process (domain type = N_DOMAIN_TYPES)
-            for(int iproc = 1; iproc < nproc; ++iproc) {
+            for(int myrank = 1; myrank < nrank; ++myrank) {
                 int stop_signal = (int) DOMAIN_TYPE::N_DOMAIN_TYPES;
-                MPI_Send(&stop_signal, 1, MPI_INT, iproc, 0, MPI_COMM_WORLD);
+                MPI_Send(&stop_signal, 1, MPI_INT, myrank, 0, MPI_COMM_WORLD);
             }
 
             pmesh.bdyFaceEnd = pmesh.faces.size();
@@ -463,26 +484,22 @@ namespace iceicle {
             MPI_Status status;
             unsigned long n_nodes;
             MPI_Recv(&n_nodes, 1, MPI_UNSIGNED_LONG, 0, 0, MPI_COMM_WORLD, &status);
-            std::vector<unsigned long> node_idxs(n_nodes);
-            MPI_Recv(node_idxs.data(), n_nodes, MPI_UNSIGNED_LONG, 0, 0, MPI_COMM_WORLD, &status);
+            gnode_idxs.resize(n_nodes);
+            MPI_Recv(gnode_idxs.data(), n_nodes, MPI_UNSIGNED_LONG, 0, 0, MPI_COMM_WORLD, &status);
 
-            std::ranges::sort(node_idxs);
-            auto unique_subrange = std::ranges::unique(node_idxs);
-            node_idxs.erase(unique_subrange.begin(), unique_subrange.end());
+            std::ranges::sort(gnode_idxs);
+            auto unique_subrange = std::ranges::unique(gnode_idxs);
+            gnode_idxs.erase(unique_subrange.begin(), unique_subrange.end());
 
 
-            std::vector<IDX> inv_gnode_idxs(n_nodes_total, -1);
-            for(IDX ilocal = 0; ilocal < node_idxs.size(); ++ilocal)
-                { inv_gnode_idxs[node_idxs[ilocal]] = ilocal; }
+            for(IDX ilocal = 0; ilocal < gnode_idxs.size(); ++ilocal)
+                { inv_gnode_idxs[gnode_idxs[ilocal]] = ilocal; }
 
             pmesh.nodes.reserve(n_nodes);
-            for(unsigned long inode : node_idxs)
+            for(unsigned long inode : gnode_idxs)
                 { pmesh.nodes.push_back(gcoord[inode]); }
 
             // === Step 2: Elements ===
-
-            // for each global element index, store the local index, or -1
-            std::vector<IDX> inv_gel_idxs(mesh.elements.size(), -1);
 
             int domain_type;
             MPI_Recv(&domain_type, 1, MPI_INT, 0, 1, MPI_COMM_WORLD, &status);
@@ -520,7 +537,7 @@ namespace iceicle {
                 MPI_Recv(&rank_l, 1, MPI_INT, 0, 1, MPI_COMM_WORLD, &status);
                 MPI_Recv(&rank_r, 1, MPI_INT, 0, 2, MPI_COMM_WORLD, &status);
 
-                bool im_left = (rank_l == iproc);
+                bool im_left = (rank_l == myrank);
                 int rank_other = (im_left) ? rank_r : rank_l;
 
                 // get the global element indices for the left and right element 
@@ -534,18 +551,23 @@ namespace iceicle {
 
                 if(rank_l != rank_r){
                     // exchange local element index with other rank
-                    if(im_left)
+                    if(im_left){
                         MPI_Sendrecv(
                             &iel_local, 1, mpi_get_type<IDX>(), rank_other, 5,
                             &ier_local, 1, mpi_get_type<IDX>(), rank_other, 5, 
                             MPI_COMM_WORLD, &status
                         );
-                    else
+                        pmesh.el_send_list[rank_other].push_back(iel_local);
+                        pmesh.el_recv_list[rank_other].push_back(ier_local);
+                    } else {
                         MPI_Sendrecv(
                             &ier_local, 1, mpi_get_type<IDX>(), rank_other, 5,
                             &iel_local, 1, mpi_get_type<IDX>(), rank_other, 5, 
                             MPI_COMM_WORLD, &status
                         );
+                        pmesh.el_send_list[rank_other].push_back(ier_local);
+                        pmesh.el_recv_list[rank_other].push_back(iel_local);
+                    }
                 }
 
                 // get the geometry_order
@@ -570,7 +592,7 @@ namespace iceicle {
                 // negated if we are the right side of the face
                 BOUNDARY_CONDITIONS bctype = (rank_l == rank_r) ?
                     BOUNDARY_CONDITIONS::INTERIOR : BOUNDARY_CONDITIONS::PARALLEL_COM;
-                int bcflag = (im_left) ? rank_other : -rank_other;
+                int bcflag = encode_mpi_bcflag(rank_other, im_left);
 
                 auto face_opt = make_face<T, IDX, ndim>(
                     static_cast<DOMAIN_TYPE>(domain_type), geo_order, iel_local, ier_local, 
@@ -654,11 +676,84 @@ namespace iceicle {
 
         }
 
-#ifndef NDEBUG 
-        for(int i = 0; i < nproc; ++i){
+        // sort the element communication lists and remove duplicates
+        for(int i = 0; i < nrank; ++i){
+            std::ranges::sort(pmesh.el_recv_list[i]);
+            auto unique_subrange = std::ranges::unique(pmesh.el_recv_list[i]);
+            pmesh.el_recv_list[i].erase(unique_subrange.begin(), unique_subrange.end());
+        }
+
+
+        MPI_Status status;
+        // communicate boundary geo elements
+        for(int irank = 0; irank < nrank; ++irank){
+            if(irank == myrank){
+                // send all the information to create elements
+                for(int jrank = 0; jrank < nrank; ++jrank){
+                    // basis order, quadrature_type, and basis_type we know
+                    int geometry_order, domain_type;
+                    for(IDX ielem : pmesh.el_send_list[jrank]){
+                        geometry_order = (int) pmesh.elements[ielem]->geometry_order();
+                        MPI_Send(&geometry_order, 1, MPI_INT, jrank, ielem, MPI_COMM_WORLD);
+                        domain_type = (int) pmesh.elements[ielem]->domain_type();
+                        MPI_Send(&domain_type, 1, MPI_INT, jrank, ielem, MPI_COMM_WORLD);
+                        int n_nodes = pmesh.elements[ielem]->n_nodes();
+                        MPI_Send(&n_nodes, 1, MPI_INT, jrank, ielem, MPI_COMM_WORLD);
+
+                        // global indices of element nodes
+                        // NOTE: for some reason storing this in a vector and sending the array fails 
+                        // ...
+                        // ...
+                        for(IDX inode : pmesh.elements[ielem]->nodes_span()){
+                            MPI_Send(&gnode_idxs[inode], 1, mpi_get_type<IDX>(), jrank, 10, MPI_COMM_WORLD);
+                        }
+                    }
+                }
+            } else {
+                // recieve all the information to create elements from irank
+                for(IDX ielem : pmesh.el_recv_list[irank]){
+                    int geometry_order, domain_type, n_nodes;
+                    MPI_Recv(&geometry_order, 1, MPI_INT, irank, ielem, MPI_COMM_WORLD, &status);
+                    MPI_Recv(&domain_type, 1, MPI_INT, irank, ielem, MPI_COMM_WORLD, &status);
+                    MPI_Recv(&n_nodes, 1, MPI_INT, irank, ielem, MPI_COMM_WORLD, &status);
+
+                    std::vector<IDX> el_gnodes(n_nodes);
+                    for(int i = 0; i < n_nodes; ++i)
+                        MPI_Recv(&el_gnodes[i], 1, mpi_get_type<IDX>(), irank, 10, MPI_COMM_WORLD, &status);
+
+                    std::vector<IDX> el_nodes;
+                    for(IDX ignode : el_gnodes){
+                        IDX inode = inv_gnode_idxs[ignode];
+
+                        // check if node is found or add it
+                        if(inode == -1){
+                            // add a new node
+                            inode = gnode_idxs.size();
+                            inv_gnode_idxs[gnode_idxs.size()] = ignode;
+                            gnode_idxs.push_back(ignode);
+                            pmesh.nodes.push_back(gcoord[ignode]);
+                        }
+
+                        el_nodes.push_back(inode);
+                    }
+
+                    auto el_opt = create_element<T, IDX, ndim>((DOMAIN_TYPE) domain_type, geometry_order, el_nodes);
+
+                    if(el_opt)
+                        pmesh.communicated_elements[irank].push_back(std::move(el_opt.value()));
+                    else 
+                        util::AnomalyLog::log_anomaly(
+                                util::Anomaly{"Could not create valid element.", util::general_anomaly_tag{}});
+                }
+            }
             MPI_Barrier(MPI_COMM_WORLD);
-            if(i == iproc){
-                std::cout << "====== Mesh " << iproc << " ======" << std::endl;
+        }
+
+#ifndef NDEBUG 
+        for(int i = 0; i < nrank; ++i){
+            MPI_Barrier(MPI_COMM_WORLD);
+            if(i == myrank){
+                std::cout << "====== Mesh " << myrank << " ======" << std::endl;
                 pmesh.printNodes(std::cout);
                 pmesh.printElements(std::cout);
                 pmesh.printFaces(std::cout);
@@ -667,11 +762,11 @@ namespace iceicle {
         }
 #endif
 
-        for(int i = 0; i < nproc; ++i){
+        for(int i = 0; i < nrank; ++i){
             MPI_Barrier(MPI_COMM_WORLD);
-            if(i == iproc){
+            if(i == myrank){
                 if(util::AnomalyLog::size() > 0) {
-                    std::cout << "====== Errors on rank: " << iproc << " ======" << std::endl;
+                    std::cout << "====== Errors on rank: " << myrank << " ======" << std::endl;
                     util::AnomalyLog::handle_anomalies();
                     // clear out the erronous mesh
                     pmesh = AbstractMesh<T, IDX, ndim>{};

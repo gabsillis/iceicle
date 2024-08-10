@@ -141,6 +141,16 @@ namespace iceicle {
         /// index of one past the end of the boundary faces
         IDX bdyFaceEnd;
 
+        /// For each process i store a list of (this-local) element indices 
+        /// that need to be sent 
+        std::vector<std::vector<IDX>> el_send_list;
+
+        /// For each process i store a list of (i-local) element indices 
+        /// that need to be recieved
+        std::vector<std::vector<IDX>> el_recv_list;
+
+        std::vector< std::vector< std::unique_ptr<Element> > > communicated_elements;
+
         inline IDX nelem() { return elements.size(); }
 
         // ===============
@@ -155,7 +165,8 @@ namespace iceicle {
         AbstractMesh(const AbstractMesh<T, IDX, ndim>& other) 
         : nodes{other.nodes}, elements{}, faces{},
           interiorFaceStart(other.interiorFaceStart), interiorFaceEnd(other.interiorFaceEnd),
-          bdyFaceStart(other.bdyFaceStart), bdyFaceEnd(other.bdyFaceEnd)
+          bdyFaceStart(other.bdyFaceStart), bdyFaceEnd(other.bdyFaceEnd), 
+          el_send_list(other.el_send_list), el_recv_list(other.el_recv_list)
         {
             elements.reserve(other.elements.size());
             faces.reserve(other.faces.size());
@@ -164,6 +175,13 @@ namespace iceicle {
             }
             for(auto& facptr : other.faces){
                 faces.push_back(std::move(facptr->clone()));
+            }
+
+            for(int irank = 0; irank < other.communicated_elements.size(); ++irank){
+                communicated_elements.push_back(std::vector< std::unique_ptr<Element> >{});
+                for(auto& elptr : other.communicated_elements[irank]){
+                    communicated_elements[irank].push_back(std::move(elptr->clone()));
+                }
             }
         }
 
@@ -184,6 +202,15 @@ namespace iceicle {
                 interiorFaceEnd = other.interiorFaceEnd;
                 bdyFaceStart = other.bdyFaceStart;
                 bdyFaceEnd = other.bdyFaceEnd;
+                el_send_list = other.el_send_list;
+                el_recv_list = other.el_recv_list;
+
+                for(int irank = 0; irank < other.communicated_elements.size(); ++irank){
+                    communicated_elements.push_back(std::vector< std::unique_ptr<Element> >{});
+                    for(auto& elptr : other.communicated_elements[irank]){
+                        communicated_elements[irank].push_back(std::move(elptr->clone()));
+                    }
+                }
             }
             return *this;
         }

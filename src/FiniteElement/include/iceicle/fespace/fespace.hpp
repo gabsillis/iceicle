@@ -21,6 +21,7 @@
 #include <iceicle/tmp_utils.hpp>
 #include <Numtool/tmp_flow_control.hpp>
 #include <map>
+#include <mpi.h>
 #include <type_traits>
 
 namespace iceicle {
@@ -142,6 +143,9 @@ namespace iceicle {
         /** @brief the mapping of faces connected to each element */
         util::crs<IDX> fac_surr_el;
 
+        /// @brief element information recieved from each respective MPI rank
+        std::vector<std::vector<ElementType>> comm_elements;
+
         private:
 
         // ========================================
@@ -216,14 +220,81 @@ namespace iceicle {
                 elements.push_back(fe);
             }
 
+
+#ifdef ICEICLE_USE_MPI
+            // ========================
+            // = Communicate Elements =
+            // ========================
+            int myrank, nrank;
+            MPI_Comm_rank(MPI_COMM_WORLD, &myrank);
+            MPI_Comm_size(MPI_COMM_WORLD, &nrank);
+
+            comm_elements.resize(nrank);
+
+            // set up the communicated FiniteElements only if more than 1 process
+            for(int irank = 0; irank < nrank; ++irank){
+                // basis order, quadrature_type, and basis_type we know
+                int geometry_order, domain_type;
+                for(const auto& geo_el : meshptr->communicated_elements[irank]){
+                    
+                    // create the Element Domain type key
+                    FETypeKey fe_key = {
+                        .basis_order = basis_order,
+                        .geometry_order = geo_el->geometry_order(),
+                        .domain_type = geo_el->domain_type(),
+                        .qtype = quadrature_type,
+                        .btype = basis_type
+                    };
+
+                    // check if an evaluation doesn't exist yet
+                    if(ref_el_map.find(fe_key) == ref_el_map.end()){
+                        ref_el_map[fe_key] = ReferenceElementType(geo_el.get(), basis_type, quadrature_type, basis_order_arg);
+                    }
+                    ReferenceElementType &ref_el = ref_el_map[fe_key];
+                
+                    // create the finite element
+                    ElementType fe(
+                        geo_el.get(),
+                        ref_el.basis.get(),
+                        ref_el.quadrule.get(),
+                        &(ref_el.eval),
+                        elements.size() // this will be the index of the new element
+                    );
+
+                    comm_elements[irank].push_back(fe);
+                }
+            }
+#endif
+
             // Generate the Trace Spaces
             traces.reserve(meshptr->faces.size());
             for(const auto& fac : meshptr->faces){
                 // NOTE: assuming element indexing is the same as the mesh still
 
                 bool is_interior = fac->bctype == BOUNDARY_CONDITIONS::INTERIOR;
-                ElementType &elL = elements[fac->elemL];
-                ElementType &elR = (is_interior) ? elements[fac->elemR] : elements[fac->elemL];
+                ElementType *elptrL = &elements[fac->elemL];
+                ElementType *elptrR = (is_interior) ? &elements[fac->elemR] : &elements[fac->elemL];
+
+#ifdef ICEICLE_USE_MPI
+            // update the boundary trace spaces to use the new communicated FiniteElements
+                if(fac->bctype == BOUNDARY_CONDITIONS::PARALLEL_COM) {
+                    auto [jrank, imleft] = decode_mpi_bcflag(fac->bcflag);
+                    IDX jlocal_elidx = (imleft) ? fac->elemR : fac->elemL;
+
+                    std::vector<IDX> &comm_el_idxs = meshptr->el_recv_list[jrank];
+                    auto itr = lower_bound(comm_el_idxs.begin(), comm_el_idxs.end(), jlocal_elidx);
+                    std::size_t index = distance(comm_el_idxs.begin(), itr);
+
+                    if(imleft){
+                        elptrR = &(comm_elements[jrank].at(index));
+                    } else {
+                        elptrL = &(comm_elements[jrank].at(index));
+                        elptrR = &elements[fac->elemR]; // special case because parallel faces are essential interior
+                    }
+                }
+#endif
+                ElementType& elL = *elptrL;
+                ElementType& elR = *elptrR;
 
                 int geo_order = std::max(elL.geo_el->geometry_order(), elR.geo_el->geometry_order());
 
@@ -243,7 +314,9 @@ namespace iceicle {
                     }
                     ReferenceTraceType &ref_trace = ref_trace_map[trace_key];
                     
-                    if(is_interior){
+                    if(is_interior || fac->bctype == BOUNDARY_CONDITIONS::PARALLEL_COM){
+                        // parallel bdy faces are essentially also interior faces 
+                        // aside from being a bit *special* :3
                         TraceType trace{ fac.get(), &elL, &elR, ref_trace.trace_basis.get(),
                             ref_trace.quadrule.get(), &(ref_trace.eval), (IDX) traces.size() };
                         traces.push_back(trace);
@@ -295,10 +368,20 @@ namespace iceicle {
             el_surr_nodes = util::crs{el_surr_nodes_ragged};
 
             std::vector<std::vector<IDX>> fac_surr_el_ragged(elements.size());
-            for(int itrace = 0; itrace < traces.size(); ++itrace){
+            for(int itrace = 0; itrace < traces.size(); ++itrace) {
                 const TraceType& trace = traces[itrace];
-                fac_surr_el_ragged[trace.elL.elidx].push_back(itrace);
-                fac_surr_el_ragged[trace.elR.elidx].push_back(itrace);
+                if(trace.face->bctype == BOUNDARY_CONDITIONS::PARALLEL_COM){
+                    // take some extra care to not add the wrong element index
+                    auto [jrank, imleft] = decode_mpi_bcflag(trace.face->bcflag);
+                    if(imleft){
+                        fac_surr_el_ragged[trace.elL.elidx].push_back(itrace);
+                    } else {
+                        fac_surr_el_ragged[trace.elR.elidx].push_back(itrace);
+                    }
+                } else {
+                    fac_surr_el_ragged[trace.elL.elidx].push_back(itrace);
+                    fac_surr_el_ragged[trace.elR.elidx].push_back(itrace);
+                }
             }
             fac_surr_el = util::crs{fac_surr_el_ragged};
         } 

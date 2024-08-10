@@ -659,6 +659,14 @@ namespace iceicle {
     template<std::ranges::contiguous_range R, class LayoutPolicy>
     dofspan(R&&, const LayoutPolicy&) -> dofspan<std::ranges::range_value_t<R>, LayoutPolicy>;
 
+    // forward declaration
+    template<
+        class T,
+        class LayoutPolicy,
+        class AccessorPolicy
+    >
+    class dofarray;
+
     // ================================
     // = dofspan concept restrictions =
     // ================================
@@ -678,8 +686,15 @@ namespace iceicle {
             compact_layout_right<typename spantype::index_type, spantype::static_extent()>, 
             typename spantype::accessor_type 
         >
-        /* || compact_layout_left dofspan*/
+    > || std::same_as<
+        std::remove_cv_t<std::remove_reference_t<spantype>>,
+        dofarray<
+            typename spantype::value_type,
+            compact_layout_right<typename spantype::index_type, spantype::static_extent()>, 
+            typename spantype::accessor_type 
+        >
     >;
+    /* || compact_layout_left dofspan*/
 
     /**
      * @brief a facspan represents local dofs over a face in a compact layout.
@@ -720,6 +735,21 @@ namespace iceicle {
     // ================
     // = Span Utility =
     // ================
+
+    /// @brief copy the data from dofspan a to dofspan b 
+    /// NOTE: not bounds checked in release mode
+    ///
+    /// @param a the dofspan to copy from 
+    /// @parma b the dofspan to copy to
+    template<typename T, class LayoutPolicyA, class LayoutPolicyB>
+    auto copy(dofspan<T, LayoutPolicyA> a, dofspan<T, LayoutPolicyB> b) -> void {
+        using index_type = decltype(a)::index_type;
+        for(index_type idof = 0; idof < a.ndof(); ++idof){
+            for(index_type iv = 0; iv < a.nv(); ++iv){
+                b[idof, iv] = a[idof, iv];
+            }
+        }
+    }
    
     /**
      * @brief BLAS-like add scaled version of one dofspan to another with the same layout policy 

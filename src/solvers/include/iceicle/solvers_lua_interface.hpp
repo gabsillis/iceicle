@@ -19,6 +19,7 @@
 #include <iceicle/pvd_writer.hpp>
 #include <iceicle/fe_function/restart.hpp>
 #include <iceicle/writer.hpp>
+#include <mpi_proto.h>
 #include <sol/sol.hpp>
 #include <utility>
 
@@ -281,12 +282,27 @@ namespace iceicle::solvers {
                     for(int i = 0; i < solver.res_data.size(); ++i){
                         sum += SQUARED(solver.res_data[i]);
                     }
+
+#ifdef ICEICLE_USE_MPI
+                    T sum_reduce;
+                    MPI_Allreduce(&sum, &sum_reduce, 1, mpi_get_type<T>(), MPI_SUM, MPI_COMM_WORLD);
+                    int myrank;
+                    MPI_Comm_rank(MPI_COMM_WORLD, &myrank);
+                    if(myrank == 0){
+                        std::cout << std::setprecision(8);
+                        std::cout << "itime: " << std::setw(6) << solver.itime 
+                            << " | t: " << std::setw(14) << solver.time
+                            << " | residual l2: " << std::setw(14) << std::sqrt(sum_reduce) 
+                            << std::endl;
+
+                    }
+#else
                     std::cout << std::setprecision(8);
                     std::cout << "itime: " << std::setw(6) << solver.itime 
                         << " | t: " << std::setw(14) << solver.time
                         << " | residual l2: " << std::setw(14) << std::sqrt(sum) 
                         << std::endl;
-
+#endif
                     if(writer) writer.write(solver.itime, solver.time);
                 };
                 // =====================
@@ -477,7 +493,17 @@ namespace iceicle::solvers {
                             };
 
                             T error = l2_error(exactfunc, fespace, u);
+#ifdef ICEICLE_USE_MPI
+                            T error_reduce;
+                            MPI_Allreduce(&error, &error_reduce, 1, mpi_get_type<T>(), MPI_SUM, MPI_COMM_WORLD);
+
+                            int myrank;
+                            MPI_Comm_rank(MPI_COMM_WORLD, &myrank);
+                            if(myrank == 0)
+                                std::cout << "L2 error: " << std::setprecision(12) << error_reduce << std::endl;
+#else
                             std::cout << "L2 error: " << std::setprecision(12) << error << std::endl;
+#endif
                         }
                     }
                 }
