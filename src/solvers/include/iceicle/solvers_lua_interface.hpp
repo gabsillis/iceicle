@@ -494,13 +494,14 @@ namespace iceicle::solvers {
 
                             T error = l2_error(exactfunc, fespace, u);
 #ifdef ICEICLE_USE_MPI
+                            error = error * error; // un-sqrt it before we sum :3
                             T error_reduce;
                             MPI_Allreduce(&error, &error_reduce, 1, mpi_get_type<T>(), MPI_SUM, MPI_COMM_WORLD);
 
                             int myrank;
                             MPI_Comm_rank(MPI_COMM_WORLD, &myrank);
                             if(myrank == 0)
-                                std::cout << "L2 error: " << std::setprecision(12) << error_reduce << std::endl;
+                                std::cout << "L2 error: " << std::setprecision(12) << std::sqrt(error_reduce) << std::endl;
 #else
                             std::cout << "L2 error: " << std::setprecision(12) << error << std::endl;
 #endif

@@ -114,6 +114,12 @@ public:
         // Termination Condiditon restrictions on dt 
         dt = stop_condition.limit_dt(dt, time);
 
+        // sync dt between processes
+#ifdef ICEICLE_USE_MPI 
+        T dt_individual = dt;
+        MPI_Allreduce(&dt_individual, &dt, 1, mpi_get_type<T>(), MPI_MAX, MPI_COMM_WORLD);
+#endif
+
         // create view of the residual using the same Layout as u 
         fespan res{res_data.data(), u.get_layout()};
 
