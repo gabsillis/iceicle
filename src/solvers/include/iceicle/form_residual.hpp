@@ -135,10 +135,6 @@ namespace iceicle::solvers {
 
             if(trace.face->bctype == BOUNDARY_CONDITIONS::PARALLEL_COM) {
 
-                auto resL_layout = res.create_element_layout(trace.elL.elidx);
-                dofspan resL{resL_data, resL_layout};
-                auto resR_layout = res.create_element_layout(trace.elR.elidx);
-                dofspan resR{resR_data, resR_layout};
 
                 auto [jrank, imleft] = decode_mpi_bcflag(trace.face->bcflag);
                 if(imleft){
@@ -147,6 +143,11 @@ namespace iceicle::solvers {
                     dofspan uL{uL_data, uL_layout};
                     compact_layout_right<IDX, disc_class::nv_comp> uR_layout{trace.elR};
                     dofspan uR{interprocess_u[jrank][trace.face->elemR], uR_layout};
+
+                    auto resL_layout = res.create_element_layout(trace.elL.elidx);
+                    dofspan resL{resL_data, resL_layout};
+                    compact_layout_right<IDX, disc_class::nv_comp> resR_layout{trace.elR};
+                    dofspan resR{resR_data, resR_layout};
 
                     // extract the compact values from the global u view
                     extract_elspan(trace.elL.elidx, u, uL);
@@ -163,6 +164,12 @@ namespace iceicle::solvers {
                     dofspan uL{interprocess_u[jrank][trace.face->elemL], uL_layout};
                     auto uR_layout = u.create_element_layout(trace.elR.elidx);
                     dofspan uR{uR_data, uR_layout};
+
+
+                    compact_layout_right<IDX, disc_class::nv_comp> resL_layout{trace.elL};
+                    dofspan resL{resL_data, resL_layout};
+                    auto resR_layout = u.create_element_layout(trace.elR.elidx);
+                    dofspan resR{resR_data, resR_layout};
 
                     // extract the compact values from the global u view
                     extract_elspan(trace.elR.elidx, u, uR);

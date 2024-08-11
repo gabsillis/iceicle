@@ -1,6 +1,6 @@
 local fourier_nr = 0.0001
 
-local nelem_arg = 200
+local nelem_arg = 20
 local mu = 1.0
 local tfinal = 1.0
 

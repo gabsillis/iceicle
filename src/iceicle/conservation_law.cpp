@@ -17,6 +17,7 @@
 #include "iceicle/disc/bc_lua_interface.hpp"
 #include "iceicle/mesh/mesh_partition.hpp"
 #include "iceicle/disc/navier_stokes.hpp"
+#include "iceicle/iceicle_mpi_utils.hpp"
 #ifdef ICEICLE_USE_PETSC 
 #include "iceicle/petsc_newton.hpp"
 #elifdef ICEICLE_USE_MPI
@@ -111,9 +112,12 @@ void initialize_and_solve(
     // =========
     IDX ncycles = config_tbl.get_or("ncycles", 1);
     for(IDX icycle = 0; icycle < ncycles; ++icycle) {
-        std::cout << "==============" << std::endl;
-        std::cout << "Cycle: " << icycle << std::endl;
-        std::cout << "==============" << std::endl;
+
+        mpi::execute_on_rank(0, [&]{
+            std::cout << "==============" << std::endl;
+            std::cout << "Cycle: " << icycle << std::endl;
+            std::cout << "==============" << std::endl;
+        });
         auto geo_map = solvers::lua_select_mdg_geometry(config_tbl, fespace, conservation_law, icycle, u);
         solvers::lua_solve(config_tbl, fespace, geo_map, conservation_law, u);
     }
