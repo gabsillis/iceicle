@@ -422,10 +422,15 @@ namespace iceicle {
                 int rank_l = el_partition[iel];
 
                 if(rank_l == 0) {
+
+                    // create a list of local nodes
+                    std::vector<IDX> local_face_nodes(face.n_nodes());
+                    for(int inode = 0; inode < face.n_nodes(); ++inode)
+                        local_face_nodes[inode] = inv_gnode_idxs[face.nodes()[inode]];
                     // face is local
                     auto face_opt = make_face<T, IDX, ndim>(
                         face.domain_type(), face.geometry_order(), inv_gel_idxs[iel], 0,
-                        std::span{face.nodes(), (std::size_t) face.n_nodes()}, 
+                        local_face_nodes, 
                         face.face_nr_l(), face.face_nr_r(), face.orientation_r(),
                         face.bctype, face.bcflag
                     );
