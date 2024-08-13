@@ -420,7 +420,7 @@ namespace iceicle::solvers {
                                 IDX geo_dof = geo_layout.geo_map.inv_selected_nodes[inode];
                                 if(geo_dof != nodes_size){
                                     for(int iv = 0; iv < geo_layout.nv(geo_dof); ++iv){
-                                        lambda_view[u_layout.size() + geo_layout[geo_dof, iv]] += lambda_lag / detJ;
+                                        lambda_view[u_layout.size() + geo_layout[geo_dof, iv]] += lambda_lag / (detJ * detJ);
                                     }
                                 }
                             }

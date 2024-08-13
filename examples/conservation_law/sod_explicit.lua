@@ -6,7 +6,7 @@ return {
 
 	-- create a uniform mesh
 	uniform_mesh = {
-		nelem = { 100 },
+		nelem = { 1000 },
 		bounding_box = {
 			min = { 0.0 },
 			max = { 1.0 },
@@ -39,7 +39,7 @@ return {
 		quadrature = "gauss",
 
 		-- the basis function order
-		order = 2,
+		order = 1,
 	},
 
 	-- describe the conservation law

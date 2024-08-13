@@ -20,6 +20,9 @@ Indices and tables
 
 * :ref:`genindex`
 * :ref:`search`
+* :ref:`Introduction`
+* :ref:`Lua Interface`
+* :ref:`API`
 
 Introduction
 ============
@@ -685,6 +688,8 @@ The geometry degrees of freedom are all the nodes in the selected traces paramet
 Boundary IC
 -----------
 
+Note: these are currently not implemented
+
 The interface conservation (IC) on the boundary requires some special care. 
 Dirichlet-type boundary conditions will draw the exterior state from the Dirichlet boundary condition, 
 thus creating a left and right state at the evaluation point on the trace to get the IC residual.
@@ -694,4 +699,141 @@ conservation for convective fluxes is automatically satisfied.
 Neumann type boundary conditions, however, may still have a jump in gradient, so the IC evaluation will 
 need to treat the diffusive terms separately.
 
+Numerical Studies
+=================
+
+Some numerical studies are presented to show investigation into MDG-ICE and validate the implementation of ICEicle.
+
+=========================
+1D Boundary Layer Problem
+=========================
+
+This is the first test problem presented in Kercher et al. [Kercher2021]_. 
+This steady-state linear advection-diffsuion problem mimics a boundary layer by creating a large solution gradient near the 
+boundary. 
+Underresolving this flow feature will result in oscillations with high order DG approximations.
+The model equation is:
+
+.. math::
+
+   &a\frac{\partial u}{\partial x} -\mu \frac{\partial^2 u}{\partial x^2} = 0 \quad x\in (0, 1) \\
+   &u(0) = 0 \\
+   &u(1) = 1
+
+The Peclet number :math:`\text{Pe} = \frac{al}{\mu}` nondimensionalizes the equation. The tests are run with a Peclet number of 100. The exact solution is:
+
+.. math::
+
+   u(x) = \frac{1 - \text{exp}(x\cdot\text{Pe})}{1 - \text{exp}(\text{Pe})}
+
+A current best result with DGP2 solution approximation and P1 geometry can be achieved with the following input file:
+
+.. code-block:: lua 
+   :linenos:
+
+   local mu_arg = 0.01
+   local v_arg = 1.0
+   local l = 1.0
+   local Pe = v_arg / mu_arg / l
+
+   return {
+      -- specify the number of dimensions (REQUIRED)
+      ndim = 1,
+
+      -- create a uniform mesh
+      uniform_mesh = {
+         nelem = { 10 },
+         bounding_box = {
+               min = { 0.0 },
+               max = { l },
+         },
+         -- set boundary conditions
+         boundary_conditions = {
+               -- the boundary condition types
+               -- in order of direction and side
+               types = {
+                  "dirichlet", -- left side
+                  "dirichlet", -- right side
+               },
+
+               -- the boundary condition flags
+               -- used to identify user defined state
+               flags = {
+                  0, -- left
+                  1, -- right
+               },
+         },
+         geometry_order = 1,
+      },
+
+      -- define the finite element domain
+      fespace = {
+         -- the basis function type (optional: default = lagrange)
+         basis = "lagrange",
+
+         -- the quadrature type (optional: default = gauss)
+         quadrature = "gauss",
+
+         -- the basis function order
+         order = 2,
+      },
+
+      -- describe the conservation law
+      conservation_law = {
+         -- the name of the conservation law being solved
+         name = "burgers",
+         mu = 0.01,
+         a_adv = { 1.0 },
+         b_adv = { 0.0 },
+      },
+
+      -- initial condition
+      initial_condition = function(x)
+         return (1 - math.exp(x * Pe)) / (1 - math.exp(Pe))
+      end,
+
+      -- boundary conditions
+      boundary_conditions = {
+         dirichlet = {
+               0.0,
+               1.0,
+         },
+      },
+
+      -- MDG
+      mdg = {
+         ncycles = 1,
+         ic_selection_threshold = function(icycle)
+               return 0.0
+         end,
+      },
+
+      -- solver
+      solver = {
+         type = "gauss-newton",
+         form_subproblem_mat = true,
+         linesearch = {
+               type = "corrigan",
+         },
+         lambda_b = 1e-8,
+         lambda_lag = 0.1,
+         lambda_u = 1e-20,
+         ivis = 10000,
+         tau_abs = 1e-10,
+         tau_rel = 0,
+         kmax = 5000000,
+      },
+
+      -- output
+      output = {
+         writer = "dat",
+      },
+   }
+
+.. image:: _static/dgp2_mdg_1d_bl.png
+
+
+References
+==========
+.. [Kercher2021] Kercher, A. D., Corrigan, A., & Kessler, D. A. (2021). The moving discontinuous Galerkin finite element method with interface condition enforcement for compressible viscous flows. International Journal for Numerical Methods in Fluids, 93(5), 1490-1519.
 
