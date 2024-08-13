@@ -200,7 +200,7 @@ FESpace
 
 .. note::
    This order must be between 0 and MAX_POLYNOMIAL_ORDER (see ``build_config.hpp``) 
-   because the polynomials use integer templates for the order provide optimization opportunities
+   because the polynomials use integer templates for the order to provide optimization opportunities
 
 ================
 Conservation Law
@@ -220,6 +220,12 @@ and some physical parameters.
 
       :math:`\frac{\partial u}{\partial t} + \frac{\partial (a_j u + b_j u^2)}{\partial x_j} = \mu\frac{\partial^2 u}{\partial x^2}`
 
+   * ``euler`` the inviscid Euler equations
+
+     :math:`\frac{\partial \mathbf{U}}{\partial t} + \frac{\partial \mathbf{F}_j(\mathbf{U})}{\partial x_j} = 0`
+
+     :math:`\mathbf{U} = \begin{pmatrix} \rho \\ \rho u_i \\ \rho E \end{pmatrix}, \quad \mathbf{F}_j(\mathbf{U}) = \begin{pmatrix} \rho u_j \\ \rho u_i u_j + p \delta_{ij} \\ u_j(\rho E + p) \end{pmatrix}`
+
 * ``mu`` The viscosity coefficient for burgers equation
 
 * ``a_adv`` a table the size of the number of **spatial** dimensions for the linear advection term :math:`a_j` in burgers equation
@@ -227,7 +233,7 @@ and some physical parameters.
 * ``b_adv`` a table the size of the number of **spatial** dimensions for the nonlinear advection term :math:`b_j` in burgers equation
 
 .. note::
-   The Spacetime burgers equation will have ``ndim-1`` elements because of the one time dimension.
+   The Spacetime burgers equation will have ``ndim-1`` fields because of the one time dimension.
 
 =================
 Initial Condition
@@ -623,7 +629,7 @@ Solvers
 Gauss-Newton
 ------------
 
-:cpp:class:`iceicle::solvers::corrigan_lm` is a nonlinear optimization solver. 
+:cpp:class:`iceicle::solvers::CorriganLM` is a nonlinear optimization solver. 
 This uses a regularized version of the Gauss-Newton method (can be seen as a hybrid between Gauss-Newton and Levenberg-Marquardt) 
 with linesearch.
 In each nonlinear iteration, it solves the following subproblem:
@@ -659,7 +665,7 @@ API References
 
 .. doxygenfunction:: iceicle::compute_st_node_connectivity
 
-.. doxygenclass:: iceicle::solvers::GaussNewtonPetsc
+.. doxygenclass:: iceicle::solvers::CorriganLM
    :members:
 
 ==================================================================

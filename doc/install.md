@@ -9,6 +9,9 @@ make -j
 ```
 
 ## Third Party Library Options
+
+Third Party Libraries can be included in the build process by applying the corresponding cmake flag: `cmake -D<flag-name> ..`
+
 ### PETSc
 `ICEICLE_USE_PETSC` : Interface ICEicle with PETSc - a library for linear and nonlinear sparse solvers on distributed memory platforms. Currently integrated features include:
 - Finite Difference construction of Jacobians in a PETSc `Mat`
@@ -28,18 +31,15 @@ dnf install lua-devel
 
 The sol2 dependency is resolved through a FetchContent call
 
-## Miniapps
-Similar to MFEM several mini-apps provide standalone functionality and are built upon the ICEicle library. These mini-apps are built when all of their third party library dependencies are met.
+### METIS
+`ICEICLE_USE_METIS` : enable mesh partitioning with METIS. The library is automatically installed through the FetchContent system from the petsc bitbucket fork.
 
-### Heat Equation Miniapp
-This mini-app solves the heat equation in 2D.
-$$
-\begin{split}
-\Delta u = 0 \quad \text{in } \Omega  \\
-\nabla u \cdot \mathbf{n} = g_N \quad \text{on } \Gamma_N \\
-u = g_D \quad \text{on } \Gamma_D
-\end{split}
-$$
+## Miniapps
+Similar to MFEM, several mini-apps provide standalone functionality and are built upon the ICEicle library. These mini-apps are built when all of their third party library dependencies are met.
+
+### Conservation Law Miniapp
+This mini-app solves the specified conservation law
+
 The mesh, initial conditions, and boundary conditions are configurable in a lua input_deck. The default input deck is `iceicle.lua` in the directory that the executable is run from. This filename can be customized by the command line argument `--scriptfile=<filename>` or `--scriptfile <filename>`.
 #### Dependencies 
 - `ICEICLE_USE_LUA` : Required
@@ -49,14 +49,14 @@ The mesh, initial conditions, and boundary conditions are configurable in a lua 
 Build ICEicle with Lua and Petsc 
 ```bash
 cd build 
-cmake -DICEICLE_USE_LUA -DICEICLE_USE_PETSC ..
+cmake -DICEICLE_USE_LUA=ON -DICEICLE_USE_PETSC=ON ..
 make -j
 ```
 Navigate to the heat equation example directory and run the 2D example case.
 ```bash
 cd <project top directory>
-cd examples/heat_equation
-../../build/bin/heat_eqn_miniapp
+cd examples/conservation_law
+../../build/bin/conservation_law
 ```
 VTU output is generated in the `iceicle_data` directory and can  be viewed with Paraview or other visualization software. 
 Petsc arguments such as the preconditioner (`-pc_type`) can be passed on the command line as usual.

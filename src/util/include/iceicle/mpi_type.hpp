@@ -1,9 +1,9 @@
 /**
- * \file     mpi_type.hpp
- * \author 2b-t (https://github.com/2b-t)
- * \brief    Function for automatically determining MPI data type to a constexpr
+ * @file     mpi_type.hpp
+ * @author 2b-t (https://github.com/2b-t)
+ * @brief    Function for automatically determining MPI data type to a constexpr
  *           from https://gist.github.com/2b-t/50d85115db8b12ed263f8231abf07fa2
- * \mainpage Contains a template function that helps determining the corresponding MPI message data type
+ * Contains a template function that helps determining the corresponding MPI message data type
  *           that can be found on \ref https://www.mpich.org/static/docs/latest/www3/Constants.html
  *           to a constexpr. This way the code may already be simplified at compile time.
 */
