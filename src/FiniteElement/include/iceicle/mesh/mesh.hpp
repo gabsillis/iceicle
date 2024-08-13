@@ -9,6 +9,7 @@
 #include "iceicle/anomaly_log.hpp"
 #include "iceicle/build_config.hpp"
 #include "iceicle/geometry/hypercube_face.hpp"
+#include "iceicle/iceicle_mpi_utils.hpp"
 #include "iceicle/tmp_utils.hpp"
 #include <iceicle/geometry/face.hpp>
 #include <iceicle/geometry/geo_element.hpp>
@@ -160,7 +161,8 @@ namespace iceicle {
         /** @brief construct an empty mesh */
         AbstractMesh() 
         : nodes{}, elements{}, faces{}, interiorFaceStart(0), interiorFaceEnd(0), 
-          bdyFaceStart(0), bdyFaceEnd(0) {}
+          bdyFaceStart(0), bdyFaceEnd(0), el_send_list(mpi::mpi_world_size()), 
+          el_recv_list(mpi::mpi_world_size()), communicated_elements(mpi::mpi_world_size()){}
 
         AbstractMesh(const AbstractMesh<T, IDX, ndim>& other) 
         : nodes{other.nodes}, elements{}, faces{},
@@ -279,7 +281,9 @@ namespace iceicle {
             std::same_as<std::ranges::range_value_t<R_bctype>, BOUNDARY_CONDITIONS> &&
             std::convertible_to<std::ranges::range_value_t<R_bcflags>, int>
 
-        ) : nodes{}, elements{}, faces{} {
+        ) : nodes{}, elements{}, faces{}, el_send_list(mpi::mpi_world_size()), 
+          el_recv_list(mpi::mpi_world_size()), communicated_elements(mpi::mpi_world_size()) 
+        {
             using namespace NUMTOOL::TENSOR::FIXED_SIZE;
 
             // determine the number of nodes to generate

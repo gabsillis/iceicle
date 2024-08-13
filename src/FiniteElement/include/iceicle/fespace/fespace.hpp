@@ -21,8 +21,11 @@
 #include <iceicle/tmp_utils.hpp>
 #include <Numtool/tmp_flow_control.hpp>
 #include <map>
-#include <mpi.h>
 #include <type_traits>
+
+#ifdef ICEICLE_USE_MPI 
+#include <mpi.h>
+#endif
 
 namespace iceicle {
     /**

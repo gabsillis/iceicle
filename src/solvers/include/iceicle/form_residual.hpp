@@ -5,6 +5,7 @@
  */
 
 #pragma once 
+#include "iceicle/anomaly_log.hpp"
 #include "iceicle/element/finite_element.hpp"
 #include "iceicle/fe_function/fespan.hpp"
 #include "iceicle/fe_function/geo_layouts.hpp"
@@ -14,9 +15,12 @@
 #include "iceicle/fespace/fespace.hpp"
 #include "iceicle/geometry/face.hpp"
 #include "iceicle/tmp_utils.hpp"
+#include <type_traits>
+
+#ifdef ICEICLE_USE_MPI
 #include "iceicle/mpi_type.hpp"
 #include <mpi.h>
-#include <type_traits>
+#endif
 
 namespace iceicle::solvers {
 
@@ -135,7 +139,7 @@ namespace iceicle::solvers {
 
             if(trace.face->bctype == BOUNDARY_CONDITIONS::PARALLEL_COM) {
 
-
+#ifdef ICEICLE_USE_MPI
                 auto [jrank, imleft] = decode_mpi_bcflag(trace.face->bcflag);
                 if(imleft){
                     // set up compact data layouts
@@ -182,7 +186,9 @@ namespace iceicle::solvers {
                     // scatter only the right
                     scatter_elspan(trace.elR.elidx, 1.0, resR, 1.0, res);
                 }
-
+#else 
+                util::AnomalyLog::log_anomaly(util::Anomaly{"Built without mpi, parallel communication boundary condition will not work", util::general_anomaly_tag{}});
+#endif
 
             } else {
                 // set up compact data views

@@ -35,6 +35,7 @@ include(GoogleTest)
 
 # === Unit Tests for the Finite Element Library ===
 set(FELIB_TEST_SOURCES
+    test_felib_main.cpp
     test_polytope.cpp
     test_face_utils.cpp
     TestTraceSpace.cpp

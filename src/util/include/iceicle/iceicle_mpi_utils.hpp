@@ -2,8 +2,8 @@
 #pragma once
 #ifdef ICEICLE_USE_MPI
 #include <mpi.h>
-#include <utility>
 #endif
+#include <utility>
 namespace iceicle {
     namespace mpi {
 
@@ -11,13 +11,12 @@ namespace iceicle {
         template<class F, class... ArgsT>
         inline constexpr
         auto execute_on_rank(int irank, const F& fcn, ArgsT&&... args) -> void {
+#ifdef ICEICLE_USE_MPI
             int myrank;
             MPI_Comm_rank(MPI_COMM_WORLD, &myrank);
             if(myrank == irank){
                 fcn(std::forward<ArgsT>(args)...);
             }
-#ifdef ICEICLE_USE_MPI
-
 #else 
             fcn(std::forward<ArgsT>(args)...);
 #endif

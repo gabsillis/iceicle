@@ -788,11 +788,12 @@ namespace iceicle {
 #endif // ICEICLE_USE_MPI
 
 #else // No metis 
-    
-    template<class T, class IDX, int ndim>
-    auto partition_mesh(AbstractMesh<T, IDX, ndim>& mesh) 
-    -> AbstractMesh<T, IDX, ndim>
-{
-    return mesh;
-}
+    namespace iceicle {
+        template<class T, class IDX, int ndim>
+        auto partition_mesh(const AbstractMesh<T, IDX, ndim>& mesh) 
+        -> const AbstractMesh<T, IDX, ndim>&
+        {
+            return mesh;
+        }
+    } 
 #endif
