@@ -1,18 +1,13 @@
-local mu_arg = 0.01
-local v_arg = 1.0
-local l = 1.0
-local Pe = v_arg / mu_arg / l
-
 return {
 	-- specify the number of dimensions (REQUIRED)
 	ndim = 1,
 
 	-- create a uniform mesh
 	uniform_mesh = {
-		nelem = { 16 },
+		nelem = { 50 },
 		bounding_box = {
 			min = { 0.0 },
-			max = { l },
+			max = { 1.0 },
 		},
 		-- set boundary conditions
 		boundary_conditions = {
@@ -36,59 +31,44 @@ return {
 	-- define the finite element domain
 	fespace = {
 		-- the basis function type (optional: default = lagrange)
-		basis = "lagrange",
+		basis = "legendre",
 
 		-- the quadrature type (optional: default = gauss)
 		quadrature = "gauss",
 
 		-- the basis function order
-		order = 2,
+		order = 0,
 	},
 
 	-- describe the conservation law
 	conservation_law = {
 		-- the name of the conservation law being solved
-		name = "burgers",
-		mu = 0.01,
-		a_adv = { 1.0 },
-		b_adv = { 0.0 },
+		name = "euler",
 	},
 
 	-- initial condition
 	initial_condition = function(x)
-		return (1 - math.exp(x * Pe)) / (1 - math.exp(Pe))
+		if x < 0.5 then
+			return { 1.0, 3.5, 1.0 }
+		else
+			return { 1.0, 3.5, 1.0 }
+		end
 	end,
 
 	-- boundary conditions
 	boundary_conditions = {
 		dirichlet = {
-			0.0,
-			1.0,
+			{ 1.0, 3.5, 1.0 },
+			{ 1.0, 3.5, 1.0 },
 		},
-	},
-
-	-- MDG
-	mdg = {
-		ncycles = 1,
-		ic_selection_threshold = function(icycle)
-			return 0.0
-		end,
 	},
 
 	-- solver
 	solver = {
-		type = "gauss-newton",
-		form_subproblem_mat = true,
-		linesearch = {
-			type = "none",
-		},
-		lambda_b = 1e-3,
-		lambda_lag = 2.0,
-		lambda_u = 1e-20,
-		ivis = 1000,
-		tau_abs = 1e-10,
-		tau_rel = 0,
-		kmax = 400000,
+		type = "rk3-tvd",
+		dt = 0.00001,
+		tfinal = 0.2,
+		ivis = 10,
 	},
 
 	-- output

@@ -15,6 +15,7 @@
 #include <iceicle/anomaly_log.hpp>
 #include <iceicle/algo.hpp>
 #include <algorithm>
+#include <optional>
 #include <utility>
 
 namespace iceicle {
@@ -118,7 +119,6 @@ namespace iceicle {
     /// @param bctype the boundary condition type 
     /// @param bcflag the integer falg for the boundary condition
     /// @return a pointer to the created face if applicable
-    /// NOTE: if a face is created, deletion of the face is the caller's responsibility
     template<class T, class IDX, int ndim>
     [[nodiscard]] inline constexpr 
     auto make_face(
@@ -170,6 +170,67 @@ namespace iceicle {
             }
         } else {
             return std::nullopt;
+        }
+    }
+
+    // @brief make a face given all of the information to generate a face 
+    // @param domain_type the face domain type 
+    // @param geo_order the polynomial order of geometry 
+    // @param elemL the index of the left element 
+    // @param elemR the index of the right element 
+    // @param nodes the indices of the nodes in the face 
+    // @param face_nr_l face number for the left element 
+    // @param face_nr_r the face number for the right element 
+    // @param orient_r the orientation of the right face 
+    // @param bctype the boundary condition type 
+    // @param bcflag the boundary condition flag
+    template<class T, class IDX, int ndim>
+    [[nodiscard]] inline constexpr 
+    auto make_face(
+        DOMAIN_TYPE domain_type,
+        int geo_order,
+        IDX elemL,
+        IDX elemR,
+        std::span<const IDX> nodes,
+        int face_nr_l,
+        int face_nr_r,
+        int orient_r,
+        BOUNDARY_CONDITIONS bctype = BOUNDARY_CONDITIONS::INTERIOR,
+        int bcflag = 0
+    ) noexcept -> std::optional< std::unique_ptr< Face<T, IDX, ndim> > > 
+    {
+        using namespace NUMTOOL::TMP;
+
+        // check validity of elements 
+        if(elemL < 0){
+            return std::nullopt;
+        } if(bctype == BOUNDARY_CONDITIONS::INTERIOR && elemR < 0){
+            return std::nullopt;
+        }
+
+        // check validity of nodes 
+        for(IDX node : nodes)
+            if(node < 0) return std::nullopt;
+
+        switch(domain_type){
+            case DOMAIN_TYPE::HYPERCUBE:
+            {
+                static constexpr int geo_pn_last = build_config::FESPACE_BUILD_GEO_PN + 1;
+                return invoke_at_index<int, 0, geo_pn_last>(
+                    geo_order,
+                    [&]<int geo_pn> -> std::optional< std::unique_ptr< Face<T, IDX, ndim> > >{
+                        using FaceType = HypercubeFace<T, IDX, ndim, geo_pn>;
+                        using NodeArray_t = NUMTOOL::TENSOR::FIXED_SIZE::Tensor<IDX, FaceType::trans.n_nodes>;
+                        NodeArray_t node_array{};
+                        std::ranges::copy(nodes, node_array.begin());
+                        return std::optional{std::make_unique<FaceType>(elemL, elemR, node_array, face_nr_l, face_nr_r,
+                            orient_r, bctype, bcflag)};
+                    }
+                );
+            }
+            break;
+            default:
+                return std::nullopt;
         }
     }
 

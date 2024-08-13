@@ -114,6 +114,12 @@ public:
         // Termination Condiditon restrictions on dt 
         dt = stop_condition.limit_dt(dt, time);
 
+        // sync dt between processes
+#ifdef ICEICLE_USE_MPI 
+        T dt_individual = dt;
+        MPI_Allreduce(&dt_individual, &dt, 1, mpi_get_type<T>(), MPI_MAX, MPI_COMM_WORLD);
+#endif
+
         // create view of the residual using the same Layout as u 
         fespan res{res_data.data(), u.get_layout()};
 
@@ -202,6 +208,15 @@ public:
     template<int ndim, class disc_class, class LayoutPolicy, class uAccessorPolicy>
     void solve(FESpace<T, IDX, ndim> &fespace, disc_class &disc, fespan<T, LayoutPolicy, uAccessorPolicy> u) {
 
+        // call initial residual to get initial wavespeeds for dt 
+        {
+            // create view of the residual using the same Layout as u 
+            fespan res{res_data.data(), u.get_layout()};
+
+            // get the rhs
+            form_residual(fespace, disc, u, res);
+        }
+
         // visualization callback on initial state (0 % anything == 0) 
         vis_callback(*this);
 
@@ -212,6 +227,9 @@ public:
                 vis_callback(*this);
             }
         }
+
+        // output the final timestep
+        vis_callback(*this);
     }
 };
 

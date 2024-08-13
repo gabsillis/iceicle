@@ -14,6 +14,10 @@
 #include <string_view>
 #include <memory>
 
+#ifdef ICEICLE_USE_MPI
+    #include <mpi.h>
+#endif
+
 namespace iceicle {
     
     enum class BOUNDARY_CONDITIONS : int {
@@ -134,6 +138,45 @@ namespace iceicle {
         }
 
         return BOUNDARY_CONDITIONS::INTERIOR;
+    }
+
+    /// @brief encode a boundary condition flag for an interprocess face 
+    /// in a way that is unique for each given rank + imleft combination
+    /// @param mpi_rank the rank of the neighboring process on the face
+    /// @param imleft whether this process has the left element or not
+    /// @return unique encoded integer for rank and imleft
+    inline auto encode_mpi_bcflag(int mpi_rank, bool imleft) -> int 
+    {
+        if(imleft)
+            return mpi_rank;
+        else 
+#ifdef ICEICLE_USE_MPI
+        {
+            int nrank;
+            MPI_Comm_size(MPI_COMM_WORLD, &nrank);
+            return mpi_rank + nrank;
+        }
+#else 
+            return mpi_rank;
+#endif
+    }
+
+    /// @brief decode a boundary condition flag for an interprocess face 
+    /// in a way that is unique for each given rank + imleft combination
+    /// @param bcflag the encoded flag
+    /// @return the rank of the neighboring proceess and whether this process has the left element
+    inline auto decode_mpi_bcflag(int bcflag) -> std::pair<int, bool> {
+#ifdef ICEICLE_USE_MPI
+        int nrank;
+        MPI_Comm_size(MPI_COMM_WORLD, &nrank);
+        if(bcflag < nrank){
+            return std::pair{bcflag, true};
+        } else {
+            return std::pair{bcflag - nrank, false};
+        }
+#else 
+        return std::pair{bcflag, true};
+#endif
     }
 
     /// face_info / this gives the face number 

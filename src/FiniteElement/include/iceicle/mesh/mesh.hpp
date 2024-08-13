@@ -6,11 +6,16 @@
  */
 #pragma once
 #include "Numtool/fixed_size_tensor.hpp"
+#include "iceicle/anomaly_log.hpp"
+#include "iceicle/build_config.hpp"
 #include "iceicle/geometry/hypercube_face.hpp"
+#include "iceicle/iceicle_mpi_utils.hpp"
 #include "iceicle/tmp_utils.hpp"
 #include <iceicle/geometry/face.hpp>
 #include <iceicle/geometry/geo_element.hpp>
 #include <iceicle/geometry/hypercube_element.hpp>
+#include <iceicle/crs.hpp>
+#include <optional>
 #include <ostream>
 #include <ranges>
 #include <type_traits>
@@ -19,6 +24,81 @@
 #include <iomanip>
 #endif
 namespace iceicle {
+
+    /// @brief generate the node connectivity matrix in crs format from the element list
+    /// elsup -> elements surrounding points
+    /// @param element_list 
+    template<class T, class IDX, int ndim>
+    constexpr
+    auto to_elsup(const std::span< const std::unique_ptr< GeometricElement<T, IDX, ndim> > > element_list)
+    -> util::crs<IDX, IDX>
+    {
+        std::vector<IDX> cols{};
+        cols.reserve(element_list.size() + 1);
+        IDX icol = 0;
+        cols.push_back(icol);
+        for(const auto& el : element_list){
+            icol += el->n_nodes();
+            cols.push_back(icol);
+        }
+        return util::crs<IDX, IDX>{cols};
+    }
+
+    /// @brief generate the element connectivity matrix from the face list 
+    /// elsuel -> elements surrounding elements 
+    /// @param face_list the list of faces 
+    /// @param nelem - the number of elements
+    /// @return the connectivity of elements to elements
+    template<class T, class IDX, int ndim>
+    constexpr
+    auto to_elsuel(IDX nelem, const std::span< const std::unique_ptr< Face<T, IDX, ndim> > >& face_list)
+    -> util::crs<IDX> 
+    {
+        std::vector<std::vector<IDX>> elsuel_dynamic(nelem, std::vector<IDX>{});
+
+        for(const auto& face : face_list){
+            IDX elemL = face->elemL;
+            IDX elemR = face->elemR;
+            if(elemR != -1){
+                elsuel_dynamic[elemL].push_back(elemR);  
+                elsuel_dynamic[elemR].push_back(elemL);  
+            }
+        }
+        return util::crs{elsuel_dynamic};
+    }
+
+    template<class T, class IDX, int ndim>
+    constexpr
+    auto create_element(DOMAIN_TYPE domain, int geo_order, std::span<IDX> nodes)
+    -> std::optional< std::unique_ptr<GeometricElement<T, IDX, ndim>> >
+    {
+        // validate nodes 
+        for(IDX node : nodes)
+            if(node < 0) return std::nullopt;
+
+        switch(domain){
+            case DOMAIN_TYPE::HYPERCUBE:
+                {
+                    return NUMTOOL::TMP::invoke_at_index(
+                        NUMTOOL::TMP::make_range_sequence<int, 1, build_config::FESPACE_BUILD_GEO_PN>{},
+                        geo_order,
+                        [&]<int order> -> std::optional< std::unique_ptr< GeometricElement<T, IDX, ndim> > >{
+                            HypercubeElement<T, IDX, ndim, order> el{};
+                            for(int inode = 0; inode < el.n_nodes(); ++inode){
+                                el.setNode(inode, nodes[inode]);
+                            }
+                            return std::optional{std::make_unique<HypercubeElement<T, IDX, ndim, order>>(el)};
+                        }
+                    );
+                }
+                break;
+
+            default:
+                return std::nullopt;
+                break;
+        }
+    }
+
 
     /**
      * @brief Abstract class that defines a mesh
@@ -62,6 +142,16 @@ namespace iceicle {
         /// index of one past the end of the boundary faces
         IDX bdyFaceEnd;
 
+        /// For each process i store a list of (this-local) element indices 
+        /// that need to be sent 
+        std::vector<std::vector<IDX>> el_send_list;
+
+        /// For each process i store a list of (i-local) element indices 
+        /// that need to be recieved
+        std::vector<std::vector<IDX>> el_recv_list;
+
+        std::vector< std::vector< std::unique_ptr<Element> > > communicated_elements;
+
         inline IDX nelem() { return elements.size(); }
 
         // ===============
@@ -71,12 +161,14 @@ namespace iceicle {
         /** @brief construct an empty mesh */
         AbstractMesh() 
         : nodes{}, elements{}, faces{}, interiorFaceStart(0), interiorFaceEnd(0), 
-          bdyFaceStart(0), bdyFaceEnd(0) {}
+          bdyFaceStart(0), bdyFaceEnd(0), el_send_list(mpi::mpi_world_size()), 
+          el_recv_list(mpi::mpi_world_size()), communicated_elements(mpi::mpi_world_size()){}
 
         AbstractMesh(const AbstractMesh<T, IDX, ndim>& other) 
         : nodes{other.nodes}, elements{}, faces{},
           interiorFaceStart(other.interiorFaceStart), interiorFaceEnd(other.interiorFaceEnd),
-          bdyFaceStart(other.bdyFaceStart), bdyFaceEnd(other.bdyFaceEnd)
+          bdyFaceStart(other.bdyFaceStart), bdyFaceEnd(other.bdyFaceEnd), 
+          el_send_list(other.el_send_list), el_recv_list(other.el_recv_list)
         {
             elements.reserve(other.elements.size());
             faces.reserve(other.faces.size());
@@ -85,6 +177,13 @@ namespace iceicle {
             }
             for(auto& facptr : other.faces){
                 faces.push_back(std::move(facptr->clone()));
+            }
+
+            for(int irank = 0; irank < other.communicated_elements.size(); ++irank){
+                communicated_elements.push_back(std::vector< std::unique_ptr<Element> >{});
+                for(auto& elptr : other.communicated_elements[irank]){
+                    communicated_elements[irank].push_back(std::move(elptr->clone()));
+                }
             }
         }
 
@@ -105,7 +204,17 @@ namespace iceicle {
                 interiorFaceEnd = other.interiorFaceEnd;
                 bdyFaceStart = other.bdyFaceStart;
                 bdyFaceEnd = other.bdyFaceEnd;
+                el_send_list = other.el_send_list;
+                el_recv_list = other.el_recv_list;
+
+                for(int irank = 0; irank < other.communicated_elements.size(); ++irank){
+                    communicated_elements.push_back(std::vector< std::unique_ptr<Element> >{});
+                    for(auto& elptr : other.communicated_elements[irank]){
+                        communicated_elements[irank].push_back(std::move(elptr->clone()));
+                    }
+                }
             }
+            return *this;
         }
 
         AbstractMesh(std::size_t nnode) 
@@ -172,7 +281,9 @@ namespace iceicle {
             std::same_as<std::ranges::range_value_t<R_bctype>, BOUNDARY_CONDITIONS> &&
             std::convertible_to<std::ranges::range_value_t<R_bcflags>, int>
 
-        ) : nodes{}, elements{}, faces{} {
+        ) : nodes{}, elements{}, faces{}, el_send_list(mpi::mpi_world_size()), 
+          el_recv_list(mpi::mpi_world_size()), communicated_elements(mpi::mpi_world_size()) 
+        {
             using namespace NUMTOOL::TENSOR::FIXED_SIZE;
 
             // determine the number of nodes to generate
@@ -544,6 +655,15 @@ namespace iceicle {
         // ================
         // = Diagonostics =
         // ================
+        void printNodes(std::ostream &out){
+            for(IDX inode = 0; inode < nodes.size(); ++inode){
+                out << "Node: " << inode << " { ";
+                for(int idim = 0; idim < ndim; ++idim)
+                    out << nodes[inode][idim] << " ";
+                out << "}" << std::endl;
+            }
+        }
+
         void printElements(std::ostream &out){
             int iel = 0;
             for(auto &elptr : elements){
@@ -562,12 +682,6 @@ namespace iceicle {
             for(int ifac = interiorFaceStart; ifac < interiorFaceEnd; ++ifac){
                 face_t &fac = *(faces[ifac]);
                 out << "Face index: " << ifac << "\n";
-                if constexpr(ndim == 2){
-                    MATH::GEOMETRY::Point<T, 1> s = {0};
-                    Point normal;
-                    fac.getNormal(nodes, s, normal);
-                    out << "normal at s=0: (" <<  normal[0] << ", " << normal[1] << ")\n";
-                }
                 out << "Nodes: { ";
                 std::span<const IDX> nodeslist = fac.nodes_span();
                 for(int inode = 0; inode < fac.n_nodes(); ++inode){
@@ -576,6 +690,23 @@ namespace iceicle {
                 out << "}\n";
                 out << "ElemL: " << fac.elemL << " | ElemR: " << fac.elemR << "\n"; 
                 out << "FaceNrL: " << fac.face_infoL / FACE_INFO_MOD << " | FaceNrR: " << fac.face_infoR / FACE_INFO_MOD << "\n";
+                out << "bctype: " << bc_name(fac.bctype) << " | bcflag: " << fac.bcflag << std::endl;
+                out << "-------------------------\n";
+           }
+
+            out << "\nBoundary Faces\n";
+            for(int ifac = bdyFaceStart; ifac < bdyFaceEnd; ++ifac){
+                face_t &fac = *(faces[ifac]);
+                out << "Face index: " << ifac << "\n";
+                out << "Nodes: { ";
+                std::span<const IDX> nodeslist = fac.nodes_span();
+                for(int inode = 0; inode < fac.n_nodes(); ++inode){
+                    out << nodeslist[inode] << " ";
+                }
+                out << "}\n";
+                out << "ElemL: " << fac.elemL << " | ElemR: " << fac.elemR << "\n"; 
+                out << "FaceNrL: " << fac.face_infoL / FACE_INFO_MOD << " | FaceNrR: " << fac.face_infoR / FACE_INFO_MOD << "\n";
+                out << "bctype: " << bc_name(fac.bctype) << " | bcflag: " << fac.bcflag << std::endl;
                 out << "-------------------------\n";
            }
         }

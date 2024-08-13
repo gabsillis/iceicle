@@ -55,6 +55,7 @@ option(ICEICLE_USE_MFEM  "Enables MFEM as a third party library" OFF)
 option(ICEICLE_USE_OPENGL "Enables OpenGL visualization with imgui" OFF)
 option(ICEICLE_USE_MATPLOTPLUSPLUS "Enables matplotlib-cpp" OFF)
 option(ICEICLE_USE_VTK "Enables VTK third party functionality" OFF)
+option(ICEICLE_USE_METIS "Enables Metis for mesh partitioning" OFF)
 
 # ==================
 # = CMake includes =
@@ -113,6 +114,21 @@ else()
   if(ICEICLE_USE_PETSC)
     message(SEND_ERROR "ICEICLE_USE_PETSC requires MPI_FOUND")
   endif()
+endif()
+
+# === Third Party Library: Metis ===
+if(ICEICLE_USE_METIS)
+  FetchContent_Declare(
+    metis
+    GIT_REPOSITORY https://bitbucket.org/petsc/pkg-metis.git 
+    GIT_TAG master
+    GIT_PROGRESS TRUE
+  )
+  FetchContent_GetProperties(metis)
+  FetchContent_MakeAvailable(metis)
+  MESSAGE(metis_BINARY_DIR = "${metis_BINARY_DIR}")
+  # angery cmake noises
+  set(METIS_INCLUDE_DIR ${metis_BINARY_DIR}/include)
 endif()
 
 # === Third Party Library: Lua ===

@@ -406,15 +406,21 @@ namespace iceicle::solvers {
                             { lambda_view[i] = std::max(lambda_b, lambda_view[i] * lambda_b); }
 
                         for(auto el : fespace.elements){
-                            auto centroid_ref = el.geo_el->centroid_ref();
-                            auto J = el.geo_el->Jacobian(fespace.meshptr->nodes, centroid_ref);
-                            T detJ = std::max(1e-6, NUMTOOL::TENSOR::FIXED_SIZE::determinant(J));
+
+                            // get the minimum jacobian determinant of all quadrature points
+                            T detJ = 1.0;
+                            for(int igauss = 0; igauss < el.nQP(); ++igauss){
+                                auto J = el.geo_el->Jacobian(fespace.meshptr->nodes, el.getQP(igauss).abscisse);
+                                detJ = std::min(detJ, NUMTOOL::TENSOR::FIXED_SIZE::determinant(J));
+
+                            }
+                            detJ = std::max(1e-8, detJ);
                             IDX nodes_size = geo_layout.geo_map.selected_nodes.size();
                             for(auto inode : el.geo_el->nodes_span()){
                                 IDX geo_dof = geo_layout.geo_map.inv_selected_nodes[inode];
                                 if(geo_dof != nodes_size){
                                     for(int iv = 0; iv < geo_layout.nv(geo_dof); ++iv){
-                                        lambda_view[u_layout.size() + geo_layout[geo_dof, iv]] += lambda_lag / detJ;
+                                        lambda_view[u_layout.size() + geo_layout[geo_dof, iv]] += lambda_lag / (detJ * detJ);
                                     }
                                 }
                             }

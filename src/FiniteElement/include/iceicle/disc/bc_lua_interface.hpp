@@ -2,6 +2,7 @@
 /// @author Gianni Absillis (gabsill@ncsu.edu)
 
 #include "Numtool/tmp_flow_control.hpp"
+#include "iceicle/anomaly_log.hpp"
 #include <functional>
 #include <utility>
 #include <vector>
@@ -123,7 +124,27 @@ namespace iceicle {
                     continue;
                 }
 
-                // TODO: check for table of values and table of functions
+                // table of values or functions
+                sol::optional<sol::table> dirichlet_condition_table = dirichlet_tbl[itbl];
+                if(dirichlet_condition_table) {
+                    sol::table bc_per_eqn = dirichlet_condition_table.value();
+                    util::AnomalyLog::check(bc_per_eqn.size() == Disc_Type::nv_comp, 
+                            util::Anomaly{"Number of Dirichlet entries in the table doesn't match the number of equations", util::general_anomaly_tag{}});
+
+                    std::vector<value_type> values{};
+                    for(int jtbl = 1; jtbl <= bc_per_eqn.size(); ++jtbl){
+                        sol::optional<value_type> bcval = bc_per_eqn[jtbl];
+                        if(bcval) values.push_back(bcval.value());
+                    }
+
+                    auto func = [values](const value_type *xin, value_type *uout) -> void {
+                        std::copy(values.begin(), values.end(), uout);
+                    };
+                    disc.dirichlet_callbacks.push_back(func);
+
+                    // TODO: check if its a table of values or functions and implement table of functions
+                }
+
             }
         }
     }

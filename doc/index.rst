@@ -20,6 +20,9 @@ Indices and tables
 
 * :ref:`genindex`
 * :ref:`search`
+* :ref:`Introduction`
+* :ref:`Lua Interface`
+* :ref:`API`
 
 Introduction
 ============
@@ -197,7 +200,7 @@ FESpace
 
 .. note::
    This order must be between 0 and MAX_POLYNOMIAL_ORDER (see ``build_config.hpp``) 
-   because the polynomials use integer templates for the order provide optimization opportunities
+   because the polynomials use integer templates for the order to provide optimization opportunities
 
 ================
 Conservation Law
@@ -217,6 +220,12 @@ and some physical parameters.
 
       :math:`\frac{\partial u}{\partial t} + \frac{\partial (a_j u + b_j u^2)}{\partial x_j} = \mu\frac{\partial^2 u}{\partial x^2}`
 
+   * ``euler`` the inviscid Euler equations
+
+     :math:`\frac{\partial \mathbf{U}}{\partial t} + \frac{\partial \mathbf{F}_j(\mathbf{U})}{\partial x_j} = 0`
+
+     :math:`\mathbf{U} = \begin{pmatrix} \rho \\ \rho u_i \\ \rho E \end{pmatrix}, \quad \mathbf{F}_j(\mathbf{U}) = \begin{pmatrix} \rho u_j \\ \rho u_i u_j + p \delta_{ij} \\ u_j(\rho E + p) \end{pmatrix}`
+
 * ``mu`` The viscosity coefficient for burgers equation
 
 * ``a_adv`` a table the size of the number of **spatial** dimensions for the linear advection term :math:`a_j` in burgers equation
@@ -224,7 +233,7 @@ and some physical parameters.
 * ``b_adv`` a table the size of the number of **spatial** dimensions for the nonlinear advection term :math:`b_j` in burgers equation
 
 .. note::
-   The Spacetime burgers equation will have ``ndim-1`` elements because of the one time dimension.
+   The Spacetime burgers equation will have ``ndim-1`` fields because of the one time dimension.
 
 =================
 Initial Condition
@@ -356,6 +365,27 @@ Output
 
 API
 ===
+
+===============
+Post Processing
+===============
+Post processing and error analysis is important for verification and validation. 
+This module gives the ability to specify analytical solutions, get domain-wide error values, or plot error fields.
+
+To use this module specify parameters in the ``post`` table.
+
+Specify an analytical or baseline solution with the ``exact_solution`` field.
+The value in this field can be a string referring to a precoded exact solution, 
+or a function that takes in a parameter for each directional coordinate, and returns a value for single equation systems 
+or a table for muti-equation systems.
+
+Specify post processing tasks in a table of strings called ``tasks``
+
+--------------------------
+:math:`L^2` Error Analysis
+--------------------------
+
+
 
 ===============
 Transformations
@@ -599,7 +629,7 @@ Solvers
 Gauss-Newton
 ------------
 
-:cpp:class:`iceicle::solvers::corrigan_lm` is a nonlinear optimization solver. 
+:cpp:class:`iceicle::solvers::CorriganLM` is a nonlinear optimization solver. 
 This uses a regularized version of the Gauss-Newton method (can be seen as a hybrid between Gauss-Newton and Levenberg-Marquardt) 
 with linesearch.
 In each nonlinear iteration, it solves the following subproblem:
@@ -635,7 +665,7 @@ API References
 
 .. doxygenfunction:: iceicle::compute_st_node_connectivity
 
-.. doxygenclass:: iceicle::solvers::GaussNewtonPetsc
+.. doxygenclass:: iceicle::solvers::CorriganLM
    :members:
 
 ==================================================================
@@ -664,6 +694,8 @@ The geometry degrees of freedom are all the nodes in the selected traces paramet
 Boundary IC
 -----------
 
+Note: these are currently not implemented
+
 The interface conservation (IC) on the boundary requires some special care. 
 Dirichlet-type boundary conditions will draw the exterior state from the Dirichlet boundary condition, 
 thus creating a left and right state at the evaluation point on the trace to get the IC residual.
@@ -673,4 +705,141 @@ conservation for convective fluxes is automatically satisfied.
 Neumann type boundary conditions, however, may still have a jump in gradient, so the IC evaluation will 
 need to treat the diffusive terms separately.
 
+Numerical Studies
+=================
+
+Some numerical studies are presented to show investigation into MDG-ICE and validate the implementation of ICEicle.
+
+=========================
+1D Boundary Layer Problem
+=========================
+
+This is the first test problem presented in Kercher et al. [Kercher2021]_. 
+This steady-state linear advection-diffsuion problem mimics a boundary layer by creating a large solution gradient near the 
+boundary. 
+Underresolving this flow feature will result in oscillations with high order DG approximations.
+The model equation is:
+
+.. math::
+
+   &a\frac{\partial u}{\partial x} -\mu \frac{\partial^2 u}{\partial x^2} = 0 \quad x\in (0, 1) \\
+   &u(0) = 0 \\
+   &u(1) = 1
+
+The Peclet number :math:`\text{Pe} = \frac{al}{\mu}` nondimensionalizes the equation. The tests are run with a Peclet number of 100. The exact solution is:
+
+.. math::
+
+   u(x) = \frac{1 - \text{exp}(x\cdot\text{Pe})}{1 - \text{exp}(\text{Pe})}
+
+A current best result with DGP2 solution approximation and P1 geometry can be achieved with the following input file:
+
+.. code-block:: lua 
+   :linenos:
+
+   local mu_arg = 0.01
+   local v_arg = 1.0
+   local l = 1.0
+   local Pe = v_arg / mu_arg / l
+
+   return {
+      -- specify the number of dimensions (REQUIRED)
+      ndim = 1,
+
+      -- create a uniform mesh
+      uniform_mesh = {
+         nelem = { 10 },
+         bounding_box = {
+               min = { 0.0 },
+               max = { l },
+         },
+         -- set boundary conditions
+         boundary_conditions = {
+               -- the boundary condition types
+               -- in order of direction and side
+               types = {
+                  "dirichlet", -- left side
+                  "dirichlet", -- right side
+               },
+
+               -- the boundary condition flags
+               -- used to identify user defined state
+               flags = {
+                  0, -- left
+                  1, -- right
+               },
+         },
+         geometry_order = 1,
+      },
+
+      -- define the finite element domain
+      fespace = {
+         -- the basis function type (optional: default = lagrange)
+         basis = "lagrange",
+
+         -- the quadrature type (optional: default = gauss)
+         quadrature = "gauss",
+
+         -- the basis function order
+         order = 2,
+      },
+
+      -- describe the conservation law
+      conservation_law = {
+         -- the name of the conservation law being solved
+         name = "burgers",
+         mu = 0.01,
+         a_adv = { 1.0 },
+         b_adv = { 0.0 },
+      },
+
+      -- initial condition
+      initial_condition = function(x)
+         return (1 - math.exp(x * Pe)) / (1 - math.exp(Pe))
+      end,
+
+      -- boundary conditions
+      boundary_conditions = {
+         dirichlet = {
+               0.0,
+               1.0,
+         },
+      },
+
+      -- MDG
+      mdg = {
+         ncycles = 1,
+         ic_selection_threshold = function(icycle)
+               return 0.0
+         end,
+      },
+
+      -- solver
+      solver = {
+         type = "gauss-newton",
+         form_subproblem_mat = true,
+         linesearch = {
+               type = "corrigan",
+         },
+         lambda_b = 1e-8,
+         lambda_lag = 0.1,
+         lambda_u = 1e-20,
+         ivis = 10000,
+         tau_abs = 1e-10,
+         tau_rel = 0,
+         kmax = 5000000,
+      },
+
+      -- output
+      output = {
+         writer = "dat",
+      },
+   }
+
+.. image:: _static/dgp2_mdg_1d_bl.png
+
+
+References
+==========
+.. [Kercher2021] Kercher, A. D., Corrigan, A., & Kessler, D. A. (2021). The moving discontinuous Galerkin finite element method with interface condition enforcement for compressible viscous flows. International Journal for Numerical Methods in Fluids, 93(5), 1490-1519.
 

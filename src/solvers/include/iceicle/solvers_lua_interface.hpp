@@ -3,6 +3,7 @@
 
 #pragma once
 #include "iceicle/fe_function/geo_layouts.hpp"
+#include "iceicle/disc/l2_error.hpp"
 #include "iceicle/geometry/face.hpp"
 #include "iceicle/string_utils.hpp"
 #include "iceicle/writer.hpp"
@@ -18,7 +19,9 @@
 #include <iceicle/pvd_writer.hpp>
 #include <iceicle/fe_function/restart.hpp>
 #include <iceicle/writer.hpp>
+#include <mpi_proto.h>
 #include <sol/sol.hpp>
+#include <utility>
 
 #ifdef ICEICLE_USE_PETSC
 #include <iceicle/corrigan_lm.hpp>
@@ -53,7 +56,7 @@ namespace iceicle::solvers {
             if(writer_name && eq_icase(writer_name.value(), "dat")){
                 if constexpr (ndim == 1){
                     io::DatWriter<T, IDX, ndim> dat_writer{fespace};
-                    dat_writer.register_fields(u, "u");
+                    dat_writer.register_fields(u, disc.field_names);
                     writer = io::Writer{dat_writer};
                 } else {
                     AnomalyLog::log_anomaly(Anomaly{"dat writer not defined for greater than 1D", general_anomaly_tag{}});
@@ -279,12 +282,27 @@ namespace iceicle::solvers {
                     for(int i = 0; i < solver.res_data.size(); ++i){
                         sum += SQUARED(solver.res_data[i]);
                     }
+
+#ifdef ICEICLE_USE_MPI
+                    T sum_reduce;
+                    MPI_Allreduce(&sum, &sum_reduce, 1, mpi_get_type<T>(), MPI_SUM, MPI_COMM_WORLD);
+                    int myrank;
+                    MPI_Comm_rank(MPI_COMM_WORLD, &myrank);
+                    if(myrank == 0){
+                        std::cout << std::setprecision(8);
+                        std::cout << "itime: " << std::setw(6) << solver.itime 
+                            << " | t: " << std::setw(14) << solver.time
+                            << " | residual l2: " << std::setw(14) << std::sqrt(sum_reduce) 
+                            << std::endl;
+
+                    }
+#else
                     std::cout << std::setprecision(8);
                     std::cout << "itime: " << std::setw(6) << solver.itime 
                         << " | t: " << std::setw(14) << solver.time
                         << " | residual l2: " << std::setw(14) << std::sqrt(sum) 
                         << std::endl;
-
+#endif
                     if(writer) writer.write(solver.itime, solver.time);
                 };
                 // =====================
@@ -324,9 +342,9 @@ namespace iceicle::solvers {
             // default is machine zero convergence 
             // with maximum of 5 nonlinear iterations
             ConvergenceCriteria<T, IDX> conv_criteria{
-                .tau_abs = (sol::optional<T>{solver_params["tau_abs"]}) ? solver_params["tau_abs"].get<T>() : std::numeric_limits<T>::epsilon(),
-                .tau_rel = (sol::optional<T>{solver_params["tau_rel"]}) ? solver_params["tau_rel"].get<T>() : 0.0,
-                .kmax = (sol::optional<IDX>{solver_params["kmax"]}) ? solver_params["kmax"].get<IDX>() : 5 
+                .tau_abs = solver_params.get_or("tau_abs", std::numeric_limits<T>::epsilon()),
+                .tau_rel = solver_params.get_or("tau_rel", 0.0),
+                .kmax = solver_params.get_or("kmax", 5)
             };
 
             // select the linesearch type
@@ -337,11 +355,11 @@ namespace iceicle::solvers {
                 if(eq_icase(ls_arg["type"].get<std::string>(), "wolfe") 
                         || eq_icase(ls_arg["type"].get<std::string>(), "cubic"))
                 {
-                    IDX kmax = (sol::optional<IDX>{ls_arg["kmax"]}) ? ls_arg["kmax"].get<IDX>() : 5; 
-                    T alpha_initial = (sol::optional<T>{ls_arg["alpha_initial"]}) ? ls_arg["alpha_initial"].get<T>() : 1; 
-                    T alpha_max = (sol::optional<T>{ls_arg["alpha_max"]}) ? ls_arg["alpha_max"].get<T>() : 10.0; 
-                    T c1 = (sol::optional<T>{ls_arg["c1"]}) ? ls_arg["c1"].get<T>() : 1e-4; 
-                    T c2 = (sol::optional<T>{ls_arg["c2"]}) ? ls_arg["c2"].get<T>() : 0.9; 
+                    IDX kmax = ls_arg.get_or("kmax", 5);
+                    T alpha_initial = ls_arg.get_or("alpha_initial", 1.0);
+                    T alpha_max = ls_arg.get_or("alpha_max", 10.0);
+                    T c1 = ls_arg.get_or("c1", 1e-4);
+                    T c2 = ls_arg.get_or("c2", 0.9);
                     linesearch = wolfe_linesearch{kmax, alpha_initial, alpha_max, c1, c2};
                 } else if(eq_icase(ls_arg["type"].get<std::string>(), "corrigan") ){
                     IDX kmax = ls_arg.get_or("kmax", 5);
@@ -382,11 +400,13 @@ namespace iceicle::solvers {
                                     << std::endl << std::endl;
 
                                 // offset by initial solution iteration
-                                writer.write(k + 1, (T) k + 1);
+                                writer.write(k, (T) k);
 
-                                write_restart(fespace, u, k + 1);
+                                write_restart(fespace, u, k);
                         };
-                        solver.solve(u);
+                        // write the final iteration
+                        IDX kfinal = solver.solve(u);
+                        writer.write(kfinal, (T) kfinal);
                     };
 
                     if(eq_icase_any(solver_type, "lm", "gauss-newton")){
@@ -421,5 +441,81 @@ namespace iceicle::solvers {
 #endif
 
         }
+    }
+
+
+    template<class T, class IDX, int ndim, class DiscType, class LayoutPolicy>
+    auto lua_error_analysis(
+        sol::table config_tbl,
+        FESpace<T, IDX, ndim>& fespace,
+        DiscType disc, 
+        fespan<T, LayoutPolicy> u
+    ) -> void {
+        using namespace iceicle::util;
+
+        sol::optional<sol::table> post_opt = config_tbl["post"];
+        if(post_opt){
+            sol::table post_config = post_opt.value();
+
+            // get the exact solution and convert to std::vunction
+            sol::optional<sol::function> exact_opt = post_config["exact_solution"];
+            sol::optional<sol::table> tasks_opt = post_config["tasks"];
+
+            if(exact_opt) {
+                sol::function exact = exact_opt.value();
+
+                if(tasks_opt){
+                    sol::table task_list = tasks_opt.value();
+                    for(auto o : task_list){
+                        std::string task_name = o.second.as<std::string>();
+                        if(eq_icase(task_name, "l2_error")){
+                            // =================
+                            // = L2 error Task =
+                            // =================
+                            
+                            std::function<void(T*, T*)> exactfunc = [exact](T *x, T *u_exact){
+                                if constexpr(DiscType::nv_comp == 1){
+                                    // 1 equation case 
+                                    std::integer_sequence x_idx_seq = std::make_integer_sequence<int, ndim>();
+                                    auto helper = [exact]<int... Indices>(T *x, T *u_exact, std::integer_sequence<int, Indices...> seq){
+                                        u_exact[0] = exact(x[Indices]...);
+                                    };
+                                    helper(x, u_exact, x_idx_seq);
+                                } else {
+                                    std::integer_sequence x_idx_seq = std::make_integer_sequence<int, ndim>();
+                                    auto helper = [exact]<int... Indices>(T *x, T *u_exact, std::integer_sequence<int, Indices...> seq){
+                                        sol::table fout = exact(x[Indices]...);
+                                        for(int i = 0; i < DiscType::nv_comp; ++i)
+                                            u_exact[i] = fout[i + 1]; // lua 1-index
+                                    };
+                                    helper(x, u_exact, x_idx_seq);
+                                }
+                            };
+
+                            T error = l2_error(exactfunc, fespace, u);
+#ifdef ICEICLE_USE_MPI
+                            error = error * error; // un-sqrt it before we sum :3
+                            T error_reduce;
+                            MPI_Allreduce(&error, &error_reduce, 1, mpi_get_type<T>(), MPI_SUM, MPI_COMM_WORLD);
+
+                            int myrank;
+                            MPI_Comm_rank(MPI_COMM_WORLD, &myrank);
+                            if(myrank == 0)
+                                std::cout << "L2 error: " << std::setprecision(12) << std::sqrt(error_reduce) << std::endl;
+#else
+                            std::cout << "L2 error: " << std::setprecision(12) << error << std::endl;
+#endif
+                        }
+                    }
+                }
+
+            } else {
+                util::AnomalyLog::check(!tasks_opt,
+                    util::Anomaly{"Post processing tasks require `exact_solution` to be set", util::general_anomaly_tag{}});
+            }
+            
+        }
+        
+
     }
 }
