@@ -87,6 +87,14 @@ namespace iceicle {
         // ===============
 
         /**
+         * @brief Get the number of nodes
+         * 
+         * @return int the number of nodes for this element
+         */
+        virtual
+        constexpr int n_nodes() const = 0;
+
+        /**
          * @brief Get the nodes array for this element
          * 
          * @return pointer to the start of the array of nodes
@@ -107,14 +115,6 @@ namespace iceicle {
         std::span<const IDX> nodes_span() const {
             return std::span{nodes(), static_cast<std::size_t>(n_nodes())};
         }
-
-        /**
-         * @brief Get the number of nodes
-         * 
-         * @return int the number of nodes for this element
-         */
-        virtual
-        constexpr int n_nodes() const = 0;
 
         // =====================
         // = Domain Definition =
@@ -160,6 +160,11 @@ namespace iceicle {
             int face_number,      /// [in] the face number
             index_type* vert_fac  /// [out] the indices of the vertices of the given face
         ) const -> void = 0;
+
+        /// @brief get the number of nodes on the face 
+        /// @param face_number the face number
+        virtual
+        auto n_face_nodes(int face_number) const -> int = 0;
 
         /// @brief get the node indices on the face
         ///

@@ -337,7 +337,7 @@ namespace iceicle {
          * the left element reference domain
          *
          * @param [in] s the point in the face reference domain
-         * @param [out] the physical coordinates size = ndim
+         * @param [out] result the physical coordinates size = ndim
          */
         virtual
         void transform_xiL(
@@ -350,7 +350,7 @@ namespace iceicle {
          * the right element reference domain
          *
          * @param [in] s the point in the face reference domain
-         * @param [out] the physical coordinates size = ndim
+         * @param [out] result the physical coordinates size = ndim
          */
         virtual 
         void transform_xiR(

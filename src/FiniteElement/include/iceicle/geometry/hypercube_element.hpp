@@ -121,6 +121,10 @@ namespace iceicle {
             transformation.get_face_vert(face_number, _nodes, vert_fac);
         };
 
+        auto n_face_nodes(int face_number) const -> int override {
+            return transformation.n_nodes_face(face_number);
+        }
+
         /// @brief get the node indices on the face
         ///
         /// NOTE: Nodes are all the points defining geometry (vertices are endpoints)

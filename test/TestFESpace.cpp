@@ -122,6 +122,8 @@ public:
             index_type* vert_fac  /// [out] the indices of the vertices of the given face
         ) const -> void override {}
 
+        auto n_face_nodes(int face_number) const -> int override { return 0; }
+
         /// @brief get the node indices on the face
         ///
         /// NOTE: Nodes are all the points defining geometry (vertices are endpoints)

@@ -466,9 +466,189 @@ Domain Definitions
 Domains are specified by the domain type and polynomial order of basis functions for the nodes, accesible through 
 :cpp:func:`iceicle::GeometricElement::domain_type` and :cpp:func:`iceicle::GeometricElement::geometry_order` respectively.
 
+------
+Faces
+------
+In the physical domain :math:`\Omega \subset \mathbb{R}^d` consider two non-overlapping elements :math:`\mathcal{K}^L \subset \Omega` and :math:`\mathcal{K}^R \subset \Omega` 
+with boundaries :math:`\partial\mathcal{K}^L` and :math:`\partial\mathcal{K}^R` respectively. 
+A face is the non-empty intersection of the face boundaries :math:`\Gamma = \partial\mathcal{K}^L \cap \partial \mathcal{K}^R`.
+
+.. tikz:: Face 
+  
+   \draw[thick] (0.0, 0.0) -- (1.0, 0.0) -- (1.3, 1.5) -- (0.0, 1.0) -- (0.0, 0.0);
+   \draw[thick] (1.0, 0.0) -- (1.3, 1.5) -- (2.5, 0.0) -- (1.0, 0.0);
+
+   \node at (0.5, 0.5) []{$\mathcal{K}^L$};
+   \node at (1.5, 0.5) []{$\mathcal{K}^R$};
+
+   \draw[very thick, blue] (1.0, 0.0) -- (1.3, 1.5);
+   \node at (1.0, 1.0) [blue]{$\Gamma$};
+
+This forms a :math:`d-1` dimensional manifold in the physical domain. 
+Similar to elements, a reference domain is used to create simple and consistent integration on faces.
+The reference face is denoted with :math:`\hat{\Gamma}`.
+The reference face is defined on a :math:`d - 1` dimensional domain (:math:`\hat{\Gamma}\subset \mathbb{R}^{d-1}`).
+
+For coordinates in the reference domain :math:`\mathbf{s} \in \hat{\Gamma}` we define transformations to the physical domain and the reference domains 
+of the left and right elements.
+
+Physical Domain Transformation 
+-------------------------------
+
+Denote the transformation from the face reference domain to the physical domain by 
+
+.. math::
+   T_f : \mathbf{s} \mapsto \mathbf{x}
+
+such that the face normal vector (defined later) is outward for the left element at all points along the manifold :math:`\Gamma` 
+(i.e points from the left element to the right element).
+
+The physical domain transformation is implemented in:
+
+.. doxygenfunction:: iceicle::Face::transform
+   :no-link:
+
+The face Jacobian refers to the Jacobian of this transformation:
+
+.. math::
+   J^{fac} = \frac{\partial x_i}{\partial s_j} = \frac{\partial T_{f, i}(\mathbf{s})}{\partial s_j}
+
+This is implemented in:
+
+.. doxygenfunction:: iceicle::Face::Jacobian
+   :no-link:
+
+The Riemannan metric tensor for the manifold :math:`\Gamma` is :math:`g_{kl}`
+
+.. math::
+
+   g_{kl} = \sum_i \frac{\partial x_i}{\partial s_k}\frac{\partial x_i}{\partial s_l}
+
+The Riemannian metric tensor can be calculated by providing the face jacobian to:
+
+.. doxygenfunction:: iceicle::Face::RiemannianMetric
+   :no-link:
+
+Reference Domain Transformations 
+--------------------------------
+
+It can also be important to know the location in the corresponding element reference domains as a result of the transformation. 
+Thus we define :math:`T_{\xi_L} : \mathbf{s} \mapsto \mathbf{\xi}_L` where :math:`\mathbf{\xi}_L \in \hat{\Omega}_L` for the transformation 
+to the left element reference domain, and the same :math:`T_{\xi_R}` for the respective right element.
+
+This must be defined such that for the element transformation :math:`T_L : \mathbf{\xi}_L \mapsto \mathbf{x}` the transformation 
+remains consistent with the physical domain transformation of the face.
+
+.. math::
+   T_f(\mathbf{s}) = T_L(T_{\xi_L}(\mathbf{s}))
+
+The same holds for the right element. The different transformations can be diagrammed as: 
+
+.. tikz:: Transformation Paths
+   :libs: arrows
+
+   \node (A) at (2.0, 0.0) {$\mathbf{s}$};
+   \node (B) at (0.0, 2.0) {$\mathbf{\xi}_L$};
+   \node (C) at (4.0, 2.0) {$\mathbf{\xi}_R$};
+   \node (D) at (2.0, 4.0) {$\mathbf{x}$};
+   \draw[->] (A) -- (B) node[midway, below left] {$T_{\xi_L}$};
+   \draw[->] (A) -- (C) node[midway, below right] {$T_{\xi_R}$};
+   \draw[->] (B) -- (D) node[midway, above left] {$T_{L}$};
+   \draw[->] (C) -- (D) node[midway, above right] {$T_{R}$};
+   \draw[->] (A) -- (D) node[midway, right] {$T_{f}$};
+
+:math:`T_{\xi_L}` and :math:`T_{\xi_R}` are implemented respectively in 
+
+.. doxygenfunction:: iceicle::Face::transform_xiL
+   :no-link:
+.. doxygenfunction:: iceicle::Face::transform_xiR
+   :no-link:
+
+The reference domain transformations can be uniquely defined by knowing the domain type of the left and right element, 
+the face number (a number for each face in the reference domain) for the left and right element, and the orientation 
+for the left and right element. We choose the orientation of the left element to always be the orientation 0. 
+
+This admits another decomposition for the reference domain transformations: we take the canonical reference domain transformation 
+to be the left reference domain transformation (:math:`T_\xi := T_{\xi_L}`) and define an orientation transformation :math:`T_{orient}: \mathbf{s} \mapsto \mathbf{s}_R`.
+Then we can compose the right transformation out of the orientation transformation and canonical reference domain transformation.
+
+.. math::
+   T_{\xi_R} = T_\xi(T_{orient}(\mathbf{s}))
+
+Note that :math:`T_\xi` is dependent on face number, so when calculating :math:`T_{\xi_R}` we still pass the face number for the right element.
+
+In this case the diagram becomes:
+
+.. tikz:: Transformation Paths with Orientation
+   :libs: arrows
+
+   \node (A) at (2.0, 0.0) {$\mathbf{s}$};
+   \node (A1) at (4.0, 0.0) {$\mathbf{s}_R$};
+   \node (B) at (0.0, 2.0) {$\mathbf{\xi}_L$};
+   \node (C) at (4.0, 2.0) {$\mathbf{\xi}_R$};
+   \node (D) at (2.0, 4.0) {$\mathbf{x}$};
+   \draw[->] (A) -- (B) node[midway, below left] {$T_{\xi}$};
+   \draw[->] (A) -- (A1) node[midway, below] {$T_{orient}$};
+   \draw[->] (A1) -- (C) node[midway, right] {$T_{\xi}$};
+   \draw[->] (B) -- (D) node[midway, above left] {$T_{L}$};
+   \draw[->] (C) -- (D) node[midway, above right] {$T_{R}$};
+   \draw[->] (A) -- (D) node[midway, right] {$T_{f}$};
+
+The external interface of the :cpp:class:`iceicle::Face` only sees :math:`T_{\xi_L}` and :math:`T_{\xi_R}` but 
+often for internal implementation this decomposition is used internally for ease of implementation.
+
+Face Normal Vector 
+------------------
+
+The face normal vector is computed and oriented by the 1-vector that is obtained by applying the hodge star operator 
+to the wedge product of the columns of the face Jacobian. Denote the columns of the face Jacobian by :math:`J^{fac} = \begin{bmatrix} J^{fac}_{\cdot 1} & \dots & J^{fac}_{\cdot (d-1)}\end{bmatrix}`
+
+.. math::
+   \mathbf{n} = \star (J^{fac}_{\cdot 1} \wedge \dots \wedge J^{fac}_{\cdot (d-1)})
+
+Note that in 3 dimensions this is just the cross product of the two columns.
+
+This operation is done with ``NUMTOOL::TENSOR::FIXED_SIZE::calc_ortho``.
+
 ---------------
 Face Generation
 ---------------
+
+To uniquely define the transformation operations that a face needs to perform we need 
+
+* the face domain type for :math:`T_f`
+
+* the domain type of the left element for :math:`T_{\xi_L}`
+
+* the domain type of the right element for :math:`T_{\xi_R}`
+
+   For boundary faces this is the same as the left element with the exception of :cpp:enumerator:`iceicle::BOUNDARY_CONDITIONS::PARALLEL_COM`
+   because this retains all the information of the domain on the neighboring process.
+
+* the geometry polynomial order for the face: 
+
+   For the intersection of two elements with different polynomial order for geometry, 
+   we choose the minimum of the two, so that the geometry can be consistent. 
+   The nodes of the high order element must be chosen such that the manifold is consistent 
+   with the low order element.
+
+* the element index for the left element 
+
+* the element index for the right element 
+
+* the indices of the nodes on the face to calculate :math:`T_f` in order such that :math:`T_f` is consistent with :math:`T_L(T_{\xi_L})`
+
+* the face number for the left element 
+
+* the face number for the right element 
+
+* the orientation of the face wrt the right element 
+
+* the boundary condition type 
+
+* the boundary condition flag
+
+
 :code:`face_utils.hpp` contains a utility :cpp:func:`make_face` 
 to generate faces by finding the intersection between two elements.
 

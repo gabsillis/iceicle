@@ -440,7 +440,8 @@ public:
   public:
 
   /** @brief get the number of nodes on a given face */
-  int n_nodes_face(int faceNr){ return nfacenode; }
+  constexpr
+  int n_nodes_face(int faceNr) const noexcept{ return nfacenode; }
 
   /**
    * @brief get the global node indices of the nodes in a given face 
