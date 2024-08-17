@@ -6,6 +6,8 @@
 #pragma once
 #include <iceicle/quadrature/QuadratureRule.hpp>
 #include <Numtool/integer_utils.hpp>
+#include <array>
+#include <algorithm>
 
 namespace iceicle {
 
@@ -62,8 +64,10 @@ namespace iceicle {
 
                     // compute points (also eq 4.1 Grundmann Moller)
                     int k = order - ipoin;
-                    int beta[ndim] = {0};
-                    int sums[ndim] = {0};
+                    std::array<int, ndim> beta;
+                    std::ranges::fill(beta, 0);
+                    std::array<int, ndim> sums;
+                    std::ranges::fill(sums, 0);
                     for( ; ; ){
                         QuadraturePoint<T, ndim> &qpoint = qpoints[iarr++];
                         // set the points and weights

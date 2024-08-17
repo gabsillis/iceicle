@@ -154,6 +154,29 @@ namespace iceicle {
         return std::nullopt;
     }
 
+    /// @brief find the face identifiers (domain_type, left face number) given the nodes for a boundary face 
+    /// or std::nullopt if the nodes do not make up a face of the element
+    ///
+    /// @param bdr_face_nodes the nodes of the face
+    /// @param elptr pointer to the element to check 
+    /// @return the face information or std::nullopt
+    template<class T, class IDX, int ndim>
+    [[nodiscard]] inline constexpr 
+    auto boundary_face_info(
+        std::span<const IDX> bdr_face_nodes,
+        GeometricElement<T, IDX, ndim> *elptr
+    ) noexcept -> std::optional<std::tuple<DOMAIN_TYPE, int>> {
+        for(int iface = 0; iface < elptr->n_faces(); ++iface){
+            std::vector<IDX> el_face_nodes(elptr->n_face_nodes(iface));
+            elptr->get_face_nodes(iface, el_face_nodes.data());
+            if(util::eqset(bdr_face_nodes, el_face_nodes)){
+                DOMAIN_TYPE domn_type = elptr->face_domain_type(iface);
+                return std::tuple{domn_type, iface};
+            }
+        }
+        return std::nullopt;
+    }
+
     /// @brief Make the face that corresponds to the intersection of the two given elements 
     /// or std::nullopt if there is no intersection of the given elements
     /// @param elemL the index of the left element 

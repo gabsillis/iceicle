@@ -24,7 +24,7 @@ local function sinh(x)
 	return x
 end
 
-local nelem_arg = 16
+local nelem_arg = 10
 local mu = 1.0
 local tfinal = 1.0
 
@@ -33,12 +33,15 @@ return {
 	ndim = 2,
 
 	-- create a uniform mesh
-	uniform_mesh = {
+	mixed_uniform_mesh = {
 		nelem = { nelem_arg, nelem_arg },
 		bounding_box = {
 			min = { 0.0, 0.0 },
 			max = { 1.0, 1.0 },
 		},
+
+		quad_ratio = { 0.0, 0.0 },
+
 		-- set boundary conditions
 		boundary_conditions = {
 			-- the boundary condition types
@@ -65,7 +68,7 @@ return {
 	-- define the finite element domain
 	fespace = {
 		-- the basis function type (optional: default = lagrange)
-		basis = "legendre",
+		basis = "lagrange",
 
 		-- the quadrature type (optional: default = gauss)
 		quadrature = "gauss",
@@ -98,6 +101,7 @@ return {
 
 	-- solver
 	solver = {
+		ivis = 1,
 		type = "newton",
 	},
 

@@ -520,7 +520,7 @@ std::size_t nshp_1d
               std::size_t slice_nshp = (t[idim] == simpl_ext) ? 
                 nshp_1d - ishp : nshp_1d;
               std::size_t slice_filled = fill_hess<T, t_slice>(
-                  evals, derivs, d2s, slice_nshp, hess);
+                  evals, derivs, d2s, slice_nshp, hess, offset);
 
               for(std::size_t ifilled = 0; ifilled < slice_filled; ++ifilled){
                 for(std::size_t jdim = 0; jdim < ndim_total; ++jdim){
@@ -627,7 +627,7 @@ std::size_t nshp_1d
         Tensor<T, ndim, nbasis_1d> derivs{};
         Tensor<T, ndim, nbasis_1d> d2s{};
         for(int idim = 0; idim < ndim; ++idim){
-            evals[idim] = basis.d2_all(xi[idim], evals[idim], derivs[idim], d2s[idim]);
+            basis.d2_all(xi[idim], evals[idim], derivs[idim], d2s[idim]);
         }
         impl::fill_hess<T, t>(evals, derivs, d2s, nbasis_1d, hess, 0);
       }

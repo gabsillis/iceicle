@@ -8,10 +8,15 @@
 
 namespace iceicle {
 
+    enum class DOMAIN_1D {
+        BIUNIT, // [-1, 1]
+        UNIT,   // [0, 1]
+    };
+
     /**
      * @brief Interpolation of a uniform set of Pn + 1 points from -1 to 1 
      */
-    template<typename T, int Pn>
+    template<typename T, int Pn, DOMAIN_1D domain_1d = DOMAIN_1D::BIUNIT>
     struct UniformLagrangeInterpolation {
         template<typename T1, std::size_t... sizes>
         using Tensor = NUMTOOL::TENSOR::FIXED_SIZE::Tensor<T1, sizes...>;
@@ -29,12 +34,19 @@ namespace iceicle {
             // finite volume should recover cell center
             // for consistency
             ret[0] = 0.0; 
-        } else {
+        } else if constexpr(domain_1d == DOMAIN_1D::BIUNIT) {
             T dx = 2.0 / Pn;
             ret[0] = -1.0;
             for(int j = 1; j < Pn + 1; ++j){
-            // better for numerics than j * dx
-            ret[j] = ret[j - 1] + dx;
+                // better for numerics than j * dx
+                ret[j] = ret[j - 1] + dx;
+            }
+        } else {
+            T dx = 1.0 / Pn;
+            ret[0] = 0.0;
+            for(int j = 1; j < Pn + 1; ++j){
+                // better for numerics than j * dx
+                ret[j] = ret[j - 1] + dx;
             }
         }
         return ret;

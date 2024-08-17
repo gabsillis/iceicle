@@ -1,4 +1,5 @@
 #include "gtest/gtest.h"
+#include "iceicle/basis/lagrange_1d.hpp"
 #include "iceicle/transformations/polytope_transformations.hpp"
 
 using namespace iceicle;
@@ -245,5 +246,34 @@ TEST(test_polytope, test_facet_nodes){
         ASSERT_DOUBLE_EQ(nodes[3][0], 0.0);
         ASSERT_DOUBLE_EQ(nodes[3][1], 0.0);
         ASSERT_DOUBLE_EQ(nodes[3][2], 1.0);
+    }
+}
+
+TEST(test_polytope, test_basis){
+
+    { // triangle 
+
+        static constexpr tcode<2> t = tri_a_t;
+
+        UniformLagrangeInterpolation<double, 2, DOMAIN_1D::UNIT> basis_1d;
+
+        auto l0 = [](double x) -> double { return 2 * (x - 0.5) * (x - 1); };
+        auto l1 = [](double x) -> double { return -4 * x * (x - 1); };
+        auto l2 = [](double x) -> double { return 2 * (x - 0.5) * (x); };
+
+        std::vector<std::array<double, 2>> points{
+            {
+                {0.0, 0.0},
+                {1.0, 0.0},
+                {0.0, 1.0},
+                {0.3, 0.4}
+             }
+        };
+
+        for(std::array<double, 2> pt : points){
+            
+        }
+
+
     }
 }

@@ -50,7 +50,7 @@ endif()
 option(ICEICLE_USE_PETSC "Builds ICEicle with Petsc integration" OFF)
 option(ICEICLE_USE_LUA "Builds ICEicle with Lua integration integration provided through sol3" OFF)
 #option(ICEICLE_USE_IREP "Builds ICEicle with the irep library for Lua mixed-language" OFF)
-option(ICEICLE_USE_HYPRE "Builds ICEicle with Hypre integration" OFF)
+#option(ICEICLE_USE_HYPRE "Builds ICEicle with Hypre integration" OFF)
 option(ICEICLE_USE_MFEM  "Enables MFEM as a third party library" OFF)
 option(ICEICLE_USE_OPENGL "Enables OpenGL visualization with imgui" OFF)
 option(ICEICLE_USE_MATPLOTPLUSPLUS "Enables matplotlib-cpp" OFF)
@@ -94,10 +94,10 @@ find_package(LAPACK REQUIRED)
 
 # MPI Dependent 3rd party libraries 
 if(MPI_FOUND)
-  # === Third Party Library: Hypre ===
-  if(ICEICLE_USE_HYPRE)
-    add_subdirectory(./hypre/src)
-  endif()
+  #  # === Third Party Library: Hypre ===
+  #  if(ICEICLE_USE_HYPRE)
+  #    add_subdirectory(./hypre/src)
+  #  endif()
 
 # === Third Party Library: Petsc ===
 # NOTE: we use mpi functions in most cases with petsc 

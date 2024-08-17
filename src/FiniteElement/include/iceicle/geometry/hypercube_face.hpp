@@ -65,11 +65,12 @@ namespace iceicle {
             NodeArray<T, ndim> &coord, 
             Point& result
         ) const override {
-            T lambda0 = s[0];
-            T lambda1 = 1 - s[0];
+            T s_normalized = (1.0 + s[0]) / 2.0;
+            T lambda0 = 1.0 - s_normalized;
+            T lambda1 = s_normalized;
 
             result[0] = lambda0 * coord[_nodes[0]][0] + lambda1 * coord[_nodes[1]][0];
-            result[1] = lambda0 * coord[_nodes[0]][0] + lambda1 * coord[_nodes[1]][0];
+            result[1] = lambda0 * coord[_nodes[0]][1] + lambda1 * coord[_nodes[1]][1];
         }
 
         void transform_xiL(
@@ -83,18 +84,19 @@ namespace iceicle {
                     s.data(), result);
             } else {
                 int face_nr = this->face_nr_l();
+                T s_normalized = (1.0 + s[0]) / 2.0;
                 switch(face_nr){
                     case 0:
-                        result[0] = 1.0 - s[0];
-                        result[1] = s[0];
+                        result[0] = 0.0;
+                        result[1] = 1.0 - s_normalized;
                         break;
                     case 1:
-                        result[0] = 0.0;
-                        result[1] = 1 - s[0];
+                        result[0] = s_normalized;
+                        result[1] = 0;
                         break;
                     case 2:
-                        result[0] = s[0];
-                        result[1] = 0.0;
+                        result[0] = 1.0 - s_normalized;
+                        result[1] = s_normalized;
                         break;
                 }
             }
@@ -114,37 +116,38 @@ namespace iceicle {
                     this->face_infoR / FACE_INFO_MOD,
                     sR.data(), result);
             } else {
-                int face_nr = this->face_nr_l();
+                int face_nr = this->face_nr_r();
                 int orient = this->orientation_r();
+                T s_normalized = (1.0 + s[0]) / 2.0;
 
                 if(orient == 0){
                     switch(face_nr){
                         case 0:
-                            result[0] = 1.0 - s[0];
-                            result[1] = s[0];
+                            result[0] = 0.0;
+                            result[1] = 1.0 - s_normalized;
                             break;
                         case 1:
-                            result[0] = 0.0;
-                            result[1] = 1 - s[0];
+                            result[0] = s_normalized;
+                            result[1] = 0;
                             break;
                         case 2:
-                            result[0] = s[0];
-                            result[1] = 0.0;
+                            result[0] = 1.0 - s_normalized;
+                            result[1] = s_normalized;
                             break;
                     }
                 } else {
                     switch(face_nr){
                         case 0:
-                            result[0] = s[0];
-                            result[1] = 1.0 - s[0];
+                            result[0] = 0.0;
+                            result[1] = s_normalized;
                             break;
                         case 1:
-                            result[0] = 0.0;
-                            result[1] = s[0];
+                            result[0] = 1.0 - s_normalized;
+                            result[1] = 0.0;
                             break;
                         case 2:
-                            result[0] = 1.0 - s[0];
-                            result[1] = 0.0;
+                            result[0] = s_normalized;
+                            result[1] = 1.0 - s_normalized;
                             break;
                     }
                 }

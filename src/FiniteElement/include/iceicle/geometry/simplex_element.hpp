@@ -14,12 +14,12 @@ namespace iceicle {
     /// @brief a linear triangle element
     ///
     /// nodes:
-    /// 2
+    /// 1
     /// |\
     /// | \
     /// |  \
     /// |   \
-    /// 0 -- 1
+    /// 2 -- 0
     ///
     template<class T, class IDX>
     class TriangleElement final : public GeometricElement<T, IDX, 2> {
@@ -70,10 +70,10 @@ namespace iceicle {
             T y0 = node_coords[node_idxs[0]][1], y1 = node_coords[node_idxs[1]][1], 
               y2 = node_coords[node_idxs[2]][1];
 
-            JacobianType J{
-                { {x0 - x2}, {x1 - x2} },
-                { {y0 - y2}, {y1 - y2} },
-            };
+            JacobianType J {{
+                { x0 - x2, x1 - x2 },
+                { y0 - y2, y1 - y2 }
+            }};
             return J;
         }
 

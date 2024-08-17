@@ -60,6 +60,61 @@ namespace iceicle {
         return AbstractMesh<T, IDX, ndim>{xmin, xmax, nelem, geometry_order, bctypes, bcflags};
     }
 
+    template<class T, class IDX, int ndim>
+    [[nodiscard]] inline
+    auto lua_read_mixed_mesh(sol::table& mesh_table)
+    -> std::optional<AbstractMesh<T, IDX, ndim>>
+    {
+        using namespace iceicle::util;
+        using namespace NUMTOOL::TENSOR::FIXED_SIZE;
+        if constexpr (ndim == 2) {
+            // read nelem in each direction
+            Tensor<IDX, ndim> nelem;
+            sol::table nelem_table = mesh_table["nelem"];
+            for(int idim = 0; idim < ndim; ++idim ){
+                nelem[idim] = nelem_table[idim + 1]; // NOTE: Lua is 1-indexed
+            }
+
+            // bounding box
+            Tensor<T, ndim> xmin;
+            Tensor<T, ndim> xmax;
+            sol::table bounding_box_table = mesh_table["bounding_box"];
+            for(int idim = 0; idim < ndim; ++idim){
+                xmin[idim] = bounding_box_table["min"][idim + 1];
+                xmax[idim] = bounding_box_table["max"][idim + 1];
+            }
+
+            // read the quad element ratio
+            Tensor<T, ndim> quad_ratio;
+            std::ranges::fill(quad_ratio, 0.0);
+            sol::optional<sol::table> quad_ratio_opt = mesh_table["quad_ratio"];
+            if(quad_ratio_opt){
+                sol::table quad_ratio_arr = quad_ratio_opt.value();
+                for(int idim = 0; idim < ndim; ++idim){
+                    quad_ratio[idim] = quad_ratio_arr[idim + 1];
+                }
+            }
+
+            // boundary conditions
+            Tensor<BOUNDARY_CONDITIONS, 2 * ndim> bctypes;
+            for(int iside = 0; iside < 2 * ndim; ++iside){
+                std::string bcname = mesh_table["boundary_conditions"]["types"][iside + 1];
+                bctypes[iside] = get_bc_from_name(bcname);
+            }
+
+            // boundary condition flags
+            Tensor<int, 2 * ndim> bcflags;
+            for(int iside = 0; iside < 2 * ndim; ++iside){
+                bcflags[iside] = mesh_table["boundary_conditions"]["flags"][iside + 1];
+            }
+
+            return mixed_uniform_mesh<T, IDX>(nelem, xmin, xmax, quad_ratio, bctypes, bcflags);
+
+        } else {
+            return std::nullopt;
+        }
+    }
+
     /// @brief set up a mesh from a gmsh file 
     /// @param mesh_table the lua table to describe the gmsh file and mesh setup
     /// @return the mesh read from the input file
@@ -138,19 +193,26 @@ namespace iceicle {
         return AbstractMesh<T, IDX, ndim>{xmin, xmax, nelem, geometry_order, bctypes, bcflags};
     }
     template<class T, class IDX, int ndim>
-    std::optional<AbstractMesh<T, IDX, ndim>> construct_mesh_from_config(sol::table& config){
+    std::optional<AbstractMesh<T, IDX, ndim>> construct_mesh_from_config(sol::table config){
         using namespace util;
-        // try uniform mesh
-        sol::optional<sol::table> mesh_table = config["uniform_mesh"];
-        if(mesh_table){
-            return lua_uniform_mesh<T, IDX, ndim>(mesh_table.value());
-        } 
 
         // try gmsh
-        mesh_table = config["gmsh"];
-        if(mesh_table){
-            return lua_read_gmsh<T, IDX, ndim>(mesh_table.value());
+        sol::optional<sol::table> gmesh_table = config["gmsh"];
+        if(gmesh_table){
+            return lua_read_gmsh<T, IDX, ndim>(gmesh_table.value());
         } 
+
+        // try uniform mesh
+        sol::optional<sol::table> uniform_mesh_table = config["uniform_mesh"];
+        if(uniform_mesh_table){
+            return lua_uniform_mesh<T, IDX, ndim>(uniform_mesh_table.value());
+        } 
+
+        // try mixed-uniform
+        sol::optional<sol::table> mixed_mesh_table = config["mixed_uniform_mesh"];
+        if(mixed_mesh_table){
+            return lua_read_mixed_mesh<T, IDX, ndim>(mixed_mesh_table.value());
+        }
 
         // no valid mesh config found
         AnomalyLog::log_anomaly(Anomaly{"No recognized mesh configuration found", general_anomaly_tag{}});

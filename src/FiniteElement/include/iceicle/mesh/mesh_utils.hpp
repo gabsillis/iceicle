@@ -92,6 +92,132 @@ namespace iceicle {
         
     }
 
+    /// @brief form a mixed uniform mesh with square and triangle elements
+    ///
+    /// @param nelem the number of (quad) elements in each direction 
+    /// @param xmin the minimum point of the bounding box 
+    /// @param xmax the maximum point of the bounding box 
+    /// @param quad_ratio the percentage ratio of quads to tris
+    /// @param bcs the boundary conditions (left, bottom, right, top)
+    /// @param the boundary condition flags (left, bottom, right, top)
+    template<class T, class IDX>
+    auto mixed_uniform_mesh(
+        std::span<IDX> nelem,
+        std::span<T> xmin,
+        std::span<T> xmax,
+        std::span<T> quad_ratio,
+        std::span<BOUNDARY_CONDITIONS> bcs,
+        std::span<int> bcflags
+    ) -> std::optional<AbstractMesh<T, IDX, 2>> {
+        using Point = MATH::GEOMETRY::Point<T, 2>;
+        using namespace util;
+
+        AbstractMesh<T, IDX, 2> mesh{};
+
+        // make the nodes
+        T dx = (xmax[0] - xmin[0]) / (nelem[0]);
+        T dy = (xmax[1] - xmin[1]) / (nelem[1]);
+        IDX nnodex = nelem[0] + 1;
+        IDX nnodey = nelem[1] + 1;
+        for(IDX iy = 0; iy < nnodey; ++iy){
+            for(IDX ix = 0; ix < nnodex; ++ix){
+                mesh.nodes.push_back(Point{{xmin[0] + ix * dx, xmin[1] + iy * dy}});
+            }
+        }
+
+        IDX half_quad_x = (IDX) (nelem[0] * quad_ratio[0] / 2);
+        IDX half_quad_y = (IDX) (nelem[1] * quad_ratio[1] / 2);
+
+        // make the elements 
+        for(IDX ixquad = 0; ixquad < nelem[0]; ++ixquad){
+            for(IDX iyquad = 0; iyquad < nelem[1]; ++iyquad){
+                IDX bottomleft = iyquad * nnodex + ixquad;
+                IDX bottomright = iyquad * nnodex + ixquad + 1;
+                IDX topleft = (iyquad + 1) * nnodex + ixquad;
+                IDX topright = (iyquad + 1) * nnodex + ixquad + 1;
+
+                bool is_quad = ixquad < half_quad_x 
+                    || (nelem[0] - ixquad) <= half_quad_x
+                    || iyquad < half_quad_y 
+                    || (nelem[1] - iyquad) <= half_quad_y;
+
+                if(is_quad){
+                    std::vector<IDX> nodes{bottomleft, topleft, bottomright, topright};
+                    auto el_opt = create_element<T, IDX, 2>(DOMAIN_TYPE::HYPERCUBE, 1, nodes);
+                    if(el_opt)
+                        mesh.elements.push_back(std::move(el_opt.value()));
+                    else 
+                        AnomalyLog::log_anomaly(Anomaly{"Failed to create element", general_anomaly_tag{}});
+                } else {
+                    std::vector<IDX> nodes1{bottomleft, bottomright, topleft};
+                    std::vector<IDX> nodes2{topleft, bottomright, topright};
+                    auto el_opt1 = create_element<T, IDX, 2>(DOMAIN_TYPE::SIMPLEX, 1, nodes1);
+                    auto el_opt2 = create_element<T, IDX, 2>(DOMAIN_TYPE::SIMPLEX, 1, nodes2);
+                    if(el_opt1 && el_opt2){
+                        mesh.elements.push_back(std::move(el_opt1.value()));
+                        mesh.elements.push_back(std::move(el_opt2.value()));
+                    } else 
+                        AnomalyLog::log_anomaly(Anomaly{"Failed to create element", general_anomaly_tag{}});
+                }
+            }
+        }
+
+        // find the interior faces
+        find_interior_faces(mesh);
+        mesh.interiorFaceStart = 0;
+        mesh.interiorFaceEnd = mesh.faces.size();
+        mesh.bdyFaceStart = mesh.faces.size();
+
+        // find the boundary faces TODO: switch to lists for removal efficiency
+        std::vector<std::vector<IDX>> bface_nodes{};
+        std::vector<std::pair<BOUNDARY_CONDITIONS, int>> bcinfos{};
+        for(IDX ixquad = 0; ixquad < nelem[0]; ++ixquad){
+            // bottom face
+            bface_nodes.push_back(std::vector<IDX>{ixquad, ixquad + 1});
+            bcinfos.push_back(std::pair{bcs[1], bcflags[1]});
+
+            // top face
+            bface_nodes.push_back(std::vector<IDX>{nelem[1] * nnodex + ixquad, nelem[1] * nnodex + ixquad + 1});
+            bcinfos.push_back(std::pair{bcs[3], bcflags[3]});
+        }
+        for(IDX iyquad = 0; iyquad < nelem[1]; ++iyquad) {
+            // left face
+            bface_nodes.push_back(std::vector<IDX>{iyquad * nnodex, (iyquad + 1) * nnodex});
+            bcinfos.push_back(std::pair{bcs[0], bcflags[0]});
+
+            // right face
+            bface_nodes.push_back(std::vector<IDX>{iyquad * nnodex + nelem[0], (iyquad + 1) * nnodex + nelem[0]});
+            bcinfos.push_back(std::pair{bcs[2], bcflags[2]});
+        }
+        for(IDX ielem = 0; ielem < mesh.nelem(); ++ielem){
+            for(IDX inodelist = 0; inodelist < bface_nodes.size(); ++inodelist){
+                auto face_info = boundary_face_info(std::span<const IDX>{bface_nodes[inodelist]}, mesh.elements[ielem].get());
+                if(face_info){
+                    auto [fac_domn, face_nr_l] = face_info.value();
+                    GeometricElement<T, IDX, 2> *elptr = mesh.elements[ielem].get();
+
+                    // get the face nodes in the correct order
+                    std::vector<IDX> ordered_face_nodes(elptr->n_face_nodes(face_nr_l));
+                    elptr->get_face_nodes(face_nr_l, ordered_face_nodes.data());
+
+                    auto [bctype, bcflag] = bcinfos[inodelist];
+                    auto face_opt = make_face<T, IDX, 2>(fac_domn, elptr->domain_type(), elptr->domain_type(), 1, ielem, ielem, std::span<const IDX>{ordered_face_nodes}, face_nr_l, 0, 0, bctype, bcflag);
+                    if(face_opt){
+                        mesh.faces.push_back(std::move(face_opt.value()));
+                    }
+
+                    // remove the found bface 
+                    bface_nodes.erase(bface_nodes.begin() + inodelist);
+                    bcinfos.erase(bcinfos.begin() + inodelist);
+                    inodelist--; // decrement after removal
+                }
+            }
+        }
+        mesh.bdyFaceEnd = mesh.faces.size();
+
+        return std::optional{mesh};
+    }
+
     /**
      * @brief for every node provide a boolean flag for whether 
      * that node is on a boundary or not 

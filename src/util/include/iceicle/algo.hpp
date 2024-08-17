@@ -1,5 +1,5 @@
 /// @brief useful algorithms
-
+#pragma once
 #include <concepts>
 #include <ranges>
 #include <vector>

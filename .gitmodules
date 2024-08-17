@@ -4,6 +4,3 @@
 [submodule "imgui"]
 	path = imgui
 	url = https://github.com/ocornut/imgui.git
-[submodule "hypre"]
-	path = hypre
-	url = https://github.com/hypre-space/hypre.git

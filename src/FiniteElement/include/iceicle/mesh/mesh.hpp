@@ -8,7 +8,9 @@
 #include "Numtool/fixed_size_tensor.hpp"
 #include "iceicle/anomaly_log.hpp"
 #include "iceicle/build_config.hpp"
+#include "iceicle/geometry/face_utils.hpp"
 #include "iceicle/geometry/hypercube_face.hpp"
+#include "iceicle/geometry/simplex_element.hpp"
 #include "iceicle/iceicle_mpi_utils.hpp"
 #include "iceicle/tmp_utils.hpp"
 #include <iceicle/geometry/face.hpp>
@@ -20,6 +22,7 @@
 #include <ranges>
 #include <type_traits>
 #include <memory>
+#include <list>
 #ifndef NDEBUG
 #include <iomanip>
 #endif
@@ -92,7 +95,17 @@ namespace iceicle {
                     );
                 }
                 break;
+            case DOMAIN_TYPE::SIMPLEX:
+            {
+                if constexpr(ndim == 2)
+                    if(geo_order == 1) {
+                        TriangleElement<T, IDX> el{};
+                        std::ranges::copy(nodes, el.node_idxs.begin());
+                        return std::optional{std::make_unique<TriangleElement<T, IDX>>(el)};
+                    }
 
+                return std::nullopt;
+            }
             default:
                 return std::nullopt;
                 break;
@@ -139,7 +152,7 @@ namespace iceicle {
         IDX interiorFaceEnd; 
         // index of the start of the boundary faces (must be consecutive)
         IDX bdyFaceStart;
-        /// index of one past the end of the boundary faces
+    /// index of one past the end of the boundary faces
         IDX bdyFaceEnd;
 
         /// For each process i store a list of (this-local) element indices 
