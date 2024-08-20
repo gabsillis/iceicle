@@ -103,6 +103,19 @@ namespace iceicle {
         return std::nullopt;
     }
 
+    template<class T, class IDX, int ndim, std::ranges::range R>
+    [[nodiscard]] inline constexpr 
+    auto make_face(DOMAIN_TYPE domain_face, DOMAIN_TYPE domain_left, DOMAIN_TYPE domain_right,
+        int geo_order, IDX elemL, IDX elemR, R&& range, int face_nr_l, int face_nr_r, int orient_r,
+        BOUNDARY_CONDITIONS bctype = BOUNDARY_CONDITIONS::INTERIOR, int bcflag = 0
+    ) noexcept -> std::optional< std::unique_ptr< Face<T, IDX, ndim> > > 
+    {
+        std::span<const IDX> nodes{range};
+        return make_face<T, IDX, ndim>(domain_face, domain_left, domain_right, geo_order, elemL, elemR, nodes, 
+            face_nr_l, face_nr_r, orient_r, bctype, bcflag);
+    }
+
+
     /// @brief compute the face identifiers (domain type, left face number, right face number, right orientation)
     /// or std::nullopt if there is no intersection of the given elements
     /// @param elptrL pointer to the left geometric element 
@@ -175,6 +188,15 @@ namespace iceicle {
             }
         }
         return std::nullopt;
+    }
+
+    template<class T, class IDX, int ndim, std::ranges::range R>
+    [[nodiscard]] inline constexpr 
+    auto boundary_face_info(
+        R&& bdr_face_nodes,
+        GeometricElement<T, IDX, ndim> *elptr
+    ) noexcept -> std::optional<std::tuple<DOMAIN_TYPE, int>> {
+        return boundary_face_info(std::span<const IDX>{bdr_face_nodes}, elptr);
     }
 
     /// @brief Make the face that corresponds to the intersection of the two given elements 

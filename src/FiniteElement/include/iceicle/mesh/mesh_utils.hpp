@@ -22,17 +22,46 @@ namespace iceicle {
         AbstractMesh<T, IDX, ndim>& mesh
     ) {
         using namespace util;
+
+        // elements surrounding points
+        std::vector<std::vector<IDX>> elsup(mesh.n_nodes());
+        for(IDX ielem = 0; ielem < mesh.nelem(); ++ielem){
+            for(IDX inode : mesh.elements[ielem]->nodes_span()){
+                elsup[inode].push_back(ielem);
+            }
+        }
+
+        // remove duplicates and sort
+        for(IDX inode = 0; inode < mesh.n_nodes(); ++inode){
+            std::ranges::sort(elsup[inode]);
+            auto unique_subrange = std::ranges::unique(elsup[inode]);
+            elsup[inode].erase(unique_subrange.begin(), unique_subrange.end());
+        }
+
         // if elements share at least ndim points, then they have a face
         for(IDX ielem = 0; ielem < mesh.nelem(); ++ielem){
             int max_faces = mesh.elements[ielem]->n_faces();
-            int found_faces = 0;
-            for(IDX jelem = ielem + 1; jelem < mesh.nelem(); ++jelem){
-                auto face_opt = make_face(ielem, jelem, mesh.elements[ielem].get(), mesh.elements[jelem].get());
-                if(face_opt){
-                    mesh.faces.push_back(std::move(face_opt.value()));
-                    // short circuit if all the faces have been found
-                    ++found_faces;
-                    if(found_faces == max_faces) break;
+            std::vector<IDX> connected_elements;
+            connected_elements.reserve(max_faces);
+
+            // loop through elements that share a node
+            for(IDX inode : mesh.elements[ielem]->nodes_span()){
+                for(auto jelem_iter = std::lower_bound(elsup[inode].begin(), elsup[inode].end(), ielem);
+                        jelem_iter != elsup[inode].end(); ++jelem_iter){
+                    IDX jelem = *jelem_iter;
+
+                    // skip the cases that would lead to duplicate or boundary faces
+                    if( ielem == jelem || std::ranges::contains(connected_elements, jelem) )
+                        continue; 
+
+                    // try making the face that is the intersection of the two elements
+                    auto face_opt = make_face(ielem, jelem, mesh.elements[ielem].get(), mesh.elements[jelem].get());
+                    if(face_opt){
+                        mesh.faces.push_back(std::move(face_opt.value()));
+                        // short circuit if all the faces have been found
+                        connected_elements.push_back(jelem);
+                        if(connected_elements.size() == max_faces) break;
+                    }
                 }
             }
         }
