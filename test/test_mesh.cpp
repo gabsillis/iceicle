@@ -13,7 +13,7 @@ using namespace iceicle;
 TEST(test_mesh, test_mixed_uniform_faces){
 
     using namespace MATH::GEOMETRY;
-    std::vector<int> nelem{5, 5};
+    std::vector<int> nelem{4, 10};
     std::vector<double> xmin{0.0, 0.0};
     std::vector<double> xmax{1.0, 1.0};
     std::vector<double> quad_ratio{0.5, 0.5};

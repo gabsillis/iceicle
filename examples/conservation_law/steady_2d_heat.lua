@@ -40,7 +40,7 @@ return {
 			max = { 1.0, 1.0 },
 		},
 
-		quad_ratio = { 0.0, 0.0 },
+		quad_ratio = { 0.0, 0.5 },
 
 		-- set boundary conditions
 		boundary_conditions = {
@@ -74,7 +74,7 @@ return {
 		quadrature = "gauss",
 
 		-- the basis function order
-		order = 1,
+		order = 2,
 	},
 
 	-- describe the conservation law

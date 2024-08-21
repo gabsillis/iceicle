@@ -188,21 +188,52 @@ namespace iceicle {
             if constexpr (ndim != 2){
                 AnomalyLog::log_anomaly(Anomaly{"Quads elements only available in 2D mesh", file_parse_tag{line_no}});
                 return;
-            }
-            std::string line;
-            for(int ielem = 0; ielem < nelem && std::getline(infile, line); ++ielem, ++line_no){
-                // ordering for tensor prod 0 3 1 2
-                IDX inodes[4];
-                IDX ielem_global;
-                std::istringstream linestream{line};
-                linestream >> ielem_global >> inodes[0] >> inodes[1] >> inodes[2] >> inodes[3];
+            } else {
+                std::string line;
+                for(int ielem = 0; ielem < nelem && std::getline(infile, line); ++ielem, ++line_no){
+                    // ordering for tensor prod 0 3 1 2
+                    IDX inodes[4];
+                    IDX ielem_global;
+                    std::istringstream linestream{line};
+                    linestream >> ielem_global >> inodes[0] >> inodes[1] >> inodes[2] >> inodes[3];
 
-                auto el = std::make_unique<HypercubeElement<T, IDX, ndim, 1>>();
-                el->setNode(0, inodes[0]);
-                el->setNode(1, inodes[3]);
-                el->setNode(2, inodes[1]);
-                el->setNode(3, inodes[2]);
-                mesh.elements[ielem] = std::move(el);
+                    auto el = std::make_unique<HypercubeElement<T, IDX, ndim, 1>>();
+                    el->setNode(0, inodes[0]);
+                    el->setNode(1, inodes[3]);
+                    el->setNode(2, inodes[1]);
+                    el->setNode(3, inodes[2]);
+                    mesh.elements[ielem] = std::move(el);
+                }
+            }
+        }
+
+
+        template<class T, class IDX, int ndim>
+        auto read_linear_tris(
+            std::size_t nelem,
+            std::size_t& line_no,
+            std::istream& infile,
+            AbstractMesh<T, IDX, ndim>& mesh
+        ) {
+            using namespace util;
+            if constexpr (ndim != 2){
+                AnomalyLog::log_anomaly(Anomaly{"Quads elements only available in 2D mesh", file_parse_tag{line_no}});
+                return;
+            } else {
+                std::string line;
+                for(int ielem = 0; ielem < nelem && std::getline(infile, line); ++ielem, ++line_no){
+                    // ordering for tensor prod 0 3 1 2
+                    IDX inodes[3];
+                    IDX ielem_global;
+                    std::istringstream linestream{line};
+                    linestream >> ielem_global >> inodes[0] >> inodes[1] >> inodes[2];
+
+                    auto el = std::make_unique<TriangleElement<T, IDX>>();
+                    el->node_idxs[0] = inodes[0];
+                    el->node_idxs[1] = inodes[1];
+                    el->node_idxs[2] = inodes[2];
+                    mesh.elements[ielem] = std::move(el);
+                }
             }
         }
 
@@ -290,24 +321,20 @@ namespace iceicle {
                         case 1:
                         {
                             if constexpr(ndim == 2){
-                                if(elptr->domain_type() == DOMAIN_TYPE::HYPERCUBE){
-                                    Tensor<IDX, 2> nodes{{(IDX) fac_info.nodes[0], (IDX) fac_info.nodes[1]}};
-                                    int face_nr = elptr->get_face_nr(nodes.data());
+                                std::tuple<BOUNDARY_CONDITIONS, int> bcinfo = bcmap[fac_info.entity_tag];
+                                std::vector<IDX> nodes{ (IDX) fac_info.nodes[0], (IDX) fac_info.nodes[1]};
+                                auto binfo_opt = boundary_face_info(nodes, elptr);
+                                if(binfo_opt){ // we found the adjacent element yay ^.^
+                                    found = true;
+                                    auto [domain_type, face_nr] = binfo_opt.value();
+
                                     // get the face nodes again, but from element so they are in order for external normal
                                     elptr->get_face_nodes(face_nr, nodes.data());
-                                    if(face_nr >= 0){
-                                        found = true;
-                                        using Face_t = HypercubeFace<T, IDX, ndim, 1>;
-                                        std::tuple<BOUNDARY_CONDITIONS, int> bcinfo = bcmap[fac_info.entity_tag];
-                                        auto face = std::make_unique<HypercubeFace<T, IDX, ndim, 1>>(
-                                            ielem, ielem, nodes, face_nr, face_nr, 0, std::get<0>(bcinfo), std::get<1>(bcinfo));
-                                        mesh.faces.push_back(std::move(face));
-                                        faces_surr_el[ielem].push_back(mesh.faces.size() - 1);
-                                    }
-
-                                } else {
-                                    AnomalyLog::log_anomaly(Anomaly{"unsupported el type", general_anomaly_tag{}});
-                                }
+                                    auto face_opt = make_face<T, IDX, ndim>(domain_type, elptr->domain_type(), elptr->domain_type(), 
+                                        1, ielem, ielem, nodes, face_nr, face_nr, 0, std::get<0>(bcinfo), std::get<1>(bcinfo));
+                                    mesh.faces.push_back(std::move(face_opt.value()));
+                                    faces_surr_el[ielem].push_back(mesh.faces.size() - 1);
+                                } 
                             } 
                         }
                         break;
@@ -369,6 +396,9 @@ namespace iceicle {
                     // these are internal element definitions
                     // dispatch to read specific elements
                     switch(element_type){
+                        case 2:
+                            read_linear_tris(nelem_block, line_no, infile, mesh);
+                            break;
                         case 3:
                             read_linear_quads(nelem_block, line_no, infile, mesh);
                             break;
@@ -378,6 +408,8 @@ namespace iceicle {
                     }
                 }
             }
+
+            std::cout << "Compressing element list" << std::endl;
 
             // compress the element list for any gaps gmsh put in
             IDX last_el = mesh.elements.size() - 1;
@@ -396,11 +428,13 @@ namespace iceicle {
             }
 
             // generate interior faces
+            std::cout << "Generating interior faces" << std::endl;
             find_interior_faces(mesh);
             mesh.interiorFaceStart = 0;
             mesh.interiorFaceEnd = mesh.faces.size();
 
             // generate boundary faces
+            std::cout << "Generating boundary faces" << std::endl;
             create_boundary_faces(boundary_face_infos, bcmap, mesh);
         }
     }
@@ -425,21 +459,27 @@ namespace iceicle {
         Header header;
         TagMaps tag_maps{};
 
+        std::cout << "Reading gmsh file... " << std::endl;
+
         // parse line by line
         for(std::string line; std::getline(infile, line);){
 
             switch(state){
                 case READER_STATE::TOP_LEVEL:
                     if(eq_icase(line, "$MeshFormat")){
+                        std::cout << "Reading format header" << std::endl;
                         state = READER_STATE::HEADER;
                     }
                     if(eq_icase(line, "$Entities")){
+                        std::cout << "Reading entities" << std::endl;
                         state = READER_STATE::ENTITIES;
                     }
                     if(eq_icase(line, "$Nodes")){
+                        std::cout << "Reading nodes" << std::endl;
                         state = READER_STATE::NODES;
                     }
                     if(eq_icase(line, "$Elements")){
+                        std::cout << "Reading Elements" << std::endl;
                         state = READER_STATE::ELEMENTS;
                     }
                     // otherwise we skip line
@@ -494,6 +534,13 @@ namespace iceicle {
             }
 
             line_no++;
+        }
+
+        // print details for small meshes
+        if(mesh.nodes.size() < 100){
+            mesh.printNodes(std::cout);
+            mesh.printElements(std::cout);
+            mesh.printFaces(std::cout);
         }
         return mesh;
     }
