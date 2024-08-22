@@ -129,6 +129,129 @@ void initialize_and_solve(
 
 }
 
+template<int ndim>
+[[gnu::noinline]]
+void setup(sol::table script_config, cli_parser cli_args){
+    // ==============
+    // = Setup Mesh =
+    // ==============
+    auto mesh_opt = construct_mesh_from_config<T, IDX, ndim>(script_config);
+    if(!mesh_opt) return; // exit if we have no valid mesh
+    AbstractMesh<T, IDX, ndim> mesh = mesh_opt.value();
+    std::vector<IDX> invalid_faces;
+    if(!validate_normals(mesh, invalid_faces)){
+        std::cout << "invalid normals on the following faces: ";
+        for(IDX ifac : invalid_faces) std::cout << ifac << ", ";
+        std::cout << "\n";
+        return;
+    }
+    perturb_mesh(script_config, mesh);
+
+    AbstractMesh<T, IDX, ndim> pmesh{partition_mesh(mesh)};
+
+    if(cli_args["debug1"]){
+        // linear advection a = [0.2, 0];
+        // 2 element mesh on [0, 1]^2
+        pmesh.nodes[7][0] = 0.7;
+        pmesh.nodes[4][0] = 0.55;
+    }
+    if(cli_args["debug2"]){
+        pmesh.nodes[4][0] = 0.69;
+    }
+
+    // ===================================
+    // = create the finite element space =
+    // ===================================
+    sol::table fespace_tbl = script_config["fespace"];
+    auto fespace = lua_fespace(&pmesh, fespace_tbl);
+
+    // ============================
+    // = Setup the Discretization =
+    // ============================
+    if(script_config["conservation_law"].valid()){
+        sol::table cons_law_tbl = script_config["conservation_law"];
+
+        if(eq_icase(cons_law_tbl["name"].get<std::string>(), "burgers")) {
+
+            // get the coefficients for burgers equation
+            BurgersCoefficients<T, ndim> burgers_coeffs{};
+            sol::optional<T> mu_input = cons_law_tbl["mu"];
+            if(mu_input) burgers_coeffs.mu = mu_input.value();
+
+            // WARNING: for some reason in release mode 
+            // if we create these tables from cons_law_tbl  
+            // the second one won't read properly
+            sol::optional<sol::table> b_adv_input = script_config["conservation_law"]["b_adv"];
+            sol::optional<sol::table> a_adv_input = script_config["conservation_law"]["a_adv"];
+            if(a_adv_input.has_value()){
+                for(int idim = 0; idim < ndim; ++idim)
+                    burgers_coeffs.a[idim] = script_config["conservation_law"]["a_adv"][idim + 1];
+            }
+            if(b_adv_input.has_value()){
+                for(int idim = 0; idim < ndim; ++idim)
+                    burgers_coeffs.b[idim] = script_config["conservation_law"]["b_adv"][idim + 1];
+            }
+
+            // create the discretization
+            BurgersFlux physical_flux{burgers_coeffs};
+            BurgersUpwind convective_flux{burgers_coeffs};
+            BurgersDiffusionFlux diffusive_flux{burgers_coeffs};
+            ConservationLawDDG disc{std::move(physical_flux), std::move(convective_flux), std::move(diffusive_flux)};
+            disc.field_names = std::vector<std::string>{"u"};
+            initialize_and_solve(script_config, fespace, disc);
+
+        } else if(eq_icase(cons_law_tbl["name"].get<std::string>(), "spacetime-burgers")) {
+            static constexpr int ndim_space = ndim - 1;
+            // get the coefficients for burgers equation
+            BurgersCoefficients<T, ndim_space> burgers_coeffs{};
+            sol::optional<T> mu_input = cons_law_tbl["mu"];
+            if(mu_input) burgers_coeffs.mu = mu_input.value();
+
+            sol::optional<sol::table> b_adv_input = script_config["conservation_law"]["b_adv"];
+            sol::optional<sol::table> a_adv_input = script_config["conservation_law"]["a_adv"];
+            if(a_adv_input.has_value()){
+                for(int idim = 0; idim < ndim_space; ++idim)
+                    burgers_coeffs.a[idim] = script_config["conservation_law"]["a_adv"][idim + 1];
+            }
+            if(b_adv_input.has_value()){
+                for(int idim = 0; idim < ndim_space; ++idim)
+                    burgers_coeffs.b[idim] = script_config["conservation_law"]["b_adv"][idim + 1];
+            }
+            std::cout << burgers_coeffs.b[0] << std::endl;
+
+            // create the discretization
+            SpacetimeBurgersFlux physical_flux{burgers_coeffs};
+            SpacetimeBurgersUpwind convective_flux{burgers_coeffs};
+            SpacetimeBurgersDiffusion diffusive_flux{burgers_coeffs};
+            ConservationLawDDG disc{std::move(physical_flux), std::move(convective_flux), std::move(diffusive_flux)};
+            disc.field_names = std::vector<std::string>{"u"};
+            initialize_and_solve(script_config, fespace, disc);
+
+        } else if(eq_icase_any( cons_law_tbl["name"].get<std::string>(), "navier-stokes", "euler")) {
+
+            T gamma = cons_law_tbl.get_or("gamma", 1.4);
+
+            navier_stokes::Physics<T, ndim> physics{gamma};
+
+            navier_stokes::Flux<T, ndim> physical_flux{physics};
+            navier_stokes::VanLeer<T, ndim> convective_flux{physics};
+            navier_stokes::DiffusionFlux<T, ndim> diffusive_flux{physics};
+            ConservationLawDDG disc{std::move(physical_flux), std::move(convective_flux), std::move(diffusive_flux)};
+            disc.field_names = std::vector<std::string>{"rho", "rhou"};
+            if(ndim >= 2) disc.field_names.push_back("rhov");
+            if(ndim >= 3) disc.field_names.push_back("rhow");
+            disc.field_names.push_back("rhoe");
+            initialize_and_solve(script_config, fespace, disc);
+        } else {
+            AnomalyLog::log_anomaly(Anomaly{ "No such conservation_law implemented",
+                    text_not_found_tag{cons_law_tbl["name"].get<std::string>()}});
+        }
+
+    } else {
+        std::cout << "No conservation_law table specified: exiting...";
+    }
+}
+
 int main(int argc, char* argv[]){
 
     // Initialize
@@ -187,138 +310,25 @@ int main(int argc, char* argv[]){
         return 1;
     }
 
-    // Enter compile time ndim region
-    auto ndim_func = [&]<int ndim>{
 
-        // ==============
-        // = Setup Mesh =
-        // ==============
-        auto mesh_opt = construct_mesh_from_config<T, IDX, ndim>(script_config);
-        if(!mesh_opt) return 1; // exit if we have no valid mesh
-        AbstractMesh<T, IDX, ndim> mesh = mesh_opt.value();
-        std::vector<IDX> invalid_faces;
-        if(!validate_normals(mesh, invalid_faces)){
-            std::cout << "invalid normals on the following faces: ";
-            for(IDX ifac : invalid_faces) std::cout << ifac << ", ";
-            std::cout << "\n";
-            return 1;
-        }
-        perturb_mesh(script_config, mesh);
-
-        AbstractMesh<T, IDX, ndim> pmesh{partition_mesh(mesh)};
-
-        if(cli_args["debug1"]){
-            // linear advection a = [0.2, 0];
-            // 2 element mesh on [0, 1]^2
-            pmesh.nodes[7][0] = 0.7;
-            pmesh.nodes[4][0] = 0.55;
-        }
-        if(cli_args["debug2"]){
-            pmesh.nodes[4][0] = 0.69;
-        }
-
-        // ===================================
-        // = create the finite element space =
-        // ===================================
-        sol::table fespace_tbl = script_config["fespace"];
-        auto fespace = lua_fespace(&pmesh, fespace_tbl);
-
-        // ============================
-        // = Setup the Discretization =
-        // ============================
-        if(script_config["conservation_law"].valid()){
-            sol::table cons_law_tbl = script_config["conservation_law"];
-            if(eq_icase(cons_law_tbl["name"].get<std::string>(), "burgers")) {
-
-                // get the coefficients for burgers equation
-                BurgersCoefficients<T, ndim> burgers_coeffs{};
-                sol::optional<T> mu_input = cons_law_tbl["mu"];
-                if(mu_input) burgers_coeffs.mu = mu_input.value();
-
-                // WARNING: for some reason in release mode 
-                // if we create these tables from cons_law_tbl  
-                // the second one won't read properly
-                sol::optional<sol::table> b_adv_input = script_config["conservation_law"]["b_adv"];
-                sol::optional<sol::table> a_adv_input = script_config["conservation_law"]["a_adv"];
-                if(a_adv_input.has_value()){
-                    for(int idim = 0; idim < ndim; ++idim)
-                        burgers_coeffs.a[idim] = a_adv_input.value()[idim + 1];
-                }
-                if(b_adv_input.has_value()){
-                    for(int idim = 0; idim < ndim; ++idim)
-                        burgers_coeffs.b[idim] = b_adv_input.value()[idim + 1];
-                }
-
-                // create the discretization
-                BurgersFlux physical_flux{burgers_coeffs};
-                BurgersUpwind convective_flux{burgers_coeffs};
-                BurgersDiffusionFlux diffusive_flux{burgers_coeffs};
-                ConservationLawDDG disc{std::move(physical_flux), std::move(convective_flux), std::move(diffusive_flux)};
-                disc.field_names = std::vector<std::string>{"u"};
-                initialize_and_solve(script_config, fespace, disc);
-
-            } else if(eq_icase(cons_law_tbl["name"].get<std::string>(), "spacetime-burgers")) {
-                static constexpr int ndim_space = ndim - 1;
-                // get the coefficients for burgers equation
-                BurgersCoefficients<T, ndim_space> burgers_coeffs{};
-                sol::optional<T> mu_input = cons_law_tbl["mu"];
-                if(mu_input) burgers_coeffs.mu = mu_input.value();
-
-                sol::optional<sol::table> b_adv_input = script_config["conservation_law"]["b_adv"];
-                sol::optional<sol::table> a_adv_input = script_config["conservation_law"]["a_adv"];
-                if(b_adv_input.has_value()){
-                    for(int idim = 0; idim < ndim_space; ++idim)
-                        burgers_coeffs.b[idim] = b_adv_input.value()[idim + 1];
-                }
-                if(a_adv_input.has_value()){
-                    for(int idim = 0; idim < ndim_space; ++idim)
-                        burgers_coeffs.a[idim] = a_adv_input.value()[idim + 1];
-                }
-
-                // create the discretization
-                SpacetimeBurgersFlux physical_flux{burgers_coeffs};
-                SpacetimeBurgersUpwind convective_flux{burgers_coeffs};
-                SpacetimeBurgersDiffusion diffusive_flux{burgers_coeffs};
-                ConservationLawDDG disc{std::move(physical_flux), std::move(convective_flux), std::move(diffusive_flux)};
-                disc.field_names = std::vector<std::string>{"u"};
-                initialize_and_solve(script_config, fespace, disc);
-
-            } else if(eq_icase_any( cons_law_tbl["name"].get<std::string>(), "navier-stokes", "euler")) {
-
-                T gamma = cons_law_tbl.get_or("gamma", 1.4);
-
-                navier_stokes::Physics<T, ndim> physics{gamma};
-
-                navier_stokes::Flux<T, ndim> physical_flux{physics};
-                navier_stokes::VanLeer<T, ndim> convective_flux{physics};
-                navier_stokes::DiffusionFlux<T, ndim> diffusive_flux{physics};
-                ConservationLawDDG disc{std::move(physical_flux), std::move(convective_flux), std::move(diffusive_flux)};
-                disc.field_names = std::vector<std::string>{"rho", "rhou"};
-                if(ndim >= 2) disc.field_names.push_back("rhov");
-                if(ndim >= 3) disc.field_names.push_back("rhow");
-                disc.field_names.push_back("rhoe");
-                initialize_and_solve(script_config, fespace, disc);
-            } else {
-                AnomalyLog::log_anomaly(Anomaly{ "No such conservation_law implemented",
-                        text_not_found_tag{cons_law_tbl["name"].get<std::string>()}});
-            }
-
-        } else {
-            std::cout << "No conservation_law table specified: exiting...";
-        }
-
-
-        return 0;
-    };
-    // exit compile time ndim region
-
-    // template specialization: ndim
+    
+//    // template specialization: ndim
     int ndim_arg = script_config["ndim"];
-    // invoke the ndim function
-    NUMTOOL::TMP::invoke_at_index(
-        NUMTOOL::TMP::make_range_sequence<int, 1, 3>{},
-        ndim_arg,
-        ndim_func);
+    std::cout << "ndim: " << ndim_arg << std::endl;
+    switch(ndim_arg){
+        case 1:
+            setup<1>(script_config, cli_args);
+            break;
+        case 2:
+            setup<2>(script_config, cli_args);
+            break;
+    }
+//    // invoke the ndim function
+//    WHY DOES THIS BREAK STUFF >:3
+//    NUMTOOL::TMP::invoke_at_index(
+//        NUMTOOL::TMP::make_range_sequence<int, 1, 3>{},
+//        ndim_arg,
+//        ndim_func);
 
 #ifdef ICEICLE_USE_PETSC
     //cleanup
