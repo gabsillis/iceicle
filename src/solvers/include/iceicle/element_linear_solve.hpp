@@ -4,6 +4,8 @@
  * @author Gianni Absillis (gabsill@ncsu.edu)
  */
 #pragma once
+#include "Numtool/matrix/permutation_matrix.hpp"
+#include "iceicle/anomaly_log.hpp"
 #include <iceicle/element/finite_element.hpp>
 #include <iceicle/fe_function/fe_function.hpp>
 #include <iceicle/fe_function/fespan.hpp>
@@ -36,7 +38,7 @@ namespace iceicle::solvers {
         : mass(el.nbasis(), el.nbasis()), pi{} {
             // calculate and decompose the mass matrix
             mass = 0.0; // fill with zeros
-            
+
             for(int ig = 0; ig < el.nQP(); ++ig){
                 const QuadraturePoint<T, ndim> quadpt = el.getQP(ig);
 
@@ -51,7 +53,18 @@ namespace iceicle::solvers {
                     }
                 }
             }
-            pi = MATH::MATRIX::SOLVERS::decompose_lu(mass);
+            
+            try {
+                pi = MATH::MATRIX::SOLVERS::decompose_lu(mass);
+            } catch(MATH::MATRIX::SOLVERS::SingularMatrixException e){
+                // set to Identity on failure and log anomaly
+                pi = MATH::MATRIX::PermutationMatrix<unsigned int>{(unsigned int) el.nbasis()};
+                mass = 0;
+                for(int i = 0; i < el.nbasis(); ++i){
+                    mass[i][i] = 1.0;
+                }
+                util::AnomalyLog::log_anomaly(util::Anomaly{"Singular Mass Matrix encountered on element " + std::to_string(el.elidx), util::general_anomaly_tag{}});
+            }
         }
 
         /**

@@ -224,6 +224,32 @@ namespace iceicle::solvers {
                 }
                 geo_map.finalize();
             }
+            sol::optional<sol::table> burgers_mesh_tbl_opt = config_tbl["burgers_mesh"];
+            if constexpr(ndim == 2) if(burgers_mesh_tbl_opt){
+                sol::table mesh_table = burgers_mesh_tbl_opt.value();
+
+                std::array<IDX, ndim> nelem{{3, 2}};
+
+                // bounding box
+                std::array<T, ndim> xmin{{0, 0}};
+                std::array<T, ndim> xmax{{1.0, 0.5}};
+                mesh_parameterizations::hyper_rectangle(nelem, xmin, xmax, geo_map);
+
+                // === Dirichlet BC => nodes cannot move ===
+                for(auto trace : fespace.get_boundary_traces()){
+                    if(trace.face->bctype == BOUNDARY_CONDITIONS::DIRICHLET){
+                        for(index_type inode : trace.face->nodes_span()){
+                            auto node_data = fespace.meshptr->nodes[inode];
+                            std::array<T, ndim> fixed_coordinates;
+                            for(int idim = 0; idim < ndim; ++idim)
+                                { fixed_coordinates[idim] = node_data[idim]; }
+                            parametric_transformations::Fixed<T, ndim> parameterization{fixed_coordinates};
+                            geo_map.register_parametric_node(inode, parameterization);
+                        }
+                    }
+                }
+                geo_map.finalize();
+            }
 
             return geo_map;
         } else {
