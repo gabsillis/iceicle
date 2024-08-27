@@ -121,6 +121,178 @@ namespace iceicle {
         
     }
 
+    template<class T, class IDX>
+    auto burgers_linear_mesh(bool initial)
+    -> std::optional<AbstractMesh<T, IDX, 2>> {
+        using Point = MATH::GEOMETRY::Point<T, 2>;
+
+        AbstractMesh<T, IDX, 2> mesh{};
+        if(initial){
+            mesh.nodes = std::vector<Point>{
+                Point{{0.00, 0.00}},
+                Point{{0.25, 0.00}},
+                Point{{0.75, 0.00}},
+                Point{{1.00, 0.00}},
+                Point{{0.00, 0.25}},
+                Point{{0.25, 0.25}},
+                Point{{0.75, 0.25}},
+                Point{{1.00, 0.25}},
+                Point{{0.00, 0.50}},
+                Point{{0.25, 0.50}},
+                Point{{0.75, 0.50}},
+                Point{{1.00, 0.50}}
+            };
+        } else {
+            mesh.nodes = std::vector<Point>{
+                Point{{0.00, 0.00}},
+                Point{{0.25, 0.00}},
+                Point{{0.75, 0.00}},
+                Point{{1.00, 0.00}},
+                Point{{0.00, 0.125}},
+                Point{{0.50, 0.125}},
+                Point{{0.50, 0.125}},
+                Point{{1.00, 0.125}},
+                Point{{0.00, 0.50}},
+                Point{{0.25, 0.50}},
+                Point{{0.50, 0.50}},
+                Point{{1.00, 0.50}}
+            };
+        }
+
+        // make the elements by hand
+        {
+            std::vector<IDX> nodes{0, 4, 1, 5};
+            auto el = create_element<T, IDX, 2>(DOMAIN_TYPE::HYPERCUBE, 1, nodes);
+            mesh.elements.push_back(std::move(el.value()));
+        }
+        {
+            std::vector<IDX> nodes{1, 5, 2, 6};
+            auto el = create_element<T, IDX, 2>(DOMAIN_TYPE::HYPERCUBE, 1, nodes);
+            mesh.elements.push_back(std::move(el.value()));
+        }
+        {
+            std::vector<IDX> nodes{2, 6, 3, 7};
+            auto el = create_element<T, IDX, 2>(DOMAIN_TYPE::HYPERCUBE, 1, nodes);
+            mesh.elements.push_back(std::move(el.value()));
+        }
+        {
+            std::vector<IDX> nodes{4, 8, 5, 9};
+            auto el = create_element<T, IDX, 2>(DOMAIN_TYPE::HYPERCUBE, 1, nodes);
+            mesh.elements.push_back(std::move(el.value()));
+        }
+        {
+            std::vector<IDX> nodes{5, 9, 6, 10};
+            auto el = create_element<T, IDX, 2>(DOMAIN_TYPE::HYPERCUBE, 1, nodes);
+            mesh.elements.push_back(std::move(el.value()));
+        }
+        {
+            std::vector<IDX> nodes{6, 10, 7, 11};
+            auto el = create_element<T, IDX, 2>(DOMAIN_TYPE::HYPERCUBE, 1, nodes);
+            mesh.elements.push_back(std::move(el.value()));
+        }
+        
+        // find the interior faces
+        find_interior_faces(mesh);
+        mesh.interiorFaceStart = 0;
+        mesh.interiorFaceEnd = mesh.faces.size();
+        mesh.bdyFaceStart = mesh.faces.size();
+
+        // boundary faces
+        auto add_bdy_face = [&mesh](int ielem, std::vector<IDX> nodes, BOUNDARY_CONDITIONS bctype, int bcflag){
+            auto face_info = boundary_face_info(nodes, mesh.elements[ielem].get());
+            if(face_info){
+                auto [fac_domn, face_nr_l] = face_info.value();
+                GeometricElement<T, IDX, 2> *elptr = mesh.elements[ielem].get();
+
+                // get the face nodes in the correct order
+                std::vector<IDX> ordered_face_nodes(elptr->n_face_nodes(face_nr_l));
+                elptr->get_face_nodes(face_nr_l, ordered_face_nodes.data());
+
+                auto face_opt = make_face<T, IDX, 2>(fac_domn, elptr->domain_type(), elptr->domain_type(), 1,
+                        ielem, ielem, std::span<const IDX>{ordered_face_nodes},
+                        face_nr_l, 0, 0, bctype, bcflag);
+                if(face_opt){
+                    mesh.faces.push_back(std::move(face_opt.value()));
+                }
+            }
+        };
+
+        {
+            int ielem = 0;
+            std::vector<IDX> nodes{0, 1};
+            BOUNDARY_CONDITIONS bctype = BOUNDARY_CONDITIONS::DIRICHLET;
+            int bcflag = 0;
+            add_bdy_face(ielem, nodes, bctype, bcflag);
+        }
+        {
+            int ielem = 1;
+            std::vector<IDX> nodes{1, 2};
+            BOUNDARY_CONDITIONS bctype = BOUNDARY_CONDITIONS::DIRICHLET;
+            int bcflag = 0;
+            add_bdy_face(ielem, nodes, bctype, bcflag);
+        }
+        {
+            int ielem = 2;
+            std::vector<IDX> nodes{2, 3};
+            BOUNDARY_CONDITIONS bctype = BOUNDARY_CONDITIONS::DIRICHLET;
+            int bcflag = 0;
+            add_bdy_face(ielem, nodes, bctype, bcflag);
+        }
+        {
+            int ielem = 0;
+            std::vector<IDX> nodes{0, 4};
+            BOUNDARY_CONDITIONS bctype = BOUNDARY_CONDITIONS::DIRICHLET;
+            int bcflag = 0;
+            add_bdy_face(ielem, nodes, bctype, bcflag);
+        }
+        {
+            int ielem = 3;
+            std::vector<IDX> nodes{4, 8};
+            BOUNDARY_CONDITIONS bctype = BOUNDARY_CONDITIONS::DIRICHLET;
+            int bcflag = 0;
+            add_bdy_face(ielem, nodes, bctype, bcflag);
+        }
+        {
+            int ielem = 2;
+            std::vector<IDX> nodes{3, 7};
+            BOUNDARY_CONDITIONS bctype = BOUNDARY_CONDITIONS::DIRICHLET;
+            int bcflag = 0;
+            add_bdy_face(ielem, nodes, bctype, bcflag);
+        }
+        {
+            int ielem = 5;
+            std::vector<IDX> nodes{7, 11};
+            BOUNDARY_CONDITIONS bctype = BOUNDARY_CONDITIONS::DIRICHLET;
+            int bcflag = 0;
+            add_bdy_face(ielem, nodes, bctype, bcflag);
+        }
+        {
+            int ielem = 3;
+            std::vector<IDX> nodes{8, 9};
+            BOUNDARY_CONDITIONS bctype = BOUNDARY_CONDITIONS::SPACETIME_FUTURE;
+            int bcflag = 0;
+            add_bdy_face(ielem, nodes, bctype, bcflag);
+        }
+        {
+            int ielem = 4;
+            std::vector<IDX> nodes{9, 10};
+            BOUNDARY_CONDITIONS bctype = BOUNDARY_CONDITIONS::SPACETIME_FUTURE;
+            int bcflag = 0;
+            add_bdy_face(ielem, nodes, bctype, bcflag);
+        }
+        {
+            int ielem = 5;
+            std::vector<IDX> nodes{10, 11};
+            BOUNDARY_CONDITIONS bctype = BOUNDARY_CONDITIONS::SPACETIME_FUTURE;
+            int bcflag = 0;
+            add_bdy_face(ielem, nodes, bctype, bcflag);
+        }
+
+        mesh.bdyFaceEnd = mesh.faces.size();
+
+        return std::optional{mesh};
+    }
+
     /// @brief form a mixed uniform mesh with square and triangle elements
     ///
     /// @param nelem the number of (quad) elements in each direction 

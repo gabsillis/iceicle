@@ -277,7 +277,8 @@ namespace iceicle {
         auto dt_from_cfl(T cfl, T reference_length) const  noexcept -> T {
             T aref = 0;
             aref = lambda_max;
-            return (reference_length * cfl) / (coeffs.mu / reference_length + aref);
+            return (reference_length * cfl) / 
+                (coeffs.mu / std::max(std::numeric_limits<T>::epsilon(), reference_length) + aref);
         }
     };
     template<class T, int ndim_space>
@@ -313,20 +314,45 @@ namespace iceicle {
             Tensor<T, ndim> unit_normal
         ) const noexcept -> std::array<T, nv_comp> 
         {
-            T lambdaL = 0;
-            T lambdaR = 0;
+            // Dolejsi, Feistaur Discontinuous Galerkin Method pp. 121
+            //
+            // TODO: increase efficiency by computing p from lambdaL + lambdaR
+            T u_avg = 0.5 * (uL[0] + uR[0]);
+            T P = 0;
             for(int idim = 0; idim < ndim_space; ++idim){
-                lambdaL += unit_normal[idim] * (coeffs.a[idim] + 0.5 * coeffs.b[idim] * uL[0]);
-                lambdaR += unit_normal[idim] * (coeffs.a[idim] + 0.5 * coeffs.b[idim] * uR[0]);
+                P += unit_normal[idim] * (coeffs.a[idim] + 0.5 * coeffs.b[idim] * u_avg);
             }
-            // time component
-            lambdaL += unit_normal[idim_time];
-            lambdaR += unit_normal[idim_time];
+            P += unit_normal[idim_time];
 
-            T lambda_l_plus = 0.5 * (lambdaL + std::abs(lambdaL));
-            T lambda_r_plus = 0.5 * (lambdaR - std::abs(lambdaR));
-            T fadvn = uL[0] * lambda_l_plus + uR[0] * lambda_r_plus;
-            return std::array<T, nv_comp>{fadvn};
+            T u_upwind = (P > 0) ? uL[0] : uR[0];
+
+            std::array<T, nv_comp> fadvn = {0};
+            for(int idim = 0; idim < ndim_space; ++idim){
+                fadvn[0] += unit_normal[idim] * (coeffs.a[idim] + 0.5 * coeffs.b[idim] * u_upwind);
+            }
+            fadvn[0] += unit_normal[idim_time];
+            fadvn[0] *= u_upwind; // factor out u from the flux to reduce computation
+
+            P += unit_normal[idim_time];
+
+            return fadvn;
+
+//            T lambdaL = 0;
+//            T lambdaR = 0;
+//            for(int idim = 0; idim < ndim_space; ++idim){
+//                lambdaL += unit_normal[idim] * (coeffs.a[idim] + 0.5 * coeffs.b[idim] * uL[0]);
+//                lambdaR += unit_normal[idim] * (coeffs.a[idim] + 0.5 * coeffs.b[idim] * uR[0]);
+//            }
+//            // time component
+//            lambdaL += unit_normal[idim_time];
+//            lambdaR += unit_normal[idim_time];
+//
+//            T lambda_l_plus = 0.5 * (lambdaL + std::abs(lambdaL));
+//            T lambda_r_plus = 0.5 * (lambdaR - std::abs(lambdaR));
+//            T fadvn = uL[0] * lambda_l_plus + uR[0] * lambda_r_plus;
+//            return std::array<T, nv_comp>{fadvn};
+
+            // TODO: examine Osher flux (see Toro Riemann Solvers and Numerical Methods pp.384)
         }
     };
 
@@ -680,7 +706,7 @@ namespace iceicle {
                         + (centroidR[idim] - phys_pt[idim])
                     );
                 }
-                h_ddg = std::abs(h_ddg);
+                h_ddg = std::max(std::abs(h_ddg), std::numeric_limits<T>::epsilon());
                 
                 int order = std::max(
                     elL.basis->getPolynomialOrder(),
@@ -836,6 +862,7 @@ namespace iceicle {
                                 (phys_pt[idim] - centroidL[idim])
                             );
                         }
+                        h_ddg = std::max(h_ddg, std::numeric_limits<T>::epsilon());
 
                         // construct the DDG derivatives
                         int order = 
@@ -1014,7 +1041,7 @@ namespace iceicle {
                                 2 * (phys_pt[idim] - centroidL[idim])
                             );
                         }
-                        h_ddg = std::abs(h_ddg);
+                        h_ddg = std::max(std::abs(h_ddg), std::numeric_limits<T>::epsilon());
                         
                         int order = std::max(
                             elL.basis->getPolynomialOrder(),

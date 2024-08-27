@@ -68,11 +68,25 @@ namespace iceicle::io {
         template<typename T>
         static VTKElement<T, 2> VTK_TRIANGLE = {
             .nodes = {
+                { 0.0,  0.0},
                 { 1.0,  0.0},
                 { 0.0,  1.0},
-                { 0.0,  0.0},
             },
             .vtk_id = 5
+        };
+
+
+        template<typename T>
+        static VTKElement<T, 2> VTK_QUADRATIC_TRIANGLE = {
+            .nodes = {
+                { 0.0,  0.0},
+                { 1.0,  0.0},
+                { 0.0,  1.0},
+                { 0.5,  0.0},
+                { 0.5,  0.5},
+                { 0.0,  0.5},
+            },
+            .vtk_id = 22
         };
 
         template<typename T>
@@ -165,8 +179,10 @@ namespace iceicle::io {
                         switch(max_order){
                             case 1:
                                 return VTK_TRIANGLE<T>;
+                            case 2:
+                                return VTK_QUADRATIC_TRIANGLE<T>;
                             default:
-                                return VTK_TRIANGLE<T>;
+                                return VTK_QUADRATIC_TRIANGLE<T>;
                         }
                    
                     // Quad type elements 
