@@ -60,7 +60,7 @@ namespace iceicle::solvers{
     auto form_dense_jacobian_fd(
         FESpace<T, IDX, ndim>& fespace,
         disc_class& disc,
-        geo_dof_map<T, IDX, ndim>& geo_map,
+        const geo_dof_map<T, IDX, ndim>& geo_map,
         std::span<T> u,
         std::span<T> res,
         linalg::out_matrix auto jac,

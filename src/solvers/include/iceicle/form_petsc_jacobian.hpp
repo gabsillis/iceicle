@@ -9,6 +9,7 @@
 #include "iceicle/fe_function/component_span.hpp"
 #include "iceicle/geometry/face.hpp"
 #include "iceicle/petsc_interface.hpp"
+#include "iceicle/fd_utils.hpp"
 #include <cmath>
 #include <limits>
 #include <set>
@@ -116,7 +117,7 @@ namespace iceicle::solvers {
             scatter_elspan(trace.elL.elidx, 1.0, resL, 1.0, res);
 
             // set up the perturbation amount scaled by unperturbed residual 
-            T eps_scaled = std::max(epsilon, resL.vector_norm() * epsilon);
+            T eps_scaled = scale_fd_epsilon(epsilon, resL.vector_norm());
 
             std::size_t glob_index_L = u.get_layout()[trace.elL.elidx, 0, 0];
 
@@ -185,7 +186,7 @@ namespace iceicle::solvers {
             std::size_t glob_index_R = u.get_layout()[trace.elR.elidx, 0, 0];
 
             // set up the perturbation amount scaled by unperturbed residual 
-            T eps_scaled = std::max(epsilon, std::max(resL.vector_norm(), resR.vector_norm()) * epsilon);
+            T eps_scaled = scale_fd_epsilon(epsilon, std::max(resL.vector_norm(), resR.vector_norm()));
 
             // perturb and form jacobian wrt uL
             // compact jacobian views 
@@ -306,7 +307,7 @@ namespace iceicle::solvers {
             scatter_elspan(el.elidx, 1.0, res_el, 1.0, res);
 
             // set up the perturbation amount scaled by unperturbed residual 
-            T eps_scaled = std::max(epsilon, res_el.vector_norm() * epsilon);
+            T eps_scaled = scale_fd_epsilon(epsilon, res_el.vector_norm());
 
             // perturb and form jacobian wrt u_el
             for(IDX idofu = 0; idofu < el.nbasis(); ++idofu){
@@ -415,7 +416,7 @@ namespace iceicle::solvers {
             scatter_facspan(trace, 1.0, res, 1.0, mdg_residual);
 
             // set up the perturbation amount scaled by unperturbed residual 
-            T eps_scaled = std::max(epsilon, res.vector_norm() * epsilon);
+            T eps_scaled = scale_fd_epsilon(epsilon, res.vector_norm());
 
             // form local jacobian wrt uL
             for(IDX idofu = 0; idofu < uL.ndof(); ++idofu){
@@ -517,7 +518,7 @@ namespace iceicle::solvers {
                 disc.domain_integral(el, fespace.meshptr->nodes, u_el, res);
 
                 // set up the perturbation amount scaled by unperturbed residual 
-                T eps_scaled = std::max(epsilon, res.vector_norm() * epsilon);
+                T eps_scaled = scale_fd_epsilon(epsilon, res.vector_norm());
 
                 // loop over dimensions of node and perturb
                 for(int idim = 0; idim < ndim; ++idim){
@@ -588,7 +589,7 @@ namespace iceicle::solvers {
                     }
 
                     // set up the perturbation amount scaled by unperturbed residual 
-                    T eps_scaled = std::max(epsilon, std::max(resL.vector_norm(), resR.vector_norm()) * epsilon);
+                    T eps_scaled = scale_fd_epsilon(epsilon, std::max(resL.vector_norm(), resR.vector_norm()));
 
                     // loop over dimensions of node and perturb
                     for(int idim = 0; idim < ndim; ++idim) {
@@ -643,7 +644,7 @@ namespace iceicle::solvers {
                     res = 0;
                     disc.interface_conservation(trace, fespace.meshptr->nodes, uL, uR, res);
                     // set up the perturbation amount scaled by unperturbed residual 
-                    T eps_scaled = std::max(epsilon, res.vector_norm() * epsilon);
+                    T eps_scaled = scale_fd_epsilon(epsilon, res.vector_norm());
 
                     // loop over dimensions of node and perturb
                     for(int idim = 0; idim < ndim; ++idim) {
@@ -761,9 +762,9 @@ namespace iceicle::solvers {
             scatter_facspan(trace, 1.0, res, 1.0, mdg_residual);
 
             // set up the perturbation amount scaled by unperturbed residual 
-            T eps_scaled = std::max(epsilon, res.vector_norm() * epsilon);
+            T eps_scaled = scale_fd_epsilon(epsilon, res.vector_norm());
 
-            // form local jacobian wrt uL
+            // dICE/duL
             for(IDX idofu = 0; idofu < uL.ndof(); ++idofu){
                 for(IDX iequ = 0; iequ < uL.nv(); ++iequ){
                     IDX jcol = proc_range_beg + glob_index_L + uL.get_layout()[idofu, iequ];
@@ -797,7 +798,7 @@ namespace iceicle::solvers {
                 }
             }
 
-            // form local jacobian wrt uR
+            // dICE/duR
             for(IDX idofu = 0; idofu < uR.ndof(); ++idofu){
                 for(IDX iequ = 0; iequ < uR.nv(); ++iequ){
                     IDX jcol = proc_range_beg + glob_index_R + uR.get_layout()[idofu, iequ];
@@ -863,7 +864,7 @@ namespace iceicle::solvers {
                 disc.domain_integral(el, fespace.meshptr->nodes, u_el, res);
 
                 // set up the perturbation amount scaled by unperturbed residual 
-                T eps_scaled = std::max(epsilon, res.vector_norm() * epsilon);
+                T eps_scaled = scale_fd_epsilon(epsilon, res.vector_norm());
 
                 // get the original parameterization 
                 auto* parametrization = geo_map.parametric_accessors[jmdg].get();
@@ -940,7 +941,7 @@ namespace iceicle::solvers {
                     }
 
                     // set up the perturbation amount scaled by unperturbed residual 
-                    T eps_scaled = std::max(epsilon, std::max(resL.vector_norm(), resR.vector_norm()) * epsilon);
+                    T eps_scaled = scale_fd_epsilon(epsilon, std::max(resL.vector_norm(), resR.vector_norm()));
 
                     // get the original parameterization 
                     auto* parametrization = geo_map.parametric_accessors[jmdg].get();
@@ -988,6 +989,26 @@ namespace iceicle::solvers {
                         parametrization->s_to_x(s, fespace.meshptr->nodes[inode]);
                     }
                 }
+            }
+
+            // loop over the traces selected for interface conservation 
+            for(IDX itrace : geo_map.selected_traces) {
+                
+                const Trace& trace = fespace.traces[itrace];
+
+                // set up compact data views
+                auto uL_layout = u.create_element_layout(trace.elL.elidx);
+                dofspan uL{uL_storage, uL_layout};
+                auto uR_layout = u.create_element_layout(trace.elR.elidx);
+                dofspan uR{uR_storage, uR_layout};
+
+                // get the global index to the start of the contiguous component x dof range for L/R elem
+                std::size_t glob_index_L = u.get_layout()[trace.elL.elidx, 0, 0];
+                std::size_t glob_index_R = u.get_layout()[trace.elR.elidx, 0, 0];
+
+                // extract the compact values from the global u view
+                extract_elspan(trace.elL.elidx, u, uL);
+                extract_elspan(trace.elR.elidx, u, uR);
 
                 // dICE/dx
                 {
@@ -1001,7 +1022,7 @@ namespace iceicle::solvers {
                     res = 0;
                     disc.interface_conservation(trace, fespace.meshptr->nodes, uL, uR, res);
                     // set up the perturbation amount scaled by unperturbed residual 
-                    T eps_scaled = std::max(epsilon, res.vector_norm() * epsilon);
+                    T eps_scaled = scale_fd_epsilon(epsilon, res.vector_norm());
 
                     // get the original parameterization 
                     auto* parametrization = geo_map.parametric_accessors[jmdg].get();

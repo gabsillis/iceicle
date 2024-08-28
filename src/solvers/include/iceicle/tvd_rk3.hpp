@@ -169,22 +169,38 @@ public:
                 using namespace MATH::MATRIX;
                 using namespace MATH::MATRIX::SOLVERS;
                 DenseMatrix<T> mass = calculate_mass_matrix(el, fespace.meshptr->nodes);
-                PermutationMatrix<unsigned int> pi = decompose_lu(mass);
+                try{
+                    PermutationMatrix<unsigned int> pi = decompose_lu(mass);
 
-                const std::size_t ndof = el.nbasis();
-                for(IDX ieqn = 0; ieqn < disc_class::nv_comp; ++ieqn){
+                    const std::size_t ndof = el.nbasis();
+                    for(IDX ieqn = 0; ieqn < disc_class::nv_comp; ++ieqn){
 
-                    // copy the residual for each degree of freedom to the rhs 
-                    for(IDX idof = 0; idof < ndof; ++idof){
-                        b[idof] = res[el.elidx, idof, ieqn];
+                        // copy the residual for each degree of freedom to the rhs 
+                        for(IDX idof = 0; idof < ndof; ++idof){
+                            b[idof] = res[el.elidx, idof, ieqn];
+                        }
+
+                        // solve the matrix equation 
+                        sub_lu(mass, pi, b.data(), du.data());
+
+                        for(IDX idof = 0; idof < ndof; ++idof){
+                            res_stage[el.elidx, idof, ieqn] += du[idof];
+                        }
                     }
+                } catch(MATH::MATRIX::SOLVERS::SingularMatrixException e){
+                    const std::size_t ndof = el.nbasis();
+                    for(IDX ieqn = 0; ieqn < disc_class::nv_comp; ++ieqn){
 
-                    // solve the matrix equation 
-                    sub_lu(mass, pi, b.data(), du.data());
+                        // copy the residual for each degree of freedom to the rhs 
+                        for(IDX idof = 0; idof < ndof; ++idof){
+                            b[idof] = res[el.elidx, idof, ieqn];
+                        }
 
-                    for(IDX idof = 0; idof < ndof; ++idof){
-                        res_stage[el.elidx, idof, ieqn] += du[idof];
+                        for(IDX idof = 0; idof < ndof; ++idof){
+                            res_stage[el.elidx, idof, ieqn] += 1e-8 * b[idof];
+                        }
                     }
+                    
                 }
             }
         };

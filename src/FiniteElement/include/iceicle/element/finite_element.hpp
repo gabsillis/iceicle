@@ -283,7 +283,7 @@ public:
 
     // multiply though by the determinant
     for (int i = 0; i < ndof * ndim; ++i) {
-      dBidxj[i] /= detJ;
+      dBidxj[i] /= std::max(std::numeric_limits<T>::epsilon(), detJ);
     }
 
     return gbasis;
@@ -440,7 +440,7 @@ public:
     }
 
     for (int i = 0; i < ndim * ndim * ndof; ++i) {
-      basis_hessian_data[i] /= detJ2;
+      basis_hessian_data[i] /= std::max(std::numeric_limits<T>::epsilon(), detJ2);
     }
 
     return hess_phys;
