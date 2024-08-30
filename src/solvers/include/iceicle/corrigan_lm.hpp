@@ -12,14 +12,17 @@
 #include "iceicle/fe_function/layout_right.hpp"
 #include "iceicle/fespace/fespace.hpp"
 #include "iceicle/form_dense_jacobian.hpp"
+#include "iceicle/mpi_type.hpp"
 #include "iceicle/nonlinear_solver_utils.hpp"
 #include "iceicle/petsc_interface.hpp"
 #include "iceicle/form_petsc_jacobian.hpp"
 #include "iceicle/form_residual.hpp"
 
+#include <mpi_proto.h>
 #include <petsc.h>
 
 #include <iostream>
+#include <petsclog.h>
 #include <petscmat.h>
 #include <petscsys.h>
 #include <petscvec.h>
@@ -264,6 +267,25 @@ namespace iceicle::solvers {
             // determine the system sizes on the local processor
             PetscInt local_u_size = u_layout.size() + geo_layout.size();
             PetscInt local_res_size = u_layout.size() + ic_layout.size();
+
+
+            std::cout << std::endl << " System information: " << std::endl;
+            std::cout <<              "---------------------" << std::endl;
+
+            IDX total_pde_unknowns, total_geo_unknowns, total_pde_residual, total_ic_residual;
+            IDX local_pde_unknowns = u_layout.size();
+            IDX local_geo_unknowns = geo_layout.size();
+            IDX local_pde_residual = u_layout.size();
+            IDX local_ic_residual = ic_layout.size();
+            MPI_Allreduce(&local_pde_unknowns, &total_pde_unknowns, 1, mpi_get_type<IDX>(), MPI_SUM, PETSC_COMM_WORLD);
+            MPI_Allreduce(&local_geo_unknowns, &total_geo_unknowns, 1, mpi_get_type<IDX>(), MPI_SUM, PETSC_COMM_WORLD);
+            MPI_Allreduce(&local_pde_residual, &total_pde_residual, 1, mpi_get_type<IDX>(), MPI_SUM, PETSC_COMM_WORLD);
+            MPI_Allreduce(&local_ic_residual, &total_ic_residual, 1, mpi_get_type<IDX>(), MPI_SUM, PETSC_COMM_WORLD);
+
+            std::cout << "PDE unknowns      : " << total_pde_unknowns << std::endl;
+            std::cout << "Geometry unknowns : " << total_geo_unknowns << std::endl;
+            std::cout << "PDE residual size : " << total_pde_residual << std::endl;
+            std::cout << "ICE residual size : " << total_ic_residual << std::endl;
 
             // Create and set up the jacobian matrix 
             MatCreate(PETSC_COMM_WORLD, &jac);
