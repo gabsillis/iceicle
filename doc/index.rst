@@ -28,6 +28,101 @@ Introduction
 ============
 ICEicle is a research finite element code aimed at implementing MDG-ICE.
 
+
+Technical Background
+====================
+Partial differential equations (PDEs) are expressed on a domain of interest in :math:`d` dimensional space. 
+This domain :math:`\Omega \subset \mathbb{R}^d` is then tesselated by non overlapping elements :math:`\mathcal{K}` in a tesselation :math:`\mathcal{T}`.
+We also consider the set of element interfaces :math:`\mathcal{E}` such that :math:`\cup_{\Gamma\in\mathcal{E}} = \cup_{\mathcal{K}\in\mathcal{T}} \partial \mathcal{K}`.
+
+The primary goal is to represent the solution to the PDE accurately by a set of functions on the domain. 
+We generally consider PDEs in the form of a **conservation law**; many physical processes follow conservation laws.
+
+.. math::
+   \nabla\cdot\mathcal{F}(\mathbf{U}) = 0
+
+Where the quantities in :math:`\mathbf{U}` are **conserved quantities**, such as mass, momentum, and energy. 
+We denote the number of conserved quantities with :math:`m`. 
+Then the **conservative flux** :math:`\mathcal{F} : \mathbb{R}^m \mapsto \mathbb{R}^{m\times d}`.
+
+If the problem is time-dependent, it is common to treat the time dimension separately and use a conservative flux defined on the spatial dimensions :math:`F : \mathbb{R}^m \mapsto \mathbb{R}^{m\times d_x},\;d_x = d - 1`.
+In this case our conservation law becomes:
+
+.. math::
+   
+   \frac{\partial \mathbf{U}}{\partial t} + \frac{\partial F_j(\mathbf{U})}{\partial x_j} = 0
+
+============================
+Function Spaces
+============================
+
+We want to find functions that best solve the PDE, so we must consider spaces of functions. First we need a few definitions.
+
+A function :math:`f` is :math:`C^0(\Omega)` or **continuous** on a domain :math:`\Omega` if for all :math:`x_0 \in \Omega`
+
+1. :math:`f(x_0)` is defined 
+2. :math:`\lim_{x\to x_0}` exists
+3. :math:`\lim_{x\to x_0} = f(x_0)`
+
+For more details see the `Mathworld Article <https://mathworld.wolfram.com/ContinuousFunction.html>`_
+
+A function is :math:`C^k` if the function, and every derivative of the function up to the :math:`k\text{th}` derivative is continuous.
+
+We define the :math:`L^p` norm by: 
+
+.. math::
+
+   \lVert f \rVert_{L^p(\Omega)} := \Bigg( \int_\Omega | f | ^p \;dx \Bigg)^{\frac{1}{p}}
+
+A function is :math:`L^p` integrable or in the :math:`L^p` space if :math:`\lVert f \rVert_{L^p(\Omega)} < \infty`
+
+The Sobolev space :math:`V^{k, p}` is defined as 
+
+.. math::
+
+   V^{s, p}(\Omega) := \{ v \in L^p(\Omega) : \forall | \alpha | \leq s, \partial^\alpha_x v \in L^p(\Omega) \}
+
+Here :math:`\alpha` is a multi index.
+So this is saying for all of the partial derivatives of f who's total order are less than or equal to :math:`s`, that derivative is in :math:`L^p`.
+When :math:`p` is left unspecified, we assume :math:`p=2`.
+
+The space :math:`H^1` has :math:`L^2` integrable functions and first derivatives, and is defined as: 
+
+.. math::
+
+   H^1(\Omega) := V^{1, 2}(\Omega)
+
+Using these spaces we define a few spaces to solve the vector-valued PDE with :math:`m` components on :math:`\Omega \subset \mathbb{R}^d`.
+
+The first is used to represent the PDE solution by functions that are continuous internal to elements but can be discontinuous between elements. 
+This **broken Soboloev space** is used for Discontinuous Galerkin methods.
+Here, :math:`v\rvert_{\mathcal{K}}` is the function restricted to the domain of the element :math:`\mathcal{K}`.
+
+.. math::
+
+   V_u := \{ v \in [L^2(\Omega)]^m \;|\; \forall \mathcal{K} \in \mathcal{T},\; v\rvert_\mathcal{K} \in [H^1(\Omega)]^m \}
+
+The next is another broken Sobolev space for primal formulations (explored in detail by Arnold et al [Arnold2000]_).
+
+.. math::
+
+   
+   V_\sigma := \{ v \in [L^2(\Omega)]^{m\times d} \;|\; \forall \mathcal{K} \in \mathcal{T},\; v\rvert_\mathcal{K} \in [H^1(\Omega)]^{m \times d} \}
+
+Also define :math:`W_u` and :math:`W_\sigma` as the single valued trace spaces of :math:`V_u` and :math:`V_\sigma` respectively.
+
+Next is a continuous function space over the domain, which will be used to represent the PDE solution. 
+
+.. math::
+
+   V_{u, C} = \{ v \in [H^1(\Omega)]^m \}
+
+And finally a continuous function space that will be used to aid in discretizing the mesh.
+
+.. math:: 
+
+   V_{y} = \{ v \in [H^1(\Omega)]^d \}
+
 Lua Interface
 =============
 The :code:`conservation_law` miniapp exposes functionality via input decks written in Lua to allow for dynamic setup of a variety of problems. 
@@ -1083,4 +1178,6 @@ A current best result with DGP2 solution approximation and P1 geometry can be ac
 References
 ==========
 .. [Kercher2021] Kercher, A. D., Corrigan, A., & Kessler, D. A. (2021). The moving discontinuous Galerkin finite element method with interface condition enforcement for compressible viscous flows. International Journal for Numerical Methods in Fluids, 93(5), 1490-1519.
+
+.. [Arnold2000]  Arnold, D. N., Brezzi, F., Cockburn, B., & Marini, D. (2000). Discontinuous Galerkin methods for elliptic problems. In Discontinuous Galerkin Methods: Theory, Computation and Applications (pp. 89-101). Berlin, Heidelberg: Springer Berlin Heidelberg.
 
