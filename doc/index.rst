@@ -196,7 +196,7 @@ This results in the following weak form:
    - \langle \overline{G}_{ikrs}(U) [[ U_r n_s ]], w_\sigma \rangle_\Gamma \\
    = 0  \quad \forall v_u\in V_u, v_\sigma \in V_\sigma, w_u \in W_u, w_\sigma \in W_\sigma
 
-The domain integrals :math:`\langle \cdot, \cdot \rangle_\mathcal{K}` can be integrated by parts and resulting trace integrals converted to numerical fluxes.
+The domain integrals :math:`\langle \cdot, \cdot \rangle_\mathcal{K}` can be integrated by parts and resulting fluxes in the trace integrals replaced by consistent and conservative numerical fluxes.
 
 -------------------- 
 Proposed Formulation
@@ -216,6 +216,52 @@ The corresponding weak form is:
    - \langle [[ n\cdot \mathcal{F}(\mathbf{U}, \sigma) ]], v_c \rangle_\Gamma
    - \langle \overline{G}_{ikrs}(U) [[ U_r n_s ]], v_p \rangle_\Gamma \\
    = 0  \quad \forall v_u\in V_u, v_c \in V_c, v_p \in V_p
+
+-------------------------
+Geometry Parameterization
+-------------------------
+
+For the purpose of the discretization the geometry (described by node coordinates) exists in the :math:`V_y` space. However, this neglects the enforcement of boundary conditions.
+Corrigan et al. introduce an operator :math:`b : V_y \mapsto V_y` that enforces the boundary condition.
+We, instead parameterize the geometry by a function :math:`g : \mathbb{R}^{n_p} \mapsto V_y`. 
+Where :math:`n_p` is the number of parameters for the parameterization. 
+This also allows for parameterizations like setting the final time by a single input variable.
+
+----------------------
+Variational Derivative
+----------------------
+
+Define the variational derivative of a functional :math:`\Pi(u)` as: 
+
+.. math::
+
+   \Pi_u(u; \hat{u}) := \frac{d}{d\epsilon} \Pi(u + \epsilon \hat{u}) \Bigr|_{\epsilon = 0}
+
+---------------------
+Regularization
+---------------------
+
+Let :math:`\tilde{u} \in \mathbb{R}^{n_p}` represent the geometry parameterization.
+Isotropic Laplacian-type mesh regularization results in the following operator:
+
+.. math::
+
+   -\langle \nabla g_\tilde{u}(\tilde{u}; \hat{u}), \nabla g_\tilde{u}(\tilde{u}; \hat{v}) \rangle_\mathcal{K}
+
+If we denote the element stiffness matrix by 
+
+.. math::
+
+   K_\mathcal{K} = \int_\mathcal{K} \nabla u \cdot \nabla v \; d\mathcal{K}
+
+Then this isotropic Laplacian-type mesh regularization can be written as:
+
+.. math::
+
+   -(g_\tilde{u}(\tilde{u}; \hat{u})\mathbf{I})^T K_\mathcal{K} g_\tilde{u}(\tilde{u}; \hat{v}) \mathbf{I}
+
+which can be implemented as a simple loop over the elements.
+
 Lua Interface
 =============
 The :code:`conservation_law` miniapp exposes functionality via input decks written in Lua to allow for dynamic setup of a variety of problems. 
