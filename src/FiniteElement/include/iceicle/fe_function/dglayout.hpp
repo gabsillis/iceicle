@@ -14,7 +14,7 @@
 namespace iceicle {
 
     /** 
-     * @brief represents the map from the pair (ielem, idof) -> to a global dof index
+     * @brief represents the map from the pair (ielem, ildof) -> to a global dof index
      * NOTE: this is independent of vector components;
      */
     template< class IndexType = std::size_t >
@@ -99,9 +99,6 @@ namespace iceicle {
         constexpr index_type operator[](index_type ielem, index_type idof) 
             const noexcept { return offsets[ielem] + idof; }
 
-        /** get reference to the last offset which is equivalent to the size of the gdof index space */ 
-        constexpr auto back() const noexcept { return offsets.back(); }
-
         // ===========
         // = Utility =
         // ===========
@@ -137,7 +134,7 @@ namespace iceicle {
         [[nodiscard]] constexpr size_type nelem() const noexcept { return offsets.size() - 1; }
 
         /** @brief get the size of the global degree of freedom index space represented by this map */
-        [[nodiscard]] constexpr size_type gdof_size() const noexcept { return static_cast<size_type>(offsets.back()); }
+        [[nodiscard]] constexpr size_type size() const noexcept { return static_cast<size_type>(offsets.back()); }
     };
 
     // Deduction Guides

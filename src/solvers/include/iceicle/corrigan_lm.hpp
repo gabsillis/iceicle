@@ -5,18 +5,17 @@
 /// @author Gianni Absillis (gabsill@ncsu.edu)
 
 #include "Numtool/fixed_size_tensor.hpp"
-#include "iceicle/anomaly_log.hpp"
 #include "iceicle/fe_function/component_span.hpp"
 #include "iceicle/fe_function/fespan.hpp"
 #include "iceicle/fe_function/geo_layouts.hpp"
 #include "iceicle/fe_function/layout_right.hpp"
 #include "iceicle/fespace/fespace.hpp"
-#include "iceicle/form_dense_jacobian.hpp"
 #include "iceicle/mpi_type.hpp"
 #include "iceicle/nonlinear_solver_utils.hpp"
 #include "iceicle/petsc_interface.hpp"
 #include "iceicle/form_petsc_jacobian.hpp"
 #include "iceicle/form_residual.hpp"
+#include "iceicle/disc/bilinear_integrators.hpp"
 
 #include <mpi_proto.h>
 #include <petsc.h>
@@ -25,6 +24,7 @@
 #include <petsclog.h>
 #include <petscmat.h>
 #include <petscsys.h>
+#include <petscsystypes.h>
 #include <petscvec.h>
 
 namespace iceicle::solvers {
@@ -121,6 +121,9 @@ namespace iceicle::solvers {
 
         /// @brief reference to the fespace to use
         FESpace<T, IDX, ndim>& fespace;
+
+        /// @brief the isoparametric continuous fespace
+        FESpace<T, IDX, ndim> cg_fespace;
 
         /// @brief reference to the discretization to use
         disc_class& disc;
@@ -253,7 +256,7 @@ namespace iceicle::solvers {
             const ls_type& linesearch,
             const geo_dof_map<T, IDX, ndim>& geo_map,
             bool explicitly_form_subproblem = false
-        ) : fespace{fespace}, disc{disc}, conv_criteria{conv_criteria}, 
+        ) : fespace{fespace}, cg_fespace(fespace.meshptr), disc{disc}, conv_criteria{conv_criteria}, 
             linesearch{linesearch}, geo_map{geo_map},
             explicitly_form_subproblem{explicitly_form_subproblem}
         {
@@ -446,39 +449,62 @@ namespace iceicle::solvers {
                     VecCreate(PETSC_COMM_WORLD, &lambda);
                     VecSetSizes(lambda, u_layout.size() + geo_layout.size(), PETSC_DETERMINE);
                     VecSetFromOptions(lambda);
-                    {
+                    { // lambda read scope
                         petsc::VecSpan lambda_view{lambda};
                         PetscCallAbort(PETSC_COMM_WORLD,
                                 MatGetColumnNorms(jac, NORM_2, lambda_view.data()));
 
+                        // diagonal regularization
                         for(PetscInt i = 0; i < u_layout.size(); ++i)
                             { lambda_view[i] *= lambda_u; }
                         for(PetscInt i = u_layout.size(); i < u_layout.size() + geo_layout.size(); ++i)
-                            { lambda_view[i] = std::max(lambda_b, lambda_view[i] * lambda_b); }
+                            { lambda_view[i] = lambda_b; }
+                    } // end lambda read scope
+                    MatDiagonalSet(subproblem_mat, lambda, ADD_VALUES);
+                    VecDestroy(&lambda);
 
-                        for(auto el : fespace.elements){
+                    // loop over isoparametric cg elements
+                    for(auto el : cg_fespace.elements){ 
 
-                            // get the minimum jacobian determinant of all quadrature points
-                            T detJ = 1.0;
-                            for(int igauss = 0; igauss < el.nQP(); ++igauss){
-                                auto J = el.geo_el->Jacobian(fespace.meshptr->nodes, el.getQP(igauss).abscisse);
-                                detJ = std::min(std::abs(detJ), std::abs(NUMTOOL::TENSOR::FIXED_SIZE::determinant(J)));
+                        // form the diffusion matrix 
+                        DiffusionIntegrator<T, IDX, ndim> K_integrator{1.0};
+                        std::vector<T> Kmat_data(el.nbasis() * el.nbasis());
+                        std::mdspan Kmat(Kmat_data.data(), el.nbasis(), el.nbasis());
+                        K_integrator.form_operator(el, cg_fespace.meshptr->nodes, Kmat);
 
-                            }
-                            detJ = std::max(1e-8, std::abs(detJ));
-                            IDX nodes_size = geo_layout.geo_map.selected_nodes.size();
-                            for(auto inode : el.geo_el->nodes_span()){
-                                IDX geo_dof = geo_layout.geo_map.inv_selected_nodes[inode];
-                                if(geo_dof != nodes_size){
-                                    for(int iv = 0; iv < geo_layout.nv(geo_dof); ++iv){
-                                        lambda_view[u_layout.size() + geo_layout[geo_dof, iv]] += lambda_lag / (detJ);
+                        // get the minimum jacobian determinant of all quadrature points
+                        T detJ = 1.0;
+                        for(int igauss = 0; igauss < el.nQP(); ++igauss){
+                            auto J = el.geo_el->Jacobian(fespace.meshptr->nodes, el.getQP(igauss).abscisse);
+                            detJ = std::min(std::abs(detJ), std::abs(NUMTOOL::TENSOR::FIXED_SIZE::determinant(J)));
+
+                        }
+                        detJ = std::max(1e-8, std::abs(detJ));
+                        IDX nodes_size = geo_layout.geo_map.selected_nodes.size();
+                        for(int ilnode = 0; ilnode < el.geo_el->n_nodes(); ++ilnode){
+                            for(int jlnode = 0; ilnode < el.geo_el->n_nodes(); ++ilnode){
+                                const IDX ignode = el.geo_el->nodes()[ilnode];
+                                const IDX jgnode = el.geo_el->nodes()[jlnode];
+                                IDX igeo = geo_layout.geo_map.inv_selected_nodes[ignode];
+                                IDX jgeo = geo_layout.geo_map.inv_selected_nodes[jgnode];
+                                if(igeo != nodes_size && jgeo != nodes_size){
+                                    for(int iv = 0; iv < geo_layout.nv(igeo); ++iv){
+                                        for(int jv = 0; jv < geo_layout.nv(jgeo); ++jv){
+                                            // petsc indices on this process 
+                                            PetscInt imat = u_layout.size() + geo_layout[igeo, iv];
+                                            PetscInt jmat = u_layout.size() + geo_layout[jgeo, jv];
+
+                                            // WARNING: assumes g_u(u; v) is 1 for each non-fixed index
+                                            PetscScalar value = -Kmat[ilnode, jlnode] * (
+                                                lambda_lag );
+
+                                            MatSetValueLocal(subproblem_mat, imat, jmat, value, ADD_VALUES);
+                                        }
                                     }
                                 }
                             }
                         }
                     }
-                    MatDiagonalSet(subproblem_mat, lambda, ADD_VALUES);
-                    VecDestroy(&lambda);
                 } else {
                     // TODO: 
                 }
@@ -503,7 +529,18 @@ namespace iceicle::solvers {
                     axpy(-1.0, dx, coord);
                 } else {
                     // its linesearchin time!
-                    
+                   
+                    T local_rnorm_old = 0;
+                    {
+                        petsc::VecSpan res_view{res_data};
+                        for(IDX i = 0; i < u_layout.size() + ic_layout.size(); ++i){
+                            local_rnorm_old += SQUARED(res_view.data()[i]);
+                        }
+                    }
+                    local_rnorm_old = sqrt(local_rnorm_old);
+                    T rnorm_step;
+
+
                     T alpha = linesearch([&](T alpha_arg){
 
                         // === Set up working arrays for linesearch update ===
@@ -538,25 +575,33 @@ namespace iceicle::solvers {
                         form_residual(fespace, disc, u_step, res_work);
                         form_mdg_residual(fespace, disc, u_step, geo_map, mdg_res);
                         T rnorm = res_work.vector_norm() + mdg_res.vector_norm();
+                        rnorm_step = rnorm; // extract it
 
                         // Add any penalties
 
                         return rnorm;
                     });
 
+                    // safegaurd and use the fact that comparing with infinity returns false
+                    if(rnorm_step < 10 * local_rnorm_old ){
+                        // Perform the linesearch update
+                        petsc::VecSpan du_view{du_data};
+                        fespan du{du_view.data(), u.get_layout()};
+                        axpy(-alpha, du, u);
 
-                    // Perform the linesearch update
-                    petsc::VecSpan du_view{du_data};
-                    fespan du{du_view.data(), u.get_layout()};
-                    axpy(-alpha, du, u);
-
-                    // x update
-                    component_span dx{du_view.data() + u.size(), geo_layout};
-                    axpy(-alpha, dx, coord);
+                        // x update
+                        component_span dx{du_view.data() + u.size(), geo_layout};
+                        axpy(-alpha, dx, coord);
+                    } else {
+                        lambda_u *= 2;
+                        lambda_b *= 2;
+                    }
                 }
 
                 // clear out matrices 
                 MatZeroEntries(jac); // zero out the jacobian
+                if(explicitly_form_subproblem)
+                    MatZeroEntries(subproblem_mat); 
 
                 // get updated residual and jacobian 
                 {

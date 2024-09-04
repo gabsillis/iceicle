@@ -60,7 +60,7 @@ TEST(test_fespan, test_dglayout){
     using namespace tmp;
     fe_layout_right layout2{offsets, to_size<2>{}};
 
-    fespan fespan1(data.data(), layout);
+    fespan fespan1(data, layout);
 
     static constexpr int ndof_per_elem = ndim * (Pn + 1);
    

@@ -283,7 +283,7 @@ public:
 
     // multiply though by the determinant
     for (int i = 0; i < ndof * ndim; ++i) {
-      dBidxj[i] /= std::max(std::numeric_limits<T>::epsilon(), detJ);
+      dBidxj[i] /= std::copysign(std::max(std::numeric_limits<T>::epsilon(), detJ), detJ);
     }
 
     return gbasis;

@@ -706,7 +706,7 @@ namespace iceicle {
                         + (centroidR[idim] - phys_pt[idim])
                     );
                 }
-                h_ddg = std::max(std::abs(h_ddg), std::numeric_limits<T>::epsilon());
+                h_ddg = std::copysign(std::max(std::abs(h_ddg), std::numeric_limits<T>::epsilon()), h_ddg);
                 
                 int order = std::max(
                     elL.basis->getPolynomialOrder(),
@@ -862,7 +862,7 @@ namespace iceicle {
                                 (phys_pt[idim] - centroidL[idim])
                             );
                         }
-                        h_ddg = std::max(h_ddg, std::numeric_limits<T>::epsilon());
+                    h_ddg = std::copysign(std::max(std::abs(h_ddg), std::numeric_limits<T>::epsilon()), h_ddg);
 
                         // construct the DDG derivatives
                         int order = 
@@ -1041,7 +1041,7 @@ namespace iceicle {
                                 2 * (phys_pt[idim] - centroidL[idim])
                             );
                         }
-                        h_ddg = std::max(std::abs(h_ddg), std::numeric_limits<T>::epsilon());
+                        h_ddg = std::copysign(std::max(std::abs(h_ddg), std::numeric_limits<T>::epsilon()), h_ddg);
                         
                         int order = std::max(
                             elL.basis->getPolynomialOrder(),
@@ -1251,7 +1251,7 @@ namespace iceicle {
                         // NOTE: multiplying by signed unit normal 
                         // adds directionality which can allow cancellation error with 
                         // V-shaped interface intersections
-                        res[itest, ieq] += ic_res * bitrace[itest]; 
+                        res[itest, ieq] -= ic_res * bitrace[itest]; 
                     }
                 }
             }

@@ -140,6 +140,50 @@ namespace iceicle {
                     break;
             }
         }
+
+        /// @brief construct an isoparametric CG element
+        ReferenceElement(
+            const GeoElementType *geo_el
+        ) {
+            switch (geo_el->domain_type()) {
+                case DOMAIN_TYPE::HYPERCUBE:
+                {
+                    auto el_order_dispatch = [&]<int geo_order>{
+                        static constexpr int nqp = geo_order + 1;
+                        quadrule = std::make_unique<HypercubeGaussLegendre<T, IDX, ndim, nqp>>();
+                        basis = std::make_unique<HypercubeLagrangeBasis<T, IDX, ndim, geo_order>>();
+                        return 0;
+                    };
+                    NUMTOOL::TMP::invoke_at_index(
+                        NUMTOOL::TMP::make_range_sequence<int, 1, MAX_DYNAMIC_ORDER>{},
+                        geo_el->geometry_order(),
+                        el_order_dispatch
+                    );
+
+                    break;
+                }
+                case DOMAIN_TYPE::SIMPLEX:
+                {
+                    auto el_order_dispatch = [&]<int geo_order>{
+                        static constexpr int nqp = geo_order + 1;
+                        quadrule = std::make_unique<GrundmannMollerSimplexQuadrature<T, IDX, ndim, nqp>>();
+                        basis = std::make_unique<SimplexLagrangeBasis<T, IDX, ndim, geo_order>>();
+                        return 0;
+                    };
+                    NUMTOOL::TMP::invoke_at_index(
+                        NUMTOOL::TMP::make_range_sequence<int, 1, MAX_DYNAMIC_ORDER>{},
+                        geo_el->geometry_order(),
+                        el_order_dispatch
+                    );
+                    break;
+                }
+                default:
+                    break;
+            }
+
+            // construct the evaluation
+            eval = FEEvalType(basis.get(), quadrule.get());
+        }
     };
 
     template<typename T, typename IDX, int ndim>

@@ -64,7 +64,7 @@ A function :math:`f` is :math:`C^0(\Omega)` or **continuous** on a domain :math:
 2. :math:`\lim_{x\to x_0}` exists
 3. :math:`\lim_{x\to x_0} = f(x_0)`
 
-For more details see the `Mathworld Article <https://mathworld.wolfram.com/ContinuousFunction.html>`_
+For more details see the `Mathworld Article <https://mathworld.wolfram.com/ContinuousFunction.html>`_.
 
 A function is :math:`C^k` if the function, and every derivative of the function up to the :math:`k\text{th}` derivative is continuous.
 
@@ -107,15 +107,23 @@ The next is another broken Sobolev space for primal formulations (explored in de
 .. math::
 
    
-   V_\sigma := \{ v \in [L^2(\Omega)]^{m\times d} \;|\; \forall \mathcal{K} \in \mathcal{T},\; v\rvert_\mathcal{K} \in [H^1(\Omega)]^{m \times d} \}
+   V_\sigma := \{ v \in [L^2(\Omega)]^{m\times d_x} \;|\; \forall \mathcal{K} \in \mathcal{T},\; v\rvert_\mathcal{K} \in [H^1(\Omega)]^{m \times d_x} \}
 
+Where :math:`d_x = d-1` only considers the spatial dimensions.
 Also define :math:`W_u` and :math:`W_\sigma` as the single valued trace spaces of :math:`V_u` and :math:`V_\sigma` respectively.
 
-Next is a continuous function space over the domain, which will be used to represent the PDE solution. 
+Next is a continuous function space over the domain, which will be used to represent the PDE solution, 
+or continuous test function space for the interface conservation. 
 
 .. math::
 
-   V_{u, C} = \{ v \in [H^1(\Omega)]^m \}
+   V_{c} = \{ v \in [H^1(\Omega)]^m \}
+
+and a corresponding space for primal formulations 
+
+.. math::
+
+   V_{p} = \{ v \in [H^1(\Omega)]^{m \times d_x} \}
 
 And finally a continuous function space that will be used to aid in discretizing the mesh.
 
@@ -123,6 +131,91 @@ And finally a continuous function space that will be used to aid in discretizing
 
    V_{y} = \{ v \in [H^1(\Omega)]^d \}
 
+============================
+Inner Products
+============================
+
+Weak formulations are composed out of :math:`L^2` inner products on the function spaces. 
+We define the following notations for the inner products for scalars :math:`a, b` and vectors :math:`\mathbf{a}, \mathbf{b}`:
+
+.. math::
+   \langle a, b \rangle_\mathcal{K} &:= \sum_{\mathcal{K}\in\mathcal{T}} \int_\mathcal{K} a b \; d\mathcal{K} \\
+   \langle \mathbf{a}, \mathbf{b} \rangle_\mathcal{K} &:= \sum_{\mathcal{K}\in\mathcal{T}} \int_\mathcal{K} \mathbf{a}\cdot\mathbf{b} \; d\mathcal{K} \\
+   \langle a, b \rangle_\Gamma &:= \sum_{\Gamma\in\mathcal{E}} \int_\mathcal{\Gamma} a b \; d\Gamma \\
+   \langle \mathbf{a}, \mathbf{b} \rangle_\Gamma &:= \sum_{\Gamma\in\mathcal{E}} \int_\Gamma \mathbf{a}\cdot\mathbf{b} \; d\Gamma
+
+
+============================
+MDG-ICE Formulation
+============================
+
+Consider the the conservation law:
+
+.. math::
+
+   \nabla \cdot \mathcal{F}(\mathbf{U}) = 0
+
+Where the conservative flux :math:`\mathcal{F} : \mathbb{R}^m \mapsto \mathbb{R}^{m \times d}` can be split into convective and viscous components as follows:
+
+.. math::
+
+   \nabla \cdot \mathcal{F}^c(\mathbf{U}) + \nabla \cdot \mathcal{F}^v(\mathbf{U}, \nabla\mathbf{U}) = 0 \\
+   \mathcal{F}^c = \begin{pmatrix}
+      F^c_j \\ 
+      \mathbf{U}
+   \end{pmatrix}, 
+   \quad \mathcal{F}^v = \begin{pmatrix} G_{ikrs}(U)\frac{\partial U_r}{\partial x_s} \\ 0 \end{pmatrix}
+
+Here, the non-calligraphic :math:`F^c : \mathbb{R}^{m} \mapsto \mathbb{R}^{m \times d_x}` represents the spatial components of the convective flux. 
+:math:`G_{ikrs}(\mathbf{U}) \in \mathbb{R}^{m\times d_x \times m \times d_x}` is the homogeneity tensor of the viscous flux, implying the viscous flux must be homogeneous with respect to the conservative variable gradients.
+Also note that :math:`k` and :math:`s` are indices over the physical dimensions and omit the time dimension.
+
+----------------------------
+Original MDG-ICE Formulation
+----------------------------
+The original formulation recasts the conservation law into a system of first order equations with an auxiallary variable :math:`\sigma \in V_\sigma`.
+
+.. math::
+
+   \mathcal{F}(\mathbf{U}, \sigma) = \nabla\cdot \mathcal{F}^c + \nabla \cdot \begin{pmatrix} \sigma \\ 0 \end{pmatrix} &= 0 \text{ in } \mathcal{K} \quad&\forall \mathcal{K} \in \mathcal{T}\\
+   \sigma - G_{ikrs}\frac{\partial U_r}{\partial x_s} &= 0 \text{ in } \mathcal{K} &\forall \mathcal{K} \in \mathcal{T} \\
+   [[ n\cdot \mathcal{F}(\mathbf{U}, \sigma) ]] &= 0 \text{ on } \Gamma &\forall \Gamma \in \mathcal{E} \\
+   \overline{G}_{ikrs}(U) [[ U_r n_s ]] &= 0 \text{ on } \Gamma &\forall \Gamma \in \mathcal{E} \\
+
+where :math:`n` is the outward unit normal vector to the edge :math:`\Gamma`, :math:`\overline{u} = \frac{u_L + u_R}{2}` is the average operator,
+and :math:`[[u]] = u_R - u_L` is the jump operator.
+
+
+This results in the following weak form:
+
+.. math::
+
+   \langle \nabla \cdot \mathcal{F}(\mathbf{U}, \sigma), v_u \rangle_\mathcal{K}
+   + \langle \sigma - G_{ikrs}\frac{\partial U_r}{\partial x_s}, v_\sigma \rangle_\mathcal{K} \\
+   - \langle [[ n\cdot \mathcal{F}(\mathbf{U}, \sigma) ]], w_u \rangle_\Gamma
+   - \langle \overline{G}_{ikrs}(U) [[ U_r n_s ]], w_\sigma \rangle_\Gamma \\
+   = 0  \quad \forall v_u\in V_u, v_\sigma \in V_\sigma, w_u \in W_u, w_\sigma \in W_\sigma
+
+The domain integrals :math:`\langle \cdot, \cdot \rangle_\mathcal{K}` can be integrated by parts and resulting trace integrals converted to numerical fluxes.
+
+-------------------- 
+Proposed Formulation
+--------------------
+
+.. math:: 
+   \mathcal{F}(\mathbf{U}, \nabla \mathbf{U}) &= 0 \text{ in } \mathcal{K} \quad&\forall \mathcal{K} \in \mathcal{T}\\
+   [[ n\cdot \mathcal{F}(\mathbf{U}, \sigma) ]] &= 0 \text{ on } \Gamma &\forall \Gamma \in \mathcal{E} \\
+   \overline{G}_{ikrs}(U) [[ U_r n_s ]] &= 0 \text{ on } \Gamma &\forall \Gamma \in \mathcal{E} \\
+
+We want to also investigate if the last set of equations (the interface conservation for the constitutive relation) is necessary. 
+The corresponding weak form is:
+
+.. math:: 
+
+   \langle \nabla \cdot \mathcal{F}(\mathbf{U}, \nabla \mathbf{U}), v_u \rangle_\mathcal{K} \\
+   - \langle [[ n\cdot \mathcal{F}(\mathbf{U}, \sigma) ]], v_c \rangle_\Gamma
+   - \langle \overline{G}_{ikrs}(U) [[ U_r n_s ]], v_p \rangle_\Gamma \\
+   = 0  \quad \forall v_u\in V_u, v_c \in V_c, v_p \in V_p
 Lua Interface
 =============
 The :code:`conservation_law` miniapp exposes functionality via input decks written in Lua to allow for dynamic setup of a variety of problems. 
