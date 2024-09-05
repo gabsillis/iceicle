@@ -361,6 +361,8 @@ namespace iceicle::solvers {
 
         template<class uLayoutPolicy>
         auto solve(fespan<T, uLayoutPolicy> u) -> IDX {
+            T lambda_u_min = lambda_u;
+            T lambda_b_min = lambda_b;
 
             // update context from current state to make sure everything is synced
             subproblem_ctx.lambda_u = lambda_u;
@@ -540,6 +542,9 @@ namespace iceicle::solvers {
                     local_rnorm_old = sqrt(local_rnorm_old);
                     T rnorm_step;
 
+                    std::vector<T> coord_step_data(coord_data);
+                    component_span coord_step{coord_step_data, geo_layout};
+
 
                     T alpha = linesearch([&](T alpha_arg){
 
@@ -569,7 +574,9 @@ namespace iceicle::solvers {
 
                         // x update
                         component_span dx{du_view.data() + u.size(), geo_layout};
-                        axpy(-alpha_arg, dx, coord);
+                        axpy(-alpha_arg, dx, coord_step);
+                        update_mesh(coord_step, *(fespace.meshptr));
+                        // apply the x coordinates to the mesh
 
                         // === Get the residuals ===
                         form_residual(fespace, disc, u_step, res_work);
@@ -592,9 +599,13 @@ namespace iceicle::solvers {
                         // x update
                         component_span dx{du_view.data() + u.size(), geo_layout};
                         axpy(-alpha, dx, coord);
+                        lambda_u = std::max(lambda_u_min, 0.85 * lambda_u);
+                        lambda_b = std::max(lambda_b_min, 0.85 * lambda_b);
                     } else {
-                        lambda_u *= 2;
-                        lambda_b *= 2;
+                        // reset coordinates
+                        update_mesh(coord, *(fespace.meshptr));
+                        lambda_u *= 1.5;
+                        lambda_b *= 1.5;
                     }
                 }
 
