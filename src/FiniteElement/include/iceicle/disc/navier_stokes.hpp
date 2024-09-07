@@ -77,8 +77,12 @@ namespace iceicle {
 
         /// @brief Van Leer flux
         /// implementation reference: http://www.chimeracfd.com/programming/gryphon/fluxvanleer.html
-        template< class T, int ndim >
+        template< class T, int _ndim >
         struct VanLeer {
+
+            static constexpr int ndim = _ndim;
+            using value_type = T;
+
             using Vector = NUMTOOL::TENSOR::FIXED_SIZE::Tensor<T, ndim>;
 
             /// @brief number of variables
@@ -158,15 +162,23 @@ namespace iceicle {
             }
         };
 
-        template< class T, int ndim >
+        template< class T, int _ndim >
         struct Flux {
 
             template<class T2, std::size_t... sizes>
             using Tensor = NUMTOOL::TENSOR::FIXED_SIZE::Tensor<T2, sizes...>;
-            using Vector = NUMTOOL::TENSOR::FIXED_SIZE::Tensor<T, ndim>;
+            using Vector = NUMTOOL::TENSOR::FIXED_SIZE::Tensor<T, _ndim>;
+
+            /// @brief the real number type
+            using value_type = T;
+
+            /// @brief the number of dimensions
+            static constexpr int ndim = _ndim;
 
             /// @brief number of variables
             static constexpr int nv_comp = ndim + 2;
+
+            /// @brief number of equations
             static constexpr int neq = nv_comp;
 
             Physics<T, ndim> physics;
@@ -201,8 +213,11 @@ namespace iceicle {
             }
         };
 
-        template< class T, int ndim >
+        template< class T, int _ndim >
         struct DiffusionFlux {
+
+            static constexpr int ndim = _ndim;
+            using value_type = T;
 
             template<class T2, std::size_t... sizes>
             using Tensor = NUMTOOL::TENSOR::FIXED_SIZE::Tensor<T2, sizes...>;
@@ -232,7 +247,7 @@ namespace iceicle {
             inline constexpr 
             auto neumann_flux(
                 std::array<T, nv_comp> gradn
-            ) const noexcept -> std::array<T, nv_comp> {
+            ) const noexcept -> std::array<T, neq> {
                 std::array<T, nv_comp> flux{};
                 std::ranges::fill(flux, 0.0);
                 return flux;

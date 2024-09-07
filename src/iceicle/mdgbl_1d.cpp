@@ -2,7 +2,7 @@
 #include "iceicle/anomaly_log.hpp"
 #include "iceicle/build_config.hpp"
 #include "iceicle/dat_writer.hpp"
-#include "iceicle/disc/heat_eqn.hpp"
+#include "iceicle/disc/burgers.hpp"
 #include "iceicle/fe_function/fespan.hpp"
 #include "iceicle/fe_function/node_set_layout.hpp"
 #include "iceicle/fespace/fespace.hpp"

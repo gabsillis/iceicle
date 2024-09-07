@@ -460,7 +460,7 @@ namespace iceicle::solvers {
                         for(PetscInt i = 0; i < u_layout.size(); ++i)
                             { lambda_view[i] *= lambda_u; }
                         for(PetscInt i = u_layout.size(); i < u_layout.size() + geo_layout.size(); ++i)
-                            { lambda_view[i] = lambda_b; }
+                            { lambda_view[i] *= lambda_b; }
                     } // end lambda read scope
                     MatDiagonalSet(subproblem_mat, lambda, ADD_VALUES);
                     VecDestroy(&lambda);
