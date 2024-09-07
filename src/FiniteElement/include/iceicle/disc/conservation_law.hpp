@@ -632,44 +632,6 @@ namespace iceicle {
                         if constexpr (computes_homogeneity_tensor<DiffusiveFlux>) {
                             if(sigma_ic != 0.0){
 
-        //                        std::array<T, neq> interface_correction;
-        //                        auto Gtensor = diff_flux.homogeneity_tensor(uavg);
-        //
-        //                        for(int itest = 0; itest < elL.nbasis(); ++itest){
-        //                            std::ranges::fill(interface_correction, 0);
-        //                            for(int ieq = 0; ieq < neq; ++ieq){
-        //                                for(int kdim = 0; kdim < ndim; ++kdim){
-        //                                    for(int req = 0; req < neq; ++req){
-        //                                        T jumpu_r = uR[req] - uL[req];
-        //                                        for(int sdim = 0; sdim < ndim; ++sdim){
-        //                                            resL[itest, ieq] -= 
-        //                                                Gtensor[ieq][kdim][req][sdim] * unit_normal[kdim] 
-        //                                                * gradBiL[itest, sdim] * jumpu_r
-        //                                                * quadpt.weight * sqrtg;
-        //                                        }
-        //                                    }
-        //                                }
-        //                            }
-        //
-        //                        }
-        //                        for(int itest = 0; itest < elR.nbasis(); ++itest){
-        //                            std::ranges::fill(interface_correction, 0);
-        //                            for(int ieq = 0; ieq < neq; ++ieq){
-        //                                for(int kdim = 0; kdim < ndim; ++kdim){
-        //                                    for(int req = 0; req < neq; ++req){
-        //                                        T jumpu_r = uR[req] - uL[req];
-        //                                        for(int sdim = 0; sdim < ndim; ++sdim){
-        //                                            resR[itest, ieq] -= 
-        //                                                Gtensor[ieq][kdim][req][sdim] * unit_normal[kdim] 
-        //                                                * gradBiR[itest, sdim] * jumpu_r
-        //                                                * quadpt.weight * sqrtg;
-        //                                        }
-        //                                    }
-        //                                }
-        //                            }
-        //
-        //                        }
-        //
                                 std::array<T, neq> interface_correction;
                                 auto Gtensor = diff_flux.homogeneity_tensor(uavg);
 
