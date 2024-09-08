@@ -6,13 +6,12 @@
  */
 #pragma once
 #include "Numtool/fixed_size_tensor.hpp"
-#include "iceicle/anomaly_log.hpp"
 #include "iceicle/build_config.hpp"
-#include "iceicle/geometry/face_utils.hpp"
 #include "iceicle/geometry/hypercube_face.hpp"
 #include "iceicle/geometry/simplex_element.hpp"
 #include "iceicle/iceicle_mpi_utils.hpp"
 #include "iceicle/tmp_utils.hpp"
+#include "iceicle/transformations/HypercubeTransformations.hpp"
 #include <iceicle/geometry/face.hpp>
 #include <iceicle/geometry/geo_element.hpp>
 #include <iceicle/geometry/hypercube_element.hpp>
@@ -22,7 +21,6 @@
 #include <ranges>
 #include <type_traits>
 #include <memory>
-#include <list>
 #ifndef NDEBUG
 #include <iomanip>
 #endif
@@ -136,11 +134,14 @@ namespace iceicle {
         // ===========================
 
         /// The node coordinates
-        NodeArray<T, ndim> nodes;
+        NodeArray<T, ndim> coord;
 
-        /// A list of pointers to geometric elements
-        /// These are owned by the mesh and destroyed when the mesh is destroyed
-        std::vector<std::unique_ptr<Element>> elements;
+        /// Connectivity array for the elements
+        util::crs<IDX, IDX> conn_el;
+
+        /// The node coordinates for each element 
+        /// NOTE: updates to coord must be propogated to this array
+        util::crs<Point, IDX> coord_els;
 
         /// All faces (internal and boundary) 
         /// interior faces must be a contiguous set
@@ -152,7 +153,7 @@ namespace iceicle {
         IDX interiorFaceEnd; 
         // index of the start of the boundary faces (must be consecutive)
         IDX bdyFaceStart;
-    /// index of one past the end of the boundary faces
+        /// index of one past the end of the boundary faces
         IDX bdyFaceEnd;
 
         /// For each process i store a list of (this-local) element indices 
@@ -165,7 +166,7 @@ namespace iceicle {
 
         std::vector< std::vector< std::unique_ptr<Element> > > communicated_elements;
 
-        inline IDX nelem() { return elements.size(); }
+        inline IDX nelem() { return conn_el.nrow(); }
 
         // ===============
         // = Constructor =
@@ -173,21 +174,16 @@ namespace iceicle {
 
         /** @brief construct an empty mesh */
         AbstractMesh() 
-        : nodes{}, elements{}, faces{}, interiorFaceStart(0), interiorFaceEnd(0), 
+        : coord{}, conn_el{}, coord_els{}, faces{}, interiorFaceStart(0), interiorFaceEnd(0), 
           bdyFaceStart(0), bdyFaceEnd(0), el_send_list(mpi::mpi_world_size()), 
           el_recv_list(mpi::mpi_world_size()), communicated_elements(mpi::mpi_world_size()){}
 
         AbstractMesh(const AbstractMesh<T, IDX, ndim>& other) 
-        : nodes{other.nodes}, elements{}, faces{},
+        : coord{other.coord}, conn_el{other.conn_el}, coord_els{other.coord_els}, faces{},
           interiorFaceStart(other.interiorFaceStart), interiorFaceEnd(other.interiorFaceEnd),
           bdyFaceStart(other.bdyFaceStart), bdyFaceEnd(other.bdyFaceEnd), 
           el_send_list(other.el_send_list), el_recv_list(other.el_recv_list)
         {
-            elements.reserve(other.elements.size());
-            faces.reserve(other.faces.size());
-            for(auto& elptr : other.elements){
-                elements.push_back(std::move(elptr->clone()));
-            }
             for(auto& facptr : other.faces){
                 faces.push_back(std::move(facptr->clone()));
             }
@@ -202,14 +198,11 @@ namespace iceicle {
 
         AbstractMesh<T, IDX, ndim>& operator=(const AbstractMesh<T, IDX, ndim>& other){
             if(this != &other){
-                nodes = other.nodes;
-                elements.clear();
+                coord = other.coord;
+                conn_el = other.conn_el;
+                coord_els = other.coord_els;
                 faces.clear();
-                elements.reserve(other.elements.size());
                 faces.reserve(other.faces.size());
-                for(auto& elptr : other.elements){
-                    elements.push_back(std::move(elptr->clone()));
-                }
                 for(auto& facptr : other.faces){
                     faces.push_back(std::move(facptr->clone()));
                 }
@@ -231,7 +224,7 @@ namespace iceicle {
         }
 
         AbstractMesh(std::size_t nnode) 
-        : nodes{nnode}, elements{}, faces{}, interiorFaceStart(0), interiorFaceEnd(0), 
+        : coord{nnode}, conn_el{}, coord_els{}, faces{}, interiorFaceStart(0), interiorFaceEnd(0), 
           bdyFaceStart(0), bdyFaceEnd(0) {}
 
         private:
@@ -294,7 +287,7 @@ namespace iceicle {
             std::same_as<std::ranges::range_value_t<R_bctype>, BOUNDARY_CONDITIONS> &&
             std::convertible_to<std::ranges::range_value_t<R_bcflags>, int>
 
-        ) : nodes{}, elements{}, faces{}, el_send_list(mpi::mpi_world_size()), 
+        ) : coord{}, conn_el{}, coord_els{}, faces{}, el_send_list(mpi::mpi_world_size()), 
           el_recv_list(mpi::mpi_world_size()), communicated_elements(mpi::mpi_world_size()) 
         {
             using namespace NUMTOOL::TENSOR::FIXED_SIZE;
@@ -321,20 +314,20 @@ namespace iceicle {
                     stride_nodes[idim] *= nnode_dir[jdim];
                 }
             }
-            nodes.resize(nnodes);
+            coord.resize(nnodes);
 
             // Generate the nodes 
             IDX ijk[ndim] = {0};
             for(int inode = 0; inode < nnodes; ++inode){
                 // calculate the coordinates 
                 for(int idim = 0; idim < ndim; ++idim){
-                    nodes[inode][idim] = xmin[idim] + ijk[idim] * dx[idim];
+                    coord[inode][idim] = xmin[idim] + ijk[idim] * dx[idim];
                 }
 #ifndef NDEBUG
                 // print out the node 
                 std::cout << "node " << inode << ": [ ";
                 for(int idim = 0; idim < ndim; ++idim){
-                    std::cout << nodes[inode][idim] << " ";
+                    std::cout << coord[inode][idim] << " ";
                 }
                 std::cout << "]" << std::endl;
 #endif
@@ -352,23 +345,22 @@ namespace iceicle {
                 }
             }
 
-            elements.resize(nelem);
+            std::vector<std::vector<IDX>> ragged_conn_el(nelem);
 
            // ENTERING ORDER TEMPLATED SECTION
            // here we find the compile time function to call based on the order input 
             NUMTOOL::TMP::constexpr_for_range<1, MAX_DYNAMIC_ORDER + 1>([&]<int Pn>{
                 using FaceType = HypercubeFace<T, IDX, ndim, Pn>;
-                using ElementType = HypercubeElement<T, IDX, ndim, Pn>;
+
+                transformations::HypercubeElementTransformation<T, IDX, ndim, Pn> trans{};
                 if(order == Pn){
 
-                    // form all the elements 
+                    // form the element connectivity matrix
                     for(int idim = 0; idim < ndim; ++idim) ijk[idim] = 0;
                     for(int ielem = 0; ielem < nelem; ++ielem){
                         // create the element 
-                        auto el = std::make_unique<ElementType>(); 
 
                         // get the nodes 
-                        auto &trans = el->transformation;
                         for(IDX inode = 0; inode < trans.n_nodes(); ++inode){
                             IDX iglobal = 0;
                             IDX ijk_gnode[ndim];
@@ -379,19 +371,8 @@ namespace iceicle {
                             for(int idim = 0; idim < ndim; ++idim){
                                 iglobal += ijk_gnode[idim] * stride_nodes[idim];
                             }
-                            el->setNode(inode, iglobal);
+                            ragged_conn_el[inode].push_back(iglobal);
                         }
-
-#ifndef NDEBUG 
-                        std::cout << "Element " << ielem << ": [ ";
-                        for(int inode = 0; inode < trans.n_nodes(); ++inode){
-                            std::cout << el->nodes()[inode] << " ";
-                        }
-                        std::cout << "]" << std::endl;
-#endif
-
-                        // assign it 
-                        elements[ielem] = std::move(el);
 
                         // increment
                         ++ijk[0];
@@ -405,6 +386,9 @@ namespace iceicle {
                             }
                         }
                     }
+
+                    conn_el = util::crs<IDX, IDX>{ragged_conn_el};
+                    update_coord_els();
 
                     // ===========================
                     // = Interior Face Formation =
@@ -463,11 +447,11 @@ namespace iceicle {
 
                             Tensor<IDX, FaceType::trans.n_nodes> face_nodes;
                             // TODO: Generalize
-                            auto &transl = ElementType::transformation;
-                            auto &transr = ElementType::transformation;
+                            auto &transl = trans;
+                            auto &transr = trans;
                             transl.get_face_nodes(
                                 face_nr_l,
-                                elements[iel]->nodes(),
+                                &conn_el[iel, 0],
                                 face_nodes.data()
                             );
 
@@ -475,8 +459,8 @@ namespace iceicle {
                             static constexpr int nfacevert = MATH::power_T<2, ndim-1>::value;
                             IDX vert_l[nfacevert];
                             IDX vert_r[nfacevert];
-                            transl.get_face_vert(face_nr_l, elements[iel]->nodes(), vert_l);
-                            transr.get_face_vert(face_nr_r, elements[ier]->nodes(), vert_r);
+                            transl.get_face_vert(face_nr_l, &conn_el[iel, 0], vert_l);
+                            transr.get_face_vert(face_nr_r, &conn_el[ier, 0], vert_r);
                             int orientationr = FaceType::orient_trans.getOrientation(vert_l, vert_r);
 
                             faces.emplace_back(std::make_unique<FaceType>(
@@ -521,10 +505,10 @@ namespace iceicle {
                             // get the global face node indices
                             Tensor<IDX, FaceType::trans.n_nodes> face_nodes;
                             // TODO: Generalize: CRTP?
-                            auto &transl = ElementType::transformation;
+                            auto &transl = trans;
                             transl.get_face_nodes(
                                 face_nr_l,
-                                elements[iel]->nodes(),
+                                &conn_el[iel, 0],
                                 face_nodes.data()
                             );
 
@@ -562,10 +546,10 @@ namespace iceicle {
 
                             // get the global face node indices
                             // TODO: Generalize
-                            auto &transl2 = ElementType::transformation;
+                            auto &transl2 = trans;
                             transl2.get_face_nodes(
                                 face_nr_l,
-                                elements[iel]->nodes(),
+                                &conn_el[iel, 0],
                                 face_nodes.data()
                             );
 
@@ -663,30 +647,41 @@ namespace iceicle {
 
         /// @brief get the number of nodes 
         inline constexpr
-        auto n_nodes() const -> std::make_unsigned_t<IDX> { return nodes.size(); }
+        auto n_nodes() const -> std::make_unsigned_t<IDX> { return coord.size(); }
+
+        // ===========
+        // = Utility =
+        // ===========
+
+        /// @brief update the element coordinate data to match the coord array 
+        /// by using the element connectivity
+        void update_coord_els(){
+            for(IDX i = 0; i < conn_el.nnz(); ++i){
+                IDX inode = conn_el.data()[i];
+                coord_els.data()[i] = coord[inode];
+            }
+        }
 
         // ================
         // = Diagonostics =
         // ================
         void printNodes(std::ostream &out){
-            for(IDX inode = 0; inode < nodes.size(); ++inode){
+            for(IDX inode = 0; inode < coord.size(); ++inode){
                 out << "Node: " << inode << " { ";
                 for(int idim = 0; idim < ndim; ++idim)
-                    out << nodes[inode][idim] << " ";
+                    out << coord[inode][idim] << " ";
                 out << "}" << std::endl;
             }
         }
 
         void printElements(std::ostream &out){
-            int iel = 0;
-            for(auto &elptr : elements){
+            for(IDX iel = 0; iel < nelem(); ++iel){
                 out << "Element: " << iel << "\n";
                 out << "Nodes: { ";
-                for(int inode = 0; inode < elptr->n_nodes(); ++inode){
-                    out << elptr->nodes()[inode] << " ";
+                for(IDX inode : conn_el.rowspan(iel)){
+                    out << inode << " ";
                 }
                 out << "}\n";
-                ++iel;
             }
         }
 

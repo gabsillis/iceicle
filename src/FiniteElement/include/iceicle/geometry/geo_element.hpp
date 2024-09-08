@@ -17,6 +17,71 @@ namespace iceicle {
 
     // the maximum dynamic element order that is generated
     static constexpr int MAX_DYNAMIC_ORDER = build_config::FESPACE_BUILD_PN;
+
+    /// @brief Collection of attributes that will uniquely identify each Element Transformation
+    template<int ndim>
+    struct ElementGeometryAttributes {
+        DOMAIN_TYPE domain_type;
+        int order;
+    };
+
+    /// @brief Represents a transformation T : s -> x which takes reference space to physical space
+    /// As a function table with no data members
+    ///
+    /// References:
+    ///  (Guermond FE1) : Ern, Alexandre and Guermond, Jean-Luc Finite Elements I: Approximation and Interpolation
+    ///  Texts in Applied Mathematics, Springer
+    ///
+    /// @tparam T the real number type 
+    /// @tparam IDX the index type
+    /// @tparam ndim the number of dimensions
+    template<class T, class IDX, int ndim>
+    struct ElementTransformation {
+
+        // type aliases
+        using Point = MATH::GEOMETRY::Point<T, ndim>;
+        using HessianType = NUMTOOL::TENSOR::FIXED_SIZE::Tensor<T, ndim, ndim, ndim>;
+        using JacobianType = NUMTOOL::TENSOR::FIXED_SIZE::Tensor<T, ndim, ndim>;
+
+        // ===================
+        // = Node Operations =
+        // ===================
+        //
+        /// @brief get the element coordinates from the global node coordinates and the node indices 
+        ///
+        /// @param [in] coord the global node coordinates array on this process
+        /// @param [in] nodes the node indices 
+        /// @return vector of coordinates for the nodes of this element
+        std::vector<Point> (*get_el_coord)(const NodeArray<T, ndim>& coord, const IDX* nodes) = nullptr;
+
+        // =============================
+        // = Coordinate Transformation =
+        // =============================
+
+        /// @brief transform a reference domain point to the physical domain
+        ///
+        /// @param [in] el_coord array of the coordinates of each node, in order, for the element 
+        /// @param [in] pt_ref the reference domain 
+        /// @return the Point in the physical domain
+        Point (*transform)(std::span<Point> el_coord, const Point& pt_ref) = nullptr ;
+
+        /// @brief get the Jacobian matrix of the transformation
+        /// J = \frac{\partial T(s)}{\partial s} = \frac{\partial x}[\partial \xi}
+        ///
+        /// @param [in] el_coord array of the coordinates of each node, in order, for the element 
+        /// @param [in] xi the position in the reference domain at which to calculate the Jacobian
+        /// @return the Jacobian matrix
+        JacobianType (*jacobian)(std::span<Point> el_coord, const Point& xi) = nullptr;
+
+        /// @brief get the Hessian of the transformation
+        /// H_{kij} = \frac{\partial T(s)_k}{\partial s_i \partial s_j} 
+        ///         = \frac{\partial x_k}{\partial \xi_i \partial \xi_j}
+        ///
+        /// @param [in] el_coord array of the coordinates of each node, in order, for the element 
+        /// @param [in] xi the position in the reference domain at which to calculate the hessian
+        /// @return the Hessian in tensor form indexed [k][i][j] as described above
+        HessianType (*hessian)(std::span<Point> el_coord, const Point& xi) = nullptr;
+    };
     
     /**
      * @brief A Geometric element

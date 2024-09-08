@@ -9,6 +9,90 @@
 #include <sstream>
 namespace iceicle::transformations {
 
+    template<class T, class IDX>
+    struct triangle { 
+        
+        static constexpr int ndim = 2;
+        static constexpr int nshp = ndim + 1;
+        using Point = MATH::GEOMETRY::Point<T, ndim>;
+        using HessianType = NUMTOOL::TENSOR::FIXED_SIZE::Tensor<T, ndim, ndim, ndim>;
+        using JacobianType = NUMTOOL::TENSOR::FIXED_SIZE::Tensor<T, ndim, ndim>;
+
+        /**
+        * @brief transform from the reference domain to the physcial domain
+        * T(s): s -> x
+        * @param [in] el_coord the coordinates of each node for the element
+        * element
+        * @param [in] xi the position in the refernce domain
+        * @param [out] x the position in the physical domain
+        */
+        static constexpr
+        auto transform(std::span<Point> el_coord, const Point &pt_ref) noexcept -> Point {
+
+            Point pt_phys{};
+
+            std::array<T, nshp> lambdas = {
+                pt_ref[0], 
+                pt_ref[1],
+                1.0 - pt_ref[0] - pt_ref[1]
+            };
+
+            std::ranges::fill(pt_phys, 0.0);
+            for(int ishp = 0; ishp < nshp; ++ishp) {
+                pt_phys[0] += lambdas[ishp] * el_coord[ishp][0];
+                pt_phys[1] += lambdas[ishp] * el_coord[ishp][1];
+            }
+
+            return pt_phys;
+        }
+
+
+        /**
+        * @brief get the Jacobian matrix of the transformation
+        * J = \frac{\partial T(s)}{\partial s} = \frac{\partial x}[\partial \xi}
+        *
+        * @param [in] el_coord the coordinates of each node for the element
+        * @param [in] xi the position in the reference domain at which to calculate the Jacobian
+        * @return the Jacobian matrix
+        */
+        static constexpr
+        auto jacobian(
+            std::span<Point> el_coord,
+            const Point &xi
+        ) noexcept -> JacobianType {
+
+            T x0 = el_coord[0][0], x1 = el_coord[1][0], 
+              x2 = el_coord[2][0];
+            T y0 = el_coord[0][1], y1 = el_coord[1][1], 
+              y2 = el_coord[2][1];
+
+            JacobianType J {{
+                { x0 - x2, x1 - x2 },
+                { y0 - y2, y1 - y2 }
+            }};
+            return J;
+        }
+
+        /**
+        * @brief get the Hessian of the transformation
+        * H_{kij} = \frac{\partial T(s)_k}{\partial s_i \partial s_j} 
+        *         = \frac{\partial x_k}{\partial \xi_i \partial \xi_j}
+        * @param [in] node_coords the coordinates of all the nodes
+        * @param [in] node_indices the indices in node_coords that pretain to this element in order
+        * @param [in] xi the position in the reference domain at which to calculate the hessian
+        * @return the Hessian in tensor form indexed [k][i][j] as described above
+        */
+        static constexpr
+        auto hessian(
+            std::span<Point> el_coord,
+            const Point &xi
+        ) noexcept -> HessianType {
+            HessianType H;
+            H = 0;
+            return H;
+        }
+    };
+
     /**
      * @brief Transformation for an arbitrary simplex to the reference simplex
      *

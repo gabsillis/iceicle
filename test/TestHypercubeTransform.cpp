@@ -1,13 +1,82 @@
 #include "Numtool/fixed_size_tensor.hpp"
 #include "Numtool/polydefs/LagrangePoly.hpp"
+#include "iceicle/build_config.hpp"
+#include "iceicle/fe_definitions.hpp"
 #include <Numtool/tmp_flow_control.hpp>
 #include <Numtool/matrixT.hpp>
 #include <iceicle/transformations/HypercubeTransformations.hpp>
+#include <iceicle/geometry/transformations_table.hpp>
 #include "gtest/gtest.h"
 #include <random>
 
 using namespace iceicle;
 using namespace transformations;
+
+TEST(test_transformation_table, test_hypercube) {
+
+  std::random_device rdev{};
+  std::default_random_engine engine{rdev()};
+  std::uniform_real_distribution<double> dist{-0.2, 0.2};
+  std::uniform_real_distribution<double> domain_dist{-1.0, 1.0};
+  auto rand_doub = [&]() -> double { return dist(engine); };
+  static double epsilon = 1e-8;//std::sqrt(std::numeric_limits<double>::epsilon());
+
+  using T = double;
+  using IDX = int;
+
+  NUMTOOL::TMP::constexpr_for_range<1, 5>([&]<int ndim>(){
+
+    ElementTransformationTable<T, IDX, ndim> trans_table{};
+
+    NUMTOOL::TMP::constexpr_for_range<1, build_config::FESPACE_BUILD_GEO_PN + 1>([&]<int Pn>(){
+      std::cout << "ndim: " << ndim << " | Pn: " << Pn << std::endl;
+      HypercubeElementTransformation<double, int, ndim, Pn> trans1{};
+
+      ElementTransformation<T, IDX, ndim>* trans{trans_table.get_transform(DOMAIN_TYPE::HYPERCUBE, Pn)};
+
+      int node_indices[trans1.n_nodes()];
+      NodeArray<double, ndim> node_coords(trans1.n_nodes());
+
+      for(int k = 0; k < 50; ++k){ // repeat test 50 times
+        // randomly peturb
+        for(int inode = 0; inode < trans1.n_nodes(); ++inode){
+          node_indices[inode] = inode; // set the node index
+          for(int idim = 0; idim < ndim; ++idim){
+            node_coords[inode][idim] = trans1.reference_nodes()[inode][idim] + rand_doub();
+          }
+        }
+
+        auto el_coord = trans->get_el_coord(node_coords, node_indices);
+
+        // test 10 random points in the domain 
+        for(int k2 = 0; k2 < 10; ++k2){
+          MATH::GEOMETRY::Point<double, ndim> testpt;
+          for(int idim = 0; idim < ndim; ++idim) testpt[idim] = domain_dist(engine);
+
+          double Jfd[ndim][ndim];
+          auto Jtrans = trans->jacobian(el_coord, testpt);
+
+          MATH::GEOMETRY::Point<double, ndim> unpeturb_transform = trans->transform(el_coord, testpt);
+
+          for(int ixi = 0; ixi < ndim; ++ixi){
+            double temp = testpt[ixi];
+            testpt[ixi] += epsilon;
+            auto el_coord = trans->get_el_coord(node_coords, node_indices);
+            MATH::GEOMETRY::Point<double, ndim> peturb_transform = trans->transform(el_coord, testpt);
+            for(int ix = 0; ix < ndim; ++ix){
+              Jfd[ix][ixi] = (peturb_transform[ix] - unpeturb_transform[ix]) / epsilon;
+            }
+            testpt[ixi] = temp;
+          }
+
+          double scaled_tol = 1e-6 * (std::pow(10, 0.4 * (Pn - 1)));
+          for(int ix = 0; ix < ndim; ++ix) for(int ixi = 0; ixi < ndim; ++ixi) ASSERT_NEAR(Jtrans[ix][ixi], Jfd[ix][ixi], scaled_tol);
+        }
+      }
+    });
+  });
+  
+}
 
 TEST(test_hypercube_transform, test_get_face_nodes){
   { // Linear 2D element

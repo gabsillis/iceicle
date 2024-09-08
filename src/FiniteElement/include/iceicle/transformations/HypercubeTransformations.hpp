@@ -15,6 +15,150 @@
 #include <algorithm>
 
 namespace iceicle::transformations {
+
+template<typename T, typename IDX, int ndim, int Pn>
+struct hypercube {
+  // === Aliases ===
+  using Point = MATH::GEOMETRY::Point<T, ndim>;
+  using PointView = MATH::GEOMETRY::PointView<T, ndim>;
+
+  // === Nodal Basis ===
+  static constexpr UniformLagrangeInterpolation<T, Pn> interpolation_1d{};
+  using BasisType = decltype(interpolation_1d);
+  static constexpr QTypeProduct<T, ndim, BasisType::nbasis> tensor_prod{};
+  using TensorProdType = decltype(tensor_prod);
+
+  // === Constants ===
+  static constexpr int nnode = TensorProdType::nvalues;
+
+  /// @brief given the global node coordinate array and the node indices,
+  /// get the local node coordinates
+  static constexpr
+  auto get_el_coord(
+    const NodeArray<T, ndim>& coord,
+    const IDX* nodes
+  ) -> std::vector<Point> {
+    std::vector<Point> el_coord(nnode);
+    for(int inode = 0; inode < nnode; ++inode)
+      el_coord[inode] = coord[nodes[inode]];
+    el_coord.shrink_to_fit();
+    return el_coord;
+  }
+
+  /**
+  * @brief transform from the reference domain to the physcial domain
+  * T(s): s -> x
+  * @param [in] el_coord the coordinates of each node for the element
+  * element
+  * @param [in] xi the position in the refernce domain
+  * @param [out] x the position in the physical domain
+  */
+  static constexpr
+  auto transform(std::span<Point> el_coord, const Point &pt_ref) noexcept -> Point {
+    Point x;
+    std::ranges::fill(x, 0.0);
+
+    // Calculate all of the nodal basis functions at xi
+    std::array<T, nnode> Bi;
+    tensor_prod.fill_shp(interpolation_1d, pt_ref, Bi.data());
+
+    // multiply node coordinates by basis function evaluations
+    for (int inode = 0; inode < nnode; ++inode) {
+      const auto &node = el_coord[inode];
+      for (int idim = 0; idim < ndim; ++idim) {
+        x[idim] += Bi[inode] * node[idim];
+      }
+    }
+
+    return x;
+  }
+
+  /**
+    * @brief get the Jacobian matrix of the transformation
+    * J = \frac{\partial T(s)}{\partial s} = \frac{\partial x}[\partial \xi}
+    *
+    * @param [in] el_coord the coordinates of each node for the element
+    * @param [in] xi the position in the reference domain at which to calculate the Jacobian
+    * @return the Jacobian matrix
+    */
+  static constexpr
+  auto jacobian(
+      std::span<Point> el_coord,
+      const Point &xi
+  ) noexcept -> NUMTOOL::TENSOR::FIXED_SIZE::Tensor<T, ndim, ndim> {
+      using namespace NUMTOOL::TENSOR::FIXED_SIZE;
+      // Get a 1D pointer representation of the matrix head
+      Tensor<T, ndim, ndim> J;
+      J = 0;
+
+      // compute Jacobian per basis function
+      Tensor<T, nnode, ndim> dBidxj;
+      tensor_prod.fill_deriv(interpolation_1d, xi, dBidxj);
+
+      for(int inode = 0; inode < nnode; ++inode){
+          const auto &node = el_coord[inode];
+          for(int idim = 0; idim < ndim; ++idim){
+              for(int jdim = 0; jdim < ndim; ++jdim){
+                  // add contribution to jacobian from this basis function
+                  J[idim][jdim] += dBidxj[inode][jdim] * node[idim];
+              }
+          }
+      }
+
+      return J;
+  }
+
+  /**
+    * @brief get the Hessian of the transformation
+    * H_{kij} = \frac{\partial T(s)_k}{\partial s_i \partial s_j} 
+    *         = \frac{\partial x_k}{\partial \xi_i \partial \xi_j}
+    * @param [in] node_coords the coordinates of all the nodes
+    * @param [in] node_indices the indices in node_coords that pretain to this element in order
+    * @param [in] xi the position in the reference domain at which to calculate the hessian
+    * @return the Hessian in tensor form indexed [k][i][j] as described above
+    */
+  static constexpr
+  auto hessian(
+      std::span<Point> el_coord,
+      const Point &xi
+  ) noexcept ->  NUMTOOL::TENSOR::FIXED_SIZE::Tensor<T, ndim, ndim, ndim> {
+    using namespace NUMTOOL::TENSOR::FIXED_SIZE;
+
+    Tensor<T, ndim, ndim, ndim> hess;
+    // Zero initialize
+    hess = 0;
+
+    // Get the hessian at each node 
+    std::vector<T> nodal_hessian_data(nnode * ndim * ndim);
+    auto nodal_hessian = tensor_prod.fill_hess(interpolation_1d, xi, nodal_hessian_data.data());
+
+    for(int inode = 0; inode < nnode; ++inode){
+      // get view to the node coordinates from the node coordinate array
+      const auto& node = el_coord[inode];
+
+      for(int kdim = 0; kdim < ndim; ++kdim){ // k corresponds to xi 
+        for(int idim = 0; idim < ndim; ++idim){
+          for(int jdim = idim; jdim < ndim; ++jdim){
+            hess[kdim][idim][jdim] += nodal_hessian[inode, idim, jdim] * node[kdim];
+          }
+        }
+      }
+    }
+
+    // finish filling symmetric part
+    for(int kdim = 0; kdim < ndim; ++kdim){
+      for(int idim = 0; idim < ndim; ++idim){
+        for(int jdim = 0; jdim < idim; ++jdim){
+          hess[kdim][idim][jdim] = hess[kdim][jdim][idim];
+        }
+      }
+    }
+
+    return hess;
+  }
+
+};
+
 // forward declaration for friend 
 template<typename T, typename IDX, int ndim, int Pn>
 class HypercubeTraceTransformation;
