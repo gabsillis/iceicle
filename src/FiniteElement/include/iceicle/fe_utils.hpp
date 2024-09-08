@@ -19,7 +19,7 @@ namespace iceicle {
      */
     template<typename T, typename IDX, int ndim>
     MATH::GEOMETRY::Point<T, ndim> random_domain_point(
-        const GeometricElement<T, IDX, ndim> *geo_el
+        const ElementTransformation<T, IDX, ndim>* trans
     ){
         static std::random_device rdev{};
         static std::default_random_engine engine{rdev()};
@@ -27,7 +27,7 @@ namespace iceicle {
         static std::uniform_real_distribution<T> simplex_dist{(T) 0.0, (T) 1};
 
         MATH::GEOMETRY::Point<T, ndim> randpt{};
-        switch(geo_el->domain_type()){
+        switch(trans->domain_type){
             case DOMAIN_TYPE::HYPERCUBE:
                 for(int idim = 0; idim < ndim; ++idim){
                     randpt[idim] = hypercube_dist(engine);

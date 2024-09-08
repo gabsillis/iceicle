@@ -274,11 +274,10 @@ struct FiniteElement {
   /** Calculates the Jacobian: \overload */
   auto evalPhysGradBasis(
     const Point &xi,
-    NodeArray<T, ndim> &node_list,
     T *dbidxj 
   ) const {
     JacobianType J = trans->jacobian(coord_el, xi);
-    return evalPhysGradBasis(xi, node_list, J, dbidxj);
+    return evalPhysGradBasis(xi, J, dbidxj);
   }
 
   /**
@@ -289,7 +288,6 @@ struct FiniteElement {
    * @param [in] quadrature_pt_idx the quadrature point index
    * @param [in] transformation the transformation from the reference domain to
    * the physical domain (must be compatible with the geometric element)
-   * @param [in] node_list the list of global node coordinates
    * @param [in] J the jacobian of the element transformation 
    *               (optional: see overload)
    * @param [out] dBidxj the values of the first derivatives of the basis
@@ -304,26 +302,21 @@ struct FiniteElement {
    */
   auto evalPhysGradBasisQP(
       int quadrature_pt_idx,
-      NodeArray<T, ndim> &node_list,
       const JacobianType &J,
       T *dBidxj
   ) const {
     // TODO: prestore
     return evalPhysGradBasis(
-        (*quadrule)[quadrature_pt_idx].abscisse,
-        node_list, J, dBidxj);
+        (*quadrule)[quadrature_pt_idx].abscisse, J, dBidxj);
   }
   
   /** Calculates the Jacobian: \overload */
   auto evalPhysGradBasisQP(
       int quadrature_pt_idx,
-      NodeArray<T, ndim> &node_list,
       T *dBidxj
   ) const {
     // TODO: prestore
-    return evalPhysGradBasis(
-        (*quadrule)[quadrature_pt_idx].abscisse,
-        node_list, dBidxj);
+    return evalPhysGradBasis( (*quadrule)[quadrature_pt_idx].abscisse, dBidxj);
   }
 
   /**
@@ -365,7 +358,7 @@ struct FiniteElement {
 
     // Get the Transformation Jacobian and Hessian
     auto trans_jac = trans->jacobian(coord_el, xi);
-    auto trans_hess = trans->jessian(coord_el, xi);
+    auto trans_hess = trans->hessian(coord_el, xi);
 
     // Evaluate basis function derivatives and second derivatives
 
@@ -465,13 +458,35 @@ struct FiniteElement {
 
   /**
    * @brief transform from the reference domain to the physical domain
-   * @param [in] node_coords the coordinates of all the nodes
    * @param [in] pt_ref the point in the refernce domain
-   * @param [out] pt_phys the point in the physical domain
+   * @return pt_phys the point in the physical domain
    */
-  inline Point transform(NodeArray<T, ndim> &node_coords,
-                        const Point &pt_ref, Point &pt_phys) const {
-    return trans->transform(coord_el, pt_phys);
+  inline Point transform( const Point &pt_ref ) const {
+    return trans->transform(coord_el, pt_ref);
+  }
+
+  /// @brief calculate the Jacobian of the transformation at a given point 
+  /// @param pt_ref the point in the reference domain 
+  /// @return the jacobian of the transformation
+  inline constexpr 
+  auto jacobian( const Point& pt_ref ) const 
+  -> JacobianType {
+    return trans->jacobian(coord_el, pt_ref);
+  }
+
+  /// @brief calculate the Hessian of the transformation at a given point 
+  /// @param pt_ref the point in the reference domain 
+  /// @return the hessian of the transformation
+  inline constexpr 
+  auto hessian( const Point& pt_ref ) const 
+  -> HessianType {
+    return trans->hessian(coord_el, pt_ref);
+  }
+
+  inline constexpr
+  auto centroid() const -> Point
+  {
+    return trans->centroid(coord_el);
   }
 };
 
@@ -483,8 +498,7 @@ struct FiniteElement {
  */
 template<class T, class IDX, int ndim>
 MATH::MATRIX::DenseMatrix<T> calculate_mass_matrix(
-  const FiniteElement<T, IDX, ndim> &el,
-  NodeArray<T, ndim> &node_coords
+  const FiniteElement<T, IDX, ndim> &el
 ) {
   MATH::MATRIX::DenseMatrix<T> mass(el.nbasis(), el.nbasis());
   mass = 0;
@@ -493,7 +507,7 @@ MATH::MATRIX::DenseMatrix<T> calculate_mass_matrix(
     const QuadraturePoint<T, ndim> quadpt = el.getQP(ig);
 
     // calculate the jacobian determinant
-    auto J = el.geo_el->Jacobian(node_coords, quadpt.abscisse);
+    auto J = el.jacobian(quadpt.abscisse);
     T detJ = NUMTOOL::TENSOR::FIXED_SIZE::determinant(J);
 
     // integrate Bi * Bj

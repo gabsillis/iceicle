@@ -7,6 +7,8 @@
 #pragma once
 #include "Numtool/fixed_size_tensor.hpp"
 #include "iceicle/build_config.hpp"
+#include "iceicle/fe_definitions.hpp"
+#include "iceicle/geometry/transformations_table.hpp"
 #include "iceicle/geometry/hypercube_face.hpp"
 #include "iceicle/geometry/simplex_element.hpp"
 #include "iceicle/iceicle_mpi_utils.hpp"
@@ -143,6 +145,9 @@ namespace iceicle {
         /// NOTE: updates to coord must be propogated to this array
         util::crs<Point, IDX> coord_els;
 
+        /// @brief the element transformations for each element
+        std::vector<ElementTransformation<T, IDX, ndim>* > el_transformations;
+
         /// All faces (internal and boundary) 
         /// interior faces must be a contiguous set
         std::vector<std::unique_ptr<face_t>> faces;
@@ -174,12 +179,13 @@ namespace iceicle {
 
         /** @brief construct an empty mesh */
         AbstractMesh() 
-        : coord{}, conn_el{}, coord_els{}, faces{}, interiorFaceStart(0), interiorFaceEnd(0), 
+        : coord{}, conn_el{}, coord_els{}, el_transformations{}, faces{}, interiorFaceStart(0), interiorFaceEnd(0), 
           bdyFaceStart(0), bdyFaceEnd(0), el_send_list(mpi::mpi_world_size()), 
           el_recv_list(mpi::mpi_world_size()), communicated_elements(mpi::mpi_world_size()){}
 
         AbstractMesh(const AbstractMesh<T, IDX, ndim>& other) 
-        : coord{other.coord}, conn_el{other.conn_el}, coord_els{other.coord_els}, faces{},
+        : coord{other.coord}, conn_el{other.conn_el}, coord_els{other.coord_els}, 
+          el_transformations{other.el_transformations}, faces{},
           interiorFaceStart(other.interiorFaceStart), interiorFaceEnd(other.interiorFaceEnd),
           bdyFaceStart(other.bdyFaceStart), bdyFaceEnd(other.bdyFaceEnd), 
           el_send_list(other.el_send_list), el_recv_list(other.el_recv_list)
@@ -201,6 +207,7 @@ namespace iceicle {
                 coord = other.coord;
                 conn_el = other.conn_el;
                 coord_els = other.coord_els;
+                el_transformations = other.el_transformations;
                 faces.clear();
                 faces.reserve(other.faces.size());
                 for(auto& facptr : other.faces){
@@ -358,7 +365,9 @@ namespace iceicle {
                     // form the element connectivity matrix
                     for(int idim = 0; idim < ndim; ++idim) ijk[idim] = 0;
                     for(int ielem = 0; ielem < nelem; ++ielem){
-                        // create the element 
+                        // create the element
+                        el_transformations.push_back( 
+                                (transformation_table<T, IDX, ndim>.get_transform(DOMAIN_TYPE::HYPERCUBE, order)) );
 
                         // get the nodes 
                         for(IDX inode = 0; inode < trans.n_nodes(); ++inode){
@@ -388,7 +397,14 @@ namespace iceicle {
                     }
 
                     conn_el = util::crs<IDX, IDX>{ragged_conn_el};
-                    update_coord_els();
+                    { // build the element coordinates matrix
+                        coord_els = util::crs<Point, IDX>{std::span{conn_el.cols(), conn_el.cols() + conn_el.nrow() + 1}};
+                        for(IDX iel = 0; iel < nelem; ++iel){
+                            for(std::size_t icol = 0; icol < conn_el.rowsize(iel); ++icol){
+                                coord_els[iel, icol] = coord[conn_el[iel, icol]];
+                            }
+                        }
+                    }
 
                     // ===========================
                     // = Interior Face Formation =

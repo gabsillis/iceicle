@@ -3,6 +3,7 @@
 #include "iceicle/fe_function/component_span.hpp"
 #include "iceicle/fe_function/geo_layouts.hpp"
 #include "iceicle/geometry/hypercube_element.hpp"
+#include "iceicle/geometry/transformations_table.hpp"
 #include "iceicle/mesh/mesh.hpp"
 #include "iceicle/tmp_utils.hpp"
 #include <iceicle/quadrature/HypercubeGaussLegendre.hpp>
@@ -34,19 +35,18 @@ TEST(test_fespan, test_dglayout){
     EvaluationType evals(basis, quadrule);
 
     // create geometric elements 
-    GeoElement gel1{};
-    GeoElement gel2{};
-    int inode = 0;
-    for(int i = 0; i < gel1.n_nodes(); ++i, ++inode){
-        gel1.setNode(i, inode);
-    }
-    for(int i = 0; i < gel2.n_nodes(); ++i, ++inode){
-        gel2.setNode(i, inode);
-    }
+    ElementTransformation<T, IDX, ndim> *trans = transformation_table<T, IDX, ndim>.get_transform(DOMAIN_TYPE::HYPERCUBE, Pn);
+    std::vector<int> inodesL(trans->nnode);
+    std::vector<int> inodesR(trans->nnode);
+    std::iota(inodesL.begin(), inodesL.end(), 0);
+    std::iota(inodesL.begin(), inodesL.end(), trans->nnode);
+
+    std::vector<MATH::GEOMETRY::Point<T, ndim>> coord_elL(trans->nnode);
+    std::vector<MATH::GEOMETRY::Point<T, ndim>> coord_elR(trans->nnode);
 
     // create the finite elements 
-    FiniteElement el1{&gel1, &basis, &quadrule, &evals, 0};
-    FiniteElement el2{&gel2, &basis, &quadrule, &evals, 1};
+    FiniteElement el1{trans, &basis, &quadrule, evals, inodesL, coord_elL, 0};
+    FiniteElement el2{trans, &basis, &quadrule, evals, inodesR, coord_elR, 1};
     elements.push_back(el1);
     elements.push_back(el2);
 
@@ -408,6 +408,6 @@ TEST(test_dofspan, test_geo_dof_map){
     data[ldof12, 1] = 0.05;
 
     update_mesh(data, mesh);
-    ASSERT_DOUBLE_EQ(mesh.nodes[12][1], 0.05);
+    ASSERT_DOUBLE_EQ(mesh.coord[12][1], 0.05);
 
 }

@@ -15,7 +15,6 @@
 
 namespace iceicle {
 
-
     /// @brief find and create all the interior faces for a mesh
     template<class T, class IDX, int ndim>
     auto find_interior_faces(
@@ -26,7 +25,7 @@ namespace iceicle {
         // elements surrounding points
         std::vector<std::vector<IDX>> elsup(mesh.n_nodes());
         for(IDX ielem = 0; ielem < mesh.nelem(); ++ielem){
-            for(IDX inode : mesh.elements[ielem]->nodes_span()){
+            for(IDX inode : mesh.conn_el[ielem].rowspan()){
                 elsup[inode].push_back(ielem);
             }
         }
@@ -45,7 +44,7 @@ namespace iceicle {
             connected_elements.reserve(max_faces);
 
             // loop through elements that share a node
-            for(IDX inode : mesh.elements[ielem]->nodes_span()){
+            for(IDX inode : mesh.conn_el.rowspan(ielem)){
                 for(auto jelem_iter = std::lower_bound(elsup[inode].begin(), elsup[inode].end(), ielem);
                         jelem_iter != elsup[inode].end(); ++jelem_iter){
                     IDX jelem = *jelem_iter;
@@ -55,7 +54,7 @@ namespace iceicle {
                         continue; 
 
                     // try making the face that is the intersection of the two elements
-                    auto face_opt = make_face(ielem, jelem, mesh.elements[ielem].get(), mesh.elements[jelem].get());
+                    auto face_opt = make_face(ielem, jelem, mesh.el_transformations[ielem], mesh.el_transformations[jelem]);
                     if(face_opt){
                         mesh.faces.push_back(std::move(face_opt.value()));
                         // short circuit if all the faces have been found
@@ -514,13 +513,14 @@ namespace iceicle {
         for(IDX inode = 0; inode < mesh.n_nodes(); ++inode){
             if( true || !fixed_nodes[inode]){
                 // copy current node data to prevent aliasing issues
-                Point old_node = mesh.nodes[inode];
-                std::span<T, ndim> node_view{mesh.nodes[inode].begin(), mesh.nodes[inode].end()};
+                Point old_node = mesh.coord[inode];
+                std::span<T, ndim> node_view{mesh.coord[inode].begin(), mesh.coord[inode].end()};
 
                 // perturb the node given the current coordinates
                 perturb_func(old_node, node_view);
             }
         }
+        mesh.update_coord_els();
     }
 
 

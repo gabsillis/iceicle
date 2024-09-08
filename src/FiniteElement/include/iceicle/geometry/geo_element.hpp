@@ -26,7 +26,7 @@ namespace iceicle {
     };
 
     /// @brief Represents a transformation T : s -> x which takes reference space to physical space
-    /// As a function table with no data members
+    /// As a function table 
     ///
     /// References:
     ///  (Guermond FE1) : Ern, Alexandre and Guermond, Jean-Luc Finite Elements I: Approximation and Interpolation
@@ -42,6 +42,19 @@ namespace iceicle {
         using Point = MATH::GEOMETRY::Point<T, ndim>;
         using HessianType = NUMTOOL::TENSOR::FIXED_SIZE::Tensor<T, ndim, ndim, ndim>;
         using JacobianType = NUMTOOL::TENSOR::FIXED_SIZE::Tensor<T, ndim, ndim>;
+
+        // =======================
+        // = Element Information =
+        // =======================
+
+        /// @brief the domain type
+        DOMAIN_TYPE domain_type;
+
+        /// @brief the order of the polynomial approximation of the transformation function
+        int order;
+
+        /// @brief the number of nodes
+        int nnode;
 
         // ===================
         // = Node Operations =
@@ -81,6 +94,43 @@ namespace iceicle {
         /// @param [in] xi the position in the reference domain at which to calculate the hessian
         /// @return the Hessian in tensor form indexed [k][i][j] as described above
         HessianType (*hessian)(std::span<Point> el_coord, const Point& xi) = nullptr;
+
+        /**
+         * @brief calculate the centroid in the reference domain 
+         * @return the centroid in the reference domain 
+         */
+        inline constexpr
+        MATH::GEOMETRY::Point<T, ndim> centroid_ref() const {
+
+            MATH::GEOMETRY::Point<T, ndim> refpt;
+            // get the centroid in the reference domain based on domain type
+            switch(domain_type){
+                case DOMAIN_TYPE::HYPERCUBE:
+                    for(int idim = 0; idim < ndim; ++idim) 
+                        { refpt[idim] = 0.0; }
+                    break;
+
+                case DOMAIN_TYPE::SIMPLEX:
+                    for(int idim = 0; idim < ndim; ++idim) 
+                        { refpt[idim] = 1.0 / 3.0; }
+                    break;
+
+                default: // WARNING: use 0 as centroid for default
+                    for(int idim = 0; idim < ndim; ++idim) 
+                        { refpt[idim] = 0.0; }
+                    break;
+            }
+            return refpt;
+        }
+
+        /**
+         * @brief calculate the centroid in the physical domain 
+         * @param [in] el_coord array of the coordinates of each node, in order, for the element 
+         */
+        inline constexpr
+        MATH::GEOMETRY::Point<T, ndim> centroid( std::span<Point> el_coord ) const {
+            return transform(el_coord, centroid_ref());
+        }
     };
     
     /**

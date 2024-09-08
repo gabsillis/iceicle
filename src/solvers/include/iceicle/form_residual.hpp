@@ -207,7 +207,7 @@ namespace iceicle::solvers {
                 // zero out the residual
                 resL = 0;
 
-                disc.boundaryIntegral(trace, fespace.meshptr->nodes, uL, uR, resL);
+                disc.boundaryIntegral(trace, fespace.meshptr->coord, uL, uR, resL);
 
                 scatter_elspan(trace.elL.elidx, 1.0, resL, 1.0, res);
             }
@@ -235,7 +235,7 @@ namespace iceicle::solvers {
             resL = 0;
             resR = 0;
 
-           disc.trace_integral(trace, fespace.meshptr->nodes, uL, uR, resL, resR); 
+           disc.trace_integral(trace, fespace.meshptr->coord, uL, uR, resL, resR); 
 
            scatter_elspan(trace.elL.elidx, 1.0, resL, 1.0, res);
            scatter_elspan(trace.elR.elidx, 1.0, resR, 1.0, res);
@@ -256,7 +256,7 @@ namespace iceicle::solvers {
             // zero out the residual 
             res_el = 0;
 
-            disc.domain_integral(el, fespace.meshptr->nodes, u_el, res_el);
+            disc.domain_integral(el, u_el, res_el);
 
             scatter_elspan(el.elidx, 1.0, res_el, 1.0, res);
         }

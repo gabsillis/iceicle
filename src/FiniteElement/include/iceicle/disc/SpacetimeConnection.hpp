@@ -59,8 +59,8 @@ namespace iceicle {
                 // search for a node in the past_nodes list that is close enough in all coordinates except the last 
                 // NOTE: we assume the time dimension is always the last
                 for(IDX inode_past : past_nodes){
-                    std::span<T> space_coords_current = std::span{mesh_current.nodes[inode_curr].begin(), mesh_current.nodes[inode_curr].end() - 1};
-                    std::span<T> space_coords_past = std::span{mesh_past.nodes[inode_past].begin(), mesh_past.nodes[inode_past].end() - 1};
+                    std::span<T> space_coords_current = std::span{mesh_current.coord[inode_curr].begin(), mesh_current.coord[inode_curr].end() - 1};
+                    std::span<T> space_coords_past = std::span{mesh_past.coord[inode_past].begin(), mesh_past.coord[inode_past].end() - 1};
                     if(util::eqset(space_coords_current, space_coords_past)){
                         curr_to_past_nodes[inode_curr] = inode_past;
                         break;

@@ -56,8 +56,7 @@ namespace iceicle::io {
 
                         for(int ipoin = 0; ipoin < npoin; ++ipoin){
                             MATH::GEOMETRY::Point<T, ndim> refnode{-1.0 + 2.0 / (npoin - 1) * ipoin};
-                            MATH::GEOMETRY::Point<T, ndim> physnode{};
-                            el.transform(fespace.meshptr->nodes, refnode, physnode);
+                            MATH::GEOMETRY::Point<T, ndim> physnode = el.transform(refnode);
                             out << std::format("{:{}.{}e}", physnode[0], field_width, precision);
 
                             for(IDX ifield = 0; ifield < field_names.size(); ++ifield){
@@ -120,8 +119,7 @@ namespace iceicle::io {
 
                         for(int ipoin = 0; ipoin < npoin; ++ipoin){
                             MATH::GEOMETRY::Point<T, ndim> refnode{-1.0 + 2.0 / (npoin - 1) * ipoin};
-                            MATH::GEOMETRY::Point<T, ndim> physnode{};
-                            el.transform(fespace.meshptr->nodes, refnode, physnode);
+                            MATH::GEOMETRY::Point<T, ndim> physnode = el.transform(refnode);
                             out << std::format("{:{}.{}e}", physnode[0], field_width, precision);
 
                             for(IDX ifield = 0; ifield < field_names.size(); ++ifield){

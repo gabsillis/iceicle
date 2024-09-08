@@ -34,11 +34,11 @@ namespace iceicle {
      * to the corresponding evaluation
      */
     struct FETypeKey {
+        DOMAIN_TYPE domain_type;
+
         int basis_order;
 
         int geometry_order;
-
-        DOMAIN_TYPE domain_type;
 
         FESPACE_ENUMS::FESPACE_QUADRATURE qtype;
 
@@ -197,31 +197,36 @@ namespace iceicle {
         ) : meshptr(meshptr), cg_map{*meshptr}, elements{} {
 
             // Generate the Finite Elements
-            elements.reserve(meshptr->elements.size());
-            for(const auto& geo_el : meshptr->elements){
+            elements.reserve(meshptr->nelem());
+            for(ElementTransformation<T, IDX, ndim>* geo_trans : meshptr->el_transformations){
                 // create the Element Domain type key
                 FETypeKey fe_key = {
+                    .domain_type = geo_trans->domain_type,
                     .basis_order = basis_order,
-                    .geometry_order = geo_el->geometry_order(),
-                    .domain_type = geo_el->domain_type(),
+                    .geometry_order = geo_trans->order,
                     .qtype = quadrature_type,
                     .btype = basis_type
                 };
 
                 // check if an evaluation doesn't exist yet
                 if(ref_el_map.find(fe_key) == ref_el_map.end()){
-                    ref_el_map[fe_key] = ReferenceElementType(geo_el.get(), basis_type, quadrature_type, basis_order_arg);
+                    ref_el_map[fe_key] = ReferenceElementType(geo_trans->domain_type, geo_trans->order, basis_type, quadrature_type, basis_order_arg);
                 }
                 ReferenceElementType &ref_el = ref_el_map[fe_key];
-               
+
+                // this will be the index of the new element
+                IDX ielem = elements.size();
+
                 // create the finite element
-                ElementType fe(
-                    geo_el.get(),
-                    ref_el.basis.get(),
-                    ref_el.quadrule.get(),
-                    &(ref_el.eval),
-                    elements.size() // this will be the index of the new element
-                );
+                ElementType fe{
+                    .trans = geo_trans, 
+                    .basis = ref_el.basis.get(),
+                    .quadrule = ref_el.quadrule.get(),
+                    .qp_evals = ref_el.eval,
+                    .inodes = meshptr->conn_el.rowspan(ielem), // NOTE: meshptr cannot invalidate anymore
+                    .coord_el = meshptr->coord_els.rowspan(ielem),
+                    .elidx = ielem
+                };
 
                 // add to the elements list
                 elements.push_back(fe);
@@ -303,7 +308,7 @@ namespace iceicle {
                 ElementType& elL = *elptrL;
                 ElementType& elR = *elptrR;
 
-                int geo_order = std::max(elL.geo_el->geometry_order(), elR.geo_el->geometry_order());
+                int geo_order = std::max(elL.trans->order, elR.trans->order);
 
                 auto geo_order_dispatch = [&]<int geo_order>() -> int{
                     TraceTypeKey trace_key = {
@@ -367,8 +372,7 @@ namespace iceicle {
 
             std::vector<std::vector<IDX>> el_surr_nodes_ragged(meshptr->n_nodes());
             for(int iel = 0; iel < elements.size(); ++iel){
-                const ElementType& element = elements[iel];
-                for(IDX inode : element.geo_el->nodes_span()){
+                for(IDX inode : meshptr->conn_el.rowspan(iel)){
                     el_surr_nodes_ragged[inode].push_back(iel);
                 }
             }

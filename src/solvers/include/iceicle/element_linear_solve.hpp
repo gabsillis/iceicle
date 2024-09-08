@@ -34,7 +34,7 @@ namespace iceicle::solvers {
          * @param el the element to make the solver for
          * @param node_coords the global node coordinates array
          */
-        ElementLinearSolver(const FiniteElement<T, IDX, ndim> &el, NodeArray<T, ndim> &node_coords) 
+        ElementLinearSolver(const FiniteElement<T, IDX, ndim> &el)
         : mass(el.nbasis(), el.nbasis()), pi{} {
             // calculate and decompose the mass matrix
             mass = 0.0; // fill with zeros
@@ -43,7 +43,7 @@ namespace iceicle::solvers {
                 const QuadraturePoint<T, ndim> quadpt = el.getQP(ig);
 
                 // calculate the jacobian determinant
-                auto J = el.geo_el->Jacobian(node_coords, quadpt.abscisse);
+                auto J = el.jacobian(quadpt.abscisse);
                 T detJ = NUMTOOL::TENSOR::FIXED_SIZE::determinant(J);
 
                 // integrate Bi * Bj

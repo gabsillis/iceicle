@@ -5,7 +5,6 @@
 
 #pragma once 
 
-#include <numeric>
 #include <type_traits>
 #include <vector>
 #include <span>
@@ -75,7 +74,7 @@ namespace iceicle::util {
          * @param ragged_data a 2D ragged array of data to copy
          */
         constexpr crs(const std::vector<std::vector<T>> &ragged_data)
-        : _nnz{0}, _nrow{ragged_data.size()}, _cols{new index_type[_nrow + 1]}{
+        : _nnz{0}, _nrow{(size_type) ragged_data.size()}, _cols{new index_type[_nrow + 1]}{
             // count up the number of nonzeros and row lengths
             _cols[0] = 0;
             for(index_type irow = 0; irow < ragged_data.size(); ++irow){
@@ -163,6 +162,13 @@ namespace iceicle::util {
         //// @brief the number of rows represented
         inline constexpr 
         auto nrow() const noexcept -> size_type { return _nrow; }
+
+        /// @brief get the number of elements on the given row 
+        /// @param irow the row index 
+        /// @return the number of elements in this row
+        inline constexpr 
+        auto rowsize(index_type irow) const noexcept -> size_type 
+        { return _cols[irow + 1] - _cols[irow]; }
 
         // ============
         // = Indexing =

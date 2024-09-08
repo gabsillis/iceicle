@@ -207,7 +207,6 @@ namespace iceicle {
         template<class IDX>
         auto domain_integral(
             const FiniteElement<T, IDX, ndim> &el,
-            NodeArray<T, ndim>& coord,
             elspan auto unkel,
             elspan auto res
         ) const -> void {
@@ -228,12 +227,12 @@ namespace iceicle {
                 const QuadraturePoint<T, ndim> &quadpt = el.getQP(iqp);
 
                 // calculate the jacobian determinant 
-                auto J = el.geo_el->Jacobian(coord, quadpt.abscisse);
+                auto J = el.jacobian(quadpt.abscisse);
                 T detJ = NUMTOOL::TENSOR::FIXED_SIZE::determinant(J);
 
                 // get the basis functions and gradients in the physical domain
                 el.evalBasisQP(iqp, bi.data());
-                auto gradxBi = el.evalPhysGradBasisQP(iqp, coord, J, dbdx_data.data());
+                auto gradxBi = el.evalPhysGradBasisQP(iqp, J, dbdx_data.data());
 
                 // construct the solution U at the quadrature point 
                 std::ranges::fill(u, 0.0);
@@ -285,8 +284,8 @@ namespace iceicle {
             // in the physical domain
             const FiniteElement &elL = trace.elL;
             const FiniteElement &elR = trace.elR;
-            auto centroidL = elL.geo_el->centroid(coord);
-            auto centroidR = elR.geo_el->centroid(coord);
+            auto centroidL = elL.centroid();
+            auto centroidR = elR.centroid();
 
             // Basis function scratch space 
             std::vector<T> biL(elL.nbasis());

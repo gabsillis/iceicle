@@ -51,13 +51,14 @@ namespace iceicle {
 
         template<int basis_order>
         ReferenceElement(
-            const GeoElementType *geo_el,
+            DOMAIN_TYPE domain_type,
+            int geometry_order,
             FESPACE_ENUMS::FESPACE_BASIS_TYPE basis_type,
             FESPACE_ENUMS::FESPACE_QUADRATURE quadrature_type,
             tmp::compile_int<basis_order> basis_order_arg
         ) {
             using namespace FESPACE_ENUMS;
-            switch(geo_el->domain_type()){
+            switch(domain_type){
                 case DOMAIN_TYPE::HYPERCUBE: {
                     // construct the basis 
                     switch(basis_type){
@@ -88,7 +89,7 @@ namespace iceicle {
                     };
                     NUMTOOL::TMP::invoke_at_index(
                         NUMTOOL::TMP::make_range_sequence<int, 1, MAX_DYNAMIC_ORDER>{},
-                        geo_el->geometry_order(),
+                        geometry_order,
                         el_order_dispatch
                     );
 
@@ -127,7 +128,7 @@ namespace iceicle {
                     };
                     NUMTOOL::TMP::invoke_at_index(
                         NUMTOOL::TMP::make_range_sequence<int, 1, MAX_DYNAMIC_ORDER>{},
-                        geo_el->geometry_order(),
+                        geometry_order,
                         el_order_dispatch
                     );
 
@@ -143,9 +144,10 @@ namespace iceicle {
 
         /// @brief construct an isoparametric CG element
         ReferenceElement(
-            const GeoElementType *geo_el
+            DOMAIN_TYPE domain_type,
+            int geometry_order
         ) {
-            switch (geo_el->domain_type()) {
+            switch (domain_type) {
                 case DOMAIN_TYPE::HYPERCUBE:
                 {
                     auto el_order_dispatch = [&]<int geo_order>{
@@ -156,7 +158,7 @@ namespace iceicle {
                     };
                     NUMTOOL::TMP::invoke_at_index(
                         NUMTOOL::TMP::make_range_sequence<int, 1, MAX_DYNAMIC_ORDER>{},
-                        geo_el->geometry_order(),
+                        geometry_order, 
                         el_order_dispatch
                     );
 
@@ -172,7 +174,7 @@ namespace iceicle {
                     };
                     NUMTOOL::TMP::invoke_at_index(
                         NUMTOOL::TMP::make_range_sequence<int, 1, MAX_DYNAMIC_ORDER>{},
-                        geo_el->geometry_order(),
+                        geometry_order,
                         el_order_dispatch
                     );
                     break;

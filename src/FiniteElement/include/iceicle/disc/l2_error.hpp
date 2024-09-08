@@ -7,10 +7,8 @@
 
 #include "iceicle/element/finite_element.hpp"
 #include "iceicle/fe_function/fespan.hpp"
-#include "iceicle/fe_function/layout_enums.hpp"
 #include "iceicle/quadrature/QuadratureRule.hpp"
 #include <cmath>
-#include <cstddef>
 #include <iceicle/fespace/fespace.hpp>
 #include <functional>
 
@@ -48,7 +46,6 @@ namespace iceicle {
         using Element = FiniteElement<T, IDX, ndim>;
         using Point = MATH::GEOMETRY::Point<T, ndim>;
        
-        auto coord = fespace.meshptr->nodes;
         std::vector<T> l2_eq(fedata.nv(), 0.0);
         // reserve data
         std::vector<T> feval(fedata.nv());
@@ -60,11 +57,10 @@ namespace iceicle {
             for(int iqp = 0; iqp < el.nQP(); ++iqp) {
                 // convert the quadrature point to the physical domain
                 const QuadraturePoint<T, ndim> quadpt = el.getQP(iqp);
-                Point phys_pt{};
-                el.transform(coord, quadpt.abscisse, phys_pt);
+                Point phys_pt = el.transform(quadpt.abscisse);
 
                 // calculate the jacobian determinant
-                auto J = el.geo_el->Jacobian(coord, quadpt.abscisse);
+                auto J = el.jacobian(quadpt.abscisse);
                 T detJ = NUMTOOL::TENSOR::FIXED_SIZE::determinant(J);
 
                 // evaluate the function at the point in the physical domain

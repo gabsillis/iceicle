@@ -18,6 +18,14 @@ namespace iceicle::transformations {
         using HessianType = NUMTOOL::TENSOR::FIXED_SIZE::Tensor<T, ndim, ndim, ndim>;
         using JacobianType = NUMTOOL::TENSOR::FIXED_SIZE::Tensor<T, ndim, ndim>;
 
+
+        /// @brief extract the element coordinates from the global coordinate array and node indices
+        static constexpr
+        auto get_el_coord(const NodeArray<T, ndim>& coord, const IDX* nodes) noexcept
+        -> std::vector<Point> {
+            return std::vector<Point>{coord[nodes[0]], coord[nodes[1]], coord[nodes[2]]};
+        }
+
         /**
         * @brief transform from the reference domain to the physcial domain
         * T(s): s -> x
