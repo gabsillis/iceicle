@@ -56,6 +56,9 @@ namespace iceicle {
         /// @brief the number of nodes
         int nnode;
 
+        /// @brief the number of faces 
+        int nfac;
+
         // ===================
         // = Node Operations =
         // ===================
@@ -76,7 +79,7 @@ namespace iceicle {
         /// @param [in] el_coord array of the coordinates of each node, in order, for the element 
         /// @param [in] pt_ref the reference domain 
         /// @return the Point in the physical domain
-        Point (*transform)(std::span<Point> el_coord, const Point& pt_ref) = nullptr ;
+        Point (*transform)(std::span<Point> el_coord, const Point& pt_ref) = nullptr;
 
         /// @brief get the Jacobian matrix of the transformation
         /// J = \frac{\partial T(s)}{\partial s} = \frac{\partial x}[\partial \xi}
@@ -94,6 +97,38 @@ namespace iceicle {
         /// @param [in] xi the position in the reference domain at which to calculate the hessian
         /// @return the Hessian in tensor form indexed [k][i][j] as described above
         HessianType (*hessian)(std::span<Point> el_coord, const Point& xi) = nullptr;
+
+        // ====================================
+        // = Face Transformation Connectivity =
+        // ====================================
+
+        /// @brief get the domain type of the face at the given face number
+        DOMAIN_TYPE (*face_domain_type)(int face_number) = nullptr;
+
+        /// @brief get the number of vertices in a face
+        int (*n_face_vert)(int face_number) = nullptr;
+
+        /// @brief get the vertex indices on the face
+        /// NOTE: These vertices must be in the same order as if get_element_vert() 
+        /// was called on the transformation corresponding to the face
+        std::vector<IDX> (*get_face_vert)(int face_number, std::span<IDX> el_nodes) = nullptr;
+
+        /// @brief get the number of nodes on the face 
+        /// @param face_number the face number
+        int (*n_face_nodes)(int face_number) = nullptr;
+
+        /// @brief get the node indices on the face
+        ///
+        /// NOTE: Nodes are all the points defining geometry (vertices are endpoints)
+        ///
+        /// NOTE: These nodes must be in the same order as if get_nodes
+        /// was called on the transformation corresponding to the face
+        std::vector<IDX> (*get_face_nodes)(int face_number, std::span<IDX> el_nodes) = nullptr;
+
+        /// @brief get the face number of the given vertices 
+        /// @return the face number of the face with the given vertices or -1 if not found
+        int (*get_face_nr) (std::span<IDX> vert_fac, std::span<IDX> el_nodes) = nullptr;
+
 
         /**
          * @brief calculate the centroid in the reference domain 
@@ -131,6 +166,7 @@ namespace iceicle {
         MATH::GEOMETRY::Point<T, ndim> centroid( std::span<Point> el_coord ) const {
             return transform(el_coord, centroid_ref());
         }
+
     };
     
     /**

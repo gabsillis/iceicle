@@ -24,10 +24,16 @@ namespace iceicle {
                         .domain_type = DOMAIN_TYPE::HYPERCUBE,
                         .order = order,
                         .nnode = transformations::hypercube<T, IDX, ndim, order>::nnode,
+                        .nfac = transformations::hypercube<T, IDX, ndim, order>::nfac,
                         .get_el_coord = transformations::hypercube<T, IDX, ndim, order>::get_el_coord,
                         .transform = transformations::hypercube<T, IDX, ndim, order>::transform,
                         .jacobian = transformations::hypercube<T, IDX, ndim, order>::jacobian,
                         .hessian = transformations::hypercube<T, IDX, ndim, order>::hessian,
+                        .face_domain_type = transformations::hypercube<T, IDX, ndim, order>::face_domain_type,
+                        .n_face_vert = transformations::hypercube<T, IDX, ndim, order>::n_face_vert,
+                        .get_face_vert = transformations::hypercube<T, IDX, ndim, order>::get_face_vert,
+                        .n_face_nodes = transformations::hypercube<T, IDX, ndim, order>::n_face_nodes,
+                        .get_face_nodes = transformations::hypercube<T, IDX, ndim, order>::get_face_nodes,
                     };
                 }
             );
@@ -36,10 +42,16 @@ namespace iceicle {
                     .domain_type = DOMAIN_TYPE::SIMPLEX,
                     .order = 1,
                     .nnode = 3,
+                    .nfac = 3,
                     .get_el_coord = transformations::triangle<T, IDX>::get_el_coord,
                     .transform = transformations::triangle<T, IDX>::transform,
                     .jacobian = transformations::triangle<T, IDX>::jacobian,
                     .hessian = transformations::triangle<T, IDX>::hessian,
+                    .face_domain_type = transformations::triangle<T, IDX>::face_domain_type,
+                    .n_face_vert = transformations::triangle<T, IDX>::n_face_vert,
+                    .get_face_vert = transformations::triangle<T, IDX>::get_face_vert,
+                    .n_face_nodes = transformations::triangle<T, IDX>::n_face_nodes,
+                    .get_face_nodes = transformations::triangle<T, IDX>::get_face_nodes,
                 };
             }
         }

@@ -14,6 +14,7 @@ namespace iceicle::transformations {
         
         static constexpr int ndim = 2;
         static constexpr int nshp = ndim + 1;
+        static constexpr int nfac = 3;
         using Point = MATH::GEOMETRY::Point<T, ndim>;
         using HessianType = NUMTOOL::TENSOR::FIXED_SIZE::Tensor<T, ndim, ndim, ndim>;
         using JacobianType = NUMTOOL::TENSOR::FIXED_SIZE::Tensor<T, ndim, ndim>;
@@ -98,6 +99,100 @@ namespace iceicle::transformations {
             HessianType H;
             H = 0;
             return H;
+        }
+
+
+        // =====================
+        // = Face Connectivity =
+        // =====================
+
+        static constexpr
+        auto face_domain_type(int face_number) noexcept 
+        -> DOMAIN_TYPE 
+        {
+            // we use the hypercube domain type for the line segment face 
+            // x \in [-1, 1]
+            return DOMAIN_TYPE::HYPERCUBE;
+        };
+
+        static constexpr
+        auto n_face_vert( int face_number ) noexcept 
+        -> int 
+        { return 2; }
+
+        static constexpr 
+        auto get_face_vert( int face_number, std::span<IDX> el_nodes ) noexcept
+        -> std::vector<IDX> {
+            std::vector<IDX> vert_fac(2);
+            // face nodes are the indices that are not the face number 
+            // i.e face 0 has nodes 1 and 2
+            switch(face_number){
+                case 0:
+                    vert_fac[0] = el_nodes[1];
+                    vert_fac[1] = el_nodes[2];
+                    break;
+                case 1:
+                    vert_fac[0] = el_nodes[2];
+                    vert_fac[1] = el_nodes[0];
+                    break;
+                case 2:
+                    vert_fac[0] = el_nodes[0];
+                    vert_fac[1] = el_nodes[1];
+            }
+            return vert_fac;
+        }
+
+        static constexpr
+        auto n_face_nodes(int face_number) noexcept 
+        -> int 
+        { return 2; }
+
+        static constexpr
+        auto get_face_nodes(
+            int face_number,
+            std::span<IDX> el_nodes
+        ) noexcept -> std::vector<IDX> 
+        {
+            std::vector<IDX> nodes_fac(2);
+            switch(face_number){
+                case 0:
+                    nodes_fac[0] = el_nodes[1];
+                    nodes_fac[1] = el_nodes[2];
+                    break;
+                case 1:
+                    nodes_fac[0] = el_nodes[2];
+                    nodes_fac[1] = el_nodes[0];
+                    break;
+                case 2:
+                    nodes_fac[0] = el_nodes[0];
+                    nodes_fac[1] = el_nodes[1];
+            }
+            return nodes_fac;
+        }
+
+        static constexpr
+        auto get_face_nr(
+            std::span<IDX> vert_fac,
+            std::span<IDX> el_nodes
+        ) noexcept -> int 
+        {
+            if(vert_fac[0] == el_nodes[0]){
+                if(vert_fac[1] == el_nodes[1])
+                    return 2;
+                else 
+                    return 1;
+            } else if (vert_fac[0] == el_nodes[1]) {
+                if(vert_fac[1] == el_nodes[0])
+                    return 2;
+                else 
+                    return 0;
+            } else {
+                if(vert_fac[1] == el_nodes[0])
+                    return 1;
+                else 
+                    return 0;
+            }
+            return -1;
         }
     };
 

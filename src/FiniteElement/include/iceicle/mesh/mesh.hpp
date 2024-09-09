@@ -352,7 +352,7 @@ namespace iceicle {
                 }
             }
 
-            std::vector<std::vector<IDX>> ragged_conn_el(nelem);
+            std::vector<std::vector<IDX>> ragged_conn_el(nelem, std::vector<IDX>{});
 
            // ENTERING ORDER TEMPLATED SECTION
            // here we find the compile time function to call based on the order input 
@@ -380,7 +380,7 @@ namespace iceicle {
                             for(int idim = 0; idim < ndim; ++idim){
                                 iglobal += ijk_gnode[idim] * stride_nodes[idim];
                             }
-                            ragged_conn_el[inode].push_back(iglobal);
+                            ragged_conn_el[ielem].push_back(iglobal);
                         }
 
                         // increment
@@ -647,19 +647,13 @@ namespace iceicle {
         /// @brief version of uniform mesh constructor using Tensor
         /// so that initializer lists can be used for each range 
         AbstractMesh(
-            NUMTOOL::TENSOR::FIXED_SIZE::Tensor<T, ndim> xmin,
-            NUMTOOL::TENSOR::FIXED_SIZE::Tensor<T, ndim> xmax,
-            NUMTOOL::TENSOR::FIXED_SIZE::Tensor<IDX, ndim> directional_nelem,
+            const NUMTOOL::TENSOR::FIXED_SIZE::Tensor<T, ndim> &xmin,
+            const NUMTOOL::TENSOR::FIXED_SIZE::Tensor<T, ndim> &xmax,
+            const NUMTOOL::TENSOR::FIXED_SIZE::Tensor<IDX, ndim> &directional_nelem,
             int order = 1,
-            NUMTOOL::TENSOR::FIXED_SIZE::Tensor<BOUNDARY_CONDITIONS, 2*ndim> bctypes = all_periodic,
-            NUMTOOL::TENSOR::FIXED_SIZE::Tensor<int, 2*ndim> bcflags = all_zero
+            const NUMTOOL::TENSOR::FIXED_SIZE::Tensor<BOUNDARY_CONDITIONS, 2*ndim> &bctypes = all_periodic,
+            const NUMTOOL::TENSOR::FIXED_SIZE::Tensor<int, 2*ndim> &bcflags = all_zero
         ): AbstractMesh(tmp::from_range_t{}, xmin, xmax, directional_nelem, order, bctypes, bcflags) {}
-
-//        TODO: Do this in a separate file so we can build without mfem 
-//        AbstractMesh(mfem::FiniteElementSpace &mfem_mesh);
-
-        /** @brief construct a mesh from file (currently supports gmsh) */
-        AbstractMesh(std::string_view filepath);
 
         /// @brief get the number of nodes 
         inline constexpr
@@ -677,6 +671,18 @@ namespace iceicle {
                 coord_els.data()[i] = coord[inode];
             }
         }
+
+        /// @brief get a span of the node indices for the given element
+        [[nodiscard]] inline constexpr
+        auto get_el_nodes(IDX ielem) noexcept
+        -> std::span<IDX> 
+        { return conn_el.rowspan(ielem); }
+
+        /// @brief get a span of the node coordinates for the given element
+        [[nodiscard]] inline constexpr 
+        auto get_el_coord(IDX ielem) noexcept 
+        -> std::span<Point>
+        { return coord_els.rowspan(ielem); }
 
         // ================
         // = Diagonostics =
