@@ -33,16 +33,17 @@ namespace iceicle {
         FESpace<T, IDX, ndim> &fespace
     ) -> std::vector<T> {
         using element_t = FESpace<T, IDX, ndim>::ElementType;
+        using Point = MATH::GEOMETRY::Point<T, ndim>;
         static constexpr T big_number = 1e100;
-        NodeArray<T, ndim>& coord = fespace.meshptr->nodes;
+        NodeArray<T, ndim>& coord = fespace.meshptr->coord;
         
         std::vector<T> radii(coord.size(), big_number);
 
         // NOTE: loop over elements because interior nodes exist
         for(element_t& elem: fespace.elements){
             // loop over all nodes and get min distance to surrounding nodes
-            for(IDX inode : elem.geo_el->nodes_span()){
-                for(IDX jnode : elem.geo_el->nodes_span()) if (jnode != inode){
+            for( IDX inode : elem.inodes){
+                for(IDX jnode : elem.inodes) if (jnode != inode){
                     T distance = MATH::GEOMETRY::distance(
                         coord[inode],
                         coord[jnode]

@@ -133,7 +133,7 @@ namespace iceicle::solvers {
 
                 // zero out and then get interface conservation
                 ic_res = 0.0;
-                disc.interface_conservation(trace, fespace.meshptr->nodes, uL, uR, ic_res);
+                disc.interface_conservation(trace, fespace.meshptr->coord, uL, uR, ic_res);
 
                 std::cout << "Interface nr: " << trace.facidx; 
                 std::cout << " | nodes:";
@@ -178,7 +178,7 @@ namespace iceicle::solvers {
                 for(auto trace : fespace.get_boundary_traces()){
                     if(trace.face->bctype == BOUNDARY_CONDITIONS::DIRICHLET){
                         for(index_type inode : trace.face->nodes_span()){
-                            auto node_data = fespace.meshptr->nodes[inode];
+                            auto node_data = fespace.meshptr->coord[inode];
                             std::array<T, ndim> fixed_coordinates;
                             for(int idim = 0; idim < ndim; ++idim)
                                 { fixed_coordinates[idim] = node_data[idim]; }
@@ -213,7 +213,7 @@ namespace iceicle::solvers {
                 for(auto trace : fespace.get_boundary_traces()){
                     if(trace.face->bctype == BOUNDARY_CONDITIONS::DIRICHLET){
                         for(index_type inode : trace.face->nodes_span()){
-                            auto node_data = fespace.meshptr->nodes[inode];
+                            auto node_data = fespace.meshptr->coord[inode];
                             std::array<T, ndim> fixed_coordinates;
                             for(int idim = 0; idim < ndim; ++idim)
                                 { fixed_coordinates[idim] = node_data[idim]; }
@@ -239,7 +239,7 @@ namespace iceicle::solvers {
                 for(auto trace : fespace.get_boundary_traces()){
                     if(trace.face->bctype == BOUNDARY_CONDITIONS::DIRICHLET){
                         for(index_type inode : trace.face->nodes_span()){
-                            auto node_data = fespace.meshptr->nodes[inode];
+                            auto node_data = fespace.meshptr->coord[inode];
                             std::array<T, ndim> fixed_coordinates;
                             for(int idim = 0; idim < ndim; ++idim)
                                 { fixed_coordinates[idim] = node_data[idim]; }

@@ -72,8 +72,8 @@ namespace iceicle::solvers{
             T reflen = 1e8;
             int Pn_max = 1;
             for(const FiniteElement<T, IDX, ndim> &el : fespace.elements){
-                MATH::GEOMETRY::Point<T, ndim> center_xi = el.geo_el->centroid_ref();
-                auto J = el.geo_el->Jacobian(fespace.meshptr->nodes, center_xi);
+                MATH::GEOMETRY::Point<T, ndim> center_xi = el.trans->centroid_ref();
+                auto J = el.jacobian(center_xi);
                 for(int idim = 0; idim < ndim; ++idim){
                     reflen = std::min(reflen, J[idim][idim]);
                 }

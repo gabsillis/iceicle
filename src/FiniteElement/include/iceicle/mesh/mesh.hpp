@@ -28,23 +28,22 @@
 #endif
 namespace iceicle {
 
-    /// @brief generate the node connectivity matrix in crs format from the element list
+    /// @brief generate the node connectivity matrix in crs format from the element connectivity matrix 
     /// elsup -> elements surrounding points
-    /// @param element_list 
-    template<class T, class IDX, int ndim>
+    /// @param conn_el the element connectivity matrix
+    /// @param nnode the number of nodes
+    template<class IDX>
     constexpr
-    auto to_elsup(const std::span< const std::unique_ptr< GeometricElement<T, IDX, ndim> > > element_list)
+    auto to_elsup(util::crs<IDX, IDX>& conn_el, std::integral auto nnode)
     -> util::crs<IDX, IDX>
     {
-        std::vector<IDX> cols{};
-        cols.reserve(element_list.size() + 1);
-        IDX icol = 0;
-        cols.push_back(icol);
-        for(const auto& el : element_list){
-            icol += el->n_nodes();
-            cols.push_back(icol);
+        std::vector<std::vector<IDX>> elsup_ragged(nnode);
+        for(IDX iel = 0; iel < conn_el.nrow(); ++iel){
+            for(IDX inode : conn_el.rowspan(iel)){
+                elsup_ragged[inode].push_back(iel);
+            }
         }
-        return util::crs<IDX, IDX>{cols};
+        return util::crs<IDX, IDX>{elsup_ragged};
     }
 
     /// @brief generate the element connectivity matrix from the face list 
@@ -113,6 +112,16 @@ namespace iceicle {
     }
 
 
+    /// @brief contains the information to represent an elmement Geometrically
+    /// for elements communicated from another MPI partition
+    template<class T, class IDX, int ndim>
+    struct CommElementInfo {
+        using Point = MATH::GEOMETRY::Point<T, ndim>;
+        ElementTransformation<T, IDX, ndim> *trans;
+        std::vector<IDX> conn_el;
+        std::vector<Point> coord_el;
+    };
+
     /**
      * @brief Abstract class that defines a mesh
      *
@@ -126,7 +135,6 @@ namespace iceicle {
         // ================
         // = Type Aliases =
         // ================
-        using Element = GeometricElement<T, IDX, ndim>;
         using face_t = Face<T, IDX, ndim>;
         using Point = MATH::GEOMETRY::Point<T, ndim>;
 
@@ -161,6 +169,10 @@ namespace iceicle {
         /// index of one past the end of the boundary faces
         IDX bdyFaceEnd;
 
+        /// @brief The connectivity array ELements SUrrounding Points 
+        /// represents the element indices that surround each node index
+        util::crs<IDX, IDX> elsup;
+
         /// For each process i store a list of (this-local) element indices 
         /// that need to be sent 
         std::vector<std::vector<IDX>> el_send_list;
@@ -169,7 +181,7 @@ namespace iceicle {
         /// that need to be recieved
         std::vector<std::vector<IDX>> el_recv_list;
 
-        std::vector< std::vector< std::unique_ptr<Element> > > communicated_elements;
+        std::vector< std::vector< CommElementInfo<T, IDX, ndim> > > communicated_elements;
 
         inline IDX nelem() { return conn_el.nrow(); }
 
@@ -180,25 +192,19 @@ namespace iceicle {
         /** @brief construct an empty mesh */
         AbstractMesh() 
         : coord{}, conn_el{}, coord_els{}, el_transformations{}, faces{}, interiorFaceStart(0), interiorFaceEnd(0), 
-          bdyFaceStart(0), bdyFaceEnd(0), el_send_list(mpi::mpi_world_size()), 
+          bdyFaceStart(0), bdyFaceEnd(0), elsup{}, el_send_list(mpi::mpi_world_size()), 
           el_recv_list(mpi::mpi_world_size()), communicated_elements(mpi::mpi_world_size()){}
 
         AbstractMesh(const AbstractMesh<T, IDX, ndim>& other) 
         : coord{other.coord}, conn_el{other.conn_el}, coord_els{other.coord_els}, 
           el_transformations{other.el_transformations}, faces{},
           interiorFaceStart(other.interiorFaceStart), interiorFaceEnd(other.interiorFaceEnd),
-          bdyFaceStart(other.bdyFaceStart), bdyFaceEnd(other.bdyFaceEnd), 
-          el_send_list(other.el_send_list), el_recv_list(other.el_recv_list)
+          bdyFaceStart(other.bdyFaceStart), bdyFaceEnd(other.bdyFaceEnd), elsup{other.elsup},
+          el_send_list(other.el_send_list), el_recv_list(other.el_recv_list),
+          communicated_elements(other.communicated_elements)
         {
             for(auto& facptr : other.faces){
                 faces.push_back(std::move(facptr->clone()));
-            }
-
-            for(int irank = 0; irank < other.communicated_elements.size(); ++irank){
-                communicated_elements.push_back(std::vector< std::unique_ptr<Element> >{});
-                for(auto& elptr : other.communicated_elements[irank]){
-                    communicated_elements[irank].push_back(std::move(elptr->clone()));
-                }
             }
         }
 
@@ -217,15 +223,10 @@ namespace iceicle {
                 interiorFaceEnd = other.interiorFaceEnd;
                 bdyFaceStart = other.bdyFaceStart;
                 bdyFaceEnd = other.bdyFaceEnd;
+                elsup = other.elsup;
                 el_send_list = other.el_send_list;
                 el_recv_list = other.el_recv_list;
-
-                for(int irank = 0; irank < other.communicated_elements.size(); ++irank){
-                    communicated_elements.push_back(std::vector< std::unique_ptr<Element> >{});
-                    for(auto& elptr : other.communicated_elements[irank]){
-                        communicated_elements[irank].push_back(std::move(elptr->clone()));
-                    }
-                }
+                communicated_elements = other.communicated_elements;
             }
             return *this;
         }
@@ -352,7 +353,6 @@ namespace iceicle {
                 }
             }
 
-            std::vector<std::vector<IDX>> ragged_conn_el(nelem, std::vector<IDX>{});
 
            // ENTERING ORDER TEMPLATED SECTION
            // here we find the compile time function to call based on the order input 
@@ -362,6 +362,8 @@ namespace iceicle {
                 transformations::HypercubeElementTransformation<T, IDX, ndim, Pn> trans{};
                 if(order == Pn){
 
+                    // WARNING: initializing this outside of order templated section breaks in O3
+                    std::vector<std::vector<IDX>> ragged_conn_el(nelem, std::vector<IDX>{});
                     // form the element connectivity matrix
                     for(int idim = 0; idim < ndim; ++idim) ijk[idim] = 0;
                     for(int ielem = 0; ielem < nelem; ++ielem){
@@ -627,6 +629,9 @@ namespace iceicle {
                 }
             });
             // EXITING ORDER TEMPLATED SECTION
+
+            // set up additional connectivity array
+            elsup = to_elsup(conn_el, n_nodes());
         } 
 
 
@@ -669,6 +674,16 @@ namespace iceicle {
             for(IDX i = 0; i < conn_el.nnz(); ++i){
                 IDX inode = conn_el.data()[i];
                 coord_els.data()[i] = coord[inode];
+            }
+        }
+
+        /// @brief element coordinate data for all elements affected by the given node
+        void update_node(IDX inode) {
+            for(IDX iel : elsup.rowspan(inode)){
+                for(int ilocal = 0; ilocal < conn_el.rowsize(iel); ++ilocal){
+                    if(conn_el[iel, ilocal] == inode)
+                        coord_els[iel, ilocal] = coord[conn_el[iel, ilocal]];
+                }
             }
         }
 

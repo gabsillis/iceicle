@@ -153,11 +153,11 @@ void setup(sol::table script_config, cli_parser cli_args){
     if(cli_args["debug1"]){
         // linear advection a = [0.2, 0];
         // 2 element mesh on [0, 1]^2
-        pmesh.nodes[7][0] = 0.7;
-        pmesh.nodes[4][0] = 0.55;
+        pmesh.coord[7][0] = 0.7;
+        pmesh.coord[4][0] = 0.55;
     }
     if(cli_args["debug2"]){
-        pmesh.nodes[4][0] = 0.69;
+        pmesh.coord[4][0] = 0.69;
     }
 
     // ===================================

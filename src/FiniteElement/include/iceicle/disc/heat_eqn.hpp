@@ -566,8 +566,8 @@ namespace iceicle {
                 { uR += unkelR[ibasis, 0] * bi_dataR[ibasis]; }
 
                 // get the gradients the physical domain
-                auto gradBiL = trace.evalPhysGradBasisQPL(iqp, coord, grad_dataL.data());
-                auto gradBiR = trace.evalPhysGradBasisQPR(iqp, coord, grad_dataR.data());
+                auto gradBiL = trace.evalPhysGradBasisQPL(iqp, grad_dataL.data());
+                auto gradBiR = trace.evalPhysGradBasisQPR(iqp, grad_dataR.data());
 
                 auto graduL = unkelL.contract_mdspan(gradBiL, gradu_dataL.data());
                 auto graduR = unkelR.contract_mdspan(gradBiR, gradu_dataR.data());

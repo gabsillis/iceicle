@@ -321,10 +321,10 @@ namespace iceicle {
                 // (derivatives are wrt the physical domain)
                 trace.evalBasisQPL(iqp, biL.data());
                 trace.evalBasisQPR(iqp, biR.data());
-                auto gradBiL = trace.evalPhysGradBasisQPL(iqp, coord, gradbL_data.data());
-                auto gradBiR = trace.evalPhysGradBasisQPR(iqp, coord, gradbR_data.data());
-                auto hessBiL = trace.evalPhysHessBasisQPL(iqp, coord, hessbL_data.data());
-                auto hessBiR = trace.evalPhysHessBasisQPR(iqp, coord, hessbR_data.data());
+                auto gradBiL = trace.evalPhysGradBasisQPL(iqp, gradbL_data.data());
+                auto gradBiR = trace.evalPhysGradBasisQPR(iqp, gradbR_data.data());
+                auto hessBiL = trace.evalPhysHessBasisQPL(iqp, hessbL_data.data());
+                auto hessBiR = trace.evalPhysHessBasisQPR(iqp, hessbR_data.data());
 
                 // construct the solution on the left and right
                 std::ranges::fill(uL, 0.0);
@@ -536,7 +536,7 @@ namespace iceicle {
             std::array<T, neq * ndim> grad_ddg_data;
             std::array<T, neq * ndim * ndim> hessuL_data;
             std::array<T, neq * ndim * ndim> hessuR_data;
-            auto centroidL = elL.geo_el->centroid(coord);
+            auto centroidL = elL.centroid();
 
             switch(trace.face->bctype){
                 case BOUNDARY_CONDITIONS::DIRICHLET: 
@@ -563,7 +563,7 @@ namespace iceicle {
                         trace.evalBasisQPL(iqp, biL.data());
 
                         // get the gradients the physical domain
-                        auto gradBiL = trace.evalPhysGradBasisQPL(iqp, coord, gradbL_data.data());
+                        auto gradBiL = trace.evalPhysGradBasisQPL(iqp, gradbL_data.data());
 
                         auto graduL = unkelL.contract_mdspan(gradBiL, graduL_data.data());
 
@@ -881,7 +881,7 @@ namespace iceicle {
                         trace.evalBasisQPL(iqp, biL.data());
 
                         // get the gradients the physical domain
-                        auto gradBiL = trace.evalPhysGradBasisQPL(iqp, coord, gradbL_data.data());
+                        auto gradBiL = trace.evalPhysGradBasisQPL(iqp, gradbL_data.data());
 
                         auto graduL = unkelL.contract_mdspan(gradBiL, graduL_data.data());
 
@@ -979,8 +979,8 @@ namespace iceicle {
                 trace.evalBasisQPL(iqp, biL.data());
                 trace.evalBasisQPR(iqp, biR.data());
                 trace.eval_trace_basis_qp(iqp, bitrace.data());
-                auto gradBiL = trace.evalPhysGradBasisQPL(iqp, coord, gradbL_data.data());
-                auto gradBiR = trace.evalPhysGradBasisQPR(iqp, coord, gradbR_data.data());
+                auto gradBiL = trace.evalPhysGradBasisQPL(iqp, gradbL_data.data());
+                auto gradBiR = trace.evalPhysGradBasisQPR(iqp, gradbR_data.data());
 
                 // construct the solution on the left and right
                 std::ranges::fill(uL, 0.0);

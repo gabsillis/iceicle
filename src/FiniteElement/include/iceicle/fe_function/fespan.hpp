@@ -1082,7 +1082,7 @@ namespace iceicle {
 
             // zero out and then get interface conservation
             ic_res = 0.0;
-            disc.interface_conservation(trace, fespace.meshptr->nodes, uL, uR, ic_res);
+            disc.interface_conservation(trace, fespace.meshptr->coord, uL, uR, ic_res);
 
             std::cout << "Interface nr: " << trace.facidx; 
             std::cout << " | nodes:";

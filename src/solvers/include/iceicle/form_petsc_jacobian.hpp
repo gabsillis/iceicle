@@ -113,7 +113,7 @@ namespace iceicle::solvers {
             resL = 0;
 
             // get the unperturbed residual and send to full residual
-            disc.boundaryIntegral(trace, fespace.meshptr->nodes, uL, uR, resL);
+            disc.boundaryIntegral(trace, fespace.meshptr->coord, uL, uR, resL);
             scatter_elspan(trace.elL.elidx, 1.0, resL, 1.0, res);
 
             // set up the perturbation amount scaled by unperturbed residual 
@@ -135,7 +135,7 @@ namespace iceicle::solvers {
                     resLp = 0;
 
                     // get the perturbed residual
-                    disc.boundaryIntegral(trace, fespace.meshptr->nodes, uL, uR, resLp);
+                    disc.boundaryIntegral(trace, fespace.meshptr->coord, uL, uR, resLp);
 
                     // fill jacobian for this perturbation
                     for(IDX idoff = 0; idoff < trace.elL.nbasis(); ++idoff) {
@@ -177,7 +177,7 @@ namespace iceicle::solvers {
             resR = 0;
 
             // get the unperturbed residual and send to full residual
-            disc.trace_integral(trace, fespace.meshptr->nodes, uL, uR, resL, resR);
+            disc.trace_integral(trace, fespace.meshptr->coord, uL, uR, resL, resR);
             scatter_elspan(trace.elL.elidx, 1.0, resL, 1.0, res);
             scatter_elspan(trace.elR.elidx, 1.0, resR, 1.0, res);
 
@@ -208,7 +208,7 @@ namespace iceicle::solvers {
                     resRp = 0;
 
                     // get the perturbed residual
-                    disc.trace_integral(trace, fespace.meshptr->nodes, uL, uR, resLp, resRp);
+                    disc.trace_integral(trace, fespace.meshptr->coord, uL, uR, resLp, resRp);
 
                     // fill jacobian for this perturbation
                     for(IDX idoff = 0; idoff < trace.elL.nbasis(); ++idoff) {
@@ -255,7 +255,7 @@ namespace iceicle::solvers {
                     resRp = 0;
 
                     // get the perturbed residual
-                    disc.trace_integral(trace, fespace.meshptr->nodes, uL, uR, resLp, resRp);
+                    disc.trace_integral(trace, fespace.meshptr->coord, uL, uR, resLp, resRp);
 
                     // fill jacobian for this perturbation
                     for(IDX idoff = 0; idoff < trace.elL.nbasis(); ++idoff) {
@@ -299,7 +299,7 @@ namespace iceicle::solvers {
             extract_elspan(el.elidx, u, u_el);
 
             res_el = 0;
-            disc.domain_integral(el, fespace.meshptr->nodes, u_el, res_el);
+            disc.domain_integral(el, u_el, res_el);
 
             // get the global index to the start of the contiguous component x dof range for L/R elem
             std::size_t glob_index_el = u.get_layout()[el.elidx, 0, 0];
@@ -323,7 +323,7 @@ namespace iceicle::solvers {
                     resp_el = 0;
 
                     // get the perturbed residual
-                    disc.domain_integral(el, fespace.meshptr->nodes, u_el, resp_el);
+                    disc.domain_integral(el, u_el, resp_el);
 
                     // fill jacobian for this perturbation
                     for(IDX idoff = 0; idoff < el.nbasis(); ++idoff) {
@@ -412,7 +412,7 @@ namespace iceicle::solvers {
 
             // get the unperturbed residual and send to full residual
             res = 0;
-            disc.interface_conservation(trace, fespace.meshptr->nodes, uL, uR, res);
+            disc.interface_conservation(trace, fespace.meshptr->coord, uL, uR, res);
             scatter_facspan(trace, 1.0, res, 1.0, mdg_residual);
 
             // set up the perturbation amount scaled by unperturbed residual 
@@ -429,7 +429,7 @@ namespace iceicle::solvers {
 
                     // get the perturbed residual
                     resp = 0;
-                    disc.interface_conservation(trace, fespace.meshptr->nodes, uL, uR, resp);
+                    disc.interface_conservation(trace, fespace.meshptr->coord, uL, uR, resp);
 
                     // fill jacobian for this perturbation 
                     for(IDX idoff = 0; idoff < res.ndof(); ++idoff) {
@@ -463,7 +463,7 @@ namespace iceicle::solvers {
 
                     // get the perturbed residual
                     resp = 0;
-                    disc.interface_conservation(trace, fespace.meshptr->nodes, uL, uR, resp);
+                    disc.interface_conservation(trace, fespace.meshptr->coord, uL, uR, resp);
 
                     // fill jacobian for this perturbation 
                     for(IDX idoff = 0; idoff < res.ndof(); ++idoff) {
@@ -515,7 +515,7 @@ namespace iceicle::solvers {
 
                 // get the unperturbed residual
                 res = 0;
-                disc.domain_integral(el, fespace.meshptr->nodes, u_el, res);
+                disc.domain_integral(el, fespace.meshptr->coord, u_el, res);
 
                 // set up the perturbation amount scaled by unperturbed residual 
                 T eps_scaled = scale_fd_epsilon(epsilon, res.vector_norm());
@@ -526,12 +526,12 @@ namespace iceicle::solvers {
                         // the unknowns will always have ndim vector components 
                         IDX jcol = mdg_range_beg + jmdg * ndim + idim;
 
-                        T old_val = fespace.meshptr->nodes[inode][idim];
-                        fespace.meshptr->nodes[inode][idim] += eps_scaled;
+                        T old_val = fespace.meshptr->coord[inode][idim];
+                        fespace.meshptr->coord[inode][idim] += eps_scaled;
 
                         // get perturbed residual
                         resp = 0;
-                        disc.domain_integral(el, fespace.meshptr->nodes, u_el, resp);
+                        disc.domain_integral(el, fespace.meshptr->coord, u_el, resp);
 
                         // jacobian contribution 
                         for(IDX idoff = 0; idoff < res.ndof(); ++idoff){
@@ -543,7 +543,7 @@ namespace iceicle::solvers {
                         }
 
                         // revert perturbation
-                        fespace.meshptr->nodes[inode][idim] = old_val;
+                        fespace.meshptr->coord[inode][idim] = old_val;
                 }
             }
 
@@ -583,9 +583,9 @@ namespace iceicle::solvers {
 
                     // get the unperturbed residual
                     if(trace.face->bctype == BOUNDARY_CONDITIONS::INTERIOR){
-                        disc.trace_integral(trace, fespace.meshptr->nodes, uL, uR, resL, resR);
+                        disc.trace_integral(trace, fespace.meshptr->coord, uL, uR, resL, resR);
                     } else {
-                        disc.boundaryIntegral(trace, fespace.meshptr->nodes, uL, uR, resL);
+                        disc.boundaryIntegral(trace, fespace.meshptr->coord, uL, uR, resL);
                     }
 
                     // set up the perturbation amount scaled by unperturbed residual 
@@ -596,15 +596,15 @@ namespace iceicle::solvers {
                         // the unknowns will always have ndim vector components 
                         IDX jcol = mdg_range_beg + jmdg * ndim + idim;
 
-                        T old_val = fespace.meshptr->nodes[inode][idim];
-                        fespace.meshptr->nodes[inode][idim] += eps_scaled;
+                        T old_val = fespace.meshptr->coord[inode][idim];
+                        fespace.meshptr->coord[inode][idim] += eps_scaled;
 
                         // get the perturbed residual
                         resLp = 0; resRp = 0;
                         if(trace.face->bctype == BOUNDARY_CONDITIONS::INTERIOR){
-                            disc.trace_integral(trace, fespace.meshptr->nodes, uL, uR, resLp, resRp);
+                            disc.trace_integral(trace, fespace.meshptr->coord, uL, uR, resLp, resRp);
                         } else {
-                            disc.boundaryIntegral(trace, fespace.meshptr->nodes, uL, uR, resLp);
+                            disc.boundaryIntegral(trace, fespace.meshptr->coord, uL, uR, resLp);
                         }
 
                         // resL
@@ -628,7 +628,7 @@ namespace iceicle::solvers {
                         }
 
                         // revert perturbation
-                        fespace.meshptr->nodes[inode][idim] = old_val;
+                        fespace.meshptr->coord[inode][idim] = old_val;
                     }
                 }
 
@@ -642,7 +642,7 @@ namespace iceicle::solvers {
 
                     // get the unperturbed residual
                     res = 0;
-                    disc.interface_conservation(trace, fespace.meshptr->nodes, uL, uR, res);
+                    disc.interface_conservation(trace, fespace.meshptr->coord, uL, uR, res);
                     // set up the perturbation amount scaled by unperturbed residual 
                     T eps_scaled = scale_fd_epsilon(epsilon, res.vector_norm());
 
@@ -652,12 +652,12 @@ namespace iceicle::solvers {
                         IDX jcol = mdg_range_beg + jmdg * ndim + idim;
 
                         // peturb the node
-                        T old_val = fespace.meshptr->nodes[inode][idim];
-                        fespace.meshptr->nodes[inode][idim] += eps_scaled;
+                        T old_val = fespace.meshptr->coord[inode][idim];
+                        fespace.meshptr->coord[inode][idim] += eps_scaled;
 
                         // get the perturbed residual
                         resp = 0;
-                        disc.interface_conservation(trace, fespace.meshptr->nodes, uL, uR, resp);
+                        disc.interface_conservation(trace, fespace.meshptr->coord, uL, uR, resp);
 
                         for(IDX idoff = 0; idoff < res.ndof(); ++idoff){
 
@@ -676,7 +676,7 @@ namespace iceicle::solvers {
                         }
 
                         // revert perturbation
-                        fespace.meshptr->nodes[inode][idim] = old_val;
+                        fespace.meshptr->coord[inode][idim] = old_val;
                     }
                 }
             }
@@ -758,7 +758,7 @@ namespace iceicle::solvers {
 
             // get the unperturbed residual and send to full residual
             res = 0;
-            disc.interface_conservation(trace, fespace.meshptr->nodes, uL, uR, res);
+            disc.interface_conservation(trace, fespace.meshptr->coord, uL, uR, res);
             scatter_facspan(trace, 1.0, res, 1.0, mdg_residual);
 
             // set up the perturbation amount scaled by unperturbed residual 
@@ -775,7 +775,7 @@ namespace iceicle::solvers {
 
                     // get the perturbed residual
                     resp = 0;
-                    disc.interface_conservation(trace, fespace.meshptr->nodes, uL, uR, resp);
+                    disc.interface_conservation(trace, fespace.meshptr->coord, uL, uR, resp);
 
                     // fill jacobian for this perturbation 
                     for(IDX idoff = 0; idoff < res.ndof(); ++idoff) {
@@ -809,7 +809,7 @@ namespace iceicle::solvers {
 
                     // get the perturbed residual
                     resp = 0;
-                    disc.interface_conservation(trace, fespace.meshptr->nodes, uL, uR, resp);
+                    disc.interface_conservation(trace, fespace.meshptr->coord, uL, uR, resp);
 
                     // fill jacobian for this perturbation 
                     for(IDX idoff = 0; idoff < res.ndof(); ++idoff) {
@@ -861,7 +861,7 @@ namespace iceicle::solvers {
 
                 // get the unperturbed residual
                 res = 0;
-                disc.domain_integral(el, fespace.meshptr->nodes, u_el, res);
+                disc.domain_integral(el, u_el, res);
 
                 // set up the perturbation amount scaled by unperturbed residual 
                 T eps_scaled = scale_fd_epsilon(epsilon, res.vector_norm());
@@ -869,7 +869,7 @@ namespace iceicle::solvers {
                 // get the original parameterization 
                 auto* parametrization = geo_map.parametric_accessors[jmdg].get();
                 std::vector<T> s(parametrization->s_size());
-                parametrization->x_to_s(fespace.meshptr->nodes[inode], s);
+                parametrization->x_to_s(fespace.meshptr->coord[inode], s);
 
                 // loop over dimension of the geometric parameterization and peturb
                 for(int is = 0; is < x.nv(jmdg); ++is){
@@ -878,11 +878,14 @@ namespace iceicle::solvers {
 
                         T old_val = s[is];
                         s[is] += eps_scaled;
-                        parametrization->s_to_x(s, fespace.meshptr->nodes[inode]);
+                        // TODO: maybe find a way to use the local el.coord_el to do this 
+                        // instead of updating the global data structure
+                        parametrization->s_to_x(s, fespace.meshptr->coord[inode]);
+                        fespace.meshptr->update_node(inode);
 
                         // get perturbed residual
                         resp = 0;
-                        disc.domain_integral(el, fespace.meshptr->nodes, u_el, resp);
+                        disc.domain_integral(el, u_el, resp);
 
                         // jacobian contribution 
                         for(IDX idoff = 0; idoff < res.ndof(); ++idoff){
@@ -895,7 +898,8 @@ namespace iceicle::solvers {
 
                         // revert perturbation
                         s[is] = old_val;
-                        parametrization->s_to_x(s, fespace.meshptr->nodes[inode]);
+                        parametrization->s_to_x(s, fespace.meshptr->coord[inode]);
+                        fespace.meshptr->update_node(inode);
                 }
             }
 
@@ -935,9 +939,9 @@ namespace iceicle::solvers {
 
                     // get the unperturbed residual
                     if(trace.face->bctype == BOUNDARY_CONDITIONS::INTERIOR){
-                        disc.trace_integral(trace, fespace.meshptr->nodes, uL, uR, resL, resR);
+                        disc.trace_integral(trace, fespace.meshptr->coord, uL, uR, resL, resR);
                     } else {
-                        disc.boundaryIntegral(trace, fespace.meshptr->nodes, uL, uR, resL);
+                        disc.boundaryIntegral(trace, fespace.meshptr->coord, uL, uR, resL);
                     }
 
                     // set up the perturbation amount scaled by unperturbed residual 
@@ -946,7 +950,7 @@ namespace iceicle::solvers {
                     // get the original parameterization 
                     auto* parametrization = geo_map.parametric_accessors[jmdg].get();
                     std::vector<T> s(parametrization->s_size());
-                    parametrization->x_to_s(fespace.meshptr->nodes[inode], s);
+                    parametrization->x_to_s(fespace.meshptr->coord[inode], s);
 
                     // loop over dimension of the geometric parameterization and peturb
                     for(int is = 0; is < x.nv(jmdg); ++is){
@@ -954,14 +958,15 @@ namespace iceicle::solvers {
 
                         T old_val = s[is];
                         s[is] += eps_scaled;
-                        parametrization->s_to_x(s, fespace.meshptr->nodes[inode]);
+                        parametrization->s_to_x(s, fespace.meshptr->coord[inode]);
+                        fespace.meshptr->update_node(inode);
 
                         // get the perturbed residual
                         resLp = 0; resRp = 0;
                         if(trace.face->bctype == BOUNDARY_CONDITIONS::INTERIOR){
-                            disc.trace_integral(trace, fespace.meshptr->nodes, uL, uR, resLp, resRp);
+                            disc.trace_integral(trace, fespace.meshptr->coord, uL, uR, resLp, resRp);
                         } else {
-                            disc.boundaryIntegral(trace, fespace.meshptr->nodes, uL, uR, resLp);
+                            disc.boundaryIntegral(trace, fespace.meshptr->coord, uL, uR, resLp);
                         }
 
                         // resL
@@ -986,7 +991,8 @@ namespace iceicle::solvers {
 
                         // revert perturbation
                         s[is] = old_val;
-                        parametrization->s_to_x(s, fespace.meshptr->nodes[inode]);
+                        parametrization->s_to_x(s, fespace.meshptr->coord[inode]);
+                        fespace.meshptr->update_node(inode);
                     }
                 }
             }
@@ -1020,14 +1026,14 @@ namespace iceicle::solvers {
 
                     // get the unperturbed residual
                     res = 0;
-                    disc.interface_conservation(trace, fespace.meshptr->nodes, uL, uR, res);
+                    disc.interface_conservation(trace, fespace.meshptr->coord, uL, uR, res);
                     // set up the perturbation amount scaled by unperturbed residual 
                     T eps_scaled = scale_fd_epsilon(epsilon, res.vector_norm());
 
                     // get the original parameterization 
                     auto* parametrization = geo_map.parametric_accessors[jmdg].get();
                     std::vector<T> s(parametrization->s_size());
-                    parametrization->x_to_s(fespace.meshptr->nodes[inode], s);
+                    parametrization->x_to_s(fespace.meshptr->coord[inode], s);
 
                     // loop over dimension of the geometric parameterization and peturb
                     for(int is = 0; is < x.nv(jmdg); ++is){
@@ -1036,11 +1042,12 @@ namespace iceicle::solvers {
 
                         T old_val = s[is];
                         s[is] += eps_scaled;
-                        parametrization->s_to_x(s, fespace.meshptr->nodes[inode]);
+                        parametrization->s_to_x(s, fespace.meshptr->coord[inode]);
+                        fespace.meshptr->update_node(inode);
 
                         // get the perturbed residual
                         resp = 0;
-                        disc.interface_conservation(trace, fespace.meshptr->nodes, uL, uR, resp);
+                        disc.interface_conservation(trace, fespace.meshptr->coord, uL, uR, resp);
 
                         for(IDX idoff = 0; idoff < res.ndof(); ++idoff){
 
@@ -1060,7 +1067,8 @@ namespace iceicle::solvers {
 
                         // revert perturbation
                         s[is] = old_val;
-                        parametrization->s_to_x(s, fespace.meshptr->nodes[inode]);
+                        parametrization->s_to_x(s, fespace.meshptr->coord[inode]);
+                        fespace.meshptr->update_node(inode);
                     }
                 }
             }

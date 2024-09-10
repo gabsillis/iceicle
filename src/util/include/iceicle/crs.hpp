@@ -48,7 +48,7 @@ namespace iceicle::util {
         // = Constructors =
         // ================
         
-        constexpr crs() noexcept = default;
+        constexpr crs() : _nnz(0), _nrow(0), _data(nullptr), _cols(nullptr) {}
 
         /// @brief consruct a crs from the indices for the start of each row 
         /// allocates enough data to accomodate 
@@ -93,8 +93,10 @@ namespace iceicle::util {
         : _nnz(other._nnz), _nrow(other._nrow),
         _data{new value_type[_nnz]}, _cols{new index_type[_nrow + 1]}
         {
-            std::copy_n(other._data, _nnz, _data);
-            std::copy_n(other._cols, _nrow + 1, _cols);
+            if(other._data != nullptr)
+                std::copy_n(other._data, _nnz, _data);
+            if(other._cols != nullptr)
+                std::copy_n(other._cols, _nrow + 1, _cols);
         }
 
         /// @brief move constructor
@@ -111,14 +113,18 @@ namespace iceicle::util {
             _nnz = other._nnz;
             _nrow = other._nrow;
 
-            if(_data != nullptr){
+            if(_data != nullptr)
                 delete[] _data;
-            }
-            if(_cols != nullptr){
+            if(_cols != nullptr)
                 delete[] _cols;
-            }
-            std::copy_n(other._data, _nnz, _data);
-            std::copy_n(other._cols, _nrow + 1, _cols);
+
+            _data = new value_type[_nnz];
+            _cols = new index_type[_nrow + 1];
+
+            if(other._data != nullptr)
+                std::copy_n(other._data, _nnz, _data);
+            if(other._cols != nullptr)
+                std::copy_n(other._cols, _nrow + 1, _cols);
             return *this;
         }
 

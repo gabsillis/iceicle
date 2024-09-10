@@ -47,7 +47,7 @@ namespace iceicle {
         }
 
         // write out the nodes
-        auto& nodes{fespace.meshptr->nodes};
+        auto& nodes{fespace.meshptr->coord};
         for(auto& node : nodes){
             for(int idim = 0; idim < ndim; ++idim) 
                 { out << node[idim] << " "; }
@@ -92,12 +92,11 @@ namespace iceicle {
         std::ifstream in{in_filename};
 
         // read in the nodes
-        auto& nodes{fespace.meshptr->nodes};
+        auto& nodes{fespace.meshptr->coord};
         for(auto& node : nodes){
             for(int idim = 0; idim < ndim; ++idim) 
                 { in >> node[idim]; }
         }
-
 
         // write out the solution vector
         for(IDX ielem = 0; ielem < fespace.elements.size(); ++ielem){

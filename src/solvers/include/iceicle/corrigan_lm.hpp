@@ -472,21 +472,21 @@ namespace iceicle::solvers {
                         DiffusionIntegrator<T, IDX, ndim> K_integrator{1.0};
                         std::vector<T> Kmat_data(el.nbasis() * el.nbasis());
                         std::mdspan Kmat(Kmat_data.data(), el.nbasis(), el.nbasis());
-                        K_integrator.form_operator(el, cg_fespace.meshptr->nodes, Kmat);
+                        K_integrator.form_operator(el, Kmat);
 
                         // get the minimum jacobian determinant of all quadrature points
                         T detJ = 1.0;
                         for(int igauss = 0; igauss < el.nQP(); ++igauss){
-                            auto J = el.geo_el->Jacobian(fespace.meshptr->nodes, el.getQP(igauss).abscisse);
+                            auto J = el.jacobian(el.getQP(igauss).abscisse);
                             detJ = std::min(std::abs(detJ), std::abs(NUMTOOL::TENSOR::FIXED_SIZE::determinant(J)));
 
                         }
                         detJ = std::max(1e-8, std::abs(detJ));
                         IDX nodes_size = geo_layout.geo_map.selected_nodes.size();
-                        for(int ilnode = 0; ilnode < el.geo_el->n_nodes(); ++ilnode){
-                            for(int jlnode = 0; ilnode < el.geo_el->n_nodes(); ++ilnode){
-                                const IDX ignode = el.geo_el->nodes()[ilnode];
-                                const IDX jgnode = el.geo_el->nodes()[jlnode];
+                        for(int ilnode = 0; ilnode < el.trans->nnode; ++ilnode){
+                            for(int jlnode = 0; ilnode < el.trans->nnode; ++ilnode){
+                                const IDX ignode = el.inodes[ilnode];
+                                const IDX jgnode = el.inodes[jlnode];
                                 IDX igeo = geo_layout.geo_map.inv_selected_nodes[ignode];
                                 IDX jgeo = geo_layout.geo_map.inv_selected_nodes[jgnode];
                                 if(igeo != nodes_size && jgeo != nodes_size){

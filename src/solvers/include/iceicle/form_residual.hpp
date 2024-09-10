@@ -159,7 +159,7 @@ namespace iceicle::solvers {
                     // zero out residual 
                     resL = 0;
 
-                    disc.trace_integral(trace, fespace.meshptr->nodes, uL, uR, resL, resR);
+                    disc.trace_integral(trace, fespace.meshptr->coord, uL, uR, resL, resR);
 
                     // scatter only the left
                     scatter_elspan(trace.elL.elidx, 1.0, resL, 1.0, res);
@@ -181,7 +181,7 @@ namespace iceicle::solvers {
                     // zero out residual 
                     resR = 0;
 
-                    disc.trace_integral(trace, fespace.meshptr->nodes, uL, uR, resL, resR);
+                    disc.trace_integral(trace, fespace.meshptr->coord, uL, uR, resL, resR);
 
                     // scatter only the right
                     scatter_elspan(trace.elR.elidx, 1.0, resR, 1.0, res);
@@ -317,7 +317,7 @@ namespace iceicle::solvers {
 
             // zero out then get interface conservation residual 
             res = 0;
-            disc.interface_conservation(trace, fespace.meshptr->nodes, uL, uR, res);
+            disc.interface_conservation(trace, fespace.meshptr->coord, uL, uR, res);
 
             scatter_facspan(trace, 1.0, res, 1.0, mdg_residual);
         }
@@ -374,7 +374,7 @@ namespace iceicle::solvers {
 
             // zero out then get interface conservation residual 
             res = 0;
-            disc.interface_conservation(trace, fespace.meshptr->nodes, uL, uR, res);
+            disc.interface_conservation(trace, fespace.meshptr->coord, uL, uR, res);
 
             scatter_facspan(trace, 1.0, res, 1.0, mdg_residual);
         }
@@ -417,7 +417,7 @@ namespace iceicle::solvers {
         dofspan res_mdg{std::span{res.begin() + dg_layout.size(), res.end()}, mdg_layout};
 
         // set the mesh from u_nodes
-        scatter_node_selection_span(1.0, u_nodes, 0.0, fespace.meshptr->nodes);
+        scatter_node_selection_span(1.0, u_nodes, 0.0, fespace.meshptr->coord);
 
         form_residual(fespace, disc, u_dg, res_dg);
         form_mdg_residual(fespace, disc, u_dg, res_mdg);
