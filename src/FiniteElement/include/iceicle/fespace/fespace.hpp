@@ -14,6 +14,7 @@
 #include <iceicle/element/reference_element.hpp>
 #include "iceicle/fe_definitions.hpp"
 #include "iceicle/fe_function/dglayout.hpp"
+#include "iceicle/fe_function/cg_map.hpp"
 #include "iceicle/geometry/face.hpp"
 #include "iceicle/geometry/geo_element.hpp"
 #include "iceicle/quadrature/QuadratureRule.hpp"
@@ -137,6 +138,9 @@ namespace iceicle {
         /** @brief maps local dofs to global dofs for dg space */
         dg_dof_map<IDX> dg_map;
 
+        /** @brief maps local dofs to global dofs for cg space */
+        cg_dof_map<T, IDX, ndim> cg_map;
+
         /** @brief the mapping of faces connected to each node */
         util::crs<IDX> fac_surr_nodes;
 
@@ -190,7 +194,7 @@ namespace iceicle {
             FESPACE_ENUMS::FESPACE_BASIS_TYPE basis_type,
             FESPACE_ENUMS::FESPACE_QUADRATURE quadrature_type,
             tmp::compile_int<basis_order> basis_order_arg
-        ) : meshptr(meshptr), elements{} {
+        ) : meshptr(meshptr), cg_map{*meshptr}, elements{} {
 
             // Generate the Finite Elements
             elements.reserve(meshptr->elements.size());
@@ -388,6 +392,205 @@ namespace iceicle {
             }
             fac_surr_el = util::crs{fac_surr_el_ragged};
         } 
+
+        /// @brief construct an FESpace that represents an isoparametric CG space
+        /// to the given mesh 
+        /// @param meshptr pointer to the mesh
+        FESpace(MeshType *meshptr) : meshptr(meshptr), cg_map{*meshptr}, elements{} {
+            
+            // Generate the Finite Elements
+            elements.reserve(meshptr->elements.size());
+            for(const auto& geo_el : meshptr->elements){
+                // create the Element Domain type key
+                FETypeKey fe_key = {
+                    .basis_order = geo_el->geometry_order(),
+                    .geometry_order = geo_el->geometry_order(),
+                    .domain_type = geo_el->domain_type(),
+                    .qtype = FESPACE_ENUMS::FESPACE_QUADRATURE::GAUSS_LEGENDRE,
+                    .btype = FESPACE_ENUMS::FESPACE_BASIS_TYPE::LAGRANGE 
+                };
+
+                // check if an evaluation doesn't exist yet
+                if(ref_el_map.find(fe_key) == ref_el_map.end()){
+                    ref_el_map[fe_key] = ReferenceElementType(geo_el.get());
+                }
+                ReferenceElementType &ref_el = ref_el_map[fe_key];
+               
+                // create the finite element
+                ElementType fe(
+                    geo_el.get(),
+                    ref_el.basis.get(),
+                    ref_el.quadrule.get(),
+                    &(ref_el.eval),
+                    elements.size() // this will be the index of the new element
+                );
+
+                // add to the elements list
+                elements.push_back(fe);
+            }
+
+#ifdef ICEICLE_USE_MPI
+            // ========================
+            // = Communicate Elements =
+            // ========================
+            int myrank, nrank;
+            MPI_Comm_rank(MPI_COMM_WORLD, &myrank);
+            MPI_Comm_size(MPI_COMM_WORLD, &nrank);
+
+            comm_elements.resize(nrank);
+
+            // set up the communicated FiniteElements only if more than 1 process
+            for(int irank = 0; irank < nrank; ++irank){
+                // basis order, quadrature_type, and basis_type we know
+                int geometry_order, domain_type;
+                for(const auto& geo_el : meshptr->communicated_elements[irank]){
+                    
+                    FETypeKey fe_key = {
+                        .basis_order = geo_el->geometry_order(),
+                        .geometry_order = geo_el->geometry_order(),
+                        .domain_type = geo_el->domain_type(),
+                        .qtype = FESPACE_ENUMS::FESPACE_QUADRATURE::GAUSS_LEGENDRE,
+                        .btype = FESPACE_ENUMS::FESPACE_BASIS_TYPE::LAGRANGE 
+                    };
+
+                    // check if an evaluation doesn't exist yet
+                    if(ref_el_map.find(fe_key) == ref_el_map.end()){
+                        ref_el_map[fe_key] = ReferenceElementType(geo_el.get());
+                    }
+                    ReferenceElementType &ref_el = ref_el_map[fe_key];
+                
+                    // create the finite element
+                    ElementType fe(
+                        geo_el.get(),
+                        ref_el.basis.get(),
+                        ref_el.quadrule.get(),
+                        &(ref_el.eval),
+                        elements.size() // this will be the index of the new element
+                    );
+
+                    comm_elements[irank].push_back(fe);
+                }
+            }
+#endif
+            // Generate the Trace Spaces
+            traces.reserve(meshptr->faces.size());
+            for(const auto& fac : meshptr->faces){
+                // NOTE: assuming element indexing is the same as the mesh still
+
+                bool is_interior = fac->bctype == BOUNDARY_CONDITIONS::INTERIOR;
+                ElementType *elptrL = &elements[fac->elemL];
+                ElementType *elptrR = (is_interior) ? &elements[fac->elemR] : &elements[fac->elemL];
+
+#ifdef ICEICLE_USE_MPI
+            // update the boundary trace spaces to use the new communicated FiniteElements
+                if(fac->bctype == BOUNDARY_CONDITIONS::PARALLEL_COM) {
+                    auto [jrank, imleft] = decode_mpi_bcflag(fac->bcflag);
+                    IDX jlocal_elidx = (imleft) ? fac->elemR : fac->elemL;
+
+                    std::vector<IDX> &comm_el_idxs = meshptr->el_recv_list[jrank];
+                    auto itr = lower_bound(comm_el_idxs.begin(), comm_el_idxs.end(), jlocal_elidx);
+                    std::size_t index = distance(comm_el_idxs.begin(), itr);
+
+                    if(imleft){
+                        elptrR = &(comm_elements[jrank].at(index));
+                    } else {
+                        elptrL = &(comm_elements[jrank].at(index));
+                        elptrR = &elements[fac->elemR]; // special case because parallel faces are essential interior
+                    }
+                }
+#endif
+                ElementType& elL = *elptrL;
+                ElementType& elR = *elptrR;
+
+                int geo_order = std::max(elL.geo_el->geometry_order(), elR.geo_el->geometry_order());
+
+                auto geo_order_dispatch = [&]<int geo_order>() -> int{
+                    TraceTypeKey trace_key = {
+                        .basis_order = std::max(elL.basis->getPolynomialOrder(), elR.basis->getPolynomialOrder()), 
+                        .geometry_order = geo_order,
+                        .domain_type = fac->domain_type(),
+                        .qtype = FESPACE_ENUMS::FESPACE_QUADRATURE::GAUSS_LEGENDRE
+                    };
+
+                    if(ref_trace_map.find(trace_key) == ref_trace_map.end()){
+                        ref_trace_map[trace_key] = ReferenceTraceType(fac.get(),
+                            FESPACE_ENUMS::FESPACE_BASIS_TYPE::LAGRANGE, FESPACE_ENUMS::FESPACE_QUADRATURE::GAUSS_LEGENDRE, 
+                            std::integral_constant<int, geo_order>{},
+                            std::integral_constant<int, geo_order>{});
+                    }
+                    ReferenceTraceType &ref_trace = ref_trace_map[trace_key];
+                    
+                    if(is_interior || fac->bctype == BOUNDARY_CONDITIONS::PARALLEL_COM){
+                        // parallel bdy faces are essentially also interior faces 
+                        // aside from being a bit *special* :3
+                        TraceType trace{ fac.get(), &elL, &elR, ref_trace.trace_basis.get(),
+                            ref_trace.quadrule.get(), &(ref_trace.eval), (IDX) traces.size() };
+                        traces.push_back(trace);
+                    } else {
+                        TraceType trace = TraceType::make_bdy_trace_space(fac.get(), &elL, ref_trace.trace_basis.get(), 
+                            ref_trace.quadrule.get(), &(ref_trace.eval), (IDX) traces.size());
+                        traces.push_back(trace);
+                    }
+
+                    return 0;
+                };
+
+                NUMTOOL::TMP::invoke_at_index(
+                    NUMTOOL::TMP::make_range_sequence<int, 1, MAX_DYNAMIC_ORDER>{},
+                    geo_order,
+                    geo_order_dispatch                    
+                );
+            }
+            // reuse the face indexing from the mesh
+            interior_trace_start = meshptr->interiorFaceStart;
+            interior_trace_end = meshptr->interiorFaceEnd;
+            bdy_trace_start = meshptr->bdyFaceStart;
+            bdy_trace_end = meshptr->bdyFaceEnd;
+
+            // generate the dof offsets 
+            dg_map = dg_dof_map{elements};
+
+            // ===================================
+            // = Build the connectivity matrices =
+            // ===================================
+
+            // generate the face surrounding nodes connectivity matrix 
+            std::vector<std::vector<IDX>> connectivity_ragged(meshptr->n_nodes());
+            for(int itrace = 0; itrace < traces.size(); ++itrace){
+                const TraceType& trace = traces[itrace];
+                for(IDX inode : trace.face->nodes_span()){
+                    connectivity_ragged[inode].push_back(itrace);
+                }
+            }
+            fac_surr_nodes = util::crs{connectivity_ragged};
+
+            std::vector<std::vector<IDX>> el_surr_nodes_ragged(meshptr->n_nodes());
+            for(int iel = 0; iel < elements.size(); ++iel){
+                const ElementType& element = elements[iel];
+                for(IDX inode : element.geo_el->nodes_span()){
+                    el_surr_nodes_ragged[inode].push_back(iel);
+                }
+            }
+            el_surr_nodes = util::crs{el_surr_nodes_ragged};
+
+            std::vector<std::vector<IDX>> fac_surr_el_ragged(elements.size());
+            for(int itrace = 0; itrace < traces.size(); ++itrace) {
+                const TraceType& trace = traces[itrace];
+                if(trace.face->bctype == BOUNDARY_CONDITIONS::PARALLEL_COM){
+                    // take some extra care to not add the wrong element index
+                    auto [jrank, imleft] = decode_mpi_bcflag(trace.face->bcflag);
+                    if(imleft){
+                        fac_surr_el_ragged[trace.elL.elidx].push_back(itrace);
+                    } else {
+                        fac_surr_el_ragged[trace.elR.elidx].push_back(itrace);
+                    }
+                } else {
+                    fac_surr_el_ragged[trace.elL.elidx].push_back(itrace);
+                    fac_surr_el_ragged[trace.elR.elidx].push_back(itrace);
+                }
+            }
+            fac_surr_el = util::crs{fac_surr_el_ragged};
+        }
 
         /**
          * @brief get the number of dg degrees of freedom in the entire fespace 

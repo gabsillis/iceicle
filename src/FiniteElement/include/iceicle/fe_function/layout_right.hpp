@@ -1,5 +1,5 @@
 #pragma once
-#include "dglayout.hpp"
+#include <iceicle/fe_function/layout_enums.hpp>
 
 namespace iceicle {
 
@@ -37,16 +37,16 @@ namespace iceicle {
         // ================
         // = Constructors =
         // ================
-        fe_layout_right(const dg_dof_map<index_type>& map_ref) 
+        fe_layout_right(const MapType& map_ref) 
         noexcept requires(!is_dynamic_size<vextent>::value) 
         : map_ref{map_ref} {}
 
         /// @brief integral constant for argument deduction
-        fe_layout_right(const dg_dof_map<index_type>& map_ref, std::integral_constant<std::size_t, vextent>) 
+        fe_layout_right(const MapType& map_ref, std::integral_constant<std::size_t, vextent>) 
         noexcept requires(!is_dynamic_size<vextent>::value) 
         : map_ref{map_ref} {}
 
-        fe_layout_right(const dg_dof_map<index_type>& map_ref, index_type nv) 
+        fe_layout_right(const MapType& map_ref, index_type nv) 
         noexcept requires(is_dynamic_size<vextent>::value) 
         : map_ref{map_ref}, nv_d{nv} {}
 
@@ -100,7 +100,7 @@ namespace iceicle {
 
         /// @brief the total size of the global index space represented by this layout
         constexpr size_type size() const noexcept {
-            return map_ref.gdof_size() * nv();
+            return map_ref.size() * nv();
         }
 
         // ============

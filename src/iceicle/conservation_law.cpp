@@ -6,6 +6,7 @@
 
 #include "iceicle/disc/conservation_law.hpp"
 #include "Numtool/tmp_flow_control.hpp"
+#include "iceicle/disc/burgers.hpp"
 #include "iceicle/mesh/mesh_lua_interface.hpp"
 #include "iceicle/fespace/fespace_lua_interface.hpp"
 #include "iceicle/program_args.hpp"
@@ -198,6 +199,10 @@ void setup(sol::table script_config, cli_parser cli_args){
             BurgersDiffusionFlux diffusive_flux{burgers_coeffs};
             ConservationLawDDG disc{std::move(physical_flux), std::move(convective_flux), std::move(diffusive_flux)};
             disc.field_names = std::vector<std::string>{"u"};
+
+            // discretization options
+            disc.sigma_ic = cons_law_tbl.get_or("sigma_ic", disc.sigma_ic);
+
             initialize_and_solve(script_config, fespace, disc);
 
         } else if(eq_icase(cons_law_tbl["name"].get<std::string>(), "spacetime-burgers")) {

@@ -4,6 +4,7 @@
  * reminiscent of mdspan
  */
 #pragma once
+#include "iceicle/anomaly_log.hpp"
 #include "iceicle/element/TraceSpace.hpp"
 #include "iceicle/fe_function/el_layout.hpp"
 #include "iceicle/fe_function/trace_layout.hpp"
@@ -99,6 +100,24 @@ namespace iceicle {
             constexpr fespan(pointer data, const dof_mapping_type &dof_map, const AccessorPolicy &_accessor) 
             noexcept : _ptr(data), _layout{dof_map}, _accessor{_accessor} 
             {}
+
+            template<std::ranges::contiguous_range R>
+            constexpr fespan(R&& data_range, const LayoutPolicy &dof_map)
+            noexcept : _ptr(std::ranges::data(data_range)), _layout{dof_map}, _accessor{}
+            {
+                static_assert(std::is_same_v<std::ranges::range_value_t<decltype(data_range)>, T>, "value type must match");
+                util::AnomalyLog::check(std::ranges::size(data_range) < dof_map.size(),
+                    util::Anomaly{"Provided data range cannot support the extent of the layout", util::general_anomaly_tag{}});
+            }
+
+            constexpr fespan(std::ranges::contiguous_range auto data_range, const LayoutPolicy &dof_map,
+                    const AccessorPolicy &_accessor)
+            noexcept : _ptr(std::ranges::data(data_range)), _layout{dof_map}, _accessor{_accessor}
+            {
+                static_assert(std::is_same_v<std::ranges::range_value_t<decltype(data_range)>, T>, "value type must match");
+                util::AnomalyLog::check(std::ranges::size(data_range) < dof_map.size(),
+                    util::Anomaly{"Provided data range cannot support the extent of the layout", util::general_anomaly_tag{}});
+            }
 
             template<typename... LayoutArgsT>
             constexpr fespan(pointer data, LayoutArgsT&&... layout_args) 
@@ -198,8 +217,8 @@ namespace iceicle {
              * @brief get the norm of the vector data components 
              * NOTE: this is not a finite element norm 
              *
-             * @tparam order the lp polynomial order 
-             * @return the vector lp norm 
+             * @tparam order the p polynomial order 
+             * @return the vector L^p norm 
              */
             template<int order = 2>
             constexpr T vector_norm(){
@@ -244,6 +263,9 @@ namespace iceicle {
     // deduction guides
     template<typename T, class LayoutPolicy>
     fespan(T *data, const LayoutPolicy &) -> fespan<T, LayoutPolicy>;
+
+    template<std::ranges::contiguous_range R, class LayoutPolicy>
+    fespan(R&& data_range, const LayoutPolicy &) -> fespan< std::ranges::range_value_t<R>, LayoutPolicy >;
 
     /**
      * @brief compute a vector scalar product and add to a vector 

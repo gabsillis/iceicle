@@ -148,6 +148,58 @@ namespace iceicle {
 
         };
 
+        /// @brief fix a subset of the coordinates subject to bounds on coordinate values
+        template<class T, int ndim>
+        class BoundedFixedCoordinateSubset final : public ParametricCoordTransformation<T, ndim> {
+            static constexpr std::size_t u_ndim = ndim; // unsigned
+            /// @brief fixed coordinate index and value pairs
+            std::vector<std::pair<int, T>> fixed_coordinates;
+            std::array<T, u_ndim> xmin;
+            std::array<T, u_ndim> xmax;
+
+            public:
+            BoundedFixedCoordinateSubset(std::vector<std::pair<int, T>> fixed_coordinates, std::array<T, u_ndim> xmin, std::array<T, u_ndim> xmax)
+                : fixed_coordinates(fixed_coordinates), xmin{xmin}, xmax{xmax} {};
+
+            /// @brief convert from the parametric coordinate space to the physical coordinate space
+            void s_to_x(std::span<const T> svec, std::span<T, ndim> xvec) const override {
+                auto fixed_iterator = fixed_coordinates.begin();
+                auto s_iterator = svec.begin();
+
+                for(int idim = 0; idim < ndim; ++idim){
+                    if(fixed_iterator != fixed_coordinates.end() && fixed_iterator->first == idim){
+                        xvec[idim] = fixed_iterator->second;
+                        ++fixed_iterator;
+                    } else {
+                        T val = *s_iterator;
+                        val = std::max(xmin[idim], val);
+                        val = std::min(xmax[idim], val);
+                        xvec[idim] = val;
+                        ++s_iterator;
+                    }
+                }
+            }
+
+            /// @brief convert from the physical coordinate space to the parametric coordinate space
+            void x_to_s(std::span<const T, ndim> xvec, std::span<T> svec) const override {
+                auto fixed_iterator = fixed_coordinates.begin();
+                auto s_iterator = svec.begin();
+
+                for(int idim = 0; idim < ndim; ++idim){
+                    if(fixed_iterator != fixed_coordinates.end() && fixed_iterator->first == idim){
+                        ++fixed_iterator;
+                    } else {
+                        *s_iterator = xvec[idim];
+                        ++s_iterator;
+                    }
+                }
+            }
+
+            /// @brief the dimensionality of the parametric coordinate space
+            auto s_size() const -> int override { return ndim - fixed_coordinates.size(); };
+
+        };
+
         /// @brief fix all the coordinates
         template<class T, int ndim>
         class Fixed final : public ParametricCoordTransformation<T, ndim> {
@@ -347,8 +399,8 @@ namespace iceicle {
                         fixed_coordinates.push_back(std::pair{idim, xmax[idim]});
                 }
                 if(fixed_coordinates.size() != 0){
-                    parametric_transformations::FixedCoordinateSubset<T, ndim> 
-                        parameterization{fixed_coordinates};
+                    parametric_transformations::BoundedFixedCoordinateSubset<T, ndim> 
+                        parameterization{fixed_coordinates, xmin, xmax};
                     geo_map.register_parametric_node(inode, parameterization);
                 }
                 ++inode;

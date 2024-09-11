@@ -151,7 +151,7 @@ namespace iceicle {
                 auto J = el.geo_el->Jacobian(coord, quadpt.abscisse);
                 T detJ = NUMTOOL::TENSOR::FIXED_SIZE::determinant(J);
 
-                // get the gradients in the physical domain
+                // get basis values and the gradients in the physical domain
                 auto gradxBi = el.evalPhysGradBasisQP(iqp, coord, J, gradx_data.data());
                 el.evalBasisQP(iqp, bi.data());
 
