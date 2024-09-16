@@ -245,6 +245,7 @@ struct FiniteElement {
     // the inverse of J = adj(J) / det(J)
     auto adjJ = adjugate(J);
     auto detJ = determinant(J);
+    detJ = (detJ == 0.0) ? 1.0 : detJ; // protect from div by zero
 
     // Evaluate dBi in reference domain
     std::vector<T> dBi_data(ndim * ndof, 0.0);
@@ -265,7 +266,7 @@ struct FiniteElement {
 
     // multiply though by the determinant
     for (int i = 0; i < ndof * ndim; ++i) {
-      dBidxj[i] /= std::copysign(std::max(std::numeric_limits<T>::epsilon(), detJ), detJ);
+      dBidxj[i] /= detJ;
     }
 
     return gbasis;
@@ -381,6 +382,7 @@ struct FiniteElement {
     // the inverse of J = adj(J) / det(J)
     auto adjJ = adjugate(trans_jac);
     T detJ = determinant(trans_jac);
+    detJ = (detJ == 0.0) ? 1.0 : detJ; // protect from div by zero
     T detJ2 = SQUARED(detJ);
 
     // loop variables (idof = degree of freedom index), (*d = dimension index)
@@ -414,7 +416,7 @@ struct FiniteElement {
     }
 
     for (int i = 0; i < ndim * ndim * ndof; ++i) {
-      basis_hessian_data[i] /= std::max(std::numeric_limits<T>::epsilon(), detJ2);
+      basis_hessian_data[i] /= detJ2;
     }
 
     return hess_phys;

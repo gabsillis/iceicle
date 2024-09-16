@@ -6,8 +6,10 @@
  */
 #pragma once
 #include "Numtool/fixed_size_tensor.hpp"
+#include "iceicle/anomaly_log.hpp"
 #include "iceicle/build_config.hpp"
 #include "iceicle/fe_definitions.hpp"
+#include "iceicle/geometry/face_utils.hpp"
 #include "iceicle/geometry/transformations_table.hpp"
 #include "iceicle/geometry/hypercube_face.hpp"
 #include "iceicle/geometry/simplex_element.hpp"
@@ -194,6 +196,110 @@ namespace iceicle {
         : coord{}, conn_el{}, coord_els{}, el_transformations{}, faces{}, interiorFaceStart(0), interiorFaceEnd(0), 
           bdyFaceStart(0), bdyFaceEnd(0), elsup{}, el_send_list(mpi::mpi_world_size()), 
           el_recv_list(mpi::mpi_world_size()), communicated_elements(mpi::mpi_world_size()){}
+
+        /// @brief A description of a boundary face 
+        /// contains all the information needed to generate the face data structure 
+        /// first the boundary condition type 
+        /// then the boundary condition integer flag 
+        /// then the nodes of the boundary face
+        using boundary_face_desc = std::tuple<BOUNDARY_CONDITIONS, int, std::vector<IDX>>;
+
+        /// @brief Construct a mesh from provided connectivity information
+        AbstractMesh(
+            NodeArray<T, ndim>& coord,
+            util::crs<IDX, IDX> conn_el,
+            std::vector< ElementTransformation<T, IDX, ndim>* > el_transformations,
+            std::vector<boundary_face_desc> boundary_face_descriptions
+        ) : coord{coord}, conn_el{conn_el}, coord_els{}, el_transformations{el_transformations},
+            el_send_list(mpi::mpi_world_size()), el_recv_list(mpi::mpi_world_size()),
+         communicated_elements(mpi::mpi_world_size())
+        {
+            { // build the element coordinates matrix
+                coord_els = util::crs<Point, IDX>{std::span{conn_el.cols(), conn_el.cols() + conn_el.nrow() + 1}};
+                for(IDX iel = 0; iel < conn_el.nrow(); ++iel){
+                    for(std::size_t icol = 0; icol < conn_el.rowsize(iel); ++icol){
+                        coord_els[iel, icol] = coord[conn_el[iel, icol]];
+                    }
+                }
+            }
+
+            // form elements sourrounding points 
+            
+            // elements surrounding points
+            std::vector<std::vector<IDX>> elsup_ragged(n_nodes());
+            for(IDX ielem = 0; ielem < nelem(); ++ielem){
+                for(IDX inode : conn_el.rowspan(ielem)){
+                    elsup_ragged[inode].push_back(ielem);
+                }
+            }
+
+            // remove duplicates and sort
+            for(IDX inode = 0; inode < n_nodes(); ++inode){
+                std::ranges::sort(elsup_ragged[inode]);
+                auto unique_subrange = std::ranges::unique(elsup_ragged[inode]);
+                elsup_ragged[inode].erase(unique_subrange.begin(), unique_subrange.end());
+            }
+
+            elsup = util::crs<IDX, IDX>{elsup_ragged};
+
+            // find the interior faces
+            // if elements share at least ndim points, then they have a face
+            for(IDX ielem = 0; ielem < nelem(); ++ielem){
+                int max_faces = el_transformations[ielem]->nfac;
+                std::vector<IDX> connected_elements;
+                connected_elements.reserve(max_faces);
+
+                // loop through elements that share a node
+                for(IDX inode : conn_el.rowspan(ielem)){
+                    for(auto jelem_iter = std::lower_bound(elsup.rowspan(inode).begin(), elsup.rowspan(inode).end(), ielem);
+                            jelem_iter != elsup.rowspan(inode).end(); ++jelem_iter){
+                        IDX jelem = *jelem_iter;
+
+                        // skip the cases that would lead to duplicate or boundary faces
+                        if( ielem == jelem || std::ranges::contains(connected_elements, jelem) )
+                            continue; 
+
+                        // try making the face that is the intersection of the two elements
+                        auto face_opt = make_face(ielem, jelem, 
+                                el_transformations[ielem], el_transformations[jelem],
+                                conn_el.rowspan(ielem), conn_el.rowspan(jelem));
+                        if(face_opt){
+                            faces.push_back(std::move(face_opt.value()));
+                            // short circuit if all the faces have been found
+                            connected_elements.push_back(jelem);
+                            if(connected_elements.size() == max_faces) break;
+                        }
+                    }
+                }
+            }
+
+            interiorFaceStart = 0;
+            interiorFaceEnd = faces.size();
+            bdyFaceStart = interiorFaceEnd;
+
+            // make the boundary faces
+            for(boundary_face_desc& info : boundary_face_descriptions){
+                auto [bc_type, bc_flag, boundary_nodes] = info;
+                // search the elements around the first node 
+                for(IDX ielem : elsup.rowspan(boundary_nodes[0])){
+                    ElementTransformation<T, IDX, ndim>* trans = el_transformations[ielem];
+                    std::span<IDX> elnodes = get_el_nodes(ielem);
+                    auto fac_info_optional = boundary_face_info(boundary_nodes, trans, elnodes);
+                    if(fac_info_optional){
+                        // make the face and add it
+                        auto [fac_domain, face_nr] = fac_info_optional.value();
+                        std::vector<IDX> face_nodes = trans->get_face_nodes(face_nr, elnodes);
+                        auto fac_opt = make_face<T, IDX, ndim>(fac_domain, trans->domain_type, trans->domain_type, 
+                            trans->order, ielem, ielem, face_nodes, face_nr, 0, 0, bc_type, bc_flag);
+                        if(fac_opt)
+                            faces.push_back(std::move(fac_opt.value()));
+                        else 
+                            util::AnomalyLog::log_anomaly(util::Anomaly{"Cannot form boundary face", util::general_anomaly_tag{}});
+                    }
+                }
+            }
+            bdyFaceEnd = faces.size();
+        }
 
         AbstractMesh(const AbstractMesh<T, IDX, ndim>& other) 
         : coord{other.coord}, conn_el{other.conn_el}, coord_els{other.coord_els}, 

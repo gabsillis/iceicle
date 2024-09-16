@@ -408,6 +408,50 @@ namespace iceicle {
 
             geo_map.finalize();
         }
+
+        /// @brief fix any nodes lying on a bounding box to stay on the given bounding box
+        template<class T, class IDX, int ndim>
+        auto bounding_box(
+            AbstractMesh<T, IDX, ndim> &mesh,
+            std::array<T, (std::size_t) ndim> xmin,
+            std::array<T, (std::size_t) ndim> xmax,
+            geo_dof_map<T, IDX, ndim>& geo_map
+        ) -> void 
+        {
+            auto near = [](T a, T b) -> bool 
+            { return std::abs(a - b) < 1e-8; };
+
+            for(IDX inode = 0; inode < mesh.n_nodes(); ++inode){
+                std::vector<std::pair<int, T>> fixed_coordinates{};
+                for(int idim = 0; idim < ndim; ++idim){
+                    if(near(mesh.coord[inode][idim], xmin[idim]) )
+                        fixed_coordinates.push_back(std::pair{idim, xmin[idim]});
+                    else if(near(mesh.coord[inode][idim], xmax[idim]))
+                        fixed_coordinates.push_back(std::pair{idim, xmax[idim]});
+                }
+                if(fixed_coordinates.size() != 0){
+                    parametric_transformations::BoundedFixedCoordinateSubset<T, ndim> 
+                        parameterization{fixed_coordinates, xmin, xmax};
+                    geo_map.register_parametric_node(inode, parameterization);
+                }
+            }
+        }
+
+        /// @brief fix all the nodes given in the list
+        template<class T, class IDX, int ndim>
+        auto fixed_nodelist(
+            std::span<IDX> nodelist,
+            AbstractMesh<T, IDX, ndim> &mesh,
+            geo_dof_map<T, IDX, ndim>& geo_map
+        ) -> void 
+        {
+            for(IDX inode : nodelist){
+                std::array<T, ndim> pt;
+                std::ranges::copy(mesh.coord[inode], pt.begin());
+                parametric_transformations::Fixed<T, ndim> parameterization{pt};
+                geo_map.register_parametric_node(inode, parameterization);
+            }
+        }
     }
 
     /// @brief layout that represents the layout of parametric geometric coordinate data in memory
@@ -511,7 +555,7 @@ namespace iceicle {
          * meaning that the data for a an element can be block copied 
          * to a elspan provided the layout parameters are the same
          */
-        inline static constexpr auto local_dof_contiguous() noexcept -> bool { return true; }
+        inline static constexpr auto local_dof_contiguous() noexcept -> bool { return false; }
 
         /// @brief this is purely dynamic extent
         inline static constexpr auto static_extent() { return _nv; }

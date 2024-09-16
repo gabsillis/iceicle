@@ -5,7 +5,6 @@
  */
 
 #include "iceicle/disc/conservation_law.hpp"
-#include "Numtool/tmp_flow_control.hpp"
 #include "iceicle/disc/burgers.hpp"
 #include "iceicle/mesh/mesh_lua_interface.hpp"
 #include "iceicle/fespace/fespace_lua_interface.hpp"
@@ -20,7 +19,6 @@
 #include "iceicle/disc/navier_stokes.hpp"
 #include "iceicle/iceicle_mpi_utils.hpp"
 #ifdef ICEICLE_USE_PETSC 
-#include "iceicle/petsc_newton.hpp"
 #elifdef ICEICLE_USE_MPI
 #include "mpi.h"
 #endif
