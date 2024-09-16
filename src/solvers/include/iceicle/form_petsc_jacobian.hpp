@@ -7,11 +7,13 @@
 #include "iceicle/fespace/fespace.hpp"
 #include "iceicle/fe_function/fespan.hpp"
 #include "iceicle/fe_function/component_span.hpp"
+#include "iceicle/form_residual.hpp"
 #include "iceicle/geometry/face.hpp"
 #include "iceicle/petsc_interface.hpp"
 #include "iceicle/fd_utils.hpp"
 #include <cmath>
 #include <limits>
+#include <petscsystypes.h>
 #include <set>
 #include <petscerror.h>
 #include <petscmat.h>
@@ -686,7 +688,7 @@ namespace iceicle::solvers {
 
     /// @brief from the jacobian terms due to the interface condition enforcement 
     /// NOTE: this works with the non-square matrix
-    template<
+template<
         class T, class IDX, int ndim,
         class disc_class, class uLayoutPolicy, class uAccessorPolicy
     >
@@ -1073,6 +1075,49 @@ namespace iceicle::solvers {
                 }
             }
 
+        }
+    }
+
+    template<
+        class T, class IDX, int ndim,
+        class disc_class, class uLayoutPolicy, class uAccessorPolicy
+    >
+    auto form_petsc_jacobian_dense_fd(
+        FESpace<T, IDX, ndim>& fespace,
+        disc_class& disc,
+        fespan<T, uLayoutPolicy, uAccessorPolicy> u,
+        geospan auto x,
+        Vec res,
+        Mat jac,
+        T epsilon = std::sqrt(std::numeric_limits<T>::epsilon())
+    ) -> void 
+    {
+
+        petsc::VecSpan res_span{res};
+        std::vector<T> resp_data(res_span.size());
+
+        // get the selected geometry to apply interface condition to
+        const geo_dof_map<T, IDX, ndim>& geo_map = x.get_layout().geo_map;
+
+        // copy the input data
+        std::vector<T> ufull(u.size() + x.size());
+        std::copy_n(u.data(), u.size(), ufull.data());
+        std::copy_n(x.data(), x.size(), ufull.data() + u.size());
+
+        form_residual(fespace, disc, geo_map, std::span{ufull}, std::span{res_span});
+
+        for(IDX jdof = 0; jdof < ufull.size(); ++jdof) {
+            T uold = ufull[jdof];
+            ufull[jdof] += epsilon;
+            form_residual(fespace, disc, geo_map, std::span{ufull}, std::span{resp_data});
+
+            for(IDX idof = 0; idof < res_span.size(); ++idof){
+                T fd_val = (resp_data[idof] - res_span[idof]) / epsilon;
+                if(std::abs(fd_val) > 1e-10)
+                    MatSetValue(jac, idof, jdof, fd_val, ADD_VALUES);
+            }
+            // revert
+            ufull[jdof] = uold;
         }
     }
 }

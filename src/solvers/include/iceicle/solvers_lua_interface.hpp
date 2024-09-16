@@ -251,6 +251,57 @@ namespace iceicle::solvers {
                 geo_map.finalize();
             }
 
+            sol::optional<sol::table> user_mesh_tbl_opt = config_tbl["user_mesh"];
+            if(user_mesh_tbl_opt){
+                sol::table mesh_table = user_mesh_tbl_opt.value();
+
+                sol::optional<sol::table> constraints_opt = mesh_table["geo_constraints"];
+                if(constraints_opt){
+
+                    // bounding box
+                    sol::optional<sol::table> bounding_box_opt = constraints_opt.value()["bounding_box"];
+                    if(bounding_box_opt){
+                        std::array<T, ndim> xmin;
+                        std::array<T, ndim> xmax;
+                        sol::table bounding_box_table = bounding_box_opt.value();
+                        for(int idim = 0; idim < ndim; ++idim){
+                            xmin[idim] = bounding_box_table["min"][idim + 1];
+                            xmax[idim] = bounding_box_table["max"][idim + 1];
+                        }
+                        mesh_parameterizations::bounding_box(*(fespace.meshptr), xmin, xmax, geo_map);
+
+                    }
+
+                    /// manually fixed nodes 
+                    sol::optional<sol::table> fixed_nodelist_opt = constraints_opt.value()["fixed_nodes"];
+                    if(fixed_nodelist_opt){
+                        sol::table nodelist_tbl = fixed_nodelist_opt.value();
+                        std::vector<IDX> fixed_nodes{};
+                        for(int i = 1; i <= nodelist_tbl.size(); ++i){
+                            IDX inode = nodelist_tbl[i];
+                            fixed_nodes.push_back(inode);
+                        }
+                        mesh_parameterizations::fixed_nodelist(std::span{fixed_nodes}, *(fespace.meshptr), geo_map);
+                    }
+
+                }
+                // === Dirichlet BC => nodes cannot move ===
+                for(auto trace : fespace.get_boundary_traces()){
+                    if(trace.face->bctype == BOUNDARY_CONDITIONS::DIRICHLET){
+                        for(index_type inode : trace.face->nodes_span()){
+                            auto node_data = fespace.meshptr->coord[inode];
+                            std::array<T, ndim> fixed_coordinates;
+                            for(int idim = 0; idim < ndim; ++idim)
+                                { fixed_coordinates[idim] = node_data[idim]; }
+                            parametric_transformations::Fixed<T, ndim> parameterization{fixed_coordinates};
+                            geo_map.register_parametric_node(inode, parameterization);
+                        }
+                    }
+                }
+
+                geo_map.finalize();
+            }
+
             return geo_map;
         } else {
             // select no traces 
@@ -471,8 +522,9 @@ namespace iceicle::solvers {
                     };
 
                     if(eq_icase_any(solver_type, "lm", "gauss-newton")){
-                        bool form_subproblem = solver_params.get_or("form_subproblem_mat", true); 
-                        CorriganLM solver{fespace, disc, conv_criteria, ls, geo_map, form_subproblem};
+                        bool form_subproblem = solver_params.get_or("form_subproblem_mat", false); 
+                        bool sparse_jacobian = solver_params.get_or("sparse_jacobian_calculation", true);
+                        CorriganLM solver{fespace, disc, conv_criteria, ls, geo_map, form_subproblem, sparse_jacobian};
 
                         // set options for the solver 
                         sol::optional<T> lambda_u = solver_params["lambda_u"];

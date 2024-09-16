@@ -220,6 +220,10 @@ namespace iceicle::solvers {
         /// This may greatly reduce the sparsity
         const bool explicitly_form_subproblem;
 
+        /// @brief set to true to calculate the jacobian 
+        /// taking advantage of the sparsity structure
+        const bool sparse_jacobian_calculation;
+
         // === Regularization Parameters ===
         
         /// @brief regularization for pde dofs
@@ -255,10 +259,12 @@ namespace iceicle::solvers {
             ConvergenceCriteria<T, IDX>& conv_criteria,
             const ls_type& linesearch,
             const geo_dof_map<T, IDX, ndim>& geo_map,
-            bool explicitly_form_subproblem = false
+            bool explicitly_form_subproblem = false,
+            bool sparse_jacobian_calculation = true
         ) : fespace{fespace}, cg_fespace(fespace.meshptr), disc{disc}, conv_criteria{conv_criteria}, 
             linesearch{linesearch}, geo_map{geo_map},
-            explicitly_form_subproblem{explicitly_form_subproblem}
+            explicitly_form_subproblem{explicitly_form_subproblem},
+            sparse_jacobian_calculation{sparse_jacobian_calculation}
         {
             static constexpr int neq = disc_class::nv_comp;
 
@@ -381,41 +387,22 @@ namespace iceicle::solvers {
             extract_geospan(*(fespace.meshptr), coord);
 
             // get initial residual and jacobian 
-            {
+            if(sparse_jacobian_calculation) 
+            { // vecspan scope
                 petsc::VecSpan res_view{res_data};
                 fespan res{res_view.data(), u.get_layout()};
                 form_petsc_jacobian_fd(fespace, disc, u, res, jac);
                 dofspan mdg_res{res_view.data() + u_layout.size(), ic_layout};
                 form_petsc_mdg_jacobian_fd(fespace, disc, u, coord, mdg_res, jac);
-
-                // assemble the Jacobian matrix  (assembly needed for symbolic product)
-                MatAssemblyBegin(jac, MAT_FINAL_ASSEMBLY);
-                MatAssemblyEnd(jac, MAT_FINAL_ASSEMBLY);
-//
-//                // Test Jacobian correctness
-//                std::vector<T> densejac_data( (res.size() + mdg_res.size()) * (u.size() + coord.size()) );
-//                std::mdspan<T, std::extents<std::size_t, std::dynamic_extent, std::dynamic_extent>, std::layout_right> densejac{
-//                    densejac_data.data(), res.size() + mdg_res.size(), u.size() + coord.size()
-//                };
-//                std::vector<T> testres(res.size() + mdg_res.size());
-//                std::vector<T> testu(u.size() + coord.size());
-//                std::copy_n(u.data(), u.size(), testu.begin());
-//                std::copy_n(coord.data(), coord.size(), testu.begin() + u.size());
-//
-//                form_dense_jacobian_fd(fespace, disc, geo_map, std::span<T>(testu), std::span<T>(testres), densejac);
-//
-//                for(IDX i = 0; i < res.size() + mdg_res.size(); ++i){
-//                    for(IDX j = 0; j < u.size() + coord.size(); ++j){
-//                        T petsc_val;
-//                        MatGetValue(jac, i, j, &petsc_val);
-//                        if(std::abs( densejac[i, j] - petsc_val ) > 1e-6){
-//                            std::cout << "i: " << i << " | j: " << j << " mismatch -- petsc: " << petsc_val 
-//                                << " | dense:: " << densejac[i, j] << std::endl;
-//                        }
-//                    }
-//                }
-//                
+            } // end vecspan scope
+            else 
+            {
+                form_petsc_jacobian_dense_fd(fespace, disc, u, coord, res_data, jac);
             }
+
+            // assemble the Jacobian matrix  (assembly needed for symbolic product)
+            MatAssemblyBegin(jac, MAT_FINAL_ASSEMBLY);
+            MatAssemblyEnd(jac, MAT_FINAL_ASSEMBLY);
 
             // assume nonzero structure of jacobian remains unchanged
             if(explicitly_form_subproblem){
@@ -513,7 +500,7 @@ namespace iceicle::solvers {
                 PetscCallAbort(PETSC_COMM_WORLD, MatAssemblyBegin(subproblem_mat, MAT_FINAL_ASSEMBLY));
                 PetscCallAbort(PETSC_COMM_WORLD, MatAssemblyEnd(subproblem_mat, MAT_FINAL_ASSEMBLY));
 
-                // form JTr 
+                // form JTr
                 PetscCallAbort(PETSC_COMM_WORLD, MatMultTranspose(jac, res_data, Jtr));
 
                 // Solve the subproblem
@@ -615,40 +602,22 @@ namespace iceicle::solvers {
                     MatZeroEntries(subproblem_mat); 
 
                 // get updated residual and jacobian 
+                if(sparse_jacobian_calculation) 
                 {
                     petsc::VecSpan res_view{res_data};
                     fespan res{res_view.data(), u.get_layout()};
                     form_petsc_jacobian_fd(fespace, disc, u, res, jac);
                     dofspan mdg_res{res_view.data() + u_layout.size(), ic_layout};
                     form_petsc_mdg_jacobian_fd(fespace, disc, u, coord, mdg_res, jac);
-
-                    // assemble the Jacobian matrix 
-                    MatAssemblyBegin(jac, MAT_FINAL_ASSEMBLY);
-                    MatAssemblyEnd(jac, MAT_FINAL_ASSEMBLY);
-
-                    // Test Jacobian correctness
-//                    std::vector<T> densejac_data( (res.size() + mdg_res.size()) * (u.size() + coord.size()) );
-//                    std::mdspan<T, std::extents<std::size_t, std::dynamic_extent, std::dynamic_extent>, std::layout_right> densejac{
-//                        densejac_data.data(), res.size() + mdg_res.size(), u.size() + coord.size()
-//                    };
-//                    std::vector<T> testres(res.size() + mdg_res.size());
-//                    std::vector<T> testu(u.size() + coord.size());
-//                    std::copy_n(u.data(), u.size(), testu.begin());
-//                    std::copy_n(coord.data(), coord.size(), testu.begin() + u.size());
-//
-//                    form_dense_jacobian_fd(fespace, disc, geo_map, std::span<T>(testu), std::span<T>(testres), densejac);
-//
-//                    for(IDX i = 0; i < res.size() + mdg_res.size(); ++i){
-//                        for(IDX j = 0; j < u.size() + coord.size(); ++j){
-//                            T petsc_val;
-//                            MatGetValue(jac, i, j, &petsc_val);
-//                            if(std::abs( densejac[i, j] - petsc_val ) > 1e-6 ){ 
-//                                std::cout << "i: " << i << " | j: " << j << " mismatch -- petsc: " << petsc_val 
-//                                    << " | dense:: " << densejac[i, j] << std::endl;
-//                            }
-//                        }
-//                    }
                 }
+                else
+                {
+                    form_petsc_jacobian_dense_fd(fespace, disc, u, coord, res_data, jac);
+                }
+
+                // assemble the Jacobian matrix 
+                MatAssemblyBegin(jac, MAT_FINAL_ASSEMBLY);
+                MatAssemblyEnd(jac, MAT_FINAL_ASSEMBLY);
 
                 // get the residual norm
                 T rk;
