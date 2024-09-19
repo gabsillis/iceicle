@@ -251,8 +251,6 @@ namespace iceicle::solvers {
         /// @brief the minimum allowable jacobian determinant
         T J_min = 1e-10;
 
-        Mat jac2;
-
         public:
 
         // ================
@@ -308,10 +306,6 @@ namespace iceicle::solvers {
             MatSetSizes(jac, local_res_size, local_u_size, PETSC_DETERMINE, PETSC_DETERMINE);
             MatSetFromOptions(jac);
             MatSetUp(jac);
-            MatCreate(PETSC_COMM_WORLD, &jac2);
-            MatSetSizes(jac2, local_res_size, local_u_size, PETSC_DETERMINE, PETSC_DETERMINE);
-            MatSetFromOptions(jac2);
-            MatSetUp(jac2);
 
             if(explicitly_form_subproblem){
 
@@ -642,7 +636,7 @@ namespace iceicle::solvers {
                         // x update
                         component_span dx{du_view.data() + u.size(), geo_layout};
                         axpy(-alpha, dx, coord);
-                        lambda_u = std::max(rnorm_step, 0.55 * lambda_u);
+                        lambda_u = std::max(lambda_u_min, 0.55 * lambda_u);
                         lambda_b = std::max(rnorm_step, 0.55 * lambda_b);
 
                         // bring down element-wise regularization 
