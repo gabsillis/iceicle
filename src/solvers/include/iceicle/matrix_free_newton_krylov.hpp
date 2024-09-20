@@ -225,7 +225,7 @@ namespace iceicle::solvers {
             };
 
             MatCreate(PETSC_COMM_WORLD, &J);
-            MatSetSizes(J, u_layout.size() + geo_layout.size(), u_layout.size() + ic_layout.size(),
+            MatSetSizes(J, u_layout.size() + ic_layout.size(), u_layout.size() + geo_layout.size(),
                     PETSC_DETERMINE, PETSC_DETERMINE);
             MatSetType(J, MATSHELL);
             MatSetUp(J);

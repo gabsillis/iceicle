@@ -106,8 +106,12 @@ namespace iceicle {
             noexcept : _ptr(std::ranges::data(data_range)), _layout{dof_map}, _accessor{}
             {
                 static_assert(std::is_same_v<std::ranges::range_value_t<decltype(data_range)>, T>, "value type must match");
-                util::AnomalyLog::check(std::ranges::size(data_range) < dof_map.size(),
-                    util::Anomaly{"Provided data range cannot support the extent of the layout", util::general_anomaly_tag{}});
+                T sz = std::ranges::size(data_range);
+                if(sz < dof_map.size()){
+                    util::AnomalyLog::log_anomaly(util::Anomaly{
+                        "Provided data range cannot support the extent of the layout",
+                        util::general_anomaly_tag{}});
+                }
             }
 
             constexpr fespan(std::ranges::contiguous_range auto data_range, const LayoutPolicy &dof_map,
