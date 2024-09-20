@@ -636,6 +636,10 @@ namespace iceicle::solvers {
                         // x update
                         component_span dx{du_view.data() + u.size(), geo_layout};
                         axpy(-alpha, dx, coord);
+                        // apply the x coordinates to the mesh
+                        update_mesh(coord, *(fespace.meshptr));
+
+                        // bring back down the 
                         lambda_u = std::max(lambda_u_min, 0.55 * lambda_u);
                         lambda_b = std::max(rnorm_step, 0.55 * lambda_b);
 

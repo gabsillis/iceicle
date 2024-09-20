@@ -26,6 +26,7 @@
 #ifdef ICEICLE_USE_PETSC
 #include <iceicle/corrigan_lm.hpp>
 #include <iceicle/petsc_newton.hpp>
+#include <iceicle/matrix_free_newton_krylov.hpp>
 #endif
 
 namespace iceicle::solvers {
@@ -447,7 +448,7 @@ namespace iceicle::solvers {
                     }
                 };
             }
-        } else if(eq_icase_any(solver_type, "newton", "lm", "gauss-newton")) {
+        } else if(eq_icase_any(solver_type, "newton", "lm", "gauss-newton", "mfnk", "matrix-free-newton")) {
             // Newton Solvers
 #ifdef ICEICLE_USE_PETSC
             
@@ -545,6 +546,9 @@ namespace iceicle::solvers {
                         setup_and_solve(solver);
                     } else if(eq_icase_any(solver_type, "newton")) {
                         PetscNewton solver{fespace, disc, conv_criteria, ls};
+                        setup_and_solve(solver);
+                    } else if(eq_icase_any(solver_type, "mfnk", "matrix-free-newton")) {
+                        MFNK solver{fespace, disc, conv_criteria, ls, geo_map};
                         setup_and_solve(solver);
                     }
                 }
