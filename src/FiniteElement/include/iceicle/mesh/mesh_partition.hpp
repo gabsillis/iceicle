@@ -3,15 +3,16 @@
 #include "iceicle/geometry/face.hpp"
 #include "iceicle/geometry/face_utils.hpp"
 #include "iceicle/geometry/geo_element.hpp"
-#include "iceicle/mpi_type.hpp"
 #include <iceicle/mesh/mesh.hpp>
-#include <iceicle/mpi_type.hpp>
-#include <mpi_proto.h>
-#include <petsclog.h>
 #ifdef ICEICLE_USE_METIS
 #include <metis.h>
 #ifdef ICEICLE_USE_MPI 
+#include "iceicle/mpi_type.hpp"
 #include <mpi.h>
+
+#ifdef ICEICLE_USE_PETSC
+#include <petsclog.h>
+#endif
 
 namespace iceicle {
 

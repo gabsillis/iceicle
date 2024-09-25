@@ -16,7 +16,7 @@ namespace iceicle {
             MPI_Initialized(&initialized);
             return static_cast<bool>(initialized);
 #else 
-            return false
+            return false;
 #endif
         }
 

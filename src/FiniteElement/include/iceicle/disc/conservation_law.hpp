@@ -507,6 +507,7 @@ namespace iceicle {
          * @param [out] resL the residual for the interior element 
          */
         template<class IDX, class ULayoutPolicy, class UAccessorPolicy, class ResLayoutPolicy>
+        [[gnu::noinline]]
         void boundaryIntegral(
             const TraceSpace<T, IDX, ndim> &trace,
             NodeArray<T, ndim> &coord,

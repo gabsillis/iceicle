@@ -13,11 +13,11 @@
 #include "iceicle/iceicle_mpi_utils.hpp"
 #include "iceicle/initialization.hpp"
 #include "iceicle/mesh/mesh_lua_interface.hpp"
-#include "iceicle/mesh/mesh_partition.hpp"
 #include "iceicle/program_args.hpp"
 #include "iceicle/pvd_writer.hpp"
 #include "iceicle/solvers_lua_interface.hpp"
 #include "iceicle/string_utils.hpp"
+#include "iceicle/mesh/mesh_partition.hpp"
 #ifdef ICEICLE_USE_PETSC
 #elifdef ICEICLE_USE_MPI
 #include "mpi.h"
@@ -196,6 +196,10 @@ void setup(sol::table script_config, cli_parser cli_args) {
               script_config["conservation_law"]["b_adv"][idim + 1];
       }
 
+      std::cout << burgers_coeffs.mu 
+                << " " << burgers_coeffs.a[0] 
+                << " " << burgers_coeffs.b[0] 
+            << std::endl;
       // create the discretization
       BurgersFlux physical_flux{burgers_coeffs};
       BurgersUpwind convective_flux{burgers_coeffs};

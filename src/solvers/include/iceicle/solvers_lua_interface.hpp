@@ -19,7 +19,6 @@
 #include <iceicle/pvd_writer.hpp>
 #include <iceicle/fe_function/restart.hpp>
 #include <iceicle/writer.hpp>
-#include <mpi_proto.h>
 #include <sol/sol.hpp>
 #include <utility>
 
