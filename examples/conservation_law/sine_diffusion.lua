@@ -1,6 +1,6 @@
 local fourier_nr = 0.0001
 
-local nelem_arg = 20
+local nelem_arg = 10
 local mu = 1.0
 local tfinal = 1.0
 
@@ -43,7 +43,7 @@ return {
 		quadrature = "gauss",
 
 		-- the basis function order
-		order = 2,
+		order = 1,
 	},
 
 	-- describe the conservation law
@@ -51,6 +51,7 @@ return {
 		-- the name of the conservation law being solved
 		name = "burgers",
 		mu = mu,
+		sigma_ic = 1.0,
 	},
 
 	-- initial condition
@@ -86,6 +87,9 @@ return {
 
 		tasks = {
 			"l2_error",
+			"linf_error",
+			"l1_error",
+			"ic_residual",
 		},
 	},
 }

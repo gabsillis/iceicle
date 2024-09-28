@@ -566,7 +566,114 @@ namespace iceicle::solvers {
 #else
                             std::cout << "L2 error: " << std::setprecision(12) << error << std::endl;
 #endif
+                        } 
+
+                        if(eq_icase(task_name, "l1_error")){
+                            // =================
+                            // = L1 error Task =
+                            // =================
+                            
+                            std::function<void(T*, T*)> exactfunc = [exact](T *x, T *u_exact){
+                                if constexpr(DiscType::nv_comp == 1){
+                                    // 1 equation case 
+                                    std::integer_sequence x_idx_seq = std::make_integer_sequence<int, ndim>();
+                                    auto helper = [exact]<int... Indices>(T *x, T *u_exact, std::integer_sequence<int, Indices...> seq){
+                                        u_exact[0] = exact(x[Indices]...);
+                                    };
+                                    helper(x, u_exact, x_idx_seq);
+                                } else {
+                                    std::integer_sequence x_idx_seq = std::make_integer_sequence<int, ndim>();
+                                    auto helper = [exact]<int... Indices>(T *x, T *u_exact, std::integer_sequence<int, Indices...> seq){
+                                        sol::table fout = exact(x[Indices]...);
+                                        for(int i = 0; i < DiscType::nv_comp; ++i)
+                                            u_exact[i] = fout[i + 1]; // lua 1-index
+                                    };
+                                    helper(x, u_exact, x_idx_seq);
+                                }
+                            };
+
+                            T error = l1_error(exactfunc, fespace, u);
+#ifdef ICEICLE_USE_MPI
+                            error = error * error; // un-sqrt it before we sum :3
+                            T error_reduce;
+                            MPI_Allreduce(&error, &error_reduce, 1, mpi_get_type<T>(), MPI_SUM, MPI_COMM_WORLD);
+
+                            int myrank;
+                            MPI_Comm_rank(MPI_COMM_WORLD, &myrank);
+                            if(myrank == 0)
+                                std::cout << "L1 error: " << std::setprecision(12) << std::sqrt(error_reduce) << std::endl;
+#else
+                            std::cout << "L1 error: " << std::setprecision(12) << error << std::endl;
+#endif
+                        } 
+
+                        if(eq_icase(task_name, "linf_error")) {
+                            
+                            // =========================
+                            // = L infinity error Task =
+                            // =========================
+                            std::function<void(T*, T*)> exactfunc = [exact](T *x, T *u_exact){
+                                if constexpr(DiscType::nv_comp == 1){
+                                    // 1 equation case 
+                                    std::integer_sequence x_idx_seq = std::make_integer_sequence<int, ndim>();
+                                    auto helper = [exact]<int... Indices>(T *x, T *u_exact, std::integer_sequence<int, Indices...> seq){
+                                        u_exact[0] = exact(x[Indices]...);
+                                    };
+                                    helper(x, u_exact, x_idx_seq);
+                                } else {
+                                    std::integer_sequence x_idx_seq = std::make_integer_sequence<int, ndim>();
+                                    auto helper = [exact]<int... Indices>(T *x, T *u_exact, std::integer_sequence<int, Indices...> seq){
+                                        sol::table fout = exact(x[Indices]...);
+                                        for(int i = 0; i < DiscType::nv_comp; ++i)
+                                            u_exact[i] = fout[i + 1]; // lua 1-index
+                                    };
+                                    helper(x, u_exact, x_idx_seq);
+                                }
+                            };
+
+                            std::vector<T> errors = linf_error(exactfunc, fespace, u);
+#ifdef ICEICLE_USE_MPI
+                            std::vector<T> errors_reduce(DiscType::nv_comp);
+                            MPI_Allreduce(errors.data(),
+                                    errors_reduce.data(), DiscType::nv_comp, mpi_get_type<T>(), MPI_SUM, MPI_COMM_WORLD);
+
+                            int myrank;
+                            MPI_Comm_rank(MPI_COMM_WORLD, &myrank);
+                            if(myrank == 0){
+                                std::cout << "L_infty error: " << std::setprecision(12);
+                                for(int iv = 0; iv < DiscType::nv_comp; ++iv){
+                                    std::cout << errors_reduce[iv] << " ";
+                                }
+                                std::cout << std::endl;
+                            }
+#else
+                            for(int iv = 0; iv < DiscType::nv_comp; ++iv){
+                                std::cout << errors[iv] << " ";
+                            }
+                            std::cout << std::endl;
+                            std::cout << "L_infty error: " << std::setprecision(12) << error << std::endl;
+#endif
                         }
+
+                        if(eq_icase(task_name, "ic_residual")){
+                            // ====================
+                            // = ic residual Task =
+                            // ====================
+                            
+                            T error = ic_error(fespace, u, disc);
+#ifdef ICEICLE_USE_MPI
+                            error = error * error; // un-sqrt it before we sum :3
+                            T error_reduce;
+                            MPI_Allreduce(&error, &error_reduce, 1, mpi_get_type<T>(), MPI_SUM, MPI_COMM_WORLD);
+
+                            int myrank;
+                            MPI_Comm_rank(MPI_COMM_WORLD, &myrank);
+                            if(myrank == 0)
+                                std::cout << "IC residual norm: " << std::setprecision(12) << std::sqrt(error_reduce) << std::endl;
+#else
+                            std::cout << "IC residual norm: " << std::setprecision(12) << error << std::endl;
+#endif
+                        } 
                     }
                 }
 
