@@ -1,6 +1,6 @@
 local fourier_nr = 0.0001
 
-local nelem_arg = 10
+local nelem_arg = 32
 local mu = 1.0
 local tfinal = 1.0
 
@@ -43,7 +43,7 @@ return {
 		quadrature = "gauss",
 
 		-- the basis function order
-		order = 1,
+		order = 4,
 	},
 
 	-- describe the conservation law
@@ -51,7 +51,6 @@ return {
 		-- the name of the conservation law being solved
 		name = "burgers",
 		mu = mu,
-		sigma_ic = 1.0,
 	},
 
 	-- initial condition
@@ -71,7 +70,7 @@ return {
 		type = "rk3-tvd",
 		dt = fourier_nr * (2 * math.pi / nelem_arg) ^ 2,
 		tfinal = tfinal,
-		ivis = 1000,
+		ivis = 100000,
 	},
 
 	-- output

@@ -9,6 +9,7 @@
 #include "iceicle/element/finite_element.hpp"
 #include "iceicle/fe_function/fespan.hpp"
 #include "iceicle/fe_function/layout_enums.hpp"
+#include "iceicle/iceicle_mpi_utils.hpp"
 #include "iceicle/quadrature/QuadratureRule.hpp"
 #include <algorithm>
 #include <cmath>
@@ -295,6 +296,10 @@ namespace iceicle {
 
         std::vector<T> total_residual(DiscType::nv_comp);
         std::ranges::fill(total_residual, 0.0);
+
+        if(iceicle::mpi::mpi_world_size() > 1){
+            std::cout << "parallel not implemented for interface error" << std::endl;
+        }
 
         for(const Trace& trace : fespace.get_interior_traces()) {
             

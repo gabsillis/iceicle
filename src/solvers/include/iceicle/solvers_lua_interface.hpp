@@ -594,14 +594,13 @@ namespace iceicle::solvers {
 
                             T error = l1_error(exactfunc, fespace, u);
 #ifdef ICEICLE_USE_MPI
-                            error = error * error; // un-sqrt it before we sum :3
                             T error_reduce;
                             MPI_Allreduce(&error, &error_reduce, 1, mpi_get_type<T>(), MPI_SUM, MPI_COMM_WORLD);
 
                             int myrank;
                             MPI_Comm_rank(MPI_COMM_WORLD, &myrank);
                             if(myrank == 0)
-                                std::cout << "L1 error: " << std::setprecision(12) << std::sqrt(error_reduce) << std::endl;
+                                std::cout << "L1 error: " << std::setprecision(12) << error_reduce << std::endl;
 #else
                             std::cout << "L1 error: " << std::setprecision(12) << error << std::endl;
 #endif
@@ -635,7 +634,7 @@ namespace iceicle::solvers {
 #ifdef ICEICLE_USE_MPI
                             std::vector<T> errors_reduce(DiscType::nv_comp);
                             MPI_Allreduce(errors.data(),
-                                    errors_reduce.data(), DiscType::nv_comp, mpi_get_type<T>(), MPI_SUM, MPI_COMM_WORLD);
+                                    errors_reduce.data(), DiscType::nv_comp, mpi_get_type<T>(), MPI_MAX, MPI_COMM_WORLD);
 
                             int myrank;
                             MPI_Comm_rank(MPI_COMM_WORLD, &myrank);
@@ -662,14 +661,13 @@ namespace iceicle::solvers {
                             
                             T error = ic_error(fespace, u, disc);
 #ifdef ICEICLE_USE_MPI
-                            error = error * error; // un-sqrt it before we sum :3
                             T error_reduce;
                             MPI_Allreduce(&error, &error_reduce, 1, mpi_get_type<T>(), MPI_SUM, MPI_COMM_WORLD);
 
                             int myrank;
                             MPI_Comm_rank(MPI_COMM_WORLD, &myrank);
                             if(myrank == 0)
-                                std::cout << "IC residual norm: " << std::setprecision(12) << std::sqrt(error_reduce) << std::endl;
+                                std::cout << "IC residual norm: " << std::setprecision(12) << error_reduce << std::endl;
 #else
                             std::cout << "IC residual norm: " << std::setprecision(12) << error << std::endl;
 #endif
