@@ -448,7 +448,7 @@ namespace iceicle {
 
                 // increment
                 ++ijk[0];
-                for(int idim = 0; idim < ndim; ++idim){
+                for(int idim = 0; idim < ndim - 1; ++idim){
                     if(ijk[idim] == nnode_dir[idim]){
                         ijk[idim] = 0;
                         ++ijk[idim + 1];
