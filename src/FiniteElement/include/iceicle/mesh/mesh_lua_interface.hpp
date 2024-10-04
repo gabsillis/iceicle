@@ -1,7 +1,9 @@
 #pragma once
 #include "Numtool/fixed_size_tensor.hpp"
 #include "iceicle/anomaly_log.hpp"
+#include "iceicle/fe_definitions.hpp"
 #include "iceicle/geometry/face.hpp"
+#include "iceicle/geometry/transformations_table.hpp"
 #include "iceicle/mesh/mesh_utils.hpp"
 #include "iceicle/mesh/gmsh_utils.hpp"
 #include "iceicle/string_utils.hpp"
@@ -58,6 +60,66 @@ namespace iceicle {
         }
 
         return AbstractMesh<T, IDX, ndim>{xmin, xmax, nelem, geometry_order, bctypes, bcflags};
+    }
+
+    /// @brief read in a manually created user defined mesh 
+    /// this is meant for small test meshes 
+    template<class T, class IDX, int ndim>
+    [[nodiscard]] inline 
+    auto lua_read_user_mesh(sol::table& mesh_table)
+    -> std::optional<AbstractMesh<T, IDX, ndim>>
+    {
+        using Point = MATH::GEOMETRY::Point<T, ndim>;
+
+        // read the node coordinates
+        NodeArray<T, ndim> coord;
+        sol::table coord_table = mesh_table["coord"];
+
+        for(IDX inode = 0; inode < coord_table.size(); ++inode){
+            Point pt{};
+            for(int idim = 0; idim < ndim; ++idim)
+                pt[idim] = coord_table[inode + 1][idim + 1];
+            coord.push_back(pt);
+        }
+
+        // read the elements
+        sol::table el_table = mesh_table["elements"];
+        std::vector<ElementTransformation<T, IDX, ndim>* > el_transforms{};
+        std::vector< std::vector<IDX> > conn_el_ragged{};
+        for(IDX ielem = 0; ielem < el_table.size(); ++ielem){
+            std::string domain_name = el_table[ielem + 1]["domain_type"];
+            DOMAIN_TYPE domain_type = parse_domain_type(domain_name);
+            int order = el_table[ielem + 1]["order"];
+            el_transforms.push_back(
+                transformation_table<T, IDX, ndim>.get_transform(domain_type, order));
+            std::vector<IDX> nodes;
+            sol::table nodes_table = el_table[ielem + 1]["nodes"];
+            for(IDX inode = 1; inode <= nodes_table.size(); ++inode){
+                IDX node_idx = nodes_table[inode];
+                nodes.push_back(node_idx);
+            }
+            conn_el_ragged.push_back(nodes);
+        }
+        util::crs<IDX, IDX> conn_el{conn_el_ragged};
+
+        // read the boundary faces
+        sol::table bound_table = mesh_table["boundary_faces"];
+        std::vector<typename AbstractMesh<T, IDX, ndim>::boundary_face_desc> bdy_fac_infos;
+        for(IDX ifac = 0; ifac < bound_table.size(); ++ifac){
+            std::string bcname = bound_table[ifac + 1]["bc_type"];
+            BOUNDARY_CONDITIONS bc_type = get_bc_from_name(bcname);
+            int bcflag = bound_table[ifac + 1]["bc_flag"];
+            std::vector<IDX> nodes;
+            sol::table nodes_table = bound_table[ifac + 1]["nodes"];
+            for(IDX inode = 1; inode <= nodes_table.size(); ++inode){
+                IDX node_idx = nodes_table[inode];
+                nodes.push_back(node_idx);
+            }
+            bdy_fac_infos.push_back(
+                std::tuple{bc_type, bcflag, nodes});
+        }
+
+        return std::optional{AbstractMesh<T, IDX, ndim>(coord, conn_el, el_transforms, bdy_fac_infos)};
     }
 
     template<class T, class IDX, int ndim>
@@ -226,6 +288,12 @@ namespace iceicle {
         sol::optional<sol::table> mixed_mesh_table = config["mixed_uniform_mesh"];
         if(mixed_mesh_table){
             return lua_read_mixed_mesh<T, IDX, ndim>(mixed_mesh_table.value());
+        }
+
+        // try user defined mesh
+        sol::optional<sol::table> user_mesh_table = config["user_mesh"];
+        if(user_mesh_table){
+            return lua_read_user_mesh<T, IDX, ndim>(user_mesh_table.value());
         }
 
         // try custom burgers mesh

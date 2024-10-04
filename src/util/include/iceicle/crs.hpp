@@ -5,7 +5,6 @@
 
 #pragma once 
 
-#include <numeric>
 #include <type_traits>
 #include <vector>
 #include <span>
@@ -49,7 +48,7 @@ namespace iceicle::util {
         // = Constructors =
         // ================
         
-        constexpr crs() noexcept = default;
+        constexpr crs() : _nnz(0), _nrow(0), _data(nullptr), _cols(nullptr) {}
 
         /// @brief consruct a crs from the indices for the start of each row 
         /// allocates enough data to accomodate 
@@ -75,7 +74,7 @@ namespace iceicle::util {
          * @param ragged_data a 2D ragged array of data to copy
          */
         constexpr crs(const std::vector<std::vector<T>> &ragged_data)
-        : _nnz{0}, _nrow{ragged_data.size()}, _cols{new index_type[_nrow + 1]}{
+        : _nnz{0}, _nrow{(size_type) ragged_data.size()}, _cols{new index_type[_nrow + 1]}{
             // count up the number of nonzeros and row lengths
             _cols[0] = 0;
             for(index_type irow = 0; irow < ragged_data.size(); ++irow){
@@ -94,8 +93,10 @@ namespace iceicle::util {
         : _nnz(other._nnz), _nrow(other._nrow),
         _data{new value_type[_nnz]}, _cols{new index_type[_nrow + 1]}
         {
-            std::copy_n(other._data, _nnz, _data);
-            std::copy_n(other._cols, _nrow + 1, _cols);
+            if(other._data != nullptr)
+                std::copy_n(other._data, _nnz, _data);
+            if(other._cols != nullptr)
+                std::copy_n(other._cols, _nrow + 1, _cols);
         }
 
         /// @brief move constructor
@@ -112,14 +113,18 @@ namespace iceicle::util {
             _nnz = other._nnz;
             _nrow = other._nrow;
 
-            if(_data != nullptr){
+            if(_data != nullptr)
                 delete[] _data;
-            }
-            if(_cols != nullptr){
+            if(_cols != nullptr)
                 delete[] _cols;
-            }
-            std::copy_n(other._data, _nnz, _data);
-            std::copy_n(other._cols, _nrow + 1, _cols);
+
+            _data = new value_type[_nnz];
+            _cols = new index_type[_nrow + 1];
+
+            if(other._data != nullptr)
+                std::copy_n(other._data, _nnz, _data);
+            if(other._cols != nullptr)
+                std::copy_n(other._cols, _nrow + 1, _cols);
             return *this;
         }
 
@@ -163,6 +168,13 @@ namespace iceicle::util {
         //// @brief the number of rows represented
         inline constexpr 
         auto nrow() const noexcept -> size_type { return _nrow; }
+
+        /// @brief get the number of elements on the given row 
+        /// @param irow the row index 
+        /// @return the number of elements in this row
+        inline constexpr 
+        auto rowsize(index_type irow) const noexcept -> size_type 
+        { return _cols[irow + 1] - _cols[irow]; }
 
         // ============
         // = Indexing =

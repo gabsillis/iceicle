@@ -15,6 +15,379 @@
 #include <algorithm>
 
 namespace iceicle::transformations {
+
+template<typename T, typename IDX, int ndim, int Pn>
+struct hypercube {
+  // === Aliases ===
+  using Point = MATH::GEOMETRY::Point<T, ndim>;
+  using PointView = MATH::GEOMETRY::PointView<T, ndim>;
+
+  // === Nodal Basis ===
+  static constexpr UniformLagrangeInterpolation<T, Pn> interpolation_1d{};
+  using BasisType = decltype(interpolation_1d);
+  static constexpr QTypeProduct<T, ndim, BasisType::nbasis> tensor_prod{};
+  using TensorProdType = decltype(tensor_prod);
+
+  // === Constants ===
+  static constexpr int nnode = TensorProdType::nvalues;
+  static constexpr int nfac = 2 * ndim;
+  static constexpr int nfacevert = MATH::power_T<2, ndim - 1>::value;
+  static constexpr int nfacenode = MATH::power_T<Pn + 1, ndim -1>::value;
+
+  /// @brief given the global node coordinate array and the node indices,
+  /// get the local node coordinates
+  static constexpr
+  auto get_el_coord(
+    const NodeArray<T, ndim>& coord,
+    const IDX* nodes
+  ) -> std::vector<Point> {
+    std::vector<Point> el_coord(nnode);
+    for(int inode = 0; inode < nnode; ++inode)
+      el_coord[inode] = coord[nodes[inode]];
+    el_coord.shrink_to_fit();
+    return el_coord;
+  }
+
+  /**
+  * @brief transform from the reference domain to the physcial domain
+  * T(s): s -> x
+  * @param [in] el_coord the coordinates of each node for the element
+  * element
+  * @param [in] xi the position in the refernce domain
+  * @param [out] x the position in the physical domain
+  */
+  static constexpr
+  auto transform(std::span<Point> el_coord, const Point &pt_ref) noexcept -> Point {
+    Point x;
+    std::ranges::fill(x, 0.0);
+
+    // Calculate all of the nodal basis functions at xi
+    std::array<T, nnode> Bi;
+    tensor_prod.fill_shp(interpolation_1d, pt_ref, Bi.data());
+
+    // multiply node coordinates by basis function evaluations
+    for (int inode = 0; inode < nnode; ++inode) {
+      const auto &node = el_coord[inode];
+      for (int idim = 0; idim < ndim; ++idim) {
+        x[idim] += Bi[inode] * node[idim];
+      }
+    }
+
+    return x;
+  }
+
+  /**
+    * @brief get the Jacobian matrix of the transformation
+    * J = \frac{\partial T(s)}{\partial s} = \frac{\partial x}[\partial \xi}
+    *
+    * @param [in] el_coord the coordinates of each node for the element
+    * @param [in] xi the position in the reference domain at which to calculate the Jacobian
+    * @return the Jacobian matrix
+    */
+  static constexpr
+  auto jacobian(
+      std::span<Point> el_coord,
+      const Point &xi
+  ) noexcept -> NUMTOOL::TENSOR::FIXED_SIZE::Tensor<T, ndim, ndim> {
+      using namespace NUMTOOL::TENSOR::FIXED_SIZE;
+      // Get a 1D pointer representation of the matrix head
+      Tensor<T, ndim, ndim> J;
+      J = 0;
+
+      // compute Jacobian per basis function
+      Tensor<T, nnode, ndim> dBidxj;
+      tensor_prod.fill_deriv(interpolation_1d, xi, dBidxj);
+
+      for(int inode = 0; inode < nnode; ++inode){
+          const auto &node = el_coord[inode];
+          for(int idim = 0; idim < ndim; ++idim){
+              for(int jdim = 0; jdim < ndim; ++jdim){
+                  // add contribution to jacobian from this basis function
+                  J[idim][jdim] += dBidxj[inode][jdim] * node[idim];
+              }
+          }
+      }
+
+      return J;
+  }
+
+  /**
+    * @brief get the Hessian of the transformation
+    * H_{kij} = \frac{\partial T(s)_k}{\partial s_i \partial s_j} 
+    *         = \frac{\partial x_k}{\partial \xi_i \partial \xi_j}
+    * @param [in] node_coords the coordinates of all the nodes
+    * @param [in] node_indices the indices in node_coords that pretain to this element in order
+    * @param [in] xi the position in the reference domain at which to calculate the hessian
+    * @return the Hessian in tensor form indexed [k][i][j] as described above
+    */
+  static constexpr
+  auto hessian(
+      std::span<Point> el_coord,
+      const Point &xi
+  ) noexcept ->  NUMTOOL::TENSOR::FIXED_SIZE::Tensor<T, ndim, ndim, ndim> {
+    using namespace NUMTOOL::TENSOR::FIXED_SIZE;
+
+    Tensor<T, ndim, ndim, ndim> hess;
+    // Zero initialize
+    hess = 0;
+
+    // Get the hessian at each node 
+    std::vector<T> nodal_hessian_data(nnode * ndim * ndim);
+    auto nodal_hessian = tensor_prod.fill_hess(interpolation_1d, xi, nodal_hessian_data.data());
+
+    for(int inode = 0; inode < nnode; ++inode){
+      // get view to the node coordinates from the node coordinate array
+      const auto& node = el_coord[inode];
+
+      for(int kdim = 0; kdim < ndim; ++kdim){ // k corresponds to xi 
+        for(int idim = 0; idim < ndim; ++idim){
+          for(int jdim = idim; jdim < ndim; ++jdim){
+            hess[kdim][idim][jdim] += nodal_hessian[inode, idim, jdim] * node[kdim];
+          }
+        }
+      }
+    }
+
+    // finish filling symmetric part
+    for(int kdim = 0; kdim < ndim; ++kdim){
+      for(int idim = 0; idim < ndim; ++idim){
+        for(int jdim = 0; jdim < idim; ++jdim){
+          hess[kdim][idim][jdim] = hess[kdim][jdim][idim];
+        }
+      }
+    }
+
+    return hess;
+  }
+
+  // ==================
+  // = Face Utilities =
+  // ==================
+
+  static constexpr int n_trace = 2 * ndim;
+  static constexpr int trace_ndim = ndim - 1;
+
+  /**
+   * @brief sometimes the sign of the trace coordinate 
+   * needs to be flipped to ensure positive normals 
+   * The convention taken is the flip the sign of the first trace dimension 
+   * this stores that sign 
+   */
+  inline static NUMTOOL::TENSOR::FIXED_SIZE::Tensor<T, n_trace> first_dim_sign = []{
+    NUMTOOL::TENSOR::FIXED_SIZE::Tensor<T, n_trace> ret{};
+
+    for(int itrace = 0; itrace < n_trace; ++itrace){
+      if constexpr (ndim == 1){
+        // 0 dimensional faces would lead to indexing issues
+        // set to 1 and break
+        ret[itrace] = 1.0;
+        break;
+      }
+
+      int trace_coord = itrace % ndim;
+      // true if this is a negative face
+      bool is_negative_xi = itrace / ndim == 0;
+
+      // build the indices for the levi_civita tensor 
+      // first the trace coord (normal direction)
+      // then the unit basis vector indices in lexicographic order
+      std::size_t lc_indices[ndim];
+      lc_indices[0] = trace_coord;
+      for(int idim = 0; idim < trace_coord; ++idim)
+        { lc_indices[idim + 1] = idim; }
+      for(int idim = trace_coord; idim < trace_ndim; ++idim )
+        { lc_indices[idim + 1] = idim + 1; }
+
+      // get the levi_civita tensor, then chose sign based on normal direction 
+      T lc = NUMTOOL::TENSOR::FIXED_SIZE::levi_civita<T, ndim>.list_index(lc_indices);
+      if(is_negative_xi) lc = -lc;
+
+      ret[itrace] = lc;
+    }
+
+    return ret;
+  }();
+
+  static constexpr 
+  auto face_domain_type(int face_number) noexcept 
+  -> DOMAIN_TYPE 
+  { return DOMAIN_TYPE::HYPERCUBE; }
+
+  /** @brief the number of vertices on the given face */
+  static constexpr 
+  auto n_face_vert(int faceNr) noexcept 
+  -> int
+  { return nfacevert;} 
+
+  /// @brief get the vertex indices on the face
+  /// NOTE: These vertices must be in the same order as if get_element_vert() 
+  /// was called on the transformation corresponding to the face
+  ///
+  /// @param face_number the face number
+  /// @param el_nodes the nodes indices for the element transformation
+  /// @return a vector of the vertex indices for the face
+  static constexpr 
+  auto get_face_vert(int face_number, std::span<IDX> el_nodes)
+  -> std::vector<IDX>
+  {
+    std::vector<IDX> vert_fac(nfacevert);
+
+    int face_coord = face_number % ndim;
+
+    bool is_negative_xi = (face_number / ndim == 0);
+
+    // the first dimension of the trace
+    int trace_first_dim = (face_coord == 0) ? 1 : 0;
+   
+    auto next_ijk = [&](int ijk[ndim]){
+      for(int idim = ndim - 1; idim >= 0; --idim) if(idim != face_coord)
+      {
+        if(idim == trace_first_dim && first_dim_sign[face_number] < 0){
+          // reversed order 
+          if(ijk[idim] == Pn){
+            ijk[idim] = 0;
+            break; // don't have to continue to next dimension
+          } else {
+            ijk[idim] = Pn;
+          }
+        } else {
+          // normal order
+          if(ijk[idim] == 0){
+            ijk[idim] = Pn;
+            break; // don't have to continue to next dimension
+          } else {
+            ijk[idim] = 0;
+            // carry over to next dimension (don't break)
+          }
+        }
+      }
+    };
+
+    int ijk[ndim] = {0};
+    if(first_dim_sign[face_number] < 0){
+      // anchor point needs to be at Pn 
+      ijk[trace_first_dim] = Pn;
+    }
+    ijk[face_coord] = (is_negative_xi) ? 0 : Pn;
+    vert_fac[0] = el_nodes[TensorProdType::convert_ijk(ijk)];
+    for(int i = 1; i < nfacevert; ++i){
+      next_ijk(ijk);
+      vert_fac[i] = el_nodes[TensorProdType::convert_ijk(ijk)];
+    }
+
+    return vert_fac;
+  }
+
+  /// @brief get the number of nodes on the face 
+  /// @param face_number the face number
+  static constexpr
+  auto n_face_nodes(int face_number) noexcept 
+  -> int 
+  { return nfacenode; }
+
+  /// @brief get the node indices on the face
+  ///
+  /// NOTE: Nodes are all the points defining geometry (vertices are endpoints)
+  ///
+  /// NOTE: These nodes must be in the same order as if get_nodes
+  /// was called on the transformation corresponding to the face
+  ///
+  /// @param face_number the face number 
+  /// @param el_nodes the node indices for the element 
+  /// @return the indices of the nodes on the given face
+  static constexpr 
+  auto get_face_nodes(int face_number, std::span<IDX> el_nodes)
+  -> std::vector<IDX>
+  {
+    std::vector<IDX> face_nodes(nfacenode);
+
+    int trace_coord = face_number % ndim;
+    // true if this is a negative face
+    bool is_negative_xi = face_number / ndim == 0;
+
+    // the first dimension of the trace
+    int trace_first_dim = (trace_coord == 0) ? 1 : 0;
+    
+    // the node that corresponds to the origin of the TraceTransformation
+    // IDX anchor_vertex = (first_dim_sign[faceNr] < 0) ? (Pn) * strides[trace_first_dim]: 0;
+
+    IDX face_node_idx = 0;
+
+    auto next_ijk = [&](int ijk[ndim]){
+      for(int idim = ndim - 1; idim >= 0; --idim) if(idim != trace_coord) {
+        if(idim == trace_first_dim && first_dim_sign[face_number] < 0){
+          // reversed order
+          if(ijk[idim] == 0){
+            ijk[idim] = Pn;
+          } else {
+            ijk[idim]--;
+            return true;
+          }
+        } else {
+          
+          if(ijk[idim] == Pn){
+            ijk[idim] = 0;
+          } else {
+            ijk[idim]++;
+            return true;
+          }
+        }
+      }
+      return false;
+    };
+
+    int ijk[ndim] = {0};
+    if(first_dim_sign[face_number] < 0){
+      // anchor point needs to be at Pn 
+      ijk[trace_first_dim] = Pn;
+    }
+    // move to the correct face between positive and negative side 
+    ijk[trace_coord] = (is_negative_xi) ? 0 : Pn;
+
+    int inode = 0;
+    do {
+      face_nodes[inode] = el_nodes[TensorProdType::convert_ijk(ijk)];
+      inode++;
+    } while(next_ijk(ijk));
+
+    return face_nodes;
+  }
+
+  /// @brief get the face number of the given vertices 
+  /// @param vert_fac the vertex indices of the face
+  /// @param el_nodes the nodes indices of the element
+  /// @return the face number of the face with the given vertices
+  static constexpr 
+  auto get_face_nr(std::span<IDX> vert_fac, std::span<IDX> el_nodes) 
+  -> int 
+  {
+    for(int ifac = 0; ifac < nfac; ++ifac){
+      bool all_found = true; // assume true until mismatch
+      IDX vert_ifac[nfacevert];
+      get_face_vert(ifac, el_nodes, vert_ifac);
+      for(int ivert = 0; ivert < nfacevert; ++ivert){
+        bool found = false;
+        // try to find ivert
+        for(int jvert = 0; jvert < nfacevert; ++jvert){
+          if(vert_ifac[ivert] == vert_fac[jvert]){
+            found = true;
+            break;
+          }
+        }
+
+        if(!found){
+          all_found = false;
+          break;
+        }
+      }
+
+      if(all_found) return ifac;
+    }
+
+    return -1;
+  }
+};
+
 // forward declaration for friend 
 template<typename T, typename IDX, int ndim, int Pn>
 class HypercubeTraceTransformation;
@@ -457,7 +830,7 @@ public:
       const IDX nodes_el[nnode],
       IDX face_nodes[nfacenode]
   ) const {
-    int trace_coord = faceNr % ndim;
+int trace_coord = faceNr % ndim;
     // true if this is a negative face
     bool is_negative_xi = faceNr / ndim == 0;
 

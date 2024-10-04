@@ -77,7 +77,7 @@ namespace iceicle {
     >
     class ConservationLawDDG {
 
-        private:
+        public:
         PFlux phys_flux;
         CFlux conv_nflux;
         DiffusiveFlux diff_flux;
@@ -207,7 +207,6 @@ namespace iceicle {
         template<class IDX>
         auto domain_integral(
             const FiniteElement<T, IDX, ndim> &el,
-            NodeArray<T, ndim>& coord,
             elspan auto unkel,
             elspan auto res
         ) const -> void {
@@ -228,12 +227,12 @@ namespace iceicle {
                 const QuadraturePoint<T, ndim> &quadpt = el.getQP(iqp);
 
                 // calculate the jacobian determinant 
-                auto J = el.geo_el->Jacobian(coord, quadpt.abscisse);
+                auto J = el.jacobian(quadpt.abscisse);
                 T detJ = NUMTOOL::TENSOR::FIXED_SIZE::determinant(J);
 
                 // get the basis functions and gradients in the physical domain
                 el.evalBasisQP(iqp, bi.data());
-                auto gradxBi = el.evalPhysGradBasisQP(iqp, coord, J, dbdx_data.data());
+                auto gradxBi = el.evalPhysGradBasisQP(iqp, J, dbdx_data.data());
 
                 // construct the solution U at the quadrature point 
                 std::ranges::fill(u, 0.0);
@@ -285,8 +284,8 @@ namespace iceicle {
             // in the physical domain
             const FiniteElement &elL = trace.elL;
             const FiniteElement &elR = trace.elR;
-            auto centroidL = elL.geo_el->centroid(coord);
-            auto centroidR = elR.geo_el->centroid(coord);
+            auto centroidL = elL.centroid();
+            auto centroidR = elR.centroid();
 
             // Basis function scratch space 
             std::vector<T> biL(elL.nbasis());
@@ -322,10 +321,10 @@ namespace iceicle {
                 // (derivatives are wrt the physical domain)
                 trace.evalBasisQPL(iqp, biL.data());
                 trace.evalBasisQPR(iqp, biR.data());
-                auto gradBiL = trace.evalPhysGradBasisQPL(iqp, coord, gradbL_data.data());
-                auto gradBiR = trace.evalPhysGradBasisQPR(iqp, coord, gradbR_data.data());
-                auto hessBiL = trace.evalPhysHessBasisQPL(iqp, coord, hessbL_data.data());
-                auto hessBiR = trace.evalPhysHessBasisQPR(iqp, coord, hessbR_data.data());
+                auto gradBiL = trace.evalPhysGradBasisQPL(iqp, gradbL_data.data());
+                auto gradBiR = trace.evalPhysGradBasisQPR(iqp, gradbR_data.data());
+                auto hessBiL = trace.evalPhysHessBasisQPL(iqp, hessbL_data.data());
+                auto hessBiR = trace.evalPhysHessBasisQPR(iqp, hessbR_data.data());
 
                 // construct the solution on the left and right
                 std::ranges::fill(uL, 0.0);
@@ -508,6 +507,7 @@ namespace iceicle {
          * @param [out] resL the residual for the interior element 
          */
         template<class IDX, class ULayoutPolicy, class UAccessorPolicy, class ResLayoutPolicy>
+        [[gnu::noinline]]
         void boundaryIntegral(
             const TraceSpace<T, IDX, ndim> &trace,
             NodeArray<T, ndim> &coord,
@@ -537,7 +537,7 @@ namespace iceicle {
             std::array<T, neq * ndim> grad_ddg_data;
             std::array<T, neq * ndim * ndim> hessuL_data;
             std::array<T, neq * ndim * ndim> hessuR_data;
-            auto centroidL = elL.geo_el->centroid(coord);
+            auto centroidL = elL.centroid();
 
             switch(trace.face->bctype){
                 case BOUNDARY_CONDITIONS::DIRICHLET: 
@@ -564,7 +564,7 @@ namespace iceicle {
                         trace.evalBasisQPL(iqp, biL.data());
 
                         // get the gradients the physical domain
-                        auto gradBiL = trace.evalPhysGradBasisQPL(iqp, coord, gradbL_data.data());
+                        auto gradBiL = trace.evalPhysGradBasisQPL(iqp, gradbL_data.data());
 
                         auto graduL = unkelL.contract_mdspan(gradBiL, graduL_data.data());
 
@@ -882,7 +882,7 @@ namespace iceicle {
                         trace.evalBasisQPL(iqp, biL.data());
 
                         // get the gradients the physical domain
-                        auto gradBiL = trace.evalPhysGradBasisQPL(iqp, coord, gradbL_data.data());
+                        auto gradBiL = trace.evalPhysGradBasisQPL(iqp, gradbL_data.data());
 
                         auto graduL = unkelL.contract_mdspan(gradBiL, graduL_data.data());
 
@@ -980,8 +980,8 @@ namespace iceicle {
                 trace.evalBasisQPL(iqp, biL.data());
                 trace.evalBasisQPR(iqp, biR.data());
                 trace.eval_trace_basis_qp(iqp, bitrace.data());
-                auto gradBiL = trace.evalPhysGradBasisQPL(iqp, coord, gradbL_data.data());
-                auto gradBiR = trace.evalPhysGradBasisQPR(iqp, coord, gradbR_data.data());
+                auto gradBiL = trace.evalPhysGradBasisQPL(iqp, gradbL_data.data());
+                auto gradBiR = trace.evalPhysGradBasisQPR(iqp, gradbR_data.data());
 
                 // construct the solution on the left and right
                 std::ranges::fill(uL, 0.0);
@@ -996,6 +996,29 @@ namespace iceicle {
                 // get the solution gradient and hessians
                 auto graduL = unkelL.contract_mdspan(gradBiL, graduL_data.data());
                 auto graduR = unkelR.contract_mdspan(gradBiR, graduR_data.data());
+
+                if(trace.face->bctype != BOUNDARY_CONDITIONS::INTERIOR){
+                    switch(trace.face->bctype){
+                        case BOUNDARY_CONDITIONS::DIRICHLET:
+                            {
+                                if(trace.elL.elidx != trace.elR.elidx)
+                                    std::cout << "warning: elements do not match" << std::endl;
+
+                                // calculate the physical domain position
+                                MATH::GEOMETRY::Point<T, ndim> phys_pt;
+                                trace.face->transform(quadpt.abscisse, coord, phys_pt);
+
+                                // Get the values at the boundary 
+                                dirichlet_callbacks[trace.face->bcflag](phys_pt.data(), uR.data());
+
+                            } break;
+                        default:
+                            for(int itest = 0; itest < trace.nbasis_trace(); ++itest){
+                                for(int ieq = 0; ieq < neq; ++ieq)
+                                    res[itest, ieq] = 0;
+                            } return;
+                    }
+                }
 
                 // get the physical flux on the left and right
                 Tensor<T, neq, ndim> fluxL = phys_flux(uL, graduL);

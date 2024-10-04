@@ -44,23 +44,20 @@ namespace iceicle {
          *        the weak form of u = f(x)
          *        (f(x), v)
          * @param el the element
-         * @param node_coords the node coordinates array
          * @param res the residual function (WARNING: MUST BE ZEROED OUT)
          */
         void domain_integral(
             const FiniteElement<T, IDX, ndim> &el,
-            NodeArray<T, ndim> &node_coords,
             ElementData<T, neq> &res
         ) {
             for(int ig = 0; ig < el.nQP(); ++ig){ // loop over the quadrature points
                 
                 // convert the quadrature point to the physical domain
                 const QuadraturePoint<T, ndim> quadpt = el.getQP(ig);
-                Point phys_pt{};
-                el.transform(node_coords, quadpt.abscisse, phys_pt);
+                Point phys_pt = el.transform(quadpt.abscisse);
 
                 // calculate the jacobian determinant
-                auto J = el.geo_el->Jacobian(node_coords, quadpt.abscisse);
+                auto J = el.jacobian(quadpt.abscisse);
                 T detJ = NUMTOOL::TENSOR::FIXED_SIZE::determinant(J);
 
                 // evaluate the function at the point in the physical domain
@@ -81,12 +78,10 @@ namespace iceicle {
          *        the weak form of u = f(x)
          *        /int f(x) v dx
          * @param el the element
-         * @param node_coords the node coordinates array
          * @param res the residual function (WARNING: MUST BE ZEROED OUT)
          */
         void domain_integral(
             const FiniteElement<T, IDX, ndim> &el,
-            NodeArray<T, ndim> &node_coords,
             elspan auto res
         ) {
             T detJ; // TODO: put back in loop after debuggin for clarity
@@ -94,11 +89,10 @@ namespace iceicle {
                 
                 // convert the quadrature point to the physical domain
                 const QuadraturePoint<T, ndim> quadpt = el.getQP(ig);
-                Point phys_pt{};
-                el.transform(node_coords, quadpt.abscisse, phys_pt);
+                Point phys_pt = el.transform(quadpt.abscisse);
 
                 // calculate the jacobian determinant
-                auto J = el.geo_el->Jacobian(node_coords, quadpt.abscisse);
+                auto J = el.jacobian(quadpt.abscisse);
                 detJ = NUMTOOL::TENSOR::FIXED_SIZE::determinant(J);
 
                 // evaluate the function at the point in the physical domain

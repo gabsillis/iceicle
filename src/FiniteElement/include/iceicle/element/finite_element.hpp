@@ -67,9 +67,11 @@ public:
  * to represent functions on a physical subdomain, that is mapped to a reference subdomain 
  * and perform calculations to query and integrate these functions
  *
+ * WARNING: everything here is a pointer or reference type 
+ * make sure the data referenced cannot be invalidated
+ *
  * Consists of:
- * A GeometricElement - to represent the transformation from reference to physical space 
- *                      and stores the node coordinates to represent the subdomain
+ * A ElementTransformation - to represent the transformation from reference to physical space 
  * 
  * Basis function set - finite element functions are a linear combination
  *                      of coefficients and basis functions
@@ -83,16 +85,14 @@ public:
  * @tparam ndim the number of dimensions
  */
 template <typename T, typename IDX, int ndim>
-class FiniteElement {
-
+struct FiniteElement {
+  
   using Point = MATH::GEOMETRY::Point<T, ndim>;
   using JacobianType = NUMTOOL::TENSOR::FIXED_SIZE::Tensor<T, ndim, ndim>;
   using HessianType = NUMTOOL::TENSOR::FIXED_SIZE::Tensor<T, ndim, ndim, ndim>;
 
-public:
-  /** @brief the geometric element (container for node indices and basic
-   * geometric operations) */
-  const GeometricElement<T, IDX, ndim> *geo_el;
+  /** @brief the geometric transformation */
+  const ElementTransformation<T, IDX, ndim> *trans;
 
   /** @brief the basis functions */
   const Basis<T, ndim> *basis;
@@ -110,31 +110,14 @@ public:
    **/
   const FEEvaluation<T, IDX, ndim> &qp_evals;
 
+  /// @brief the node indices for the element
+  const std::span<IDX> inodes;
+
+  /// @brief the node coordinates for the element
+  const std::span<Point> coord_el;
+
   /** @brief the element index in the mesh */
   const IDX elidx;
-
-  /**
-   * @brief construct a FiniteElement
-   * @param geo_el_arg the geometric element
-   * @param basis_arg the basis function
-   * @param quadrule_arg the qudarature rule to use
-   * @param qp_evals evaluations of the basis functions at the quadrature points
-   * @param elidx_arg the element index in the mesh
-   */
-  FiniteElement(
-    const GeometricElement<T, IDX, ndim> *geo_el_arg,
-    const Basis<T, ndim> *basis_arg,
-    const QuadratureRule<T, IDX, ndim> *quadrule_arg,
-    const FEEvaluation<T, IDX, ndim> *qp_evals,
-    IDX elidx_arg
-  ) : geo_el(geo_el_arg), basis(basis_arg), quadrule(quadrule_arg),
-      qp_evals(*qp_evals), elidx(elidx_arg) {}
-
-  /**
-   * @brief precompute any stored quantities
-   * @param node_list the global node list which geo_el has indices into
-   */
-  void precompute(NodeArray<T, ndim> &node_list) {}
 
   // =============================
   // = Basis Function Operations =
@@ -248,7 +231,6 @@ public:
    */
   auto evalPhysGradBasis(
     const Point &xi,
-    NodeArray<T, ndim> &node_list,
     const JacobianType &J,
     T *dBidxj
   ) const {
@@ -263,6 +245,7 @@ public:
     // the inverse of J = adj(J) / det(J)
     auto adjJ = adjugate(J);
     auto detJ = determinant(J);
+    detJ = (detJ == 0.0) ? 1.0 : detJ; // protect from div by zero
 
     // Evaluate dBi in reference domain
     std::vector<T> dBi_data(ndim * ndof, 0.0);
@@ -283,7 +266,7 @@ public:
 
     // multiply though by the determinant
     for (int i = 0; i < ndof * ndim; ++i) {
-      dBidxj[i] /= std::copysign(std::max(std::numeric_limits<T>::epsilon(), detJ), detJ);
+      dBidxj[i] /= detJ;
     }
 
     return gbasis;
@@ -292,11 +275,10 @@ public:
   /** Calculates the Jacobian: \overload */
   auto evalPhysGradBasis(
     const Point &xi,
-    NodeArray<T, ndim> &node_list,
     T *dbidxj 
   ) const {
-    JacobianType J = geo_el->Jacobian(node_list, xi);
-    return evalPhysGradBasis(xi, node_list, J, dbidxj);
+    JacobianType J = trans->jacobian(coord_el, xi);
+    return evalPhysGradBasis(xi, J, dbidxj);
   }
 
   /**
@@ -307,7 +289,6 @@ public:
    * @param [in] quadrature_pt_idx the quadrature point index
    * @param [in] transformation the transformation from the reference domain to
    * the physical domain (must be compatible with the geometric element)
-   * @param [in] node_list the list of global node coordinates
    * @param [in] J the jacobian of the element transformation 
    *               (optional: see overload)
    * @param [out] dBidxj the values of the first derivatives of the basis
@@ -322,26 +303,21 @@ public:
    */
   auto evalPhysGradBasisQP(
       int quadrature_pt_idx,
-      NodeArray<T, ndim> &node_list,
       const JacobianType &J,
       T *dBidxj
   ) const {
     // TODO: prestore
     return evalPhysGradBasis(
-        (*quadrule)[quadrature_pt_idx].abscisse,
-        node_list, J, dBidxj);
+        (*quadrule)[quadrature_pt_idx].abscisse, J, dBidxj);
   }
   
   /** Calculates the Jacobian: \overload */
   auto evalPhysGradBasisQP(
       int quadrature_pt_idx,
-      NodeArray<T, ndim> &node_list,
       T *dBidxj
   ) const {
     // TODO: prestore
-    return evalPhysGradBasis(
-        (*quadrule)[quadrature_pt_idx].abscisse,
-        node_list, dBidxj);
+    return evalPhysGradBasis( (*quadrule)[quadrature_pt_idx].abscisse, dBidxj);
   }
 
   /**
@@ -374,7 +350,6 @@ public:
    */
   auto evalPhysHessBasis(
     const Point &xi,
-    NodeArray<T, ndim> &coord,
     T *basis_hessian_data
   ) const {
     using namespace std::experimental;
@@ -383,14 +358,14 @@ public:
     int ndof = nbasis();
 
     // Get the Transformation Jacobian and Hessian
-    auto trans_jac = geo_el->Jacobian(coord, xi);
-    auto trans_hess = geo_el->Hessian(coord, xi);
+    auto trans_jac = trans->jacobian(coord_el, xi);
+    auto trans_hess = trans->hessian(coord_el, xi);
 
     // Evaluate basis function derivatives and second derivatives
 
     // derivatives wrt Physical Coordinates
     std::vector<T> dBi_data(ndim * ndof, 0.0);
-    auto dBi = evalPhysGradBasis(xi, coord, dBi_data.data());
+    auto dBi = evalPhysGradBasis(xi, dBi_data.data());
 
     // Hessian wrt reference coordinates
     std::vector<T> hess_Bi_data(ndim * ndim * ndof, 0.0);
@@ -407,6 +382,7 @@ public:
     // the inverse of J = adj(J) / det(J)
     auto adjJ = adjugate(trans_jac);
     T detJ = determinant(trans_jac);
+    detJ = (detJ == 0.0) ? 1.0 : detJ; // protect from div by zero
     T detJ2 = SQUARED(detJ);
 
     // loop variables (idof = degree of freedom index), (*d = dimension index)
@@ -440,7 +416,7 @@ public:
     }
 
     for (int i = 0; i < ndim * ndim * ndof; ++i) {
-      basis_hessian_data[i] /= std::max(std::numeric_limits<T>::epsilon(), detJ2);
+      basis_hessian_data[i] /= detJ2;
     }
 
     return hess_phys;
@@ -484,13 +460,35 @@ public:
 
   /**
    * @brief transform from the reference domain to the physical domain
-   * @param [in] node_coords the coordinates of all the nodes
    * @param [in] pt_ref the point in the refernce domain
-   * @param [out] pt_phys the point in the physical domain
+   * @return pt_phys the point in the physical domain
    */
-  inline void transform(NodeArray<T, ndim> &node_coords,
-                        const Point &pt_ref, Point &pt_phys) const {
-    return geo_el->transform(node_coords, pt_ref, pt_phys);
+  inline Point transform( const Point &pt_ref ) const {
+    return trans->transform(coord_el, pt_ref);
+  }
+
+  /// @brief calculate the Jacobian of the transformation at a given point 
+  /// @param pt_ref the point in the reference domain 
+  /// @return the jacobian of the transformation
+  inline constexpr 
+  auto jacobian( const Point& pt_ref ) const 
+  -> JacobianType {
+    return trans->jacobian(coord_el, pt_ref);
+  }
+
+  /// @brief calculate the Hessian of the transformation at a given point 
+  /// @param pt_ref the point in the reference domain 
+  /// @return the hessian of the transformation
+  inline constexpr 
+  auto hessian( const Point& pt_ref ) const 
+  -> HessianType {
+    return trans->hessian(coord_el, pt_ref);
+  }
+
+  inline constexpr
+  auto centroid() const -> Point
+  {
+    return trans->centroid(coord_el);
   }
 };
 
@@ -502,8 +500,7 @@ public:
  */
 template<class T, class IDX, int ndim>
 MATH::MATRIX::DenseMatrix<T> calculate_mass_matrix(
-  const FiniteElement<T, IDX, ndim> &el,
-  NodeArray<T, ndim> &node_coords
+  const FiniteElement<T, IDX, ndim> &el
 ) {
   MATH::MATRIX::DenseMatrix<T> mass(el.nbasis(), el.nbasis());
   mass = 0;
@@ -512,7 +509,7 @@ MATH::MATRIX::DenseMatrix<T> calculate_mass_matrix(
     const QuadraturePoint<T, ndim> quadpt = el.getQP(ig);
 
     // calculate the jacobian determinant
-    auto J = el.geo_el->Jacobian(node_coords, quadpt.abscisse);
+    auto J = el.jacobian(quadpt.abscisse);
     T detJ = NUMTOOL::TENSOR::FIXED_SIZE::determinant(J);
 
     // integrate Bi * Bj

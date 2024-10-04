@@ -128,14 +128,12 @@ namespace iceicle {
          * @tparam ResLayoutPolicy the layout policy for the view of the residual
          *
          * @param [in] el the element to perform the integration over 
-         * @param [in] coord the global node coordinates array
          * @param [in] u the current solution coefficient set 
          * @param [out] res the residuals for each basis function
          *              WARNING: must be zeroed out
          */
         void domain_integral(
             const FiniteElement<T, IDX, ndim> &el,
-            NodeArray<T, ndim> &coord,
             elspan auto u,
             elspan auto res
         ) const {
@@ -148,11 +146,11 @@ namespace iceicle {
                 const QuadraturePoint<T, ndim> &quadpt = el.getQP(iqp);
 
                 // calculate the jacobian determinant 
-                auto J = el.geo_el->Jacobian(coord, quadpt.abscisse);
+                auto J = el.jacobian(quadpt.abscisse);
                 T detJ = NUMTOOL::TENSOR::FIXED_SIZE::determinant(J);
 
                 // get basis values and the gradients in the physical domain
-                auto gradxBi = el.evalPhysGradBasisQP(iqp, coord, J, gradx_data.data());
+                auto gradxBi = el.evalPhysGradBasisQP(iqp, J, gradx_data.data());
                 el.evalBasisQP(iqp, bi.data());
 
                 // construct the value of u at the quadrature point
@@ -203,8 +201,8 @@ namespace iceicle {
             // in the physical domain
             const FiniteElement &elL = trace.elL;
             const FiniteElement &elR = trace.elR;
-            auto centroidL = elL.geo_el->centroid(coord);
-            auto centroidR = elR.geo_el->centroid(coord);
+            auto centroidL = elL.centroid();
+            auto centroidR = elR.centroid();
 
             // Storage for Basis function and solution values
             std::vector<T> bi_dataL(elL.nbasis()); //TODO: move storage declaration out of loop
@@ -242,15 +240,15 @@ namespace iceicle {
                 { value_uR += uR[ibasis, 0] * bi_dataR[ibasis]; }
 
                 // get the gradients the physical domain
-                auto gradBiL = trace.evalPhysGradBasisQPL(iqp, coord, grad_dataL.data());
-                auto gradBiR = trace.evalPhysGradBasisQPR(iqp, coord, grad_dataR.data());
+                auto gradBiL = trace.evalPhysGradBasisQPL(iqp, grad_dataL.data());
+                auto gradBiR = trace.evalPhysGradBasisQPR(iqp, grad_dataR.data());
 
                 auto graduL = uL.contract_mdspan(gradBiL, gradu_dataL.data());
                 auto graduR = uR.contract_mdspan(gradBiR, gradu_dataR.data());
 
                 // get the hessians in the physical domain 
-                auto hessBiL = trace.evalPhysHessBasisQPL(iqp, coord, hess_dataL.data());
-                auto hessBiR = trace.evalPhysHessBasisQPR(iqp, coord, hess_dataR.data());
+                auto hessBiL = trace.evalPhysHessBasisQPL(iqp, hess_dataL.data());
+                auto hessBiR = trace.evalPhysHessBasisQPR(iqp, hess_dataR.data());
 
                 auto hessuL = uL.contract_mdspan(hessBiL, hessu_dataL.data());
                 auto hessuR = uR.contract_mdspan(hessBiR, hessu_dataR.data());
@@ -386,7 +384,7 @@ namespace iceicle {
             using FiniteElement = FiniteElement<T, IDX, ndim>;
             const FiniteElement &elL = trace.elL;
 
-            auto centroidL = elL.geo_el->centroid(coord);
+            auto centroidL = elL.centroid();
 
             switch(trace.face->bctype){
                 case BOUNDARY_CONDITIONS::DIRICHLET: 
@@ -411,7 +409,7 @@ namespace iceicle {
 
                         // get the gradients the physical domain
                         std::vector<T> grad_dataL(elL.nbasis() * ndim);
-                        auto gradBiL = trace.evalPhysGradBasisQPL(iqp, coord, grad_dataL.data());
+                        auto gradBiL = trace.evalPhysGradBasisQPL(iqp, grad_dataL.data());
 
                         std::vector<T> gradu_dataL(ndim);
                         auto graduL = uL.contract_mdspan(gradBiL, gradu_dataL.data());
@@ -426,7 +424,7 @@ namespace iceicle {
                             // calback using physical domain location
                             MATH::GEOMETRY::Point<T, ndim> ref_pt, phys_pt;
                             trace.face->transform_xiL(quadpt.abscisse, ref_pt);
-                            elL.transform(coord, ref_pt, phys_pt);
+                            phys_pt = elL.transform(ref_pt);
                             
                             dirichlet_callbacks[-trace.face->bcflag](phys_pt.data(), &dirichlet_val);
 
@@ -568,8 +566,8 @@ namespace iceicle {
                 { uR += unkelR[ibasis, 0] * bi_dataR[ibasis]; }
 
                 // get the gradients the physical domain
-                auto gradBiL = trace.evalPhysGradBasisQPL(iqp, coord, grad_dataL.data());
-                auto gradBiR = trace.evalPhysGradBasisQPR(iqp, coord, grad_dataR.data());
+                auto gradBiL = trace.evalPhysGradBasisQPL(iqp, grad_dataL.data());
+                auto gradBiR = trace.evalPhysGradBasisQPR(iqp, grad_dataR.data());
 
                 auto graduL = unkelL.contract_mdspan(gradBiL, gradu_dataL.data());
                 auto graduR = unkelR.contract_mdspan(gradBiR, gradu_dataR.data());

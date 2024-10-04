@@ -178,7 +178,7 @@ namespace iceicle {
         const geo_dof_map<T, IDX, ndim>& geo_map = geo_data.get_layout().geo_map;
         for(int idof = 0; idof < geo_data.ndof(); ++idof){
             IDX inode = geo_map.selected_nodes[idof];
-            std::span<const T, ndim> xcoord{mesh.nodes[inode]};
+            std::span<const T, ndim> xcoord{mesh.coord[inode]};
             if(geo_map.is_parametric[idof]){
                 geo_map.parametric_accessors.at(idof)->x_to_s(xcoord, geo_data.span_at_dof(idof));
             } else {
@@ -194,7 +194,7 @@ namespace iceicle {
         const geo_dof_map<T, IDX, ndim>& geo_map = geo_data.get_layout().geo_map;
         for(int idof = 0; idof < geo_data.ndof(); ++idof){
             IDX inode = geo_map.selected_nodes[idof];
-            std::span<T, ndim> xcoord{mesh.nodes[inode]};
+            std::span<T, ndim> xcoord{mesh.coord[inode]};
             if(geo_map.is_parametric[idof]){
                 geo_map.parametric_accessors.at(idof)->s_to_x(geo_data.span_at_dof(idof), xcoord);
             } else {
@@ -204,6 +204,8 @@ namespace iceicle {
             }
         }
 
+        // NOTE: moving the nodes requires updating the replciated per-element coordinates
+        mesh.update_coord_els();
         // TODO: mesh validation and consistency operations
     }
 

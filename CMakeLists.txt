@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 3.20.0) # support for c++23
 project(ICEICLE_PROJECT VERSION 0.1.0)
 set(CMAKE_CXX_STANDARD 23)
 
+
 # FLOATING POINT AND DOUBLE TYPES
 # in order of priority
 option(USE_DOUBLE_PRECISION "Use double precision floating point number" ON)
@@ -43,6 +44,10 @@ if(ICEICLE_MTUNE)
   SET(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -mtune=native")
 endif()
 
+# Make Release with debug info actually be 
+# release flags + debug info
+set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "-O3 -DNDEBUG -g")
+set(CMAKE_C_FLAGS_RELWITHDEBINFO "-O3 -DNDEBUG -g")
 
 # ===============
 # = TPL OPTIONS =

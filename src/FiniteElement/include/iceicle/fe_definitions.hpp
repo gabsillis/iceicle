@@ -3,6 +3,8 @@
  */
 #pragma once
 
+#include "iceicle/string_utils.hpp"
+#include <string_view>
 #include <vector>
 #include <Numtool/point.hpp>
 namespace iceicle {
@@ -24,4 +26,21 @@ namespace iceicle {
         DYNAMIC = 2, // other domain types that will not output cleanly
         N_DOMAIN_TYPES = 3
     };
+
+    /// @brief given a string parse the domain type (case-insensitive)
+    /// @param str the string that describes the domain type 
+    /// @return the domain type
+    [[nodiscard]] inline constexpr 
+    auto parse_domain_type(std::string_view str)
+    -> DOMAIN_TYPE
+    {
+        if(util::eq_icase(str, "hypercube"))
+            return DOMAIN_TYPE::HYPERCUBE;
+        if(util::eq_icase(str, "simplex"))
+            return DOMAIN_TYPE::SIMPLEX;
+        if(util::eq_icase(str, "dynamic"))
+            return DOMAIN_TYPE::DYNAMIC;
+
+        return DOMAIN_TYPE::N_DOMAIN_TYPES;
+    }
 }

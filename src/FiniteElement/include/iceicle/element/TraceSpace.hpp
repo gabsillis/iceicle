@@ -322,12 +322,11 @@ public:
    */
   auto evalPhysGradBasisL(
       const FacePoint &s,
-      NodeArray<T, ndim> &node_list,
       T *grad_data
   ) const {
     DomainPoint xi{};
     face->transform_xiL(s, xi);
-    return elL.evalPhysGradBasis(xi, node_list, grad_data);
+    return elL.evalPhysGradBasis(xi, grad_data);
   }
 
   /**
@@ -348,12 +347,11 @@ public:
    */
   auto evalPhysGradBasisR(
       const FacePoint &s,
-      NodeArray<T, ndim> &node_list,
       T *grad_data
   ) const {
     DomainPoint xi{};
     face->transform_xiR(s, xi);
-    return elR.evalPhysGradBasis(xi, node_list, grad_data);
+    return elR.evalPhysGradBasis(xi, grad_data);
   }
 
 
@@ -419,12 +417,11 @@ public:
    */
   auto evalPhysGradBasisQPL(
       int qidx,
-      NodeArray<T, ndim> &node_list,
       T *grad_data
   ) const {
     DomainPoint xi{};
     face->transform_xiL(quadrule[qidx].abscisse, xi);
-    return elL.evalPhysGradBasis(xi, node_list, grad_data);
+    return elL.evalPhysGradBasis(xi, grad_data);
   }
 
   /**
@@ -445,12 +442,11 @@ public:
    */
   auto evalPhysGradBasisQPR(
       int qidx,
-      NodeArray<T, ndim> &node_list,
       T *grad_data
   ) const {
     DomainPoint xi{};
     face->transform_xiR(quadrule[qidx].abscisse, xi);
-    return elR.evalPhysGradBasis(xi, node_list, grad_data);
+    return elR.evalPhysGradBasis(xi, grad_data);
   }
 
   // === Second Derivatives ===
@@ -495,7 +491,6 @@ public:
    *        for the left element
    *
    * @param [in] s the point in the reference trace space
-   * @param [in] coord the global node coordinates array
    * @param [out] basis_hessian_data pointer to the 1d array to store the
    * hessian data in ordered i, j, k in C style array for \frac{\partial^2
    * B_i}{\partial x_j \partial x_k}
@@ -503,12 +498,11 @@ public:
    */
   auto evalPhysHessBasisL(
       const FacePoint &s,
-      NodeArray<T, ndim> &node_list,
       T *hess_data
   ) const {
     DomainPoint xi{};
     face->transform_xiL(s, xi);
-    return elL.evalPhysHessBasis(xi, node_list, hess_data);
+    return elL.evalPhysHessBasis(xi, hess_data);
   }
 
   /**
@@ -517,7 +511,6 @@ public:
    *        for the right element
    *
    * @param [in] s the point in the reference trace space
-   * @param [in] coord the global node coordinates array
    * @param [out] basis_hessian_data pointer to the 1d array to store the
    * hessian data in ordered i, j, k in C style array for \frac{\partial^2
    * B_i}{\partial x_j \partial x_k}
@@ -525,12 +518,11 @@ public:
    */
   auto evalPhysHessBasisR(
       const FacePoint &s,
-      NodeArray<T, ndim> &node_list,
       T *hess_data
   ) const {
     DomainPoint xi{};
     face->transform_xiR(s, xi);
-    return elR.evalPhysHessBasis(xi, node_list, hess_data);
+    return elR.evalPhysHessBasis(xi, hess_data);
   }
 
   /**
@@ -573,7 +565,6 @@ public:
    *        for the left element
    *
    * @param [in] qidx the quadrature point index
-   * @param [in] coord the global node coordinates array
    * @param [out] basis_hessian_data pointer to the 1d array to store the
    * hessian data in ordered i, j, k in C style array for \frac{\partial^2
    * B_i}{\partial x_j \partial x_k}
@@ -581,12 +572,11 @@ public:
    */
   auto evalPhysHessBasisQPL(
       int qidx,
-      NodeArray<T, ndim> &node_list,
       T *hess_data
   ) const {
     DomainPoint xi{};
     face->transform_xiL(quadrule[qidx].abscisse, xi);
-    return elL.evalPhysHessBasis(xi, node_list, hess_data);
+    return elL.evalPhysHessBasis(xi, hess_data);
   }
 
   /**
@@ -595,7 +585,6 @@ public:
    *        for the right element
    *
    * @param [in] qidx the quadrature point index
-   * @param [in] coord the global node coordinates array
    * @param [out] basis_hessian_data pointer to the 1d array to store the
    * hessian data in ordered i, j, k in C style array for \frac{\partial^2
    * B_i}{\partial x_j \partial x_k}
@@ -603,12 +592,11 @@ public:
    */
   auto evalPhysHessBasisQPR(
       int qidx,
-      NodeArray<T, ndim> &node_list,
       T *hess_data
   ) const {
     DomainPoint xi{};
     face->transform_xiR(quadrule[qidx].abscisse, xi);
-    return elR.evalPhysHessBasis(xi, node_list, hess_data);
+    return elR.evalPhysHessBasis(xi, hess_data);
   }
 
 

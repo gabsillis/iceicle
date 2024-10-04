@@ -65,10 +65,10 @@ namespace iceicle::solvers {
                     res_local = 0;
 
                     // project
-                    disc.domain_integral(el, fespace.meshptr->nodes, res_local);
+                    disc.domain_integral(el, res_local);
 
                     // solve 
-                    ElementLinearSolver<T, IDX, ndim, neq> solver{el, fespace.meshptr->nodes};
+                    ElementLinearSolver<T, IDX, ndim, neq> solver{el};
                     solver.solve(u_local, res_local);
 
                     // scatter to global array 

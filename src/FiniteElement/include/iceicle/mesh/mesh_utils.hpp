@@ -4,9 +4,9 @@
  */
 #pragma once
 #include "Numtool/point.hpp"
-#include "iceicle/basis/tensor_product.hpp"
 #include "iceicle/geometry/face.hpp"
 #include "iceicle/geometry/face_utils.hpp"
+#include "iceicle/geometry/transformations_table.hpp"
 #include "iceicle/mesh/mesh.hpp"
 #include "iceicle/geometry/geo_primitives.hpp"
 #include <random>
@@ -14,7 +14,6 @@
 #include <concepts>
 
 namespace iceicle {
-
 
     /// @brief find and create all the interior faces for a mesh
     template<class T, class IDX, int ndim>
@@ -26,7 +25,7 @@ namespace iceicle {
         // elements surrounding points
         std::vector<std::vector<IDX>> elsup(mesh.n_nodes());
         for(IDX ielem = 0; ielem < mesh.nelem(); ++ielem){
-            for(IDX inode : mesh.elements[ielem]->nodes_span()){
+            for(IDX inode : mesh.conn_el.rowspan(ielem)){
                 elsup[inode].push_back(ielem);
             }
         }
@@ -40,12 +39,12 @@ namespace iceicle {
 
         // if elements share at least ndim points, then they have a face
         for(IDX ielem = 0; ielem < mesh.nelem(); ++ielem){
-            int max_faces = mesh.elements[ielem]->n_faces();
+            int max_faces = mesh.el_transformations[ielem]->nfac;
             std::vector<IDX> connected_elements;
             connected_elements.reserve(max_faces);
 
             // loop through elements that share a node
-            for(IDX inode : mesh.elements[ielem]->nodes_span()){
+            for(IDX inode : mesh.conn_el.rowspan(ielem)){
                 for(auto jelem_iter = std::lower_bound(elsup[inode].begin(), elsup[inode].end(), ielem);
                         jelem_iter != elsup[inode].end(); ++jelem_iter){
                     IDX jelem = *jelem_iter;
@@ -55,7 +54,9 @@ namespace iceicle {
                         continue; 
 
                     // try making the face that is the intersection of the two elements
-                    auto face_opt = make_face(ielem, jelem, mesh.elements[ielem].get(), mesh.elements[jelem].get());
+                    auto face_opt = make_face(ielem, jelem, 
+                            mesh.el_transformations[ielem], mesh.el_transformations[jelem],
+                            mesh.conn_el.rowspan(ielem), mesh.conn_el.rowspan(jelem));
                     if(face_opt){
                         mesh.faces.push_back(std::move(face_opt.value()));
                         // short circuit if all the faces have been found
@@ -67,60 +68,6 @@ namespace iceicle {
         }
     }
 
-    /**
-     * @brief create a 2 element mesh with no boundary faces 
-     * This is good for testing numerical fluxes 
-     * @param centroid1 the centroid of the first element 
-     * @param centroid2 the centroid of the second element
-     */
-    template<class T, int ndim>
-    auto create_2_element_mesh(
-        NUMTOOL::TENSOR::FIXED_SIZE::Tensor<T, ndim> centroid1,
-        NUMTOOL::TENSOR::FIXED_SIZE::Tensor<T, ndim> centroid2,
-        BOUNDARY_CONDITIONS bctype,
-        int bcflag
-    ) -> AbstractMesh<T, int, ndim>
-    {
-        using namespace NUMTOOL::TENSOR::FIXED_SIZE;
-
-        T dist = 0;
-        for(int idim = 0; idim < ndim; ++idim) dist += SQUARED(centroid2[idim] - centroid1[idim]);
-        dist = std::sqrt(dist);
-
-        T el_radius = 0.5 * dist;
-
-        // setup the mesh 
-        AbstractMesh<T, int, ndim> mesh{};
-
-        // Create the nodes 
-        mesh.nodes.resize(3 * std::pow(2, ndim - 1));
-
-        QTypeIndexSet<int, ndim - 1, 2> node_positions{};
-        for(int ipoin = 0; ipoin < node_positions.size(); ++ipoin){
-            auto& mindex = node_positions[ipoin];
-
-            // positions in a reference domain where centroid1 is [0, 0, ..., 0]
-            // and centroid 2 is at [0, 0, ..., dist]
-            std::array<T, ndim> position_reference1{};
-            std::array<T, ndim> position_reference2{};
-            std::array<T, ndim> position_reference3{};
-            for(int idim = 0; idim < ndim -1 ; ++idim){
-                T idim_pos = (mindex[idim] == 0) ? (-el_radius) : (el_radius);
-                T position_reference1[idim] = idim_pos;
-                T position_reference2[idim] = idim_pos;
-                T position_reference3[idim] = idim_pos;
-            }
-            position_reference1[ndim - 1] = -el_radius;
-            position_reference2[ndim - 1] = el_radius;
-            position_reference3[ndim - 1] = dist + el_radius;
-        }
-
-        // TODO: rotation matrix
-
-        // Generate the elements 
-        
-    }
-
     template<class T, class IDX>
     auto burgers_linear_mesh(bool initial)
     -> std::optional<AbstractMesh<T, IDX, 2>> {
@@ -128,7 +75,7 @@ namespace iceicle {
 
         AbstractMesh<T, IDX, 2> mesh{};
         if(initial){
-            mesh.nodes = std::vector<Point>{
+            mesh.coord = std::vector<Point>{
                 Point{{0.00, 0.00}},
                 Point{{0.25, 0.00}},
                 Point{{0.75, 0.00}},
@@ -143,7 +90,7 @@ namespace iceicle {
                 Point{{1.00, 0.50}}
             };
         } else {
-            mesh.nodes = std::vector<Point>{
+            mesh.coord = std::vector<Point>{
                 Point{{0.00, 0.00}},
                 Point{{0.25, 0.00}},
                 Point{{0.75, 0.00}},
@@ -160,35 +107,19 @@ namespace iceicle {
         }
 
         // make the elements by hand
-        {
-            std::vector<IDX> nodes{0, 4, 1, 5};
-            auto el = create_element<T, IDX, 2>(DOMAIN_TYPE::HYPERCUBE, 1, nodes);
-            mesh.elements.push_back(std::move(el.value()));
-        }
-        {
-            std::vector<IDX> nodes{1, 5, 2, 6};
-            auto el = create_element<T, IDX, 2>(DOMAIN_TYPE::HYPERCUBE, 1, nodes);
-            mesh.elements.push_back(std::move(el.value()));
-        }
-        {
-            std::vector<IDX> nodes{2, 6, 3, 7};
-            auto el = create_element<T, IDX, 2>(DOMAIN_TYPE::HYPERCUBE, 1, nodes);
-            mesh.elements.push_back(std::move(el.value()));
-        }
-        {
-            std::vector<IDX> nodes{4, 8, 5, 9};
-            auto el = create_element<T, IDX, 2>(DOMAIN_TYPE::HYPERCUBE, 1, nodes);
-            mesh.elements.push_back(std::move(el.value()));
-        }
-        {
-            std::vector<IDX> nodes{5, 9, 6, 10};
-            auto el = create_element<T, IDX, 2>(DOMAIN_TYPE::HYPERCUBE, 1, nodes);
-            mesh.elements.push_back(std::move(el.value()));
-        }
-        {
-            std::vector<IDX> nodes{6, 10, 7, 11};
-            auto el = create_element<T, IDX, 2>(DOMAIN_TYPE::HYPERCUBE, 1, nodes);
-            mesh.elements.push_back(std::move(el.value()));
+        std::vector<std::vector<IDX>> el_conn = {
+            std::vector<IDX>{0, 4, 1, 5},
+            std::vector<IDX> {1, 5, 2, 6},
+            std::vector<IDX> {2, 6, 3, 7},
+            std::vector<IDX> {4, 8, 5, 9},
+            std::vector<IDX> {5, 9, 6, 10},
+            std::vector<IDX> {6, 10, 7, 11}
+        };
+
+        mesh.conn_el = util::crs<IDX, IDX>(el_conn);
+        for(int ielem = 0; ielem < el_conn.size(); ++ielem){
+            mesh.el_transformations.push_back(
+                transformation_table<T, IDX, 2>.get_transform(DOMAIN_TYPE::HYPERCUBE, 1));
         }
         
         // find the interior faces
@@ -199,16 +130,15 @@ namespace iceicle {
 
         // boundary faces
         auto add_bdy_face = [&mesh](int ielem, std::vector<IDX> nodes, BOUNDARY_CONDITIONS bctype, int bcflag){
-            auto face_info = boundary_face_info(nodes, mesh.elements[ielem].get());
+            auto face_info = boundary_face_info(nodes, mesh.el_transformations[ielem], mesh.get_el_nodes(ielem));
             if(face_info){
                 auto [fac_domn, face_nr_l] = face_info.value();
-                GeometricElement<T, IDX, 2> *elptr = mesh.elements[ielem].get();
+                ElementTransformation<T, IDX, 2> *trans = mesh.el_transformations[ielem];
 
                 // get the face nodes in the correct order
-                std::vector<IDX> ordered_face_nodes(elptr->n_face_nodes(face_nr_l));
-                elptr->get_face_nodes(face_nr_l, ordered_face_nodes.data());
+                std::vector<IDX> ordered_face_nodes = trans->get_face_nodes(face_nr_l, mesh.get_el_nodes(ielem));
 
-                auto face_opt = make_face<T, IDX, 2>(fac_domn, elptr->domain_type(), elptr->domain_type(), 1,
+                auto face_opt = make_face<T, IDX, 2>(fac_domn, trans->domain_type, trans->domain_type, 1,
                         ielem, ielem, std::span<const IDX>{ordered_face_nodes},
                         face_nr_l, 0, 0, bctype, bcflag);
                 if(face_opt){
@@ -290,6 +220,7 @@ namespace iceicle {
 
         mesh.bdyFaceEnd = mesh.faces.size();
 
+        mesh.elsup = to_elsup(mesh.conn_el, mesh.n_nodes());
         return std::optional{mesh};
     }
 
@@ -322,13 +253,14 @@ namespace iceicle {
         IDX nnodey = nelem[1] + 1;
         for(IDX iy = 0; iy < nnodey; ++iy){
             for(IDX ix = 0; ix < nnodex; ++ix){
-                mesh.nodes.push_back(Point{{xmin[0] + ix * dx, xmin[1] + iy * dy}});
+                mesh.coord.push_back(Point{{xmin[0] + ix * dx, xmin[1] + iy * dy}});
             }
         }
 
         IDX half_quad_x = (IDX) (nelem[0] * quad_ratio[0] / 2);
         IDX half_quad_y = (IDX) (nelem[1] * quad_ratio[1] / 2);
 
+        std::vector<std::vector<IDX>> el_conn{};
         // make the elements 
         for(IDX ixquad = 0; ixquad < nelem[0]; ++ixquad){
             for(IDX iyquad = 0; iyquad < nelem[1]; ++iyquad){
@@ -343,22 +275,32 @@ namespace iceicle {
                     || (nelem[1] - iyquad) <= half_quad_y;
 
                 if(is_quad){
+                    mesh.el_transformations.push_back(transformation_table<T, IDX, 2>
+                            .get_transform(DOMAIN_TYPE::HYPERCUBE, 1));
                     std::vector<IDX> nodes{bottomleft, topleft, bottomright, topright};
-                    auto el_opt = create_element<T, IDX, 2>(DOMAIN_TYPE::HYPERCUBE, 1, nodes);
-                    if(el_opt)
-                        mesh.elements.push_back(std::move(el_opt.value()));
-                    else 
-                        AnomalyLog::log_anomaly(Anomaly{"Failed to create element", general_anomaly_tag{}});
+                    el_conn.push_back(nodes);
                 } else {
                     std::vector<IDX> nodes1{bottomleft, bottomright, topleft};
                     std::vector<IDX> nodes2{topleft, bottomright, topright};
-                    auto el_opt1 = create_element<T, IDX, 2>(DOMAIN_TYPE::SIMPLEX, 1, nodes1);
-                    auto el_opt2 = create_element<T, IDX, 2>(DOMAIN_TYPE::SIMPLEX, 1, nodes2);
-                    if(el_opt1 && el_opt2){
-                        mesh.elements.push_back(std::move(el_opt1.value()));
-                        mesh.elements.push_back(std::move(el_opt2.value()));
-                    } else 
-                        AnomalyLog::log_anomaly(Anomaly{"Failed to create element", general_anomaly_tag{}});
+                    mesh.el_transformations.push_back(transformation_table<T, IDX, 2>
+                            .get_transform(DOMAIN_TYPE::SIMPLEX, 1));
+                    mesh.el_transformations.push_back(transformation_table<T, IDX, 2>
+                            .get_transform(DOMAIN_TYPE::SIMPLEX, 1));
+                    el_conn.push_back(nodes1);
+                    el_conn.push_back(nodes2);
+
+                }
+            }
+        }
+
+        // update the element crs matrices 
+        mesh.conn_el = util::crs<IDX, IDX>{el_conn};
+
+        { // build the element coordinates matrix
+            mesh.coord_els = util::crs<Point, IDX>{std::span{mesh.conn_el.cols(), mesh.conn_el.cols() + mesh.conn_el.nrow() + 1}};
+            for(IDX iel = 0; iel < mesh.nelem(); ++iel){
+                for(std::size_t icol = 0; icol < mesh.conn_el.rowsize(iel); ++icol){
+                    mesh.coord_els[iel, icol] = mesh.coord[mesh.conn_el[iel, icol]];
                 }
             }
         }
@@ -392,17 +334,20 @@ namespace iceicle {
         }
         for(IDX ielem = 0; ielem < mesh.nelem(); ++ielem){
             for(IDX inodelist = 0; inodelist < bface_nodes.size(); ++inodelist){
-                auto face_info = boundary_face_info(std::span<const IDX>{bface_nodes[inodelist]}, mesh.elements[ielem].get());
+                auto face_info = boundary_face_info(std::span<const IDX>{bface_nodes[inodelist]}, 
+                    mesh.el_transformations[ielem], mesh.conn_el.rowspan(ielem)); 
                 if(face_info){
                     auto [fac_domn, face_nr_l] = face_info.value();
-                    GeometricElement<T, IDX, 2> *elptr = mesh.elements[ielem].get();
+                    ElementTransformation<T, IDX, 2> *trans = mesh.el_transformations[ielem];
 
                     // get the face nodes in the correct order
-                    std::vector<IDX> ordered_face_nodes(elptr->n_face_nodes(face_nr_l));
-                    elptr->get_face_nodes(face_nr_l, ordered_face_nodes.data());
+                    std::vector<IDX> ordered_face_nodes = 
+                        trans->get_face_nodes(face_nr_l, mesh.conn_el.rowspan(ielem));
 
                     auto [bctype, bcflag] = bcinfos[inodelist];
-                    auto face_opt = make_face<T, IDX, 2>(fac_domn, elptr->domain_type(), elptr->domain_type(), 1, ielem, ielem, std::span<const IDX>{ordered_face_nodes}, face_nr_l, 0, 0, bctype, bcflag);
+                    DOMAIN_TYPE domain_type = trans->domain_type;
+                    auto face_opt = make_face<T, IDX, 2>(fac_domn, domain_type, domain_type, 1,
+                            ielem, ielem, std::span<const IDX>{ordered_face_nodes}, face_nr_l, 0, 0, bctype, bcflag);
                     if(face_opt){
                         mesh.faces.push_back(std::move(face_opt.value()));
                     }
@@ -415,6 +360,7 @@ namespace iceicle {
             }
         }
         mesh.bdyFaceEnd = mesh.faces.size();
+        mesh.elsup = to_elsup(mesh.conn_el, mesh.n_nodes());
 
         return std::optional{mesh};
     }
@@ -454,9 +400,11 @@ namespace iceicle {
         using namespace NUMTOOL::TENSOR::FIXED_SIZE;
         for(IDX ifac = mesh.interiorFaceStart; ifac < mesh.interiorFaceEnd; ++ifac){
             auto faceptr = mesh.faces[ifac].get();
-            auto centroid_fac = face_centroid(*faceptr, mesh.nodes);
-            auto centroid_l = mesh.elements[faceptr->elemL]->centroid(mesh.nodes);
-            auto centroid_r = mesh.elements[faceptr->elemR]->centroid(mesh.nodes);
+            auto centroid_fac = face_centroid(*faceptr, mesh.coord);
+            auto centroid_l = mesh.el_transformations[faceptr->elemL]
+                ->centroid(mesh.get_el_coord(faceptr->elemL));
+            auto centroid_r = mesh.el_transformations[faceptr->elemR]
+                ->centroid(mesh.get_el_coord(faceptr->elemR));
             Tensor<T, ndim> internal_l, internal_r;
             for(int idim = 0; idim < ndim; ++idim){
                 internal_l[idim] = centroid_l[idim] - centroid_fac[idim];
@@ -465,7 +413,7 @@ namespace iceicle {
             // TODO: generalize face centroid ref domain 
             MATH::GEOMETRY::Point<T, ndim - 1> s;
             for(int idim = 0; idim < ndim - 1; ++idim) s[idim] = 0.0; 
-            auto normal = calc_normal(*faceptr, mesh.nodes, s);
+            auto normal = calc_normal(*faceptr, mesh.coord, s);
             if(dot(normal, internal_l) > 0.0 || dot(normal, internal_r) < 0.0){
                 invalid_faces.push_back(ifac);
             }
@@ -473,8 +421,9 @@ namespace iceicle {
 
         for(IDX ifac = mesh.bdyFaceStart; ifac < mesh.bdyFaceEnd; ++ifac){
             auto faceptr = mesh.faces[ifac].get();
-            auto centroid_fac = face_centroid(*faceptr, mesh.nodes);
-            auto centroid_l = mesh.elements[faceptr->elemL]->centroid(mesh.nodes);
+            auto centroid_fac = face_centroid(*faceptr, mesh.coord);
+            auto centroid_l = mesh.el_transformations[faceptr->elemL]
+                ->centroid(mesh.get_el_coord(faceptr->elemL));
             Tensor<T, ndim> internal_l, internal_r;
             for(int idim = 0; idim < ndim; ++idim){
                 internal_l[idim] = centroid_l[idim] - centroid_fac[idim];
@@ -482,7 +431,7 @@ namespace iceicle {
             // TODO: generalize face centroid ref domain 
             MATH::GEOMETRY::Point<T, ndim - 1> s;
             for(int idim = 0; idim < ndim - 1; ++idim) s[idim] = 0.0; 
-            auto normal = calc_normal(*faceptr, mesh.nodes, s);
+            auto normal = calc_normal(*faceptr, mesh.coord, s);
             if(dot(normal, internal_l) > 0.0){
                 invalid_faces.push_back(ifac);
             }
@@ -514,13 +463,14 @@ namespace iceicle {
         for(IDX inode = 0; inode < mesh.n_nodes(); ++inode){
             if( true || !fixed_nodes[inode]){
                 // copy current node data to prevent aliasing issues
-                Point old_node = mesh.nodes[inode];
-                std::span<T, ndim> node_view{mesh.nodes[inode].begin(), mesh.nodes[inode].end()};
+                Point old_node = mesh.coord[inode];
+                std::span<T, ndim> node_view{mesh.coord[inode].begin(), mesh.coord[inode].end()};
 
                 // perturb the node given the current coordinates
                 perturb_func(old_node, node_view);
             }
         }
+        mesh.update_coord_els();
     }
 
 
@@ -535,8 +485,8 @@ namespace iceicle {
         std::ranges::fill(bbox.xmax, -1e100);
         for(IDX inode = 0; inode < mesh.n_nodes(); ++inode){
             for(int idim = 0; idim < ndim; ++idim){
-                bbox.xmin[idim] = std::min(bbox.xmin[idim], mesh.nodes[inode][idim]);
-                bbox.xmax[idim] = std::max(bbox.xmax[idim], mesh.nodes[inode][idim]);
+                bbox.xmin[idim] = std::min(bbox.xmin[idim], mesh.coord[inode][idim]);
+                bbox.xmax[idim] = std::max(bbox.xmax[idim], mesh.coord[inode][idim]);
             }
         }
         return bbox;

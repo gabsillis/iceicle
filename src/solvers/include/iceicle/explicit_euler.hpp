@@ -111,7 +111,7 @@ public:
         for(FiniteElement<T, IDX, ndim> &el : fespace.elements){
             using namespace MATH::MATRIX;
             using namespace MATH::MATRIX::SOLVERS;
-            DenseMatrix<T> mass = calculate_mass_matrix(el, fespace.meshptr->nodes);
+            DenseMatrix<T> mass = calculate_mass_matrix(el);
             PermutationMatrix<unsigned int> pi = decompose_lu(mass);
 
             const IDX ndof = el.nbasis();

@@ -8,8 +8,6 @@
 #include "iceicle/geometry/geo_element.hpp"
 #include "iceicle/mesh/mesh.hpp"
 #include "iceicle/mesh/mesh_utils.hpp"
-#include "iceicle/quadrature/HypercubeGaussLegendre.hpp"
-#include "iceicle/quadrature/quadrules_1d.hpp"
 #include "iceicle/element_linear_solve.hpp"
 #include "iceicle/tmp_utils.hpp"
 #include <iceicle/fespace/fespace.hpp>
@@ -199,33 +197,6 @@ public:
 
 };
 
-TEST(test_finite_element, test_hess_basis){
-    static constexpr int ndim = 2;
-
-    HypercubeGaussLegendre<double, int, 2, 1> unused{};
-    test_basis basis{};
-    test_geo_el geo_el{};
-
-    NodeArray<double, 2> coord{};
-
-    FEEvaluation<double, int, 2> evals_unused{};
-
-    FiniteElement<double, int, 2> el{&geo_el, &basis, &unused, &evals_unused, 0};
-
-    double xi = -0.2;
-    double eta = 0.5;
-    MATH::GEOMETRY::Point<double, 2> ref_pt = {xi, eta};
-
-    // test he hessian
-    std::vector<double> hess_basis_data(el.nbasis() * ndim * ndim);
-    auto hess_basis = el.evalPhysHessBasis(ref_pt, coord, hess_basis_data.data());
-
-    ASSERT_NEAR((hess_basis[0, 0, 0]), 0, 1e-14);
-    ASSERT_NEAR((hess_basis[0, 0, 1]), 1, 1e-14);
-    ASSERT_NEAR((hess_basis[0, 1, 0]), 1, 1e-14);
-    ASSERT_NEAR((hess_basis[0, 1, 1]), 0, 1e-14);
-}
-
 TEST(test_fespace, test_dg_projection){
 
     using T = double;
@@ -323,17 +294,16 @@ TEST(test_fespace, test_dg_projection){
             dofspan<T, compact_layout_right<IDX, 1>> res_local_span(res_local, el_layout);
             
             // projection residual
-            projection.domain_integral(el, fespace.meshptr->nodes, res_local_span);
+            projection.domain_integral(el, res_local_span);
 
             // solve 
-            solvers::ElementLinearSolver<T, IDX, ndim, neq> solver{el, fespace.meshptr->nodes};
+            solvers::ElementLinearSolver<T, IDX, ndim, neq> solver{el};
             solver.solve(u_local_span, res_local_span);
 
             // test a bunch of random locations
             for(int k = 0; k < 50; ++k){
-                MATH::GEOMETRY::Point<T, ndim> ref_pt = random_domain_point(el.geo_el);
-                MATH::GEOMETRY::Point<T, ndim> phys_pt;
-                el.transform(fespace.meshptr->nodes, ref_pt, phys_pt);
+                MATH::GEOMETRY::Point<T, ndim> ref_pt = random_domain_point(el.trans);
+                MATH::GEOMETRY::Point<T, ndim> phys_pt = el.transform(ref_pt);
                 
                 // get the actual value of the function at the given point in the physical domain
                 T act_val;
@@ -348,7 +318,7 @@ TEST(test_fespace, test_dg_projection){
 
                 // test the derivatives
                 std::vector<double> grad_basis_data(el.nbasis() * ndim);
-                auto grad_basis = el.evalPhysGradBasis(ref_pt, fespace.meshptr->nodes, grad_basis_data.data());
+                auto grad_basis = el.evalPhysGradBasis(ref_pt, grad_basis_data.data());
                 static_assert(grad_basis.rank() == 2);
                 static_assert(grad_basis.extent(1) == ndim);
 
@@ -362,7 +332,7 @@ TEST(test_fespace, test_dg_projection){
 
                 // test hessian
                 std::vector<double> hess_basis_data(el.nbasis() * ndim * ndim);
-                auto hess_basis = el.evalPhysHessBasis(ref_pt, fespace.meshptr->nodes, hess_basis_data.data());
+                auto hess_basis = el.evalPhysHessBasis(ref_pt, hess_basis_data.data());
 
                 // get the hessian for each equation by contraction 
                 std::vector<double> hess_eq_data(neq * ndim * ndim, 0);

@@ -17,6 +17,157 @@ namespace iceicle {
 
     // the maximum dynamic element order that is generated
     static constexpr int MAX_DYNAMIC_ORDER = build_config::FESPACE_BUILD_PN;
+
+    /// @brief Collection of attributes that will uniquely identify each Element Transformation
+    template<int ndim>
+    struct ElementGeometryAttributes {
+        DOMAIN_TYPE domain_type;
+        int order;
+    };
+
+    /// @brief Represents a transformation T : s -> x which takes reference space to physical space
+    /// As a function table 
+    ///
+    /// References:
+    ///  (Guermond FE1) : Ern, Alexandre and Guermond, Jean-Luc Finite Elements I: Approximation and Interpolation
+    ///  Texts in Applied Mathematics, Springer
+    ///
+    /// @tparam T the real number type 
+    /// @tparam IDX the index type
+    /// @tparam ndim the number of dimensions
+    template<class T, class IDX, int ndim>
+    struct ElementTransformation {
+
+        // type aliases
+        using Point = MATH::GEOMETRY::Point<T, ndim>;
+        using HessianType = NUMTOOL::TENSOR::FIXED_SIZE::Tensor<T, ndim, ndim, ndim>;
+        using JacobianType = NUMTOOL::TENSOR::FIXED_SIZE::Tensor<T, ndim, ndim>;
+
+        // =======================
+        // = Element Information =
+        // =======================
+
+        /// @brief the domain type
+        DOMAIN_TYPE domain_type;
+
+        /// @brief the order of the polynomial approximation of the transformation function
+        int order;
+
+        /// @brief the number of nodes
+        int nnode;
+
+        /// @brief the number of faces 
+        int nfac;
+
+        // ===================
+        // = Node Operations =
+        // ===================
+        //
+        /// @brief get the element coordinates from the global node coordinates and the node indices 
+        ///
+        /// @param [in] coord the global node coordinates array on this process
+        /// @param [in] nodes the node indices 
+        /// @return vector of coordinates for the nodes of this element
+        std::vector<Point> (*get_el_coord)(const NodeArray<T, ndim>& coord, const IDX* nodes) = nullptr;
+
+        // =============================
+        // = Coordinate Transformation =
+        // =============================
+
+        /// @brief transform a reference domain point to the physical domain
+        ///
+        /// @param [in] el_coord array of the coordinates of each node, in order, for the element 
+        /// @param [in] pt_ref the reference domain 
+        /// @return the Point in the physical domain
+        Point (*transform)(std::span<Point> el_coord, const Point& pt_ref) = nullptr;
+
+        /// @brief get the Jacobian matrix of the transformation
+        /// J = \frac{\partial T(s)}{\partial s} = \frac{\partial x}[\partial \xi}
+        ///
+        /// @param [in] el_coord array of the coordinates of each node, in order, for the element 
+        /// @param [in] xi the position in the reference domain at which to calculate the Jacobian
+        /// @return the Jacobian matrix
+        JacobianType (*jacobian)(std::span<Point> el_coord, const Point& xi) = nullptr;
+
+        /// @brief get the Hessian of the transformation
+        /// H_{kij} = \frac{\partial T(s)_k}{\partial s_i \partial s_j} 
+        ///         = \frac{\partial x_k}{\partial \xi_i \partial \xi_j}
+        ///
+        /// @param [in] el_coord array of the coordinates of each node, in order, for the element 
+        /// @param [in] xi the position in the reference domain at which to calculate the hessian
+        /// @return the Hessian in tensor form indexed [k][i][j] as described above
+        HessianType (*hessian)(std::span<Point> el_coord, const Point& xi) = nullptr;
+
+        // ====================================
+        // = Face Transformation Connectivity =
+        // ====================================
+
+        /// @brief get the domain type of the face at the given face number
+        DOMAIN_TYPE (*face_domain_type)(int face_number) = nullptr;
+
+        /// @brief get the number of vertices in a face
+        int (*n_face_vert)(int face_number) = nullptr;
+
+        /// @brief get the vertex indices on the face
+        /// NOTE: These vertices must be in the same order as if get_element_vert() 
+        /// was called on the transformation corresponding to the face
+        std::vector<IDX> (*get_face_vert)(int face_number, std::span<IDX> el_nodes) = nullptr;
+
+        /// @brief get the number of nodes on the face 
+        /// @param face_number the face number
+        int (*n_face_nodes)(int face_number) = nullptr;
+
+        /// @brief get the node indices on the face
+        ///
+        /// NOTE: Nodes are all the points defining geometry (vertices are endpoints)
+        ///
+        /// NOTE: These nodes must be in the same order as if get_nodes
+        /// was called on the transformation corresponding to the face
+        std::vector<IDX> (*get_face_nodes)(int face_number, std::span<IDX> el_nodes) = nullptr;
+
+        /// @brief get the face number of the given vertices 
+        /// @return the face number of the face with the given vertices or -1 if not found
+        int (*get_face_nr) (std::span<IDX> vert_fac, std::span<IDX> el_nodes) = nullptr;
+
+
+        /**
+         * @brief calculate the centroid in the reference domain 
+         * @return the centroid in the reference domain 
+         */
+        inline constexpr
+        MATH::GEOMETRY::Point<T, ndim> centroid_ref() const {
+
+            MATH::GEOMETRY::Point<T, ndim> refpt;
+            // get the centroid in the reference domain based on domain type
+            switch(domain_type){
+                case DOMAIN_TYPE::HYPERCUBE:
+                    for(int idim = 0; idim < ndim; ++idim) 
+                        { refpt[idim] = 0.0; }
+                    break;
+
+                case DOMAIN_TYPE::SIMPLEX:
+                    for(int idim = 0; idim < ndim; ++idim) 
+                        { refpt[idim] = 1.0 / 3.0; }
+                    break;
+
+                default: // WARNING: use 0 as centroid for default
+                    for(int idim = 0; idim < ndim; ++idim) 
+                        { refpt[idim] = 0.0; }
+                    break;
+            }
+            return refpt;
+        }
+
+        /**
+         * @brief calculate the centroid in the physical domain 
+         * @param [in] el_coord array of the coordinates of each node, in order, for the element 
+         */
+        inline constexpr
+        MATH::GEOMETRY::Point<T, ndim> centroid( std::span<Point> el_coord ) const {
+            return transform(el_coord, centroid_ref());
+        }
+
+    };
     
     /**
      * @brief A Geometric element

@@ -5,7 +5,7 @@
 #include "iceicle/fespace/fespace.hpp"
 #include "iceicle/fe_function/fespan.hpp"
 #include <iomanip>
-#include <mpi.h>
+#include <iceicle/iceicle_mpi_utils.hpp>
 #include <filesystem>
 #include <fstream>
 
@@ -32,8 +32,7 @@ namespace iceicle {
         std::filesystem::create_directories(restart_directory);
 
         // get MPI rank
-        IDX my_pid;
-        MPI_Comm_rank(MPI_COMM_WORLD, &my_pid);
+        IDX my_pid = iceicle::mpi::mpi_world_rank();
 
         // open file 
         std::filesystem::path out_filename = (restart_directory / ("restart" + std::to_string(k) 
@@ -47,7 +46,7 @@ namespace iceicle {
         }
 
         // write out the nodes
-        auto& nodes{fespace.meshptr->nodes};
+        auto& nodes{fespace.meshptr->coord};
         for(auto& node : nodes){
             for(int idim = 0; idim < ndim; ++idim) 
                 { out << node[idim] << " "; }
@@ -83,8 +82,7 @@ namespace iceicle {
 
 
         // get MPI rank
-        IDX my_pid;
-        MPI_Comm_rank(MPI_COMM_WORLD, &my_pid);
+        IDX my_pid = iceicle::mpi::mpi_world_rank();
 
         // open file 
         std::filesystem::path in_filename = (restart_directory / (restart_name 
@@ -92,12 +90,11 @@ namespace iceicle {
         std::ifstream in{in_filename};
 
         // read in the nodes
-        auto& nodes{fespace.meshptr->nodes};
+        auto& nodes{fespace.meshptr->coord};
         for(auto& node : nodes){
             for(int idim = 0; idim < ndim; ++idim) 
                 { in >> node[idim]; }
         }
-
 
         // write out the solution vector
         for(IDX ielem = 0; ielem < fespace.elements.size(); ++ielem){

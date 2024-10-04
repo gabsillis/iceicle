@@ -14,7 +14,6 @@ namespace iceicle {
         constexpr
         auto form_operator(
             const FiniteElement<T, IDX, ndim>& el,
-            NodeArray<T, ndim> &coord,
             linalg::out_matrix auto K
         ) const noexcept -> void {
             std::size_t nbasis = el.nbasis();
@@ -31,12 +30,12 @@ namespace iceicle {
                 const QuadraturePoint<T, ndim> &quadpt = el.getQP(iqp);
 
                 // calculate the jacobian determinant 
-                auto J = el.geo_el->Jacobian(coord, quadpt.abscisse);
+                auto J = el.jacobian(quadpt.abscisse);
                 T detJ = NUMTOOL::TENSOR::FIXED_SIZE::determinant(J);
 
                 // get the basis values and gradients in the physical domain
                 el.evalBasisQP(iqp, bi.data());
-                auto gradx_basis = el.evalPhysGradBasisQP(iqp, coord, J, gradx_basis_data.data());
+                auto gradx_basis = el.evalPhysGradBasisQP(iqp, J, gradx_basis_data.data());
 
 
                 // form the matrix

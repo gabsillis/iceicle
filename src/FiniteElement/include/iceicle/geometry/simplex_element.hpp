@@ -176,25 +176,21 @@ namespace iceicle {
             index_type* vert_fac /// [in] the indices of the vertices of the given face
         ) const -> int override {
 
-            switch(vert_fac[0]){
-                case 0:
-                    if(vert_fac[1] == 1)
-                        return 2;
-                    else // second vertex == 2
-                        return 1;
-                    break;
-                case 1:
-                    if(vert_fac[1] == 0)
-                        return 2;
-                    else // second vertex == 2
-                        return 0;
-                    break;
-                case 2:
-                    if(vert_fac[1] == 0)
-                        return 1;
-                    else // second vertex == 1
-                        return 0;
-                    break;
+            if(vert_fac[0] == node_idxs[0]){
+                if(vert_fac[1] == node_idxs[1])
+                    return 2;
+                else 
+                    return 1;
+            } else if (vert_fac[0] == node_idxs[1]) {
+                if(vert_fac[1] == node_idxs[0])
+                    return 2;
+                else 
+                    return 0;
+            } else {
+                if(vert_fac[1] == node_idxs[0])
+                    return 1;
+                else 
+                    return 0;
             }
             return -1;
         }

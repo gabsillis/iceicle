@@ -172,6 +172,9 @@ namespace iceicle::petsc {
 
         /// @brief get the underlying pointer 
         inline constexpr pointer data() const { return _data; }
+
+        /// @brief get the size of the span 
+        inline constexpr size_type size() const { return std::distance(begin(), end());}
     };
 
 }

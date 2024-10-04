@@ -166,13 +166,13 @@ namespace iceicle::io {
          *        uses the maximum polynomial order between the element and basis order 
          */
         template<typename T, typename IDX, int ndim>
-        VTKElement<T, ndim> &get_vtk_element(const GeometricElement<T, IDX, ndim> *el, int basis_order = 1){
+        VTKElement<T, ndim> &get_vtk_element(const ElementTransformation<T, IDX, ndim> *el, int basis_order = 1){
 
             static VTKElement<T, ndim> NO_ELEMENT{};
 
-            int max_order = std::max(el->geometry_order(), basis_order);
+            int max_order = std::max(el->order, basis_order);
             if constexpr (ndim == 2){
-                switch(el->domain_type()){
+                switch(el->domain_type){
 
                     // Triangle type elements
                     case DOMAIN_TYPE::SIMPLEX:
@@ -204,7 +204,7 @@ namespace iceicle::io {
 
             } else if constexpr(ndim == 3) {
 
-                switch(el->domain_type()){
+                switch(el->domain_type){
 
                     // Triangle type elements
                     case DOMAIN_TYPE::SIMPLEX:
@@ -290,7 +290,7 @@ namespace iceicle::io {
                     // loop over the elements
                     for(Element &el : fespace.elements){
                         // NOTE: using the vtk el based on basis polynomial order
-                        VTKElement<T, ndim> &vtk_el = get_vtk_element(el.geo_el, el.basis->getPolynomialOrder());
+                        VTKElement<T, ndim> &vtk_el = get_vtk_element(el.trans, el.basis->getPolynomialOrder());
 
                         // storage for basis functions 
                         std::vector<T> basis_data(el.nbasis());
@@ -457,7 +457,7 @@ namespace iceicle::io {
             using Element = FiniteElement<T, IDX, ndim>;
             write_open(XMLTag{"Piece", {
                 {"NumberOfPoints", std::to_string(meshptr->n_nodes())},
-                {"NumberOfCells", std::to_string(meshptr->elements.size())}
+                {"NumberOfCells", std::to_string(meshptr->nelem())}
             }}, out);
 
             // ===================
@@ -473,7 +473,7 @@ namespace iceicle::io {
 
             for(IDX inode = 0; inode < meshptr->n_nodes(); ++inode){
                 for(int idim = 0; idim < ndim; ++idim){
-                    out << meshptr->nodes[inode][idim] << " ";
+                    out << meshptr->coord[inode][idim] << " ";
                 }
                 for(int idim = ndim; idim < 3; ++idim){
                     out << 0.0;
@@ -496,14 +496,14 @@ namespace iceicle::io {
             }}, out);
             
             for(Element &el : fespace_ptr->elements){
-                VTKElement<T, ndim> &vtk_el = get_vtk_element(el.geo_el, el.geo_el->geometry_order());
-                if(vtk_el.nodes.size() != el.geo_el->n_nodes()){
+                VTKElement<T, ndim> &vtk_el = get_vtk_element(el.trans, el.trans->order);
+                if(vtk_el.nodes.size() != el.trans->nnode){
                     AnomalyLog::log_anomaly(Anomaly{"must have a matching vtk element for cg data", general_anomaly_tag{}});
                 }
 
                 // TODO: FIX AND GENERALIZE TO OTHER ELEMENT TYPES 
                 // convert to paraview ordering
-                std::span<const IDX> nodes = el.geo_el->nodes_span();
+                std::span<const IDX> nodes = el.inodes;
                 out << std::to_string(nodes[0]) << " "
                     << std::to_string(nodes[2]) << " "
                     << std::to_string(nodes[3]) << " "
@@ -524,7 +524,7 @@ namespace iceicle::io {
             }}, out);
             std::size_t goffset = 0;
             for(Element &el : fespace_ptr->elements){
-                VTKElement<T, ndim> &vtk_el = get_vtk_element(el.geo_el, el.geo_el->geometry_order());
+                VTKElement<T, ndim> &vtk_el = get_vtk_element(el.trans, el.trans->order);
                 goffset += vtk_el.nodes.size();
                 out << std::to_string(goffset) << " ";
             }
@@ -538,7 +538,7 @@ namespace iceicle::io {
                 {"format", "ascii"}
             }}, out);
             for(Element &el : fespace_ptr->elements){
-                VTKElement<T, ndim> &vtk_el = get_vtk_element(el.geo_el, el.geo_el->geometry_order());
+                VTKElement<T, ndim> &vtk_el = get_vtk_element(el.trans, el.trans->order);
                 out << vtk_el.vtk_id  << " ";
             }
             out << "\n";
@@ -564,12 +564,12 @@ namespace iceicle::io {
             // count the number of nodes (duplicate for each element)
             std::size_t nodecount = 0;
             for(Element &el : fespace_ptr->elements){
-                VTKElement<T, ndim> &vtk_el = get_vtk_element(el.geo_el, el.basis->getPolynomialOrder());
+                VTKElement<T, ndim> &vtk_el = get_vtk_element(el.trans, el.basis->getPolynomialOrder());
                 nodecount += vtk_el.nodes.size();
             }
             write_open(XMLTag{"Piece", {
                 {"NumberOfPoints", std::to_string(nodecount)},
-                {"NumberOfCells", std::to_string(meshptr->elements.size())}
+                {"NumberOfCells", std::to_string(meshptr->nelem())}
             }}, out);
 
 
@@ -586,11 +586,11 @@ namespace iceicle::io {
             }}, out);
 
             for(Element &el : fespace_ptr->elements){
-                VTKElement<T, ndim> &vtk_el = get_vtk_element(el.geo_el, el.basis->getPolynomialOrder());
+                VTKElement<T, ndim> &vtk_el = get_vtk_element(el.trans, el.basis->getPolynomialOrder());
                 MATH::GEOMETRY::Point<T, ndim> point_phys;
                 for(const MATH::GEOMETRY::Point<T, ndim> &refnode : vtk_el.nodes){
                     // interpolate the point from the vtk element 
-                    el.transform(meshptr->nodes, refnode, point_phys);
+                    point_phys = el.transform(refnode);
 
                     // print the physical node
                     for(int idim = 0; idim < ndim; ++idim)
@@ -619,7 +619,7 @@ namespace iceicle::io {
             
             std::size_t ignode = 0;
             for(Element &el : fespace_ptr->elements){
-                VTKElement<T, ndim> &vtk_el = get_vtk_element(el.geo_el, el.basis->getPolynomialOrder());
+                VTKElement<T, ndim> &vtk_el = get_vtk_element(el.trans, el.basis->getPolynomialOrder());
                 for(int ilnode = 0; ilnode < vtk_el.nodes.size(); ++ilnode){
                     out << std::to_string(ignode++) << " ";
                 }
@@ -635,7 +635,7 @@ namespace iceicle::io {
             }}, out);
             std::size_t goffset = 0;
             for(Element &el : fespace_ptr->elements){
-                VTKElement<T, ndim> &vtk_el = get_vtk_element(el.geo_el, el.basis->getPolynomialOrder());
+                VTKElement<T, ndim> &vtk_el = get_vtk_element(el.trans, el.basis->getPolynomialOrder());
                 goffset += vtk_el.nodes.size();
                 out << std::to_string(goffset) << " ";
             }
@@ -649,7 +649,7 @@ namespace iceicle::io {
                 {"format", "ascii"}
             }}, out);
             for(Element &el : fespace_ptr->elements){
-                VTKElement<T, ndim> &vtk_el = get_vtk_element(el.geo_el, el.basis->getPolynomialOrder());
+                VTKElement<T, ndim> &vtk_el = get_vtk_element(el.trans, el.basis->getPolynomialOrder());
                 out << vtk_el.vtk_id  << " ";
             }
             out << "\n";

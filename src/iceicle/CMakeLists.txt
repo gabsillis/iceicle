@@ -19,12 +19,12 @@ endif()
 # =========================
 # = Heat Equation Miniapp =
 # =========================
-if(ICEICLE_USE_LUA)
-    add_executable(heat_eqn_miniapp heat_eqn_miniapp.cpp)
-    target_link_libraries(heat_eqn_miniapp iceicle_lib)
-    target_link_libraries(heat_eqn_miniapp ${MPI_CXX_LIBRARIES})
-
-endif()
+#if(ICEICLE_USE_LUA)
+#    add_executable(heat_eqn_miniapp heat_eqn_miniapp.cpp)
+#    target_link_libraries(heat_eqn_miniapp iceicle_lib)
+#    target_link_libraries(heat_eqn_miniapp ${MPI_CXX_LIBRARIES})
+#
+#endif()
 
 # ============================
 # = Conservation Law Miniapp =

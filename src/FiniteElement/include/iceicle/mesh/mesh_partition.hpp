@@ -3,15 +3,16 @@
 #include "iceicle/geometry/face.hpp"
 #include "iceicle/geometry/face_utils.hpp"
 #include "iceicle/geometry/geo_element.hpp"
-#include "iceicle/mpi_type.hpp"
 #include <iceicle/mesh/mesh.hpp>
-#include <iceicle/mpi_type.hpp>
-#include <mpi_proto.h>
-#include <petsclog.h>
 #ifdef ICEICLE_USE_METIS
 #include <metis.h>
 #ifdef ICEICLE_USE_MPI 
+#include "iceicle/mpi_type.hpp"
 #include <mpi.h>
+
+#ifdef ICEICLE_USE_PETSC
+#include <petsclog.h>
+#endif
 
 namespace iceicle {
 
@@ -51,8 +52,8 @@ namespace iceicle {
         unsigned long n_nodes_total;
         if(myrank == 0)
         { 
-            gcoord = mesh.nodes;
-            n_nodes_total = mesh.nodes.size();
+            gcoord = mesh.coord;
+            n_nodes_total = mesh.coord.size();
         }
         MPI_Bcast(&n_nodes_total, 1, MPI_UNSIGNED_LONG, 0, MPI_COMM_WORLD);
         if(myrank != 0)
@@ -68,7 +69,7 @@ namespace iceicle {
         std::vector<IDX> inv_gnode_idxs(n_nodes_total, -1);
 
         // for each global element index, store the local index, or -1
-        std::vector<IDX> inv_gel_idxs(mesh.elements.size(), -1);
+        std::vector<IDX> inv_gel_idxs(mesh.nelem(), -1);
 
         // initialize the communication requirement matrix
         pmesh.el_send_list = std::vector<std::vector<IDX>>(nrank, std::vector<IDX>());
@@ -77,7 +78,7 @@ namespace iceicle {
 
         // only the first processor will perform the partitioning
         if(myrank == 0){
-            IDX nelem = mesh.elements.size();
+            IDX nelem = mesh.nelem();
             util::crs elsuel{util::convert_crs<idx_t, idx_t>(to_elsuel<T, IDX, ndim>(nelem, mesh.faces))};
 
             // number of balancing constraints (not specifying so leave at 1)
@@ -106,7 +107,7 @@ namespace iceicle {
             // build each processor node list
             for(IDX iel = 0; iel < nelem; ++iel){
                 IDX element_rank = el_partition[iel];
-                for(IDX inode : mesh.elements[iel]->nodes_span()){
+                for(IDX inode : mesh.get_el_nodes(iel)){
                     all_node_idxs[element_rank].push_back(inode);
                 }
             }
@@ -128,43 +129,39 @@ namespace iceicle {
                 { inv_gnode_idxs[gnode_idxs[ilocal]] = ilocal; }
 
 
-            pmesh.nodes.reserve(gnode_idxs.size());
+            pmesh.coord.reserve(gnode_idxs.size());
             for(unsigned long inode : gnode_idxs)
-                { pmesh.nodes.push_back(gcoord[inode]); }
+                { pmesh.coord.push_back(gcoord[inode]); }
 
             // === Step 2: Elements ===
 
-
+            std::vector<std::vector<IDX>> ragged_conn_el{};
             for(IDX iel = 0; iel < nelem; ++iel){ 
                 IDX element_rank = el_partition[iel];
                 if(element_rank == 0){
-                    GeometricElement<T, IDX, ndim> &el = *(mesh.elements[iel]);
-                    inv_gel_idxs[iel] = pmesh.elements.size();
-                    std::vector<IDX> elnodes(el.n_nodes());
-                    for(int inode = 0; inode < el.n_nodes(); ++inode){
-                        elnodes[inode] = inv_gnode_idxs[el.nodes()[inode]];
+                    ElementTransformation<T, IDX, ndim> *trans = mesh.el_transformations[iel];
+                    inv_gel_idxs[iel] = ragged_conn_el.size();
+                    std::vector<IDX> el_nodes;
+                    for(IDX inode : mesh.get_el_nodes(iel)){
+                        el_nodes.push_back(inv_gnode_idxs[inode]);
                     }
-                    auto el_opt = create_element<T, IDX, ndim>(el.domain_type(), el.geometry_order(), elnodes);
-                    if(el_opt)
-                        pmesh.elements.push_back(std::move(el_opt.value()));
-                    else 
-                        util::AnomalyLog::log_anomaly(
-                                util::Anomaly{"Could not create valid element.", util::general_anomaly_tag{}});
+                    ragged_conn_el.push_back(el_nodes);
+                    pmesh.el_transformations.push_back(trans);
                 } else {
-                    GeometricElement<T, IDX, ndim> &el = *(mesh.elements[iel]);
+                    ElementTransformation<T, IDX, ndim> *trans = mesh.el_transformations[iel];
 
-                    int domain_type = static_cast<int>(el.domain_type());
+                    int domain_type = static_cast<int>(trans->domain_type);
                     MPI_Send(&domain_type, 1, MPI_INT, element_rank, 1, MPI_COMM_WORLD);
 
                     MPI_Send(&iel, 1, mpi_get_type<IDX>(), element_rank, 0, MPI_COMM_WORLD);
 
-                    int geo_order = el.geometry_order();
+                    int geo_order = trans->order;
                     MPI_Send(&geo_order, 1, MPI_INT, element_rank, 0, MPI_COMM_WORLD);
 
-                    int n_nodes = el.n_nodes();
+                    int n_nodes = trans->nnode;
                     MPI_Send(&n_nodes, 1, MPI_INT, element_rank, 0, MPI_COMM_WORLD);
 
-                    MPI_Send(el.nodes(), n_nodes, mpi_get_type<IDX>(), element_rank, 0, MPI_COMM_WORLD);
+                    MPI_Send(mesh.get_el_nodes(iel).data(), n_nodes, mpi_get_type<IDX>(), element_rank, 0, MPI_COMM_WORLD);
                 }
             }
 
@@ -174,6 +171,7 @@ namespace iceicle {
                 int stop_signal = (int) DOMAIN_TYPE::N_DOMAIN_TYPES;
                 MPI_Send(&stop_signal, 1, MPI_INT, myrank, 1, MPI_COMM_WORLD);
             }
+            pmesh.conn_el = util::crs<IDX, IDX>{ragged_conn_el};
 
             // === Step 3: Interior Faces ===
             MPI_Status status;
@@ -192,7 +190,8 @@ namespace iceicle {
                         IDX ier_parallel = inv_gel_idxs[ier];
 
                         auto face_parallel = make_face(iel_parallel, ier_parallel, 
-                            pmesh.elements[iel_parallel].get(), pmesh.elements[ier_parallel].get());
+                            pmesh.el_transformations[iel_parallel], pmesh.el_transformations[ier_parallel], 
+                            pmesh.get_el_nodes(iel_parallel), pmesh.get_el_nodes(ier_parallel));
 
                         if(face_parallel.has_value()){
                             pmesh.faces.push_back(std::move(face_parallel.value()));
@@ -206,9 +205,9 @@ namespace iceicle {
                         int domain_type = static_cast<int>(face.domain_type());
                         MPI_Send(&domain_type, 1, MPI_INT, rank_other, 0, MPI_COMM_WORLD);
 
-                        int domain_l = (int) mesh.elements[face.elemL]->domain_type();
+                        int domain_l = (int) mesh.el_transformations[face.elemL]->domain_type;
                         MPI_Send(&domain_l, 1, MPI_INT, rank_other, 1, MPI_COMM_WORLD);
-                        int domain_r = (int) mesh.elements[face.elemR]->domain_type();
+                        int domain_r = (int) mesh.el_transformations[face.elemR]->domain_type;
                         MPI_Send(&domain_r, 1, MPI_INT, rank_other, 2, MPI_COMM_WORLD);
 
                         // send the rank of the left element and right element 
@@ -272,9 +271,9 @@ namespace iceicle {
                     int domain_type = static_cast<int>(face.domain_type());
                     MPI_Send(&domain_type, 1, MPI_INT, rank_other, 0, MPI_COMM_WORLD);
 
-                    int domain_l = (int) mesh.elements[face.elemL]->domain_type();
+                    int domain_l = (int) mesh.el_transformations[face.elemL]->domain_type;
                     MPI_Send(&domain_l, 1, MPI_INT, rank_other, 1, MPI_COMM_WORLD);
-                    int domain_r = (int) mesh.elements[face.elemR]->domain_type();
+                    int domain_r = (int) mesh.el_transformations[face.elemR]->domain_type;
                     MPI_Send(&domain_r, 1, MPI_INT, rank_other, 2, MPI_COMM_WORLD);
 
                     // send the rank of the left element and right element 
@@ -337,8 +336,8 @@ namespace iceicle {
                         MPI_Send(&domain_type, 1, MPI_INT, rank_l, 0, MPI_COMM_WORLD);
                         MPI_Send(&domain_type, 1, MPI_INT, rank_r, 0, MPI_COMM_WORLD);
 
-                        int domain_l = (int) mesh.elements[face.elemL]->domain_type();
-                        int domain_r = (int) mesh.elements[face.elemR]->domain_type();
+                        int domain_l = (int) mesh.el_transformations[face.elemL]->domain_type;
+                        int domain_r = (int) mesh.el_transformations[face.elemR]->domain_type;
                         MPI_Send(&domain_l, 1, MPI_INT, rank_l, 1, MPI_COMM_WORLD);
                         MPI_Send(&domain_r, 1, MPI_INT, rank_l, 2, MPI_COMM_WORLD);
                         MPI_Send(&domain_l, 1, MPI_INT, rank_r, 1, MPI_COMM_WORLD);
@@ -382,9 +381,9 @@ namespace iceicle {
                         int domain_type = static_cast<int>(face.domain_type());
                         MPI_Send(&domain_type, 1, MPI_INT, rank_l, 0, MPI_COMM_WORLD);
 
-                        int domain_l = (int) mesh.elements[face.elemL]->domain_type();
+                        int domain_l = (int) mesh.el_transformations[face.elemL]->domain_type;
                         MPI_Send(&domain_l, 1, MPI_INT, rank_l, 1, MPI_COMM_WORLD);
-                        int domain_r = (int) mesh.elements[face.elemR]->domain_type();
+                        int domain_r = (int) mesh.el_transformations[face.elemR]->domain_type;
                         MPI_Send(&domain_r, 1, MPI_INT, rank_l, 2, MPI_COMM_WORLD);
 
                         // send the rank of the left element and reight element 
@@ -451,8 +450,8 @@ namespace iceicle {
                         local_face_nodes[inode] = inv_gnode_idxs[face.nodes()[inode]];
                     // face is local
                     auto face_opt = make_face<T, IDX, ndim>(
-                        face.domain_type(), mesh.elements[face.elemL]->domain_type(),
-                        mesh.elements[face.elemL]->domain_type(),
+                        face.domain_type(), mesh.el_transformations[face.elemL]->domain_type,
+                        mesh.el_transformations[face.elemL]->domain_type,
                         face.geometry_order(), inv_gel_idxs[iel], 0,
                         local_face_nodes, 
                         face.face_nr_l(), face.face_nr_r(), face.orientation_r(),
@@ -469,7 +468,7 @@ namespace iceicle {
                     int domain_type = static_cast<int>(face.domain_type());
                     MPI_Send(&domain_type, 1, MPI_INT, rank_l, 0, MPI_COMM_WORLD);
 
-                    int domain_l = (int) mesh.elements[face.elemL]->domain_type();
+                    int domain_l = (int) mesh.el_transformations[face.elemL]->domain_type;
                     MPI_Send(&domain_l, 1, MPI_INT, rank_l, 1, MPI_COMM_WORLD);
 
                     // send the global element indices of the left element
@@ -527,18 +526,19 @@ namespace iceicle {
             for(IDX ilocal = 0; ilocal < gnode_idxs.size(); ++ilocal)
                 { inv_gnode_idxs[gnode_idxs[ilocal]] = ilocal; }
 
-            pmesh.nodes.reserve(n_nodes);
+            pmesh.coord.reserve(n_nodes);
             for(unsigned long inode : gnode_idxs)
-                { pmesh.nodes.push_back(gcoord[inode]); }
+                { pmesh.coord.push_back(gcoord[inode]); }
 
             // === Step 2: Elements ===
 
+            std::vector<std::vector<IDX>> ragged_conn_el{};
             int domain_type;
             MPI_Recv(&domain_type, 1, MPI_INT, 0, 1, MPI_COMM_WORLD, &status);
             while (domain_type != (int) DOMAIN_TYPE::N_DOMAIN_TYPES) {
                 IDX iel;
                 MPI_Recv(&iel, 1, mpi_get_type<IDX>(), 0, 0, MPI_COMM_WORLD, &status);
-                inv_gel_idxs[iel] = pmesh.elements.size();
+                inv_gel_idxs[iel] = ragged_conn_el.size();
                 int geo_order, n_nodes;
                 MPI_Recv(&geo_order, 1, MPI_INT, 0, 0, MPI_COMM_WORLD, &status);
                 MPI_Recv(&n_nodes, 1, MPI_INT, 0, 0, MPI_COMM_WORLD, &status);
@@ -547,17 +547,14 @@ namespace iceicle {
                 for(int inode = 0; inode < n_nodes; ++inode){
                     elnodes[inode] = inv_gnode_idxs[elnodes[inode]];
                 }
-                auto el_opt = create_element<T, IDX, ndim>(
-                    static_cast<DOMAIN_TYPE>(domain_type), geo_order, elnodes);
-                if(el_opt)
-                    pmesh.elements.push_back(std::move(el_opt.value()));
-                else 
-                    util::AnomalyLog::log_anomaly(
-                            util::Anomaly{"Could not create valid element.", util::general_anomaly_tag{}});
+                pmesh.el_transformations.push_back(
+                    transformation_table<T, IDX, ndim>.get_transform((DOMAIN_TYPE) domain_type, geo_order));
+                ragged_conn_el.push_back(elnodes);
 
                 // get the next domain type
                 MPI_Recv(&domain_type, 1, MPI_INT, 0, 1, MPI_COMM_WORLD, &status);
             } 
+            pmesh.conn_el = util::crs<IDX, IDX>{ragged_conn_el};
 
             // === Step 3: Interior Faces ===
 
@@ -732,18 +729,19 @@ namespace iceicle {
                     // basis order, quadrature_type, and basis_type we know
                     int geometry_order, domain_type;
                     for(IDX ielem : pmesh.el_send_list[jrank]){
-                        geometry_order = (int) pmesh.elements[ielem]->geometry_order();
+                        ElementTransformation<T, IDX, ndim>* trans = pmesh.el_transformations[ielem];
+                        geometry_order = (int) trans->order;
                         MPI_Send(&geometry_order, 1, MPI_INT, jrank, ielem, MPI_COMM_WORLD);
-                        domain_type = (int) pmesh.elements[ielem]->domain_type();
+                        domain_type = (int) trans->domain_type;
                         MPI_Send(&domain_type, 1, MPI_INT, jrank, ielem, MPI_COMM_WORLD);
-                        int n_nodes = pmesh.elements[ielem]->n_nodes();
+                        int n_nodes = trans->nnode;
                         MPI_Send(&n_nodes, 1, MPI_INT, jrank, ielem, MPI_COMM_WORLD);
 
                         // global indices of element nodes
                         // NOTE: for some reason storing this in a vector and sending the array fails 
                         // ...
                         // ...
-                        for(IDX inode : pmesh.elements[ielem]->nodes_span()){
+                        for(IDX inode : pmesh.get_el_nodes(ielem)){
                             MPI_Send(&gnode_idxs[inode], 1, mpi_get_type<IDX>(), jrank, 10, MPI_COMM_WORLD);
                         }
                     }
@@ -761,6 +759,7 @@ namespace iceicle {
                         MPI_Recv(&el_gnodes[i], 1, mpi_get_type<IDX>(), irank, 10, MPI_COMM_WORLD, &status);
 
                     std::vector<IDX> el_nodes;
+                    std::vector<MATH::GEOMETRY::Point<T, ndim>> el_coord;
                     for(IDX ignode : el_gnodes){
                         IDX inode = inv_gnode_idxs[ignode];
 
@@ -770,19 +769,20 @@ namespace iceicle {
                             inode = gnode_idxs.size();
                             inv_gnode_idxs[gnode_idxs.size()] = ignode;
                             gnode_idxs.push_back(ignode);
-                            pmesh.nodes.push_back(gcoord[ignode]);
+                            pmesh.coord.push_back(gcoord[ignode]);
                         }
 
                         el_nodes.push_back(inode);
+                        el_coord.push_back(gcoord[ignode]);
                     }
 
-                    auto el_opt = create_element<T, IDX, ndim>((DOMAIN_TYPE) domain_type, geometry_order, el_nodes);
+                    CommElementInfo<T, IDX, ndim> comm_el{
+                        transformation_table<T, IDX, ndim>.get_transform((DOMAIN_TYPE) domain_type, geometry_order),
+                        el_nodes,
+                        el_coord
+                    };
 
-                    if(el_opt)
-                        pmesh.communicated_elements[irank].push_back(std::move(el_opt.value()));
-                    else 
-                        util::AnomalyLog::log_anomaly(
-                                util::Anomaly{"Could not create valid element.", util::general_anomaly_tag{}});
+                    pmesh.communicated_elements[irank].push_back(comm_el);
                 }
             }
             MPI_Barrier(MPI_COMM_WORLD);
@@ -809,6 +809,18 @@ namespace iceicle {
                     util::AnomalyLog::handle_anomalies();
                     // clear out the erronous mesh
                     pmesh = AbstractMesh<T, IDX, ndim>{};
+                }
+            }
+        }
+        // set up additional connectivity array
+        pmesh.elsup = to_elsup(pmesh.conn_el, pmesh.n_nodes());
+
+        { // build the element coordinates matrix
+          using Point = MATH::GEOMETRY::Point<T, ndim>;
+            pmesh.coord_els = util::crs<Point, IDX>{std::span{pmesh.conn_el.cols(), pmesh.conn_el.cols() + pmesh.conn_el.nrow() + 1}};
+            for(IDX iel = 0; iel < pmesh.nelem(); ++iel){
+                for(std::size_t icol = 0; icol < pmesh.conn_el.rowsize(iel); ++icol){
+                    pmesh.coord_els[iel, icol] = pmesh.coord[pmesh.conn_el[iel, icol]];
                 }
             }
         }

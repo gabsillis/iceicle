@@ -39,15 +39,15 @@ TEST(test_mesh, test_mixed_uniform_faces){
         Point<double, 1> s{domain_dist(engine)};
 
         const Face<double, int, 2> &face = *(mesh.faces[iface]);
-        const GeometricElement<double, int, 2>& elemL = *(mesh.elements[face.elemL]);
-        const GeometricElement<double, int, 2>& elemR = *(mesh.elements[face.elemR]);
+        ElementTransformation<double, int, 2>* transL = mesh.el_transformations[face.elemL];
+        ElementTransformation<double, int, 2>* transR = mesh.el_transformations[face.elemR];
 
         Point<double, 2> x_face, xiL, xiR, xL, xR;
-        face.transform(s, mesh.nodes, x_face);
+        face.transform(s, mesh.coord, x_face);
         face.transform_xiL(s, xiL);
         face.transform_xiR(s, xiR);
-        elemL.transform(mesh.nodes, xiL, xL);
-        elemR.transform(mesh.nodes, xiR, xR);
+        xL = transL->transform(mesh.get_el_coord(face.elemL), xiL);
+        xR = transR->transform(mesh.get_el_coord(face.elemR), xiR);
 
         ASSERT_NEAR(x_face[0], xL[0], 1e-12);
         ASSERT_NEAR(x_face[1], xL[1], 1e-12);
@@ -110,20 +110,18 @@ TEST(test_mesh, test_mixed_uniform_faces){
 
 
         // projection residual
-        projection.domain_integral(el, fespace.meshptr->nodes, res);
+        projection.domain_integral(el, res);
 
         // solve 
-        solvers::ElementLinearSolver<double, int, ndim, 1> solver{el, fespace.meshptr->nodes};
+        solvers::ElementLinearSolver<double, int, ndim, 1> solver{el};
         solver.solve(u, res);
 
         // test random locations
         for(int k = 0; k < 10; ++k){
 
-            MATH::GEOMETRY::Point<double, ndim> ref_pt = random_domain_point(el.geo_el);
-            MATH::GEOMETRY::Point<double, ndim> phys_pt;
-            el.transform(fespace.meshptr->nodes, ref_pt, phys_pt);
+            MATH::GEOMETRY::Point<double, ndim> ref_pt = random_domain_point(el.trans);
+            MATH::GEOMETRY::Point<double, ndim> phys_pt = el.transform(ref_pt);
 
-            
             double act_val;
             projfunc(phys_pt, &act_val);
 
@@ -137,7 +135,7 @@ TEST(test_mesh, test_mixed_uniform_faces){
 
             // test the derivatives
             std::vector<double> grad_basis_data(el.nbasis() * ndim);
-            auto grad_basis = el.evalPhysGradBasis(ref_pt, fespace.meshptr->nodes, grad_basis_data.data());
+            auto grad_basis = el.evalPhysGradBasis(ref_pt, grad_basis_data.data());
             static_assert(grad_basis.rank() == 2);
             static_assert(grad_basis.extent(1) == ndim);
 
@@ -151,7 +149,7 @@ TEST(test_mesh, test_mixed_uniform_faces){
 
             // test hessian
             std::vector<double> hess_basis_data(el.nbasis() * ndim * ndim);
-            auto hess_basis = el.evalPhysHessBasis(ref_pt, fespace.meshptr->nodes, hess_basis_data.data());
+            auto hess_basis = el.evalPhysHessBasis(ref_pt, hess_basis_data.data());
 
             // get the hessian for each equation by contraction 
             std::vector<double> hess_eq_data(ndim * ndim, 0);

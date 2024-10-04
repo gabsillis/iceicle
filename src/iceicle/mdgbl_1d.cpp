@@ -130,10 +130,10 @@ int main(int argc, char *argv[]){
                 res_local = 0;
 
                 // project
-                projection.domain_integral(el, fespace.meshptr->nodes, res_local);
+                projection.domain_integral(el, res_local);
 
                 // solve 
-                solvers::ElementLinearSolver<T, IDX, ndim, neq> solver{el, fespace.meshptr->nodes};
+                solvers::ElementLinearSolver<T, IDX, ndim, neq> solver{el};
                 solver.solve(u_local, res_local);
 
                 // scatter to global array 
@@ -149,7 +149,7 @@ int main(int argc, char *argv[]){
 
 
         for(int i = 1; i <= 999; ++i){
-            mesh.nodes[1][0] = 0.001 * i;
+            mesh.coord[1][0] = 0.001 * i;
             using namespace iceicle::solvers;
             ConvergenceCriteria<T, IDX> conv_criteria{
                 .tau_abs = std::numeric_limits<T>::epsilon(),
@@ -179,7 +179,7 @@ int main(int argc, char *argv[]){
             node_selection_layout<IDX, 1> mdg_layout{selected_dofs};
             dofspan r_mdg{r_mdg_data, mdg_layout};
             form_mdg_residual(fespace, disc, u, r_mdg);
-            ic_out << mesh.nodes[1][0] << " " << r_mdg[0, 0] << std::endl;;
+            ic_out << mesh.coord[1][0] << " " << r_mdg[0, 0] << std::endl;;
         }
 
 #endif

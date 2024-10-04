@@ -19,13 +19,13 @@
 #include <iceicle/pvd_writer.hpp>
 #include <iceicle/fe_function/restart.hpp>
 #include <iceicle/writer.hpp>
-#include <mpi_proto.h>
 #include <sol/sol.hpp>
 #include <utility>
 
 #ifdef ICEICLE_USE_PETSC
 #include <iceicle/corrigan_lm.hpp>
 #include <iceicle/petsc_newton.hpp>
+#include <iceicle/matrix_free_newton_krylov.hpp>
 #endif
 
 namespace iceicle::solvers {
@@ -133,7 +133,7 @@ namespace iceicle::solvers {
 
                 // zero out and then get interface conservation
                 ic_res = 0.0;
-                disc.interface_conservation(trace, fespace.meshptr->nodes, uL, uR, ic_res);
+                disc.interface_conservation(trace, fespace.meshptr->coord, uL, uR, ic_res);
 
                 std::cout << "Interface nr: " << trace.facidx; 
                 std::cout << " | nodes:";
@@ -178,7 +178,7 @@ namespace iceicle::solvers {
                 for(auto trace : fespace.get_boundary_traces()){
                     if(trace.face->bctype == BOUNDARY_CONDITIONS::DIRICHLET){
                         for(index_type inode : trace.face->nodes_span()){
-                            auto node_data = fespace.meshptr->nodes[inode];
+                            auto node_data = fespace.meshptr->coord[inode];
                             std::array<T, ndim> fixed_coordinates;
                             for(int idim = 0; idim < ndim; ++idim)
                                 { fixed_coordinates[idim] = node_data[idim]; }
@@ -213,7 +213,7 @@ namespace iceicle::solvers {
                 for(auto trace : fespace.get_boundary_traces()){
                     if(trace.face->bctype == BOUNDARY_CONDITIONS::DIRICHLET){
                         for(index_type inode : trace.face->nodes_span()){
-                            auto node_data = fespace.meshptr->nodes[inode];
+                            auto node_data = fespace.meshptr->coord[inode];
                             std::array<T, ndim> fixed_coordinates;
                             for(int idim = 0; idim < ndim; ++idim)
                                 { fixed_coordinates[idim] = node_data[idim]; }
@@ -239,7 +239,7 @@ namespace iceicle::solvers {
                 for(auto trace : fespace.get_boundary_traces()){
                     if(trace.face->bctype == BOUNDARY_CONDITIONS::DIRICHLET){
                         for(index_type inode : trace.face->nodes_span()){
-                            auto node_data = fespace.meshptr->nodes[inode];
+                            auto node_data = fespace.meshptr->coord[inode];
                             std::array<T, ndim> fixed_coordinates;
                             for(int idim = 0; idim < ndim; ++idim)
                                 { fixed_coordinates[idim] = node_data[idim]; }
@@ -248,6 +248,57 @@ namespace iceicle::solvers {
                         }
                     }
                 }
+                geo_map.finalize();
+            }
+
+            sol::optional<sol::table> user_mesh_tbl_opt = config_tbl["user_mesh"];
+            if(user_mesh_tbl_opt){
+                sol::table mesh_table = user_mesh_tbl_opt.value();
+
+                sol::optional<sol::table> constraints_opt = mesh_table["geo_constraints"];
+                if(constraints_opt){
+
+                    // bounding box
+                    sol::optional<sol::table> bounding_box_opt = constraints_opt.value()["bounding_box"];
+                    if(bounding_box_opt){
+                        std::array<T, ndim> xmin;
+                        std::array<T, ndim> xmax;
+                        sol::table bounding_box_table = bounding_box_opt.value();
+                        for(int idim = 0; idim < ndim; ++idim){
+                            xmin[idim] = bounding_box_table["min"][idim + 1];
+                            xmax[idim] = bounding_box_table["max"][idim + 1];
+                        }
+                        mesh_parameterizations::bounding_box(*(fespace.meshptr), xmin, xmax, geo_map);
+
+                    }
+
+                    /// manually fixed nodes 
+                    sol::optional<sol::table> fixed_nodelist_opt = constraints_opt.value()["fixed_nodes"];
+                    if(fixed_nodelist_opt){
+                        sol::table nodelist_tbl = fixed_nodelist_opt.value();
+                        std::vector<IDX> fixed_nodes{};
+                        for(int i = 1; i <= nodelist_tbl.size(); ++i){
+                            IDX inode = nodelist_tbl[i];
+                            fixed_nodes.push_back(inode);
+                        }
+                        mesh_parameterizations::fixed_nodelist(std::span{fixed_nodes}, *(fespace.meshptr), geo_map);
+                    }
+
+                }
+                // === Dirichlet BC => nodes cannot move ===
+                for(auto trace : fespace.get_boundary_traces()){
+                    if(trace.face->bctype == BOUNDARY_CONDITIONS::DIRICHLET){
+                        for(index_type inode : trace.face->nodes_span()){
+                            auto node_data = fespace.meshptr->coord[inode];
+                            std::array<T, ndim> fixed_coordinates;
+                            for(int idim = 0; idim < ndim; ++idim)
+                                { fixed_coordinates[idim] = node_data[idim]; }
+                            parametric_transformations::Fixed<T, ndim> parameterization{fixed_coordinates};
+                            geo_map.register_parametric_node(inode, parameterization);
+                        }
+                    }
+                }
+
                 geo_map.finalize();
             }
 
@@ -396,7 +447,7 @@ namespace iceicle::solvers {
                     }
                 };
             }
-        } else if(eq_icase_any(solver_type, "newton", "lm", "gauss-newton")) {
+        } else if(eq_icase_any(solver_type, "newton", "lm", "gauss-newton", "mfnk", "matrix-free-newton")) {
             // Newton Solvers
 #ifdef ICEICLE_USE_PETSC
             
@@ -471,8 +522,9 @@ namespace iceicle::solvers {
                     };
 
                     if(eq_icase_any(solver_type, "lm", "gauss-newton")){
-                        bool form_subproblem = solver_params.get_or("form_subproblem_mat", true); 
-                        CorriganLM solver{fespace, disc, conv_criteria, ls, geo_map, form_subproblem};
+                        bool form_subproblem = solver_params.get_or("form_subproblem_mat", false); 
+                        bool sparse_jacobian = solver_params.get_or("sparse_jacobian_calculation", true);
+                        CorriganLM solver{fespace, disc, conv_criteria, ls, geo_map, form_subproblem, sparse_jacobian};
 
                         // set options for the solver 
                         sol::optional<T> lambda_u = solver_params["lambda_u"];
@@ -493,6 +545,9 @@ namespace iceicle::solvers {
                         setup_and_solve(solver);
                     } else if(eq_icase_any(solver_type, "newton")) {
                         PetscNewton solver{fespace, disc, conv_criteria, ls};
+                        setup_and_solve(solver);
+                    } else if(eq_icase_any(solver_type, "mfnk", "matrix-free-newton")) {
+                        MFNK solver{fespace, disc, conv_criteria, ls, geo_map};
                         setup_and_solve(solver);
                     }
                 }
@@ -566,7 +621,112 @@ namespace iceicle::solvers {
 #else
                             std::cout << "L2 error: " << std::setprecision(12) << error << std::endl;
 #endif
+                        } 
+
+                        if(eq_icase(task_name, "l1_error")){
+                            // =================
+                            // = L1 error Task =
+                            // =================
+                            
+                            std::function<void(T*, T*)> exactfunc = [exact](T *x, T *u_exact){
+                                if constexpr(DiscType::nv_comp == 1){
+                                    // 1 equation case 
+                                    std::integer_sequence x_idx_seq = std::make_integer_sequence<int, ndim>();
+                                    auto helper = [exact]<int... Indices>(T *x, T *u_exact, std::integer_sequence<int, Indices...> seq){
+                                        u_exact[0] = exact(x[Indices]...);
+                                    };
+                                    helper(x, u_exact, x_idx_seq);
+                                } else {
+                                    std::integer_sequence x_idx_seq = std::make_integer_sequence<int, ndim>();
+                                    auto helper = [exact]<int... Indices>(T *x, T *u_exact, std::integer_sequence<int, Indices...> seq){
+                                        sol::table fout = exact(x[Indices]...);
+                                        for(int i = 0; i < DiscType::nv_comp; ++i)
+                                            u_exact[i] = fout[i + 1]; // lua 1-index
+                                    };
+                                    helper(x, u_exact, x_idx_seq);
+                                }
+                            };
+
+                            T error = l1_error(exactfunc, fespace, u);
+#ifdef ICEICLE_USE_MPI
+                            T error_reduce;
+                            MPI_Allreduce(&error, &error_reduce, 1, mpi_get_type<T>(), MPI_SUM, MPI_COMM_WORLD);
+
+                            int myrank;
+                            MPI_Comm_rank(MPI_COMM_WORLD, &myrank);
+                            if(myrank == 0)
+                                std::cout << "L1 error: " << std::setprecision(12) << error_reduce << std::endl;
+#else
+                            std::cout << "L1 error: " << std::setprecision(12) << error << std::endl;
+#endif
+                        } 
+
+                        if(eq_icase(task_name, "linf_error")) {
+
+                            // =========================
+                            // = L infinity error Task =
+                            // =========================
+                            std::function<void(T*, T*)> exactfunc = [exact](T *x, T *u_exact){
+                                if constexpr(DiscType::nv_comp == 1){
+                                    // 1 equation case 
+                                    std::integer_sequence x_idx_seq = std::make_integer_sequence<int, ndim>();
+                                    auto helper = [exact]<int... Indices>(T *x, T *u_exact, std::integer_sequence<int, Indices...> seq){
+                                        u_exact[0] = exact(x[Indices]...);
+                                    };
+                                    helper(x, u_exact, x_idx_seq);
+                                } else {
+                                    std::integer_sequence x_idx_seq = std::make_integer_sequence<int, ndim>();
+                                    auto helper = [exact]<int... Indices>(T *x, T *u_exact, std::integer_sequence<int, Indices...> seq){
+                                        sol::table fout = exact(x[Indices]...);
+                                        for(int i = 0; i < DiscType::nv_comp; ++i)
+                                            u_exact[i] = fout[i + 1]; // lua 1-index
+                                    };
+                                    helper(x, u_exact, x_idx_seq);
+                                }
+                            };
+
+                            std::vector<T> errors = linf_error(exactfunc, fespace, u);
+#ifdef ICEICLE_USE_MPI
+                            std::vector<T> errors_reduce(DiscType::nv_comp);
+                            MPI_Allreduce(errors.data(),
+                                    errors_reduce.data(), DiscType::nv_comp, mpi_get_type<T>(), MPI_MAX, MPI_COMM_WORLD);
+
+                            int myrank;
+                            MPI_Comm_rank(MPI_COMM_WORLD, &myrank);
+                            if(myrank == 0){
+                                std::cout << "L_infty error: " << std::setprecision(12);
+                                for(int iv = 0; iv < DiscType::nv_comp; ++iv){
+                                    std::cout << errors_reduce[iv] << " ";
+                                }
+                                std::cout << std::endl;
+                            }
+#else
+                            for(int iv = 0; iv < DiscType::nv_comp; ++iv){
+                                std::cout << errors[iv] << " ";
+                            }
+                            std::cout << std::endl;
+                            std::cout << "L_infty error: " << std::setprecision(12) << error << std::endl;
+#endif
                         }
+
+                        if(eq_icase(task_name, "ic_residual")){
+                            // ====================
+                            // = ic residual Task =
+                            // ====================
+                            
+                            T error = ic_error(fespace, u, disc);
+#ifdef ICEICLE_USE_MPI
+                            T error_reduce;
+                            MPI_Allreduce(&error, &error_reduce, 1, mpi_get_type<T>(), MPI_SUM, MPI_COMM_WORLD);
+
+                            int myrank;
+                            MPI_Comm_rank(MPI_COMM_WORLD, &myrank);
+                            if(myrank == 0)
+                                std::cout << "IC residual norm: " << std::setprecision(12) << error_reduce << std::endl;
+#else
+                            std::cout << "IC residual norm: " << std::setprecision(12) << error << std::endl;
+#endif
+                        } 
                     }
                 }
 
