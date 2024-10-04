@@ -77,7 +77,7 @@ namespace iceicle {
     >
     class ConservationLawDDG {
 
-        private:
+        public:
         PFlux phys_flux;
         CFlux conv_nflux;
         DiffusiveFlux diff_flux;
@@ -996,6 +996,29 @@ namespace iceicle {
                 // get the solution gradient and hessians
                 auto graduL = unkelL.contract_mdspan(gradBiL, graduL_data.data());
                 auto graduR = unkelR.contract_mdspan(gradBiR, graduR_data.data());
+
+                if(trace.face->bctype != BOUNDARY_CONDITIONS::INTERIOR){
+                    switch(trace.face->bctype){
+                        case BOUNDARY_CONDITIONS::DIRICHLET:
+                            {
+                                if(trace.elL.elidx != trace.elR.elidx)
+                                    std::cout << "warning: elements do not match" << std::endl;
+
+                                // calculate the physical domain position
+                                MATH::GEOMETRY::Point<T, ndim> phys_pt;
+                                trace.face->transform(quadpt.abscisse, coord, phys_pt);
+
+                                // Get the values at the boundary 
+                                dirichlet_callbacks[trace.face->bcflag](phys_pt.data(), uR.data());
+
+                            } break;
+                        default:
+                            for(int itest = 0; itest < trace.nbasis_trace(); ++itest){
+                                for(int ieq = 0; ieq < neq; ++ieq)
+                                    res[itest, ieq] = 0;
+                            } return;
+                    }
+                }
 
                 // get the physical flux on the left and right
                 Tensor<T, neq, ndim> fluxL = phys_flux(uL, graduL);

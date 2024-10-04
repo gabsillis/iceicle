@@ -70,7 +70,7 @@ return {
         type = "rk3-tvd",
         dt = fourier_nr * (2 * math.pi / nelem_arg) ^ 2,
         tfinal = tfinal,
-        ivis = 1000,
+        ivis = 100000,
     },
 
     -- output
@@ -86,6 +86,9 @@ return {
 
         tasks = {
             "l2_error",
+            "linf_error",
+            "l1_error",
+            "ic_residual",
         },
     },
 }
