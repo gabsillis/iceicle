@@ -13,6 +13,7 @@
 #include <iceicle/basis/basis.hpp>
 #include <iceicle/geometry/geo_element.hpp>
 #include <iceicle/quadrature/QuadratureRule.hpp>
+#include <iceicle/linalg/linalg_utils.hpp>
 #include <span>
 #include <vector>
 
@@ -177,9 +178,9 @@ struct FiniteElement {
    */
   auto evalGradBasis(const T *xi, T *dBidxj) const {
     basis->evalGradBasis(xi, dBidxj);
-    std::experimental::extents<int, std::dynamic_extent, ndim> extents(
+    std::extents<int, std::dynamic_extent, ndim> extents(
         nbasis());
-    std::experimental::mdspan gbasis{dBidxj, extents};
+    std::mdspan gbasis{dBidxj, extents};
     static_assert(gbasis.extent(1) == ndim);
     return gbasis;
   }
@@ -214,10 +215,9 @@ struct FiniteElement {
    * @brief evaluate the first derivatives of the basis functions
    *        with respect to physical domain coordinates
    * @param [in] xi the point in the reference domain (uses Point class)
-   * @param [in] transformation the transformation from the reference domain to
-   * the physical domain (must be compatible with the geometric element)
-   * @param [in] node_list the list of global node coordinates
    * @param [in] J the jacobian of the element transformation 
+   *               (optional: see overload)
+   * @param [in] grad_bi view over the gradients of the basis functions 
    *               (optional: see overload)
    * @param [out] dBidxj the values of the first derivatives of the basis
    * functions with respect to the reference domain at that point This is in the
@@ -232,6 +232,7 @@ struct FiniteElement {
   auto evalPhysGradBasis(
     const Point &xi,
     const JacobianType &J,
+    linalg::in_tensor auto grad_bi, 
     T *dBidxj
   ) const {
     using namespace NUMTOOL::TENSOR::FIXED_SIZE;
@@ -247,19 +248,15 @@ struct FiniteElement {
     auto detJ = determinant(J);
     detJ = (detJ == 0.0) ? 1.0 : detJ; // protect from div by zero
 
-    // Evaluate dBi in reference domain
-    std::vector<T> dBi_data(ndim * ndof, 0.0);
-    auto dBi = evalGradBasis(xi, dBi_data.data());
-
-    std::experimental::extents<int, std::dynamic_extent, ndim> extents(
+    std::extents<int, std::dynamic_extent, ndim> extents(
         ndof);
-    std::experimental::mdspan gbasis{dBidxj, extents};
+    std::mdspan gbasis{dBidxj, extents};
     // dBidxj =  Jadj_{jk} * dBidxk
     for (int i = 0; i < ndof; ++i) {
       for (int j = 0; j < ndim; ++j) {
         // gbasis[i, j] = 0.0;
         for (int k = 0; k < ndim; ++k) {
-          gbasis[i, j] += dBi[i, k] * adjJ[k][j];
+          gbasis[i, j] += grad_bi[i, k] * adjJ[k][j];
         }
       }
     }
@@ -272,13 +269,32 @@ struct FiniteElement {
     return gbasis;
   }
 
-  /** Calculates the Jacobian: \overload */
+  /** Calculates the gradient wrt reference domain: \overload */
+  auto evalPhysGradBasis(
+    const Point &xi,
+    const JacobianType& J,
+    T *dbidxj 
+  ) const {
+    // compute the basis functions in reference domain
+    std::vector<T> dBi_data(ndim * nbasis());
+    auto grad_bi = evalGradBasis(xi, dBi_data.data());
+
+    return evalPhysGradBasis(xi, J, grad_bi, dbidxj);
+  }
+
+  /** Calculates the Jacobian and gradient wrt reference domain: \overload */
   auto evalPhysGradBasis(
     const Point &xi,
     T *dbidxj 
   ) const {
+    // compute the basis functions in reference domain
+    std::vector<T> dBi_data(ndim * nbasis());
+    auto grad_bi = evalGradBasis(xi, dBi_data.data());
+
+    // compute jacobian
     JacobianType J = trans->jacobian(coord_el, xi);
-    return evalPhysGradBasis(xi, J, dbidxj);
+
+    return evalPhysGradBasis(xi, J, grad_bi, dbidxj);
   }
 
   /**
