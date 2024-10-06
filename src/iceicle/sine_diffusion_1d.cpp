@@ -2,7 +2,8 @@
 #include "iceicle/anomaly_log.hpp"
 #include "iceicle/build_config.hpp"
 #include "iceicle/dat_writer.hpp"
-#include "iceicle/disc/heat_eqn.hpp"
+#include "iceicle/disc/burgers.hpp"
+#include "iceicle/disc/conservation_law.hpp"
 #include "iceicle/element/reference_element.hpp"
 #include "iceicle/explicit_utils.hpp"
 #include "iceicle/fespace/fespace.hpp"
@@ -49,8 +50,8 @@ int main(int argc, char *argv[]){
         cli_option{"ivis", "the number of timesteps between outputs", parse_type<IDX>{}},
         cli_option{"dt", "the timestep", parse_type<T>{}}, 
         cli_option{"ddgic_mult", "multiplier for ddgic", parse_type<T>{}}, 
-        cli_option{"fo", "fourier number", parse_type<T>{}},
-        cli_flag{"interior_penalty", "enable interior penalty instead of ddg"}
+        cli_option{"fo", "fourier number", parse_type<T>{}}
+//        cli_flag{"interior_penalty", "enable interior penalty instead of ddg"}
     );
     if(cli_args["help"]){
         cli_args.print_options(std::cout);
@@ -69,11 +70,22 @@ int main(int argc, char *argv[]){
 
         FESpace<T, IDX, ndim> fespace{&mesh, FESPACE_ENUMS::LEGENDRE, FESPACE_ENUMS::GAUSS_LEGENDRE, std::integral_constant<int, order>{}};
 
-        HeatEquation<T, IDX, ndim> disc{};
-        disc.mu = (cli_args["mu"]) ? cli_args["mu"].as<T>() : 1.0;
+        BurgersCoefficients<T, ndim> burgers_coeffs{};
+        BurgersFlux physical_flux{burgers_coeffs};
+        BurgersUpwind convective_flux{burgers_coeffs};
+        BurgersDiffusionFlux diffusive_flux{burgers_coeffs};
+        T mu = (cli_args["mu"]) ? cli_args["mu"].as<T>() : 1.0;
+        burgers_coeffs.mu = mu;
+        ConservationLawDDG disc{std::move(physical_flux),
+                              std::move(convective_flux),
+                              std::move(diffusive_flux)};
+        disc.field_names = std::vector<std::string>{"u"};
         disc.sigma_ic = (cli_args["ddgic_mult"]) ? cli_args["ddgic_mult"].as<T>() : 0.0;
-        disc.dirichlet_values.push_back(0.0);
-        disc.interior_penalty = cli_args["interior_penalty"];
+        disc.dirichlet_callbacks.push_back( 
+            [](const T *x, T *out){
+                out[0] = 0.0;
+        });
+        // disc.interior_penalty = cli_args["interior_penalty"];
 
         fe_layout_right u_layout{fespace.dg_map, std::integral_constant<std::size_t, neq>{}};
         std::vector<T> u_data(u_layout.size());
@@ -144,7 +156,7 @@ int main(int argc, char *argv[]){
         solver.solve(fespace, disc, u);
 
         // compute L2 error
-        std::function<void(T*, T*)> exactfunc = [mu = disc.mu](T *x, T *out) -> void {
+        std::function<void(T*, T*)> exactfunc = [mu](T *x, T *out) -> void {
             out[0] = std::exp(-mu) * std::sin(x[0]);
         };
         T error = l2_error(exactfunc, fespace, u);
