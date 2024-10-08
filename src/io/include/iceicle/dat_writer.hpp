@@ -60,7 +60,7 @@ namespace iceicle::io {
                             out << std::format("{:{}.{}e}", physnode[0], field_width, precision);
 
                             for(IDX ifield = 0; ifield < field_names.size(); ++ifield){
-                                el.evalBasis(refnode, basis_data.data());
+                                el.eval_basis(refnode, basis_data.data());
                                 T field_value = 0;
                                 for(std::size_t idof = 0; idof < el.nbasis(); ++idof){
                                     field_value += fedata[el.elidx, idof, ifield] 
@@ -123,7 +123,7 @@ namespace iceicle::io {
                             out << std::format("{:{}.{}e}", physnode[0], field_width, precision);
 
                             for(IDX ifield = 0; ifield < field_names.size(); ++ifield){
-                                el.evalBasis(refnode, basis_data.data());
+                                el.eval_basis(refnode, basis_data.data());
                                 T field_value = 0;
                                 for(std::size_t idof = 0; idof < el.nbasis(); ++idof){
                                     field_value += fedata[el.elidx, idof, ifield] 

@@ -12,32 +12,10 @@
 
 #include <iceicle/geometry/face.hpp>
 
-#include <vector>
 #include <cassert>
 #include <mdspan/mdspan.hpp>
 
 namespace iceicle {
-
-/**
- * @brief Precomputed values of basis functions and other reference domain quantities
- */
-template<typename T, typename IDX, int ndim>
-class TraceEvaluation {
-public:
-  using FaceType = Face<T, IDX, ndim>;
-  using GeoElementType = GeometricElement<T, IDX, ndim>;
-  using FEType = FiniteElement<T, IDX, ndim>;
-
-private:
-
-  /** @brief the 1d array of data to store */
-  std::vector<T> data_;
-
-public:
-  TraceEvaluation(){}
-  TraceEvaluation(const FEType &fe_l, const FEType &fe_r) {
-  }
-};
 
 /**
  * @brief TraceSpace represents a contiguous subsection of the Trace of finite elements 
@@ -93,6 +71,9 @@ public:
   /// @brief the type of the basis functions in the trace space 
   using TraceBasis = Basis<T, ndim - 1>;
 
+  /// @brief the type of evaluations for basis functions
+  using Eval_t = BasisEvaluation<T, ndim>;
+
   // ================
   // = Data Members =
   // ================
@@ -100,7 +81,8 @@ private:
   // None
 public:
   const FaceType *face;
-  /// @brief the left finite element (WARNING: if vector of elements changes this will probably need to be updated)
+  /// @brief the left finite element 
+  /// (WARNING: if vector of elements changes this will probably need to be updated)
   const FEType &elL;
   /// @brief the right finite element
   const FEType &elR;
@@ -108,8 +90,10 @@ public:
   const TraceBasis &trace_basis; 
   /// @brief the quadrature rule for integration on the trace
   const QuadratureType &quadrule;
-  /// @brief the precomputed quantities
-  const TraceEvaluation<T, IDX, ndim> &qp_evals;
+  /// @brief the precomputed basis functions on the left
+  std::span<const Eval_t> qp_evals_l;
+  /// @brief the precomputed basis functions on the right 
+  std::span<const Eval_t> qp_evals_r;
   /// @brief the index of this face in the container used to organize faces
   const IDX facidx;
 
@@ -125,7 +109,8 @@ public:
    * @param elRptr pointer to the right FiniteElement
    * @param quadruleptr pointer to the trace quadrature rule
    * @param trace_basisptr pointer to the basis function over the trace space
-   * @param qp_evals_ptr pointer to the quadrature evaluations
+   * @param qp_evals_l the precomputed basis functions at quadrature points on the left
+   * @param qp_evals_r the precomputed basis functions at quadrature points on the right 
    * @param facidx the index of this face in the container
    */
   TraceSpace(
@@ -134,10 +119,12 @@ public:
       const FEType *elRptr,
       const TraceBasis *trace_basisptr,
       const QuadratureType *quadruleptr,
-      const TraceEvaluation<T, IDX, ndim> *qp_evals_ptr,
+      std::span<const Eval_t> qp_evals_l,
+      std::span<const Eval_t> qp_evals_r,
       IDX facidx
   ) : face(facptr), elL(*elLptr), elR(*elRptr), trace_basis(*trace_basisptr),
-      quadrule(*quadruleptr), qp_evals(*qp_evals_ptr), facidx(facidx) 
+      quadrule(*quadruleptr), qp_evals_l(qp_evals_l), qp_evals_r(qp_evals_r),
+      facidx(facidx) 
   {
     // TODO: can't do assertion because we call from make_bdy_trace_space
  //   assert((facptr->bctype == BOUNDARY_CONDITIONS::INTERIOR) 
@@ -162,12 +149,14 @@ public:
       const FEType *elLptr,
       const TraceBasis *trace_basisptr,
       const QuadratureType *quadruleptr,
-      const TraceEvaluation<T, IDX, ndim> *qp_evals_ptr,
+      std::span<const Eval_t> qp_evals_l,
+      std::span<const Eval_t> qp_evals_r,
       IDX facidx
   ) {
     assert((facptr->bctype != BOUNDARY_CONDITIONS::INTERIOR) 
         && "The given face is not a boundary face->");
-    return TraceSpace(facptr, elLptr, elLptr, trace_basisptr, quadruleptr, qp_evals_ptr, facidx);
+    return TraceSpace(facptr, elLptr, elLptr, trace_basisptr, quadruleptr,
+        qp_evals_l, qp_evals_r , facidx);
   }
 
   // =============================
@@ -195,10 +184,10 @@ public:
    * @param [out] Bi the values of the basis functions on the left 
    * (size = nbasis)
    */
-  void evalBasisL(const FacePoint &s, T *Bi) const {
+  void eval_basis_l(const FacePoint &s, T *Bi) const {
     DomainPoint xi{};
     face->transform_xiL(s, xi);
-    elL.evalBasis(xi, Bi);
+    elL.eval_basis(xi, Bi);
   }
 
   /**
@@ -211,10 +200,10 @@ public:
    * @param [out] Bi the values of the basis functions on the right 
    * (size = nbasis)
    */
-  void evalBasisR(const FacePoint &s, T *Bi) const {
+  void eval_basis_r(const FacePoint &s, T *Bi) const {
     DomainPoint xi{};
     face->transform_xiR(s, xi);
-    elR.evalBasis(xi, Bi);
+    elR.eval_basis(xi, Bi);
   }
 
   /**
@@ -232,10 +221,9 @@ public:
    * @param [out] Bi the values of the basis functions on the left 
    *              (size = nbasis)
    */
-  void evalBasisQPL(int quadrature_idx, T *Bi) const {
-    // TODO: prestore
-    return evalBasisL(quadrule[quadrature_idx].abscisse, Bi);
-  }
+  auto eval_basis_l_qp(int quadrature_idx) const noexcept
+  -> Eval_t::bi_span_t 
+  { return qp_evals_l[quadrature_idx].bi_span; }
 
   /**
    * @brief get the basis function evaluations at the given quadrature point 
@@ -243,10 +231,9 @@ public:
    * @param [out] Bi the values of the basis functions on the right
    *              (size = nbasis)
    */
-  void evalBasisQPR(int quadrature_idx, T *Bi) const {
-    // TODO: prestore
-    return evalBasisR(quadrule[quadrature_idx].abscisse, Bi);
-  }
+  auto eval_basis_r_qp(int quadrature_idx) const noexcept
+  -> Eval_t::bi_span_t 
+  { return qp_evals_r[quadrature_idx].bi_span; }
 
   /**
    * @brief get the basis function evaluations at the given quadrature point 
@@ -276,10 +263,10 @@ public:
    *         takes a pointer to the first element of this data structure
    *         [size = [nbasis : i][ndim : j]]
    */
-  auto evalGradBasisL(const FacePoint &s, T *grad_data) const {
+  auto eval_grad_basis_l(const FacePoint &s, T *grad_data) const {
     DomainPoint xi{};
     face->transform_xiL(s, xi);
-    return elL.evalGradBasis(xi, grad_data);
+    return elL.eval_grad_basis(xi, grad_data);
   }
 
   /**
@@ -298,16 +285,17 @@ public:
    *         takes a pointer to the first element of this data structure
    *         [size = [nbasis : i][ndim : j]]
    */
-  auto evalGradBasisR(const FacePoint &s, T *grad_data) const {
+  auto eval_grad_basis_r(const FacePoint &s, T *grad_data) const {
     DomainPoint xi{};
     face->transform_xiR(s, xi);
-    return elR.evalGradBasis(xi, grad_data);
+    return elR.eval_grad_basis(xi, grad_data);
   }
 
   /**
    * @brief evaluate the first derivaives of the basis functions
    *        with respect to physical domain coordinates 
    *        on the left element 
+   *  NOTE: this does not reuse transformation jacobian
    *
    * @param [in] s the point in the reference trace space 
    * @param [out] dBidxj the values of the first derivatives of the basis
@@ -320,19 +308,20 @@ public:
    *         takes a pointer to the first element of this data structure
    *         [size = [nbasis : i][ndim : j]]
    */
-  auto evalPhysGradBasisL(
+  auto eval_phys_grad_basis_l(
       const FacePoint &s,
       T *grad_data
   ) const {
     DomainPoint xi{};
     face->transform_xiL(s, xi);
-    return elL.evalPhysGradBasis(xi, grad_data);
+    return elL.eval_phys_grad_basis(xi, grad_data);
   }
 
   /**
    * @brief evaluate the first derivaives of the basis functions
    *        with respect to physical domain coordinates 
    *        on the right element 
+   *  NOTE: this does not reuse transformation jacobian
    *
    * @param [in] s the point in the reference trace space 
    * @param [out] dBidxj the values of the first derivatives of the basis
@@ -345,13 +334,13 @@ public:
    *         takes a pointer to the first element of this data structure
    *         [size = [nbasis : i][ndim : j]]
    */
-  auto evalPhysGradBasisR(
+  auto eval_phys_grad_basis_r(
       const FacePoint &s,
       T *grad_data
   ) const {
     DomainPoint xi{};
     face->transform_xiR(s, xi);
-    return elR.evalPhysGradBasis(xi, grad_data);
+    return elR.eval_phys_grad_basis(xi, grad_data);
   }
 
 
@@ -361,21 +350,15 @@ public:
    *        on the left element
    *
    * @param [in] qidx the quadrature point index
-   * @param [out] dBidxj the values of the first derivatives of the basis
-   * functions with respect to the reference domain at that point This is in the
-   * form of a 1d pointer array that must be preallocated size must be nbasis *
-   * ndim or larger
    *
    * @return an mdspan view of dBidxj for an easy interface
    *         \frac{dB_i}{d\xi_j} where i is ibasis
    *         takes a pointer to the first element of this data structure
    *         [size = [nbasis : i][ndim : j]]
    */
-  auto evalGradBasisQPL(int qidx, T *grad_data) const {
-    DomainPoint xi{};
-    face->transform_xiL(quadrule[qidx].abscisse, xi);
-    return elL.evalGradBasis(xi, grad_data);
-  }
+  auto eval_grad_basis_l_qp(int qidx) const noexcept
+  -> Eval_t::grad_span_t 
+  { return qp_evals_l[qidx].grad_bi_span; }
 
   /**
    * @brief evaluate the first derivatives of the basis functions
@@ -383,21 +366,15 @@ public:
    *        on the right element
    *
    * @param [in] qidx the quadrature point index
-   * @param [out] dBidxj the values of the first derivatives of the basis
-   * functions with respect to the reference domain at that point This is in the
-   * form of a 1d pointer array that must be preallocated size must be nbasis *
-   * ndim or larger
    *
    * @return an mdspan view of dBidxj for an easy interface
    *         \frac{dB_i}{d\xi_j} where i is ibasis
    *         takes a pointer to the first element of this data structure
    *         [size = [nbasis : i][ndim : j]]
    */
-  auto evalGradBasisQPR(int qidx, T *grad_data) const {
-    DomainPoint xi{};
-    face->transform_xiR(quadrule[qidx].abscisse, xi);
-    return elR.evalGradBasis(xi, grad_data);
-  }
+  auto eval_grad_basis_r_qp(int qidx, T *grad_data) const noexcept 
+  -> Eval_t::grad_span_t
+  { return qp_evals_r[qidx].grad_bi_span; }
 
   /**
    * @brief evaluate the first derivaives of the basis functions
@@ -415,13 +392,14 @@ public:
    *         takes a pointer to the first element of this data structure
    *         [size = [nbasis : i][ndim : j]]
    */
-  auto evalPhysGradBasisQPL(
+  auto eval_phys_grad_basis_l_qp(
       int qidx,
       T *grad_data
   ) const {
     DomainPoint xi{};
     face->transform_xiL(quadrule[qidx].abscisse, xi);
-    return elL.evalPhysGradBasis(xi, grad_data);
+    auto el_jac = elL.jacobian(xi);
+    return elL.eval_phys_grad_basis(xi, el_jac, qp_evals_l[qidx].grad_bi_span, grad_data);
   }
 
   /**
@@ -440,13 +418,14 @@ public:
    *         takes a pointer to the first element of this data structure
    *         [size = [nbasis : i][ndim : j]]
    */
-  auto evalPhysGradBasisQPR(
+  auto eval_phys_grad_basis_r_qp(
       int qidx,
       T *grad_data
   ) const {
     DomainPoint xi{};
     face->transform_xiR(quadrule[qidx].abscisse, xi);
-    return elR.evalPhysGradBasis(xi, grad_data);
+    auto el_jac = elR.jacobian(xi);
+    return elR.eval_phys_grad_basis(xi, el_jac, qp_evals_r[qidx].grad_bi_span, grad_data);
   }
 
   // === Second Derivatives ===
@@ -462,10 +441,10 @@ public:
    * B_i}{\partial \xi_j \partial \xi_k}
    * @return a multidimensional array view of the basis_hessian_data
    */
-  auto evalHessBasisL(const FacePoint &s, T *hess_data) const {
+  auto eval_hess_basis_l(const FacePoint &s, T *hess_data) const {
     DomainPoint xi{};
     face->transform_xiL(s, xi);
-    return elL.evalHessBasis(xi, hess_data);
+    return elL.eval_hess_basis(xi, hess_data);
   }
 
   /**
@@ -479,10 +458,10 @@ public:
    * B_i}{\partial \xi_j \partial \xi_k}
    * @return a multidimensional array view of the basis_hessian_data
    */
-  auto evalHessBasisR(const FacePoint &s, T *hess_data) const {
+  auto eval_hess_basis_r(const FacePoint &s, T *hess_data) const {
     DomainPoint xi{};
     face->transform_xiR(s, xi);
-    return elR.evalHessBasis(xi, hess_data);
+    return elR.eval_hess_basis(xi, hess_data);
   }
 
   /**
@@ -496,13 +475,13 @@ public:
    * B_i}{\partial x_j \partial x_k}
    * @return a multidimensional array view of the basis_hessian_data
    */
-  auto evalPhysHessBasisL(
+  auto eval_phys_hess_basis_l(
       const FacePoint &s,
       T *hess_data
   ) const {
     DomainPoint xi{};
     face->transform_xiL(s, xi);
-    return elL.evalPhysHessBasis(xi, hess_data);
+    return elL.eval_phys_hess_basis(xi, hess_data);
   }
 
   /**
@@ -516,13 +495,13 @@ public:
    * B_i}{\partial x_j \partial x_k}
    * @return a multidimensional array view of the basis_hessian_data
    */
-  auto evalPhysHessBasisR(
+  auto eval_phys_hess_basis_r(
       const FacePoint &s,
       T *hess_data
   ) const {
     DomainPoint xi{};
     face->transform_xiR(s, xi);
-    return elR.evalPhysHessBasis(xi, hess_data);
+    return elR.eval_phys_hess_basis(xi, hess_data);
   }
 
   /**
@@ -531,16 +510,11 @@ public:
    *        for the left element
    *
    * @param [in] qidx the quadrature point index
-   * @param [out] basis_hessian_data pointer to the 1d array to store the
-   * hessian data in ordered i, j, k in C style array for \frac{\partial^2
-   * B_i}{\partial \xi_j \partial \xi_k}
    * @return a multidimensional array view of the basis_hessian_data
    */
-  auto evalHessBasisQPL(int qidx, T *hess_data) const {
-    DomainPoint xi{};
-    face->transform_xiL(quadrule[qidx].abscisse, xi);
-    return elL.evalHessBasis(xi, hess_data);
-  }
+  auto eval_hess_basis_l_qp(int qidx) const noexcept 
+  -> Eval_t::hess_span_t
+  { return qp_evals_l[qidx].hess_bi; }
 
   /**
    * @brief evaluate the second derivatives of the basis functions
@@ -548,57 +522,11 @@ public:
    *        for the right element
    *
    * @param [in] qidx the quadrature point index
-   * @param [out] basis_hessian_data pointer to the 1d array to store the
-   * hessian data in ordered i, j, k in C style array for \frac{\partial^2
-   * B_i}{\partial \xi_j \partial \xi_k}
    * @return a multidimensional array view of the basis_hessian_data
    */
-  auto evalHessBasisQPR(int qidx, T *hess_data) const {
-    DomainPoint xi{};
-    face->transform_xiR(quadrule[qidx].abscisse, xi);
-    return elR.evalHessBasis(xi, hess_data);
-  }
-
-  /**
-   * @brief evaluate the second derivatives of the basis functions
-   *        wrt physical domain coordinates 
-   *        for the left element
-   *
-   * @param [in] qidx the quadrature point index
-   * @param [out] basis_hessian_data pointer to the 1d array to store the
-   * hessian data in ordered i, j, k in C style array for \frac{\partial^2
-   * B_i}{\partial x_j \partial x_k}
-   * @return a multidimensional array view of the basis_hessian_data
-   */
-  auto evalPhysHessBasisQPL(
-      int qidx,
-      T *hess_data
-  ) const {
-    DomainPoint xi{};
-    face->transform_xiL(quadrule[qidx].abscisse, xi);
-    return elL.evalPhysHessBasis(xi, hess_data);
-  }
-
-  /**
-   * @brief evaluate the second derivatives of the basis functions
-   *        wrt physical domain coordinates 
-   *        for the right element
-   *
-   * @param [in] qidx the quadrature point index
-   * @param [out] basis_hessian_data pointer to the 1d array to store the
-   * hessian data in ordered i, j, k in C style array for \frac{\partial^2
-   * B_i}{\partial x_j \partial x_k}
-   * @return a multidimensional array view of the basis_hessian_data
-   */
-  auto evalPhysHessBasisQPR(
-      int qidx,
-      T *hess_data
-  ) const {
-    DomainPoint xi{};
-    face->transform_xiR(quadrule[qidx].abscisse, xi);
-    return elR.evalPhysHessBasis(xi, hess_data);
-  }
-
+  auto eval_hess_basis_r_qp(int qidx, T *hess_data) const noexcept 
+  -> Eval_t::hess_span_t
+  { return qp_evals_r[qidx].hess_bi; }
 
   // =========================
   // = Quadrature Operations =
@@ -617,7 +545,43 @@ public:
     return quadrule[qp_idx];
   }
 
-};
+  // ========================
+  // = Geometric Operations =
+  // ========================
 
+  /// @brief transform froom the face reference domain to the physical domain 
+  /// @param s the face reference domain point 
+  /// @param coord the node coordinates
+  /// @return the physical domain coordinates
+  inline constexpr
+  DomainPoint transform( const FacePoint& s, NodeArray<T, ndim>& coord ) const
+  {
+    DomainPoint x{};
+    face->transform(s, coord, x);
+    return x;
+  }
+
+  /// @brief transform froom the face reference domain to the reference domain of the left element
+  /// @param s the face reference domain point 
+  /// @return the coordinates in the reference domain of the left element
+  inline constexpr
+  DomainPoint transform_xiL( const FacePoint& s) const
+  {
+    DomainPoint xiL{};
+    face->transform_xiL(s, xiL);
+    return xiL;
+  }
+
+  /// @brief transform froom the face reference domain to the reference domain of the right element
+  /// @param s the face reference domain point 
+  /// @return the coordinates in the reference domain of the right element
+  inline constexpr
+  DomainPoint transform_xiR( const FacePoint& s) const
+  {
+    DomainPoint xiR{};
+    face->transform_xiR(s, xiR);
+    return xiR;
+  }
+};
 
 }

@@ -37,7 +37,6 @@ namespace iceicle {
 
     template<typename T, typename IDX, int ndim>
     class ReferenceElement {
-        using FEEvalType = FEEvaluation<T, IDX, ndim>;
         using BasisType = Basis<T, ndim>;
         using QuadratureType = QuadratureRule<T, IDX, ndim>;
         using GeoElementType = GeometricElement<T, IDX, ndim>;
@@ -45,7 +44,7 @@ namespace iceicle {
         public:
         std::unique_ptr<BasisType> basis;
         std::unique_ptr<QuadratureType> quadrule;
-        FEEvalType eval;
+        std::vector<BasisEvaluation<T, ndim>> evals;
 
         ReferenceElement() = default;
 
@@ -94,8 +93,10 @@ namespace iceicle {
                     );
 
                     // construct the evaluation
-                    eval = FEEvalType(basis.get(), quadrule.get());
-
+                    for(int iqp = 0; iqp < quadrule->npoints(); ++iqp){
+                        evals.push_back(BasisEvaluation{
+                                *basis, quadrule->getPoint(iqp).abscisse});
+                    }
                     break;
                 }
                 case DOMAIN_TYPE::SIMPLEX: {
@@ -133,7 +134,10 @@ namespace iceicle {
                     );
 
                     // construct the evaluation
-                    eval = FEEvalType(basis.get(), quadrule.get());
+                    for(int iqp = 0; iqp < quadrule->npoints(); ++iqp){
+                        evals.push_back(BasisEvaluation{
+                                *basis, quadrule->getPoint(iqp).abscisse});
+                    }
 
                     break;
                 }
@@ -184,13 +188,20 @@ namespace iceicle {
             }
 
             // construct the evaluation
-            eval = FEEvalType(basis.get(), quadrule.get());
+            for(int iqp = 0; iqp < quadrule->npoints(); ++iqp){
+                evals.push_back(BasisEvaluation{
+                        *basis, quadrule->getPoint(iqp).abscisse});
+            }
         }
     };
 
     template<typename T, typename IDX, int ndim>
     class ReferenceTraceSpace {
-        using Evals = TraceEvaluation<T, IDX, ndim>;
+        /// @brief a point with domain dimensionality
+        using DomainPoint = MATH::GEOMETRY::Point<T, ndim>;
+
+        /// @brief a point with face dimensionality
+        using FacePoint = MATH::GEOMETRY::Point<T, ndim - 1>;
         using TraceBasisType = Basis<T, ndim-1>;
         using Quadrature = QuadratureRule<T, IDX, ndim - 1>;
         using FaceType = Face<T, IDX, ndim>;
@@ -198,7 +209,8 @@ namespace iceicle {
         public:
         std::unique_ptr<Quadrature> quadrule;
         std::unique_ptr<TraceBasisType> trace_basis;
-        Evals eval;
+        std::vector<BasisEvaluation<T, ndim>> evals_l;
+        std::vector<BasisEvaluation<T, ndim>> evals_r;
 
         ReferenceTraceSpace() = default;
 
@@ -207,9 +219,11 @@ namespace iceicle {
             const FaceType *fac,
             FESPACE_ENUMS::FESPACE_BASIS_TYPE btype,
             FESPACE_ENUMS::FESPACE_QUADRATURE quadrature_type,
+            const Basis<T, ndim>& basisL,
+            const Basis<T, ndim>& basisR,
             std::integral_constant<int, basis_order> b_order,
             std::integral_constant<int, geo_order> g_order
-        ) : eval{} {
+        ) {
             using namespace FESPACE_ENUMS;
 
             switch(fac->domain_type()){
@@ -257,6 +271,17 @@ namespace iceicle {
                     break;
                 default:
                     break;
+            }
+
+            // precompute the basis evaluations
+            for(int iqp = 0; iqp < quadrule->npoints(); ++iqp){
+                const QuadraturePoint<T, ndim - 1> &quadpt = quadrule->getPoint(iqp);
+                DomainPoint xiL, xiR;
+                fac->transform_xiL(quadpt.abscisse, xiL);
+                fac->transform_xiR(quadpt.abscisse, xiR);
+                
+                evals_l.emplace_back(basisL, xiL);
+                evals_r.emplace_back(basisR, xiR);
             }
 
         }

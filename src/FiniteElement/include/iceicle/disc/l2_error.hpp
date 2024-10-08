@@ -53,7 +53,6 @@ namespace iceicle {
         // reserve data
         std::vector<T> feval(fedata.nv());
         std::vector<T> u(fedata.nv());
-        std::vector<T> bi_data(fespace.dg_map.max_el_size_reqirement(1));
 
         // loop over quadrature points
         for(const Element &el : fespace.elements) {
@@ -70,13 +69,13 @@ namespace iceicle {
                 exact_sol(phys_pt.data(), feval.data());
 
                 // evaluate the basis functions
-                el.evalBasisQP(iqp, bi_data.data());
+                auto bi = el.eval_basis_qp(iqp);
 
                 // construct the solution
                 std::fill(u.begin(), u.end(), 0.0);
                 for(IDX ibasis = 0; ibasis < el.nbasis(); ++ibasis){
                     for(IDX iv = 0; iv < fedata.nv(); ++iv){
-                        u[iv] += bi_data[ibasis] * fedata[el.elidx, ibasis, iv];
+                        u[iv] += bi[ibasis] * fedata[el.elidx, ibasis, iv];
                     }
                 }
 
@@ -129,7 +128,6 @@ namespace iceicle {
         // reserve data
         std::vector<T> feval(fedata.nv());
         std::vector<T> u(fedata.nv());
-        std::vector<T> bi_data(fespace.dg_map.max_el_size_reqirement(1));
 
         // loop over quadrature points
         for(const Element &el : fespace.elements) {
@@ -146,13 +144,13 @@ namespace iceicle {
                 exact_sol(phys_pt.data(), feval.data());
 
                 // evaluate the basis functions
-                el.evalBasisQP(iqp, bi_data.data());
+                auto bi = el.eval_basis_qp(iqp);
 
                 // construct the solution
                 std::fill(u.begin(), u.end(), 0.0);
                 for(IDX ibasis = 0; ibasis < el.nbasis(); ++ibasis){
                     for(IDX iv = 0; iv < fedata.nv(); ++iv){
-                        u[iv] += bi_data[ibasis] * fedata[el.elidx, ibasis, iv];
+                        u[iv] += bi[ibasis] * fedata[el.elidx, ibasis, iv];
                     }
                 }
 
@@ -228,7 +226,7 @@ namespace iceicle {
                     exact_sol(phys_pt.data(), feval.data());
 
                     // evaluate the basis functions
-                    el.evalBasis(pt, bi_data.data());
+                    el.eval_basis(pt, bi_data.data());
 
                     // construct the solution
                     std::fill(u.begin(), u.end(), 0.0);
@@ -317,8 +315,6 @@ namespace iceicle {
             const FiniteElement &elR = trace.elR;
 
             // Basis function scratch space 
-            std::vector<T> biL(elL.nbasis());
-            std::vector<T> biR(elR.nbasis());
             std::vector<T> bitrace(trace.nbasis_trace());
             std::vector<T> gradbL_data(elL.nbasis() * ndim);
             std::vector<T> gradbR_data(elR.nbasis() * ndim);
@@ -343,11 +339,11 @@ namespace iceicle {
 
                 // get the basis functions, derivatives, and hessians
                 // (derivatives are wrt the physical domain)
-                trace.evalBasisQPL(iqp, biL.data());
-                trace.evalBasisQPR(iqp, biR.data());
+                auto biL = trace.eval_basis_l_qp(iqp);
+                auto biR = trace.eval_basis_r_qp(iqp);
                 trace.eval_trace_basis_qp(iqp, bitrace.data());
-                auto gradBiL = trace.evalPhysGradBasisQPL(iqp, gradbL_data.data());
-                auto gradBiR = trace.evalPhysGradBasisQPR(iqp, gradbR_data.data());
+                auto gradBiL = trace.eval_phys_grad_basis_l_qp(iqp, gradbL_data.data());
+                auto gradBiR = trace.eval_phys_grad_basis_r_qp(iqp, gradbR_data.data());
 
                 // construct the solution on the left and right
                 std::ranges::fill(uL, 0.0);

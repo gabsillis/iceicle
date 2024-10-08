@@ -297,7 +297,7 @@ namespace iceicle::io {
 
                         // get the solution for each point in the vtk element
                         for(const MATH::GEOMETRY::Point<T, ndim> &refnode : vtk_el.nodes){
-                            el.evalBasis(refnode, basis_data.data());
+                            el.eval_basis(refnode, basis_data.data());
                             T field_value = 0;
                             for(std::size_t idof = 0; idof < el.nbasis(); ++idof){
                                 field_value += fedata[el.elidx, idof, ifield] 

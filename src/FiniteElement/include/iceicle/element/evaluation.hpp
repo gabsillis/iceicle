@@ -1,23 +1,21 @@
 /// @brief utility for storing the evauation of basis functions
 /// and solutions
 /// @author Gianni Absillis (gabsill@ncsu.edu)
-
+#pragma once
+#include "iceicle/quadrature/QuadratureRule.hpp"
 #include "mdspan/mdspan.hpp"
-#include <iceicle/element/finite_element.hpp>
+#include <iceicle/basis/basis.hpp>
 
 namespace iceicle {
 
     /// @brief an evaluation of basis functions and optionally the derivatives
-    ///        Takes care of data storage concerns
+    ///         Derivatives are wrt the reference domain coordinates
+    ///         Takes care of data storage concerns
     ///
     /// @tparam real the real number type
     /// @tparam IDX the index type
     /// @tparam ndim the number of dimensions
-    /// @tparam use_gradient set to true to enable computationn and storage of gradients
-    /// gradients of basis functions are computed wrt reference domain coordinates
-    /// @tparam use_hessian set to true to enable computation and storage of hessians
-    /// hessians of the basis functions are computed wrt reference domain coordinates
-    template<class real, class IDX, int ndim, bool use_gradient = true, bool use_hessian = true>
+    template<class real, int ndim>
     class BasisEvaluation {
         private:
 
@@ -39,7 +37,7 @@ namespace iceicle {
         /// === view type definitions ===
 
         /// view over the basis functions type
-        using bi_span_t = std::mdspan<real, std::extents<int, std::dynamic_extent>>;
+        using bi_span_t = std::span<real, std::dynamic_extent>;
 
         /// view of the gradient type
         using grad_span_t = std::mdspan<real, std::extents<int, std::dynamic_extent, ndim>>;
@@ -76,24 +74,45 @@ namespace iceicle {
         // @param el the finite element to evaluate basis functions on 
         // @param reference_domain_pt the point in the reference domain to evaluate at
         BasisEvaluation(
-            const FiniteElement<real, IDX, ndim>& el,
+            const Basis<real, ndim>& basis,
             const Point& reference_domain_pt
-        ) : bi(el.nbasis()), 
-            grad_bi( (use_gradient) ? el.nbasis() * ndim : 0 ), 
-            hess_bi( (use_hessian) ? el.nbasis() * ndim * ndim : 0 ),
-            bi_span{bi.data(), el.nbasis()},
-            grad_bi_span{grad_bi.data(), el.nbasis()},
-            hess_bi_span{hess_bi.data(), el.nbasis()}
+        ) : bi(basis.nbasis()), 
+            grad_bi( basis.nbasis() * ndim ), 
+            hess_bi( basis.nbasis() * ndim * ndim ),
+            bi_span{bi.data(), (std::size_t) basis.nbasis()},
+            grad_bi_span{grad_bi.data(), basis.nbasis()},
+            hess_bi_span{hess_bi.data(), basis.nbasis()}
         {
             // perform the evaluations
-            el.evalBasis(reference_domain_pt, bi.data());
-            if constexpr (use_gradient) {
-                el.evalGradBasis(reference_domain_pt, grad_bi.data());
-            }
-
-            if constexpr (use_hessian) {
-                el.evalHessBasis(reference_domain_pt, hess_bi.data());
-            }
+            basis.evalBasis(reference_domain_pt, bi.data());
+            basis.evalGradBasis(reference_domain_pt, grad_bi.data());
+            basis.evalHessBasis(reference_domain_pt, hess_bi.data());
         }
     };
+
+    template<class T, int ndim>
+    BasisEvaluation(
+        const Basis<T, ndim>&,
+        const MATH::GEOMETRY::Point<T, ndim>&
+    )-> BasisEvaluation<T, ndim>;
+
+    /// @brief evaluate basis functions and derivatives at all the quadrature points
+    /// in a given quadrature rule 
+    /// @param basis the basis functions 
+    /// @param quadrule the quadrature rule 
+    /// @return a vector of evauations for each quadrature point
+    template<class T, class IDX, int ndim>
+    inline constexpr
+    auto quadrature_point_evaluations(
+        const Basis<T, ndim>& basis,
+        const QuadratureRule<T, IDX, ndim>& quadrule
+    ) -> std::vector<BasisEvaluation<T, ndim>>
+    {
+        std::vector<BasisEvaluation<T, ndim>> evals{}; 
+        evals.reserve(quadrule.npoints());
+        for(int iqp = 0; iqp < quadrule.npoints(); ++iqp){
+            evals.emplace_back(basis, quadrule.getPoint(iqp).abscisse);
+        }
+        return evals;
+    }
 }

@@ -215,7 +215,6 @@ namespace iceicle {
             using namespace NUMTOOL::TENSOR::FIXED_SIZE;
 
             // basis function scratch space
-            std::vector<T> bi(el.nbasis());
             std::vector<T> dbdx_data(el.nbasis() * ndim);
 
             // solution scratch space
@@ -231,8 +230,9 @@ namespace iceicle {
                 T detJ = NUMTOOL::TENSOR::FIXED_SIZE::determinant(J);
 
                 // get the basis functions and gradients in the physical domain
-                el.evalBasisQP(iqp, bi.data());
-                auto gradxBi = el.evalPhysGradBasisQP(iqp, J, dbdx_data.data());
+                auto bi = el.eval_basis_qp(iqp);
+                auto gradxBi = el.eval_phys_grad_basis(quadpt.abscisse, J,
+                        el.eval_grad_basis_qp(iqp), dbdx_data.data());
 
                 // construct the solution U at the quadrature point 
                 std::ranges::fill(u, 0.0);
@@ -258,7 +258,6 @@ namespace iceicle {
                 }
             }
         }
-
 
         template<class IDX, class ULayoutPolicy, class UAccessorPolicy, class ResLayoutPolicy>
         void trace_integral(
@@ -288,12 +287,8 @@ namespace iceicle {
             auto centroidR = elR.centroid();
 
             // Basis function scratch space 
-            std::vector<T> biL(elL.nbasis());
-            std::vector<T> biR(elR.nbasis());
-            std::vector<T> gradbL_data(elL.nbasis() * ndim);
-            std::vector<T> gradbR_data(elR.nbasis() * ndim);
-            std::vector<T> hessbL_data(elL.nbasis() * ndim * ndim);
-            std::vector<T> hessbR_data(elR.nbasis() * ndim * ndim);
+            PhysDomainEvalStorage storageL{elL};
+            PhysDomainEvalStorage storageR{elR};
 
             // solution scratch space 
             std::array<T, neq> uL;
@@ -319,12 +314,12 @@ namespace iceicle {
 
                 // get the basis functions, derivatives, and hessians
                 // (derivatives are wrt the physical domain)
-                trace.evalBasisQPL(iqp, biL.data());
-                trace.evalBasisQPR(iqp, biR.data());
-                auto gradBiL = trace.evalPhysGradBasisQPL(iqp, gradbL_data.data());
-                auto gradBiR = trace.evalPhysGradBasisQPR(iqp, gradbR_data.data());
-                auto hessBiL = trace.evalPhysHessBasisQPL(iqp, hessbL_data.data());
-                auto hessBiR = trace.evalPhysHessBasisQPR(iqp, hessbR_data.data());
+                auto biL = trace.qp_evals_l[iqp].bi_span;
+                auto biR = trace.qp_evals_r[iqp].bi_span;
+                auto xiL = trace.transform_xiL(quadpt.abscisse);
+                auto xiR = trace.transform_xiR(quadpt.abscisse);
+                PhysDomainEval evalL{storageL, elL, xiL, trace.qp_evals_l[iqp]};
+                PhysDomainEval evalR{storageR, elR, xiR, trace.qp_evals_r[iqp]};
 
                 // construct the solution on the left and right
                 std::ranges::fill(uL, 0.0);
@@ -337,10 +332,10 @@ namespace iceicle {
                 }
 
                 // get the solution gradient and hessians
-                auto graduL = unkelL.contract_mdspan(gradBiL, graduL_data.data());
-                auto graduR = unkelR.contract_mdspan(gradBiR, graduR_data.data());
-                auto hessuL = unkelL.contract_mdspan(hessBiL, hessuL_data.data());
-                auto hessuR = unkelR.contract_mdspan(hessBiR, hessuR_data.data());
+                auto graduL = unkelL.contract_mdspan(evalL.phys_grad_basis, graduL_data.data());
+                auto graduR = unkelR.contract_mdspan(evalR.phys_grad_basis, graduR_data.data());
+                auto hessuL = unkelL.contract_mdspan(evalL.phys_hess_basis, hessuL_data.data());
+                auto hessuR = unkelR.contract_mdspan(evalR.phys_hess_basis, hessuR_data.data());
 
                 // compute convective fluxes
                 std::array<T, neq> fadvn = conv_nflux(uL, uR, unit_normal);
@@ -413,46 +408,9 @@ namespace iceicle {
 
                 // if applicable: apply the interface correction 
                 if constexpr (computes_homogeneity_tensor<DiffusiveFlux>) {
+                    auto gradBiL = trace.qp_evals_l[iqp].grad_bi_span;
+                    auto gradBiR = trace.qp_evals_r[iqp].grad_bi_span;
                     if(sigma_ic != 0.0){
-
-//                        std::array<T, neq> interface_correction;
-//                        auto Gtensor = diff_flux.homogeneity_tensor(uavg);
-//
-//                        for(int itest = 0; itest < elL.nbasis(); ++itest){
-//                            std::ranges::fill(interface_correction, 0);
-//                            for(int ieq = 0; ieq < neq; ++ieq){
-//                                for(int kdim = 0; kdim < ndim; ++kdim){
-//                                    for(int req = 0; req < neq; ++req){
-//                                        T jumpu_r = uR[req] - uL[req];
-//                                        for(int sdim = 0; sdim < ndim; ++sdim){
-//                                            resL[itest, ieq] -= 
-//                                                Gtensor[ieq][kdim][req][sdim] * unit_normal[kdim] 
-//                                                * gradBiL[itest, sdim] * jumpu_r
-//                                                * quadpt.weight * sqrtg;
-//                                        }
-//                                    }
-//                                }
-//                            }
-//
-//                        }
-//                        for(int itest = 0; itest < elR.nbasis(); ++itest){
-//                            std::ranges::fill(interface_correction, 0);
-//                            for(int ieq = 0; ieq < neq; ++ieq){
-//                                for(int kdim = 0; kdim < ndim; ++kdim){
-//                                    for(int req = 0; req < neq; ++req){
-//                                        T jumpu_r = uR[req] - uL[req];
-//                                        for(int sdim = 0; sdim < ndim; ++sdim){
-//                                            resR[itest, ieq] -= 
-//                                                Gtensor[ieq][kdim][req][sdim] * unit_normal[kdim] 
-//                                                * gradBiR[itest, sdim] * jumpu_r
-//                                                * quadpt.weight * sqrtg;
-//                                        }
-//                                    }
-//                                }
-//                            }
-//
-//                        }
-//
                         std::array<T, neq> interface_correction;
                         auto Gtensor = diff_flux.homogeneity_tensor(uavg);
 
@@ -460,7 +418,8 @@ namespace iceicle {
                         for(int itest = 0; itest < elL.nbasis(); ++itest){
                             // get the average test function gradient
                             for(int idim = 0; idim < ndim; ++idim){
-                                average_gradv[idim] = 0.5 * ( gradBiL[itest, idim] + gradBiR[itest, idim] );
+                                average_gradv[idim] = 0.5 * (
+                                        gradBiL[itest, idim] + gradBiR[itest, idim] );
                             }
 
                             std::ranges::fill(interface_correction, 0);
@@ -526,9 +485,7 @@ namespace iceicle {
             static constexpr int neq = nv_comp;
 
             // Basis function scratch space 
-            std::vector<T> biL(elL.nbasis());
             std::vector<T> gradbL_data(elL.nbasis() * ndim);
-            std::vector<T> hessbL_data(elL.nbasis() * ndim * ndim);
 
             // solution scratch space 
             std::array<T, neq> uL;
@@ -561,11 +518,10 @@ namespace iceicle {
                         trace.face->transform(quadpt.abscisse, coord, phys_pt);
 
                         // get the function values
-                        trace.evalBasisQPL(iqp, biL.data());
+                        auto biL = trace.qp_evals_l[iqp].bi_span;
 
                         // get the gradients the physical domain
-                        auto gradBiL = trace.evalPhysGradBasisQPL(iqp, gradbL_data.data());
-
+                        auto gradBiL = trace.eval_phys_grad_basis_l_qp(iqp, gradbL_data.data());
                         auto graduL = unkelL.contract_mdspan(gradBiL, graduL_data.data());
 
                         // construct the solution on the left and right
@@ -687,8 +643,7 @@ namespace iceicle {
                         trace.face->transform(quadpt.abscisse, coord, phys_pt);
 
                         // get the basis function values
-                        std::vector<T> bi_dataL(elL.nbasis());
-                        trace.evalBasisQPL(iqp, bi_dataL.data());
+                        auto biL = trace.qp_evals_l[iqp].bi_span;
 
                         // Get the values at the boundary 
                         std::array<T, nv_comp> neumann_vals{};
@@ -735,12 +690,8 @@ namespace iceicle {
                     auto centroidL = elL.geo_el->centroid(coord);
 
                     // Basis function scratch space 
-                    std::vector<T> biL(elL.nbasis());
-                    std::vector<T> biR(elR.nbasis());
-                    std::vector<T> gradbL_data(elL.nbasis() * ndim);
-                    std::vector<T> gradbR_data(elR.nbasis() * ndim);
-                    std::vector<T> hessbL_data(elL.nbasis() * ndim * ndim);
-                    std::vector<T> hessbR_data(elR.nbasis() * ndim * ndim);
+                    PhysDomainEvalStorage storageL{elL};
+                    PhysDomainEvalStorage storageR{elR};
 
                     // solution scratch space 
                     std::array<T, neq> uL;
@@ -766,12 +717,12 @@ namespace iceicle {
 
                         // get the basis functions, derivatives, and hessians
                         // (derivatives are wrt the physical domain)
-                        trace.evalBasisQPL(iqp, biL.data());
-                        trace_past.evalBasisQPR(iqp, biR.data());
-                        auto gradBiL = trace.evalPhysGradBasisQPL(iqp, coord, gradbL_data.data());
-                        auto gradBiR = trace_past.evalPhysGradBasisQPR(iqp, mesh_past->nodes , gradbR_data.data());
-                        auto hessBiL = trace.evalPhysHessBasisQPL(iqp, coord, hessbL_data.data());
-                        auto hessBiR = trace_past.evalPhysHessBasisQPR(iqp, mesh_past->nodes, hessbR_data.data());
+                        auto biL = trace.qp_evals_l[iqp].bi_span;
+                        auto biR = trace.qp_evals_r[iqp].bi_span;
+                        auto xiL = trace.transform_xiL(quadpt.abscisse);
+                        auto xiR = trace.transform_xiR(quadpt.abscisse);
+                        PhysDomainEval evalL{storageL, elL, xiL, trace.qp_evals_l[iqp]};
+                        PhysDomainEval evalR{storageR, elR, xiR, trace.qp_evals_r[iqp]};
 
                         // construct the solution on the left and right
                         std::ranges::fill(uL, 0.0);
@@ -784,10 +735,10 @@ namespace iceicle {
                         }
 
                         // get the solution gradient and hessians
-                        auto graduL = unkelL.contract_mdspan(gradBiL, graduL_data.data());
-                        auto graduR = unkel_past.contract_mdspan(gradBiR, graduR_data.data());
-                        auto hessuL = unkelL.contract_mdspan(hessBiL, hessuL_data.data());
-                        auto hessuR = unkel_past.contract_mdspan(hessBiR, hessuR_data.data());
+                        auto graduL = unkelL.contract_mdspan(evalL.phys_grad_basis, graduL_data.data());
+                        auto graduR = unkelR.contract_mdspan(evalR.phys_grad_basis, graduR_data.data());
+                        auto hessuL = unkelL.contract_mdspan(evalL.phys_hess_basis, hessuL_data.data());
+                        auto hessuR = unkelR.contract_mdspan(evalR.phys_hess_basis, hessuR_data.data());
 
                         // compute convective fluxes
                         std::array<T, neq> fadvn = conv_nflux(uL, uR, unit_normal);
@@ -879,10 +830,10 @@ namespace iceicle {
                         trace.face->transform(quadpt.abscisse, coord, phys_pt);
 
                         // get the function values
-                        trace.evalBasisQPL(iqp, biL.data());
+                        auto biL = trace.qp_evals_l[iqp].bi_span;
 
                         // get the gradients the physical domain
-                        auto gradBiL = trace.evalPhysGradBasisQPL(iqp, gradbL_data.data());
+                        auto gradBiL = trace.eval_phys_grad_basis_l_qp(iqp, gradbL_data.data());
 
                         auto graduL = unkelL.contract_mdspan(gradBiL, graduL_data.data());
 
@@ -951,8 +902,6 @@ namespace iceicle {
             const FiniteElement &elR = trace.elR;
 
             // Basis function scratch space 
-            std::vector<T> biL(elL.nbasis());
-            std::vector<T> biR(elR.nbasis());
             std::vector<T> bitrace(trace.nbasis_trace());
             std::vector<T> gradbL_data(elL.nbasis() * ndim);
             std::vector<T> gradbR_data(elR.nbasis() * ndim);
@@ -977,11 +926,11 @@ namespace iceicle {
 
                 // get the basis functions, derivatives, and hessians
                 // (derivatives are wrt the physical domain)
-                trace.evalBasisQPL(iqp, biL.data());
-                trace.evalBasisQPR(iqp, biR.data());
+                auto biL = trace.eval_basis_l_qp(iqp);
+                auto biR = trace.eval_basis_r_qp(iqp);
                 trace.eval_trace_basis_qp(iqp, bitrace.data());
-                auto gradBiL = trace.evalPhysGradBasisQPL(iqp, gradbL_data.data());
-                auto gradBiR = trace.evalPhysGradBasisQPR(iqp, gradbR_data.data());
+                auto gradBiL = trace.eval_phys_grad_basis_l_qp(iqp, gradbL_data.data());
+                auto gradBiR = trace.eval_phys_grad_basis_r_qp(iqp, gradbR_data.data());
 
                 // construct the solution on the left and right
                 std::ranges::fill(uL, 0.0);

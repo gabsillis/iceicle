@@ -25,14 +25,13 @@ TEST(test_fespan, test_dglayout){
     using BasisType = HypercubeLagrangeBasis<T, IDX, ndim, Pn>;
     using QuadratureType = HypercubeGaussLegendre<T, IDX, ndim, Pn>;
     using FiniteElement = FiniteElement<T, IDX, ndim>;
-    using EvaluationType = FEEvaluation<T, IDX, ndim>;
 
     std::vector<FiniteElement> elements;
 
     // create necesarry items to make finite elements 
     BasisType basis{};
     QuadratureType quadrule{};
-    EvaluationType evals(basis, quadrule);
+    auto evals = quadrature_point_evaluations(basis, quadrule);
 
     // create geometric elements 
     ElementTransformation<T, IDX, ndim> *trans = transformation_table<T, IDX, ndim>.get_transform(DOMAIN_TYPE::HYPERCUBE, Pn);

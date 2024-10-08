@@ -127,7 +127,7 @@ TEST(test_mesh, test_mixed_uniform_faces){
 
             double projected_val = 0;
             std::vector<double> b_i(el.nbasis());
-            el.evalBasis(ref_pt, b_i.data());
+            el.eval_basis(ref_pt, b_i.data());
             u.contract_dofs(b_i.data(), &projected_val);
 
             ASSERT_NEAR(projected_val, act_val, 1e-8);
@@ -135,7 +135,7 @@ TEST(test_mesh, test_mixed_uniform_faces){
 
             // test the derivatives
             std::vector<double> grad_basis_data(el.nbasis() * ndim);
-            auto grad_basis = el.evalPhysGradBasis(ref_pt, grad_basis_data.data());
+            auto grad_basis = el.eval_phys_grad_basis(ref_pt, grad_basis_data.data());
             static_assert(grad_basis.rank() == 2);
             static_assert(grad_basis.extent(1) == ndim);
 
@@ -149,7 +149,7 @@ TEST(test_mesh, test_mixed_uniform_faces){
 
             // test hessian
             std::vector<double> hess_basis_data(el.nbasis() * ndim * ndim);
-            auto hess_basis = el.evalPhysHessBasis(ref_pt, hess_basis_data.data());
+            auto hess_basis = el.eval_phys_hess_basis(ref_pt, hess_basis_data.data());
 
             // get the hessian for each equation by contraction 
             std::vector<double> hess_eq_data(ndim * ndim, 0);

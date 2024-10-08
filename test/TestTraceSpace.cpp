@@ -44,12 +44,15 @@ TEST(test_trace_space, test_basis_eval){
     // create the left element 
     BasisTypeL basisL{};
     QuadTypeL quadratureL{};
-    FEEvaluation<T, IDX, ndim> evalsL{&basisL, &quadratureL};
+    std::vector<BasisEvaluation<T, ndim>> evalsL;
+    for(int iqp = 0; iqp < quadratureL.npoints(); ++iqp){
+        evalsL.push_back(BasisEvaluation{basisL, quadratureL.getPoint(iqp).abscisse});
+    }
     FiniteElement elL {
         mesh.el_transformations[0],
         &basisL,
         &quadratureL,
-        evalsL,
+        std::span<const BasisEvaluation<T, ndim>>{evalsL},
         mesh.conn_el.rowspan(0),
         mesh.coord_els.rowspan(0),
         0
@@ -58,12 +61,15 @@ TEST(test_trace_space, test_basis_eval){
     // create the right element 
     BasisTypeR basisR{};
     QuadTypeR quadratureR{};
-    FEEvaluation<T, IDX, ndim> evalsR{&basisR, &quadratureR};
+    std::vector<BasisEvaluation<T, ndim>> evalsR;
+    for(int iqp = 0; iqp < quadratureR.npoints(); ++iqp){
+        evalsR.push_back(BasisEvaluation{basisR, quadratureR.getPoint(iqp).abscisse});
+    }
     FiniteElement elR {
         mesh.el_transformations[1],
         &basisR,
         &quadratureR,
-        evalsR,
+        std::span<const BasisEvaluation<T, ndim>>{evalsR},
         mesh.conn_el.rowspan(1),
         mesh.coord_els.rowspan(1),
         1
@@ -72,14 +78,23 @@ TEST(test_trace_space, test_basis_eval){
     // create the Trace Space 
     TraceBasisType trace_basis{};
     TraceQuadrature trace_quadrule{};
-    TraceEvaluation<T, IDX, ndim> trace_eval{};
+    std::vector<BasisEvaluation<T, ndim>> evals_traceL;
+    std::vector<BasisEvaluation<T, ndim>> evals_traceR;
+    for(int iqp = 0; iqp < trace_quadrule.npoints(); ++iqp){
+        MATH::GEOMETRY::Point<T, ndim> xiL, xiR;
+        mesh.faces[mesh.interiorFaceStart]->transform_xiL(trace_quadrule.getPoint(iqp).abscisse, xiL);
+        mesh.faces[mesh.interiorFaceStart]->transform_xiR(trace_quadrule.getPoint(iqp).abscisse, xiR);
+        evals_traceL.push_back(BasisEvaluation{basisL, xiL});
+        evals_traceR.push_back(BasisEvaluation{basisR, xiR});
+    }
     TraceSpace trace {
         mesh.faces[mesh.interiorFaceStart].get(),
         &elL,
         &elR,
         &trace_basis,
         &trace_quadrule,
-        &trace_eval,
+        std::span<const BasisEvaluation<T, ndim>>{evals_traceL},
+        std::span<const BasisEvaluation<T, ndim>>{evals_traceR},
         mesh.interiorFaceStart
     };
 
@@ -92,8 +107,8 @@ TEST(test_trace_space, test_basis_eval){
     std::vector<double> BiL(trace.nbasisL());
     std::vector<double> BiR(trace.nbasisR());
 
-    trace.evalBasisL(s, BiL.data());
-    trace.evalBasisR(s, BiR.data());
+    trace.eval_basis_l(s, BiL.data());
+    trace.eval_basis_r(s, BiR.data());
 
     ASSERT_DOUBLE_EQ(BiL[0], 0.0);
     ASSERT_DOUBLE_EQ(BiL[1], 0.0);

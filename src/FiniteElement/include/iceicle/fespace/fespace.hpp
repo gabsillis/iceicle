@@ -70,7 +70,15 @@ namespace iceicle {
      */
     struct TraceTypeKey {
 
-        int basis_order;
+        FESPACE_ENUMS::FESPACE_BASIS_TYPE btype_l;
+
+        FESPACE_ENUMS::FESPACE_BASIS_TYPE btype_r;
+
+        int basis_order_l;
+
+        int basis_order_r;
+
+        int basis_order_trace;
 
         int geometry_order;
 
@@ -78,22 +86,11 @@ namespace iceicle {
 
         FESPACE_ENUMS::FESPACE_QUADRATURE qtype;
 
-        friend bool operator<(const TraceTypeKey &l, const TraceTypeKey &r){
-            using namespace FESPACE_ENUMS;
-           
-            if(l.qtype != r.qtype){
-                return (int) l.qtype < (int) r.qtype;
-            } else if(l.domain_type != r.domain_type) {
-                return (int) l.domain_type < (int) r.domain_type;
-            } else if (l.geometry_order != r.geometry_order){
-                return l.geometry_order < r.geometry_order;
-            } else if( l.basis_order != r.basis_order) {
-                return l.basis_order < r.basis_order;
-            } else {
-                // they are equal so less than is false for both cases
-                return false;
-            }
-        }
+        unsigned int face_info_l;
+
+        unsigned int face_info_r;
+
+        auto operator <=>(const TraceTypeKey&) const = default;
     };
 
     /**
@@ -222,7 +219,7 @@ namespace iceicle {
                     .trans = geo_trans, 
                     .basis = ref_el.basis.get(),
                     .quadrule = ref_el.quadrule.get(),
-                    .qp_evals = ref_el.eval,
+                    .qp_evals = std::span<const BasisEvaluation<T, ndim>>{ref_el.evals},
                     .inodes = meshptr->conn_el.rowspan(ielem), // NOTE: meshptr cannot invalidate anymore
                     .coord_el = meshptr->coord_els.rowspan(ielem),
                     .elidx = ielem
@@ -270,7 +267,7 @@ namespace iceicle {
                         geo_el_info.trans,
                         ref_el.basis.get(),
                         ref_el.quadrule.get(),
-                        ref_el.eval,
+                        std::span<const BasisEvaluation<T, ndim>>{ref_el.evals},
                         geo_el_info.conn_el,
                         geo_el_info.coord_el,
                         elements.size() // this will be the index of the new element
@@ -314,16 +311,21 @@ namespace iceicle {
                 int geo_order = std::max(elL.trans->order, elR.trans->order);
 
                 auto geo_order_dispatch = [&]<int geo_order>() -> int{
-                    TraceTypeKey trace_key = {
-                        .basis_order = std::max(elL.basis->getPolynomialOrder(), elR.basis->getPolynomialOrder()), 
+                    TraceTypeKey trace_key = { 
+                        .basis_order_l = elL.basis->getPolynomialOrder(),
+                        .basis_order_r = elR.basis->getPolynomialOrder(),
+                        .basis_order_trace = std::max(elL.basis->getPolynomialOrder(), elR.basis->getPolynomialOrder()), 
                         .geometry_order = geo_order,
                         .domain_type = fac->domain_type(),
-                        .qtype = quadrature_type
+                        .qtype = quadrature_type,
+                        .face_info_l = fac->face_infoL,
+                        .face_info_r = fac->face_infoR
                     };
 
                     if(ref_trace_map.find(trace_key) == ref_trace_map.end()){
                         ref_trace_map[trace_key] = ReferenceTraceType(fac.get(),
                             basis_type, quadrature_type, 
+                            *(elL.basis), *(elR.basis),
                             std::integral_constant<int, basis_order>{},
                             std::integral_constant<int, geo_order>{});
                     }
@@ -333,11 +335,18 @@ namespace iceicle {
                         // parallel bdy faces are essentially also interior faces 
                         // aside from being a bit *special* :3
                         TraceType trace{ fac.get(), &elL, &elR, ref_trace.trace_basis.get(),
-                            ref_trace.quadrule.get(), &(ref_trace.eval), (IDX) traces.size() };
+                            ref_trace.quadrule.get(),
+                            std::span<const BasisEvaluation<T, ndim>>{ref_trace.evals_l},
+                            std::span<const BasisEvaluation<T, ndim>>{ref_trace.evals_r},
+                            (IDX) traces.size() };
                         traces.push_back(trace);
                     } else {
-                        TraceType trace = TraceType::make_bdy_trace_space(fac.get(), &elL, ref_trace.trace_basis.get(), 
-                            ref_trace.quadrule.get(), &(ref_trace.eval), (IDX) traces.size());
+                        TraceType trace = TraceType::make_bdy_trace_space(
+                            fac.get(), &elL, ref_trace.trace_basis.get(), 
+                            ref_trace.quadrule.get(), 
+                            std::span<const BasisEvaluation<T, ndim>>{ref_trace.evals_l},
+                            std::span<const BasisEvaluation<T, ndim>>{ref_trace.evals_r},
+                            (IDX) traces.size());
                         traces.push_back(trace);
                     }
 
@@ -425,7 +434,7 @@ namespace iceicle {
                     .trans = geo_trans, 
                     .basis = ref_el.basis.get(),
                     .quadrule = ref_el.quadrule.get(),
-                    .qp_evals = ref_el.eval,
+                    .qp_evals = std::span<const BasisEvaluation<T, ndim>>{ref_el.evals},
                     .inodes = meshptr->conn_el.rowspan(ielem), // NOTE: meshptr cannot invalidate anymore
                     .coord_el = meshptr->coord_els.rowspan(ielem),
                     .elidx = ielem
@@ -473,7 +482,7 @@ namespace iceicle {
                         .trans = comm_el.trans, 
                         .basis = ref_el.basis.get(),
                         .quadrule = ref_el.quadrule.get(),
-                        .qp_evals = ref_el.eval,
+                        .qp_evals = std::span<const BasisEvaluation<T, ndim>>{ref_el.evals},
                         .inodes = comm_el.conn_el, // NOTE: meshptr cannot invalidate anymore
                         .coord_el = comm_el.coord_el,
                         .elidx = ielem
@@ -516,16 +525,24 @@ namespace iceicle {
                 int geo_order = std::max(elL.trans->order, elR.trans->order);
 
                 auto geo_order_dispatch = [&]<int geo_order>() -> int{
-                    TraceTypeKey trace_key = {
-                        .basis_order = std::max(elL.basis->getPolynomialOrder(), elR.basis->getPolynomialOrder()), 
+                    TraceTypeKey trace_key = { 
+                        .basis_order_l = elL.basis->getPolynomialOrder(),
+                        .basis_order_r = elR.basis->getPolynomialOrder(),
+                        .basis_order_trace = std::max(elL.basis->getPolynomialOrder(), elR.basis->getPolynomialOrder()), 
                         .geometry_order = geo_order,
                         .domain_type = fac->domain_type(),
-                        .qtype = FESPACE_ENUMS::FESPACE_QUADRATURE::GAUSS_LEGENDRE
+                        .qtype = FESPACE_ENUMS::FESPACE_QUADRATURE::GAUSS_LEGENDRE,
+                        .face_info_l = fac->face_infoL,
+                        .face_info_r = fac->face_infoR
                     };
 
                     if(ref_trace_map.find(trace_key) == ref_trace_map.end()){
-                        ref_trace_map[trace_key] = ReferenceTraceType(fac.get(),
-                            FESPACE_ENUMS::FESPACE_BASIS_TYPE::LAGRANGE, FESPACE_ENUMS::FESPACE_QUADRATURE::GAUSS_LEGENDRE, 
+                        ref_trace_map[trace_key] = ReferenceTraceType(
+                            fac.get(),
+                            FESPACE_ENUMS::FESPACE_BASIS_TYPE::LAGRANGE,
+                            FESPACE_ENUMS::FESPACE_QUADRATURE::GAUSS_LEGENDRE,
+                            *(elL.basis),
+                            *(elR.basis),
                             std::integral_constant<int, geo_order>{},
                             std::integral_constant<int, geo_order>{});
                     }
@@ -535,11 +552,18 @@ namespace iceicle {
                         // parallel bdy faces are essentially also interior faces 
                         // aside from being a bit *special* :3
                         TraceType trace{ fac.get(), &elL, &elR, ref_trace.trace_basis.get(),
-                            ref_trace.quadrule.get(), &(ref_trace.eval), (IDX) traces.size() };
+                            ref_trace.quadrule.get(), 
+                            std::span<const BasisEvaluation<T, ndim>>{ref_trace.evals_l},
+                            std::span<const BasisEvaluation<T, ndim>>{ref_trace.evals_r},
+                            (IDX) traces.size() };
                         traces.push_back(trace);
                     } else {
-                        TraceType trace = TraceType::make_bdy_trace_space(fac.get(), &elL, ref_trace.trace_basis.get(), 
-                            ref_trace.quadrule.get(), &(ref_trace.eval), (IDX) traces.size());
+                        TraceType trace = TraceType::make_bdy_trace_space(
+                            fac.get(), &elL, ref_trace.trace_basis.get(), 
+                            ref_trace.quadrule.get(),
+                            std::span<const BasisEvaluation<T, ndim>>{ref_trace.evals_l},
+                            std::span<const BasisEvaluation<T, ndim>>{ref_trace.evals_r},
+                            (IDX) traces.size());
                         traces.push_back(trace);
                     }
 

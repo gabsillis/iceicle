@@ -4,7 +4,7 @@
 #include "iceicle/quadrature/HypercubeGaussLegendre.hpp"
 #include "iceicle/element/finite_element.hpp"
 #include <gtest/gtest.h>
-#include <iceicle/disc/evaluation.hpp>
+#include <iceicle/element/evaluation.hpp>
 #include <iceicle/disc/projection.hpp>
 
 using namespace iceicle;
@@ -37,7 +37,7 @@ TEST(test_evaluation, test_2d_quad) {
     HypercubeGaussLegendre<double, int, ndim, order + 1> quadrule{};
 
     // evaluation 
-    FEEvaluation<double, int, ndim> evals{&basis, &quadrule};
+    auto evals = quadrature_point_evaluations(basis, quadrule);
 
     int elidx = 0;
 
@@ -45,7 +45,7 @@ TEST(test_evaluation, test_2d_quad) {
 
     // make the basis evaluation at a random point
     auto domain_pt = random_domain_point(trans_ptr);
-    BasisEvaluation eval{el, domain_pt};
+    BasisEvaluation eval{basis, domain_pt};
 
     {
         double xi = domain_pt[0];

@@ -67,7 +67,7 @@ namespace iceicle {
                 // loop over the equations and test functions and construct the residual
                 for(int eq = 0; eq < neq; eq++){
                     for(int b = 0; b < el.nbasis(); b++){
-                        res.getValue(eq, b) += feval[eq] * quadpt.weight * el.basisQP(ig, b) * detJ;
+                        res.getValue(eq, b) += feval[eq] * quadpt.weight * el.basis_qp(ig, b) * detJ;
                     }          
                 }
             }
@@ -102,7 +102,7 @@ namespace iceicle {
                 // loop over the equations and test functions and construct the residual
                 for(std::size_t b = 0; b < el.nbasis(); b++){
                     for(std::size_t eq = 0; eq < neq; eq++){
-                        res[b, eq] += feval[eq] * quadpt.weight * el.basisQP(ig, b) * detJ;
+                        res[b, eq] += feval[eq] * quadpt.weight * el.basis_qp(ig, b) * detJ;
                     }          
                 }
             }
