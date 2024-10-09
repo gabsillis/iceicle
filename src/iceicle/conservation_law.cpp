@@ -89,7 +89,7 @@ void initialize_and_solve(
   if constexpr (ndim == 2 || ndim == 3) {
     io::PVDWriter<T, IDX, ndim> pvd_writer{};
     pvd_writer.register_fespace(fespace);
-    pvd_writer.register_fields(u, "u");
+    pvd_writer.register_fields(u, conservation_law.field_names);
     pvd_writer.collection_name = "initial_condition";
     pvd_writer.write_vtu(0, 0.0);
   }
@@ -263,9 +263,9 @@ void setup(sol::table script_config, cli_parser cli_args) {
                               std::move(convective_flux),
                               std::move(diffusive_flux)};
       disc.field_names = std::vector<std::string>{"rho", "rhou"};
-      if (ndim >= 2)
+      if constexpr (ndim >= 2)
         disc.field_names.push_back("rhov");
-      if (ndim >= 3)
+      if constexpr (ndim >= 3)
         disc.field_names.push_back("rhow");
       disc.field_names.push_back("rhoe");
       initialize_and_solve(script_config, fespace, disc);

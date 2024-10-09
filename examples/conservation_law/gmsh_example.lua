@@ -1,4 +1,16 @@
 local gamma = 1.4
+local rho = 1.0
+local pressure = 1
+-- local mach = 0.38
+local mach = 0.7
+local aoa = .01;
+
+local csound = math.sqrt(gamma * pressure / rho)
+local umag = csound * mach
+local uadv = umag * math.cos(aoa)
+local vadv = umag * math.sin(aoa)
+local rhoe = pressure / (gamma - 1) - 0.5 * rho * umag * umag
+
 -- return the configuration table
 return {
 
@@ -8,19 +20,24 @@ return {
     -- read in a mesh from gmsh
     gmsh = {
         file = "../gmsh_meshes/naca.msh",
+
+        -- WARNING: right now this is in order of definition of 2D entities (curves/lines)
+        -- TODO: look into actually matching up physical tags
         bc_definitions = {
             -- 1: airfoil boundary
-            { "slip wall",     0 },
+            { "slip wall", 0 },
 
-            -- 2: top and bottom walls
-            { "slip wall",     0 },
+            -- 2: bottom wall
+            { "dirichlet", 0 },
 
-            -- 3: inlet
-            { "dirichlet",     0 },
+            -- 3: outlet
+            { "dirichlet", 0 },
 
-            -- 4: outlet
-            { "extrapolation", 0 },
+            -- 4: top wall
+            { "dirichlet", 0 },
 
+            -- 5: inlet
+            { "dirichlet", 0 },
         },
     },
 
@@ -33,7 +50,7 @@ return {
         quadrature = "gauss",
 
         -- the basis function order
-        order = 1,
+        order = 0,
     },
 
     -- describe the conservation law
@@ -44,21 +61,42 @@ return {
 
     -- initial condition
     initial_condition = function(x, t)
-        return { 1.0, 0.0, 0.0, 1.0 / gamma - 1 }
+        return { rho, rho * uadv, rho * vadv, rhoe }
     end,
 
     -- boundary conditions
     boundary_conditions = {
         dirichlet = {
-            { 1.0, 0.0, 0.0, 1.0 / gamma - 1 }
+            { rho,     rho * uadv, rho * vadv, rhoe },
+            { 2 * rho, rho * uadv, rho * vadv, rhoe },
+            { 3 * rho, rho * uadv, rho * vadv, rhoe },
+            { 4 * rho, rho * uadv, rho * vadv, rhoe },
+            { 5 * rho, rho * uadv, rho * vadv, rhoe },
         },
     },
 
     -- solver
+    --    solver = {
+    --        type = "rk3-tvd",
+    --        cfl = 0.5,
+    --        ntime = 50000,
+    --        ivis = 100
+    --    },
+
+    -- solver
     solver = {
-        type = "rk3-tvd",
-        cfl = 0.1,
-        ntime = 40
+        type = "gauss-newton",
+        form_subproblem_mat = true,
+        linesearch = {
+            type = "cubic",
+            alpha_initial = 1.0,
+            max_it = 10,
+        },
+        lambda_u = 1e-8,
+        ivis = 1,
+        tau_abs = 1e-10,
+        tau_rel = 0,
+        kmax = 1000,
     },
 
     -- output

@@ -909,7 +909,7 @@ namespace iceicle {
                 // assume essential
                 if constexpr (implements_bcs<PFlux>){
                     // loop over quadrature points 
-                    for(int iqp = 0; iqp < trace.nQp(); ++iqp){
+                    for(int iqp = 0; iqp < trace.nQP(); ++iqp){
                         const QuadraturePoint<T, ndim - 1> &quadpt = trace.getQP(iqp);
 
                         // calculate the jacobian and riemannian metric root det
@@ -980,7 +980,6 @@ namespace iceicle {
                         // construct the viscous fluxes 
                         std::array<T, neq> uavg;
                         for(int ieq = 0; ieq < neq; ++ieq) uavg[ieq] = 0.5 * (uL[ieq] + uR[ieq]);
-
                         std::array<T, neq> fviscn = diff_flux(uavg, grad_ddg, unit_normal);
 
                         // scale by weight and face metric tensor

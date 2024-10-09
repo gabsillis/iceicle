@@ -651,7 +651,7 @@ namespace iceicle::solvers {
                     } else {
                         // reset coordinates
                         update_mesh(coord, *(fespace.meshptr));
-                        lambda_u *= 1.01;
+                        lambda_u *= 1.5;
                         lambda_b *= 1.5;
                         k--; // redo this iteration
                     }

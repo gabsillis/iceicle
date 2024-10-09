@@ -71,7 +71,7 @@ namespace iceicle::linalg {
     /// @brief get a view over a fixed-size-tensor as an mdspan 
     template<class T, std::size_t... sizes>
     [[nodiscard]] constexpr inline
-    auto as_mdspan(NUMTOOL::TENSOR::FIXED_SIZE::Tensor<T, sizes...> t)
+    auto as_mdspan(NUMTOOL::TENSOR::FIXED_SIZE::Tensor<T, sizes...>& t)
     -> std::mdspan<T, std::extents<std::size_t, sizes...>>
     { return std::mdspan<T, std::extents<std::size_t, sizes...>>{t.ptr()}; }
 

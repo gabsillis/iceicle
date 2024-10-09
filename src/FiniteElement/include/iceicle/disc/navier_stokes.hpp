@@ -211,13 +211,17 @@ namespace iceicle {
 
             inline constexpr 
             auto apply_bc(
-                std::array<T, ndim> uL,
+                std::array<T, neq> uL,
                 linalg::in_tensor auto graduL,
                 Vector unit_normal,
                 BOUNDARY_CONDITIONS bctype,
                 int bcflag
-            ) {
+            ) const noexcept {
                 using namespace NUMTOOL::TENSOR::FIXED_SIZE;
+
+                // outputs
+                std::array<T, neq> uR{};
+                Tensor<T, neq, ndim> graduR{};
 
                 switch(bctype) {
                     case BOUNDARY_CONDITIONS::SLIP_WALL: 
@@ -225,29 +229,28 @@ namespace iceicle {
                         FlowState<T, ndim> stateL = physics.calc_flow_state(uL);
 
                         // density and energy are the same
-                        std::array<T, ndim> uR;
                         uR[0] = uL[0];
                         uR[1 + ndim] = uL[1 + ndim];
 
                         // flip velocity over the normal
-                        T Vn = dot(stateL.velocity, unit_normal);
-                        T VR = stateL.velocity;
-                        axpy(-2 * Vn, unit_normal, VR);
+                        T mom_n = dot(stateL.momentum, unit_normal);
+                        Vector mom_R = stateL.momentum;
+                        axpy(-2 * mom_n, unit_normal, mom_R);
 
                         for(int idim = 0; idim < ndim; ++idim){
-                            uR[1 + idim] = VR * stateL.density;
+                            uR[1 + idim] = mom_R[idim];
                         }
 
                         // exterior state gradients equal interor state gradients 
-                        Tensor<T, neq, ndim> graduR{};
                         linalg::copy(graduL, linalg::as_mdspan(graduR));
 
-                        return std::pair{uR, graduR};
-                    }
+                    } break;
                     default:
                     util::AnomalyLog::log_anomaly(util::Anomaly{"Unsupported BC",
                             util::general_anomaly_tag{}});
                 }
+
+                return std::pair{uR, graduR};
             }
 
             inline constexpr 
