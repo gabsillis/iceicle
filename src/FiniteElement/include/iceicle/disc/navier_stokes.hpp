@@ -1,3 +1,5 @@
+#include "iceicle/anomaly_log.hpp"
+#include "iceicle/geometry/face.hpp"
 #include <Numtool/fixed_size_tensor.hpp>
 #include <iceicle/linalg/linalg_utils.hpp>
 
@@ -205,6 +207,47 @@ namespace iceicle {
                     flux[1 + ndim][jdim] = state.velocity[jdim] * (state.rhoe + state.pressure);
                 }
                 return flux;
+            }
+
+            inline constexpr 
+            auto apply_bc(
+                std::array<T, ndim> uL,
+                linalg::in_tensor auto graduL,
+                Vector unit_normal,
+                BOUNDARY_CONDITIONS bctype,
+                int bcflag
+            ) {
+                using namespace NUMTOOL::TENSOR::FIXED_SIZE;
+
+                switch(bctype) {
+                    case BOUNDARY_CONDITIONS::SLIP_WALL: 
+                    {
+                        FlowState<T, ndim> stateL = physics.calc_flow_state(uL);
+
+                        // density and energy are the same
+                        std::array<T, ndim> uR;
+                        uR[0] = uL[0];
+                        uR[1 + ndim] = uL[1 + ndim];
+
+                        // flip velocity over the normal
+                        T Vn = dot(stateL.velocity, unit_normal);
+                        T VR = stateL.velocity;
+                        axpy(-2 * Vn, unit_normal, VR);
+
+                        for(int idim = 0; idim < ndim; ++idim){
+                            uR[1 + idim] = VR * stateL.density;
+                        }
+
+                        // exterior state gradients equal interor state gradients 
+                        Tensor<T, neq, ndim> graduR{};
+                        linalg::copy(graduL, linalg::as_mdspan(graduR));
+
+                        return std::pair{uR, graduR};
+                    }
+                    default:
+                    util::AnomalyLog::log_anomaly(util::Anomaly{"Unsupported BC",
+                            util::general_anomaly_tag{}});
+                }
             }
 
             inline constexpr 

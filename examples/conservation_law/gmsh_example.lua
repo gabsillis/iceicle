@@ -1,3 +1,4 @@
+local gamma = 1.4
 -- return the configuration table
 return {
 
@@ -8,17 +9,17 @@ return {
     gmsh = {
         file = "../gmsh_meshes/naca.msh",
         bc_definitions = {
-            -- 1: airfoil boundary (dirichlet, flag 0)
-            { "neumann", 0 },
+            -- 1: airfoil boundary
+            { "slip wall",     0 },
 
-            -- 2: top and bottom walls (dirichlet, flag 1)
-            { "neumann", 0 },
+            -- 2: top and bottom walls
+            { "slip wall",     0 },
 
-            -- 3: inlet (neumann, flag 0)
-            { "neumann", 1 },
+            -- 3: inlet
+            { "dirichlet",     0 },
 
-            -- 4: outlet (extrapolation (flag omitted defaults to 0))
-            { "neumann", 0 },
+            -- 4: outlet
+            { "extrapolation", 0 },
 
         },
     },
@@ -38,36 +39,26 @@ return {
     -- describe the conservation law
     conservation_law = {
         -- the name of the conservation law being solved
-        name = "burgers",
-        mu = 1.0,
-        a_adv = { 0.0, 0.0 },
-        b_adv = { 0.0, 0.0 },
+        name = "euler",
     },
 
     -- initial condition
     initial_condition = function(x, t)
-        return 0
+        return { 1.0, 0.0, 0.0, 1.0 / gamma - 1 }
     end,
 
     -- boundary conditions
     boundary_conditions = {
         dirichlet = {
-            0.0,
-            1.0,
-        },
-        neumann = {
-            0.0,
-            1.0
+            { 1.0, 0.0, 0.0, 1.0 / gamma - 1 }
         },
     },
 
     -- solver
     solver = {
-        type = "newton",
-        ivis = 1,
-        tau_abs = 1e-8,
-        tau_rel = 0,
-        kmax = 5,
+        type = "rk3-tvd",
+        cfl = 0.1,
+        ntime = 40
     },
 
     -- output

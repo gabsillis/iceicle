@@ -389,6 +389,7 @@ struct FiniteElement {
       }
     }
 
+    // divide through the 1D array of hess_phys by jacobian determinant squared
     for (int i = 0; i < ndim * ndim * ndof; ++i) {
       basis_hessian_data[i] /= detJ2;
     }

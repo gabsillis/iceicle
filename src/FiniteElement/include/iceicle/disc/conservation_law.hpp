@@ -56,6 +56,26 @@ namespace iceicle {
         { flux(u, gradu, unit_normal) } -> std::same_as<std::array<typename FluxT::value_type, FluxT::nv_comp>>;
     };
 
+    /// @brief additional boundary conditions that are implemented at the PDE level
+    /// This includes things like characteristic and wall boundary conditions 
+    template<class FluxT>
+    concept implements_bcs =
+    requires(
+        FluxT flux,
+        std::array<typename FluxT::value_type, FluxT::nv_comp> uL,
+        std::mdspan<typename FluxT::value_type, std::extents<std::size_t, std::dynamic_extent, std::dynamic_extent>> graduL,
+        NUMTOOL::TENSOR::FIXED_SIZE::Tensor< typename FluxT::value_type, FluxT::ndim > unit_normal,
+        BOUNDARY_CONDITIONS bctype,
+        int bcflag
+    ) {
+        { flux.apply_bc(uL, graduL, unit_normal, bctype, bcflag)} -> std::same_as<std::pair< 
+                std::array<typename FluxT::value_type, FluxT::nv_comp>, 
+                NUMTOOL::TENSOR::FIXED_SIZE::Tensor< typename FluxT::value_type, 
+                    FluxT::neq, FluxT::ndim>
+            >>;
+                
+    };
+
     /// @brief Diffusion fluxes can explicitly define the homogeineity tensor given a state u 
     /// This can be used for interface correction
     template< class FluxT>
@@ -466,7 +486,6 @@ namespace iceicle {
          * @param [out] resL the residual for the interior element 
          */
         template<class IDX, class ULayoutPolicy, class UAccessorPolicy, class ResLayoutPolicy>
-        [[gnu::noinline]]
         void boundaryIntegral(
             const TraceSpace<T, IDX, ndim> &trace,
             NodeArray<T, ndim> &coord,
@@ -496,6 +515,8 @@ namespace iceicle {
             std::array<T, neq * ndim * ndim> hessuR_data;
             auto centroidL = elL.centroid();
 
+            // switch over special cases of boundary condition implementations 
+            // that can have increased efficiency when coded separately
             switch(trace.face->bctype){
                 case BOUNDARY_CONDITIONS::DIRICHLET: 
                 {
@@ -879,9 +900,137 @@ namespace iceicle {
                 break;
 
                 default:
-                    // assume essential
-                    std::cerr << "Warning: assuming essential BC." << std::endl;
-                    break;
+                // === General BC Case ===
+                // We construct the interior state uL 
+                // and the gradients of the interior state graduL 
+                // and pass this to the PDE implementation to give 
+                // uR and graduR
+                // otherwise
+                // assume essential
+                if constexpr (implements_bcs<PFlux>){
+                    // loop over quadrature points 
+                    for(int iqp = 0; iqp < trace.nQp(); ++iqp){
+                        const QuadraturePoint<T, ndim - 1> &quadpt = trace.getQP(iqp);
+
+                        // calculate the jacobian and riemannian metric root det
+                        auto Jfac = trace.face->Jacobian(coord, quadpt.abscisse);
+                        T sqrtg = trace.face->rootRiemannMetric(Jfac, quadpt.abscisse);
+
+                        // calculate the normal vector 
+                        auto normal = calc_ortho(Jfac);
+                        auto unit_normal = normalize(normal);
+
+                        // calculate the physical domain position
+                        MATH::GEOMETRY::Point<T, ndim> phys_pt;
+                        trace.face->transform(quadpt.abscisse, coord, phys_pt);
+
+                        // get the function values
+                        auto biL = trace.qp_evals_l[iqp].bi_span;
+
+                        // construct the solution on the left
+                        std::ranges::fill(uL, 0.0);
+                        for(int ieq = 0; ieq < neq; ++ieq){
+                            for(int ibasis = 0; ibasis < elL.nbasis(); ++ibasis)
+                                { uL[ieq] += unkelL[ibasis, ieq] * biL[ibasis]; }
+                        }
+
+                        // get the gradients the physical domain
+                        auto gradBiL = trace.eval_phys_grad_basis_l_qp(iqp, gradbL_data.data());
+                        auto graduL = unkelL.contract_mdspan(gradBiL, graduL_data.data());
+
+                        // get the uR and graduR from the interior information
+                        auto [uR, graduR] = phys_flux.apply_bc(
+                                uL, graduL, unit_normal,
+                                trace.face->bctype, trace.face->bcflag);
+
+                        // construct the DDG derivatives
+                        int order = 
+                            elL.basis->getPolynomialOrder();
+                        // Danis and Yan reccomended for NS
+                        T beta0 = std::pow(order + 1, 2);
+                        T beta1 = 1 / std::max((T) (2 * order * (order + 1)), 1.0);
+
+                        // switch to interior penalty if set
+                        if(interior_penalty) beta1 = 0.0;
+
+                        // calculate the DDG distance
+                        T h_ddg = 0; // uses distance to quadpt on boundary face
+                        for(int idim = 0; idim < ndim; ++idim){
+                            h_ddg += std::abs(unit_normal[idim] * 
+                                (phys_pt[idim] - centroidL[idim])
+                            );
+                        }
+                        h_ddg = std::copysign(std::max(std::abs(h_ddg)
+                                    , std::numeric_limits<T>::epsilon()), h_ddg);
+                        std::mdspan<T, std::extents<int, neq, ndim>> 
+                            grad_ddg{grad_ddg_data.data()};
+
+                        for(int ieq = 0; ieq < neq; ++ieq){
+                            // construct the DDG derivatives
+                            T jumpu = uR[ieq] - uL[ieq];
+                            for(int idim = 0; idim < ndim; ++idim){
+                                grad_ddg[ieq, idim] = beta0 * jumpu / h_ddg * unit_normal[idim]
+                                    + (graduL[ieq, idim]);
+                            }
+                        }
+
+                        // compute convective fluxes
+                        std::array<T, neq> fadvn = conv_nflux(uL, uR, unit_normal);
+
+                        // construct the viscous fluxes 
+                        std::array<T, neq> uavg;
+                        for(int ieq = 0; ieq < neq; ++ieq) uavg[ieq] = 0.5 * (uL[ieq] + uR[ieq]);
+
+                        std::array<T, neq> fviscn = diff_flux(uavg, grad_ddg, unit_normal);
+
+                        // scale by weight and face metric tensor
+                        for(int ieq = 0; ieq < neq; ++ieq){
+                            fadvn[ieq] *= quadpt.weight * sqrtg;
+                            fviscn[ieq] *= quadpt.weight * sqrtg;
+                        }
+
+                        // scatter contribution 
+                        for(int itest = 0; itest < elL.nbasis(); ++itest){
+                            for(int ieq = 0; ieq < neq; ++ieq){
+                                resL[itest, ieq] += (fviscn[ieq] - fadvn[ieq]) * biL[itest];
+                            }
+                        }
+
+                        // if applicable: apply the interface correction 
+                        if constexpr (computes_homogeneity_tensor<DiffusiveFlux>) {
+                            if(sigma_ic != 0.0){
+
+                                std::array<T, neq> interface_correction;
+                                auto Gtensor = diff_flux.homogeneity_tensor(uavg);
+
+                                T average_gradv[ndim];
+                                for(int itest = 0; itest < elL.nbasis(); ++itest){
+                                    // get the average test function gradient
+                                    for(int idim = 0; idim < ndim; ++idim){
+                                        average_gradv[idim] = gradBiL[itest, idim];
+                                    }
+
+                                    std::ranges::fill(interface_correction, 0);
+                                    for(int ieq = 0; ieq < neq; ++ieq){
+                                        for(int kdim = 0; kdim < ndim; ++kdim){
+                                            for(int req = 0; req < neq; ++req){
+                                                T jumpu_r = uR[req] - uL[req];
+                                                for(int sdim = 0; sdim < ndim; ++sdim){
+                                                    resL[itest, ieq] -= 
+                                                        Gtensor[ieq][kdim][req][sdim] * unit_normal[kdim] 
+                                                        * average_gradv[sdim] * jumpu_r
+                                                        * quadpt.weight * sqrtg;
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                }
+                            }
+                        }
+                    }
+                }
+                break;
             }
         }
 
