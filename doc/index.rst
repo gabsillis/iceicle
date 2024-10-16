@@ -530,6 +530,7 @@ and some physical parameters.
 .. note::
    The Spacetime burgers equation will have ``ndim-1`` fields because of the one time dimension.
 
+
 =================
 Initial Condition
 =================
@@ -571,6 +572,8 @@ Boundary Conditions
 
    Assumes that the exterior state and derivatives are equivalent to the interior state
 
+* ``slip wall`` A frictionless wall, a symmetric boundary condition in the velocity components. Note this isn't strictly equivalent to a symmetric boundary condition because the state gradients are taken to be equivalent to the interior state.
+
 ======
 Solver
 ======
@@ -588,7 +591,7 @@ Implicit methods assume no method of lines for time, so are either steady state,
 
    * :cpp:`"rk3-ssp", "rk3-tvd"` : Three stage Runge-Kutta explicit time integration. Strong Stability Preserving (SSP) or Total Variation Diminishing (TVD) versions
 
-``ivis`` The visualization (output) is run every ``ivis`` iterations of the solver
+* ``ivis`` The visualization (output) is run every ``ivis`` iterations of the solver
 
 --------------------------
 Explicit Solver Parameters
@@ -642,7 +645,7 @@ Gauss-Newton Parameters
 
 * ``lambda_lag`` regularization value for lagrangian regularization -- defualts to :math:`10^{-5}`
 
-* ``lambda_1`` regularization value for curvature penalization -- defaults to :math:`10^{-3}`
+* ``lambda_1`` regularization value for curvature penalization (not implemented) -- defaults to :math:`10^{-3}`
 
 * ``lambda_b`` regularization value for geometric degrees of freedom -- defaults to :math:`10^{-2}`
 
@@ -950,11 +953,17 @@ to generate faces by finding the intersection between two elements.
 .. code-block:: cpp 
    :linenos:
 
-   HypercubeElement<double, int, 2, 1> el0{{0, 1, 2, 3}};
-   HypercubeElement<double, int, 2, 1> el2{{2, 3, 4, 5}};
+   // get a hypercube element transformation of polynomial order 1
+   int order = 1;
+   auto el_transformation = ElementTransformationTable<double, int, 2>::get_transform(
+      DOMAIN_TYPE::HYPERCUBE, order)
+
+   // connectivities
+   std::vector<int> el0_nodes{{0, 1, 2, 3}};
+   std::vector<int> el2_nodes{{2, 3, 4, 5}};
 
    // find and make the face with vertices {2, 3}
-   auto face_opt = make_face(0, 2, el0, el2);
+   auto face_opt = make_face(0, 2, el_transformation, el_transformation, el0_nodes, el2_nodes);
 
    // unique_ptr to face is stored in the value() of optional
    std::unique_ptr<Face<double, int, 2>> face{std::move(face_opt.value())}; 
