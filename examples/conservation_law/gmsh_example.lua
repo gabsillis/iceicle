@@ -2,8 +2,8 @@ local gamma = 1.4
 local rho = 1.0
 local pressure = 1
 -- local mach = 0.38
-local mach = 0.7
-local aoa = .01;
+local mach = 1.1
+local aoa = .09; -- about 5 degrees
 
 local csound = math.sqrt(gamma * pressure / rho)
 local umag = csound * mach
@@ -50,7 +50,7 @@ return {
         quadrature = "gauss",
 
         -- the basis function order
-        order = 0,
+        order = 1,
     },
 
     -- describe the conservation law
@@ -76,28 +76,28 @@ return {
     },
 
     -- solver
-    --    solver = {
-    --        type = "rk3-tvd",
-    --        cfl = 0.5,
-    --        ntime = 50000,
-    --        ivis = 100
-    --    },
+    solver = {
+        type = "rk3-tvd",
+        cfl = 0.5,
+        ntime = 500000,
+        ivis = 100
+    },
 
     -- solver
-    solver = {
-        type = "gauss-newton",
-        form_subproblem_mat = true,
-        linesearch = {
-            type = "cubic",
-            alpha_initial = 1.0,
-            max_it = 10,
-        },
-        lambda_u = 1e-8,
-        ivis = 1,
-        tau_abs = 1e-10,
-        tau_rel = 0,
-        kmax = 1000,
-    },
+    --    solver = {
+    --        type = "gauss-newton",
+    --        form_subproblem_mat = true,
+    --        linesearch = {
+    --            type = "cubic",
+    --            alpha_initial = 1.0,
+    --            max_it = 10,
+    --        },
+    --        lambda_u = 1e-8,
+    --        ivis = 1,
+    --        tau_abs = 1e-10,
+    --        tau_rel = 0,
+    --        kmax = 1000,
+    --    },
 
     -- output
     output = {
