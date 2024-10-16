@@ -256,7 +256,7 @@ namespace iceicle {
                         IDX jelem = *jelem_iter;
 
                         // skip the cases that would lead to duplicate or boundary faces
-                        if( ielem == jelem || std::ranges::contains(connected_elements, jelem) )
+                        if( ielem == jelem || std::ranges::find(connected_elements, jelem) != std::ranges::end(connected_elements) )
                             continue; 
 
                         // try making the face that is the intersection of the two elements

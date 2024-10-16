@@ -17,7 +17,6 @@
 #include "iceicle/form_residual.hpp"
 #include "iceicle/disc/bilinear_integrators.hpp"
 
-#include <mpi_proto.h>
 #include <petsc.h>
 
 #include <iostream>
@@ -187,7 +186,7 @@ namespace iceicle::solvers {
         {
             T res_norm;
             PetscCallAbort(PETSC_COMM_WORLD, VecNorm(res_data, NORM_2, &res_norm));
-            std::cout << std::format("itime: {:6d} | residual l1: {:16.8f}", k, res_norm) << std::endl;
+            std::cout << fmt::format("itime: {:6d} | residual l1: {:16.8f}", k, res_norm) << std::endl;
         };
 
         /// @brief if this is a positive integer 

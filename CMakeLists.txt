@@ -88,21 +88,26 @@ add_custom_target(OUTPUTDIR ALL COMMAND ${CMAKE_COMMAND} -E make_directory ${CMA
 # = Third Party Libraries =
 # =========================
 
-# === REQUIRED Third Party Library: mdspan
+# === REQUIRED Third Party Library: mdspan ===
 add_library(mdspan INTERFACE)
 target_include_directories(mdspan INTERFACE 
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/mdspan/include>
     $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
 
-# === REQUIRED Third Party Library LAPACK ===
+# === REQUIRED Third Party Library: LAPACK ===
 find_package(LAPACK REQUIRED)
+
+# === REQUIRED Third Party Library: fmt ===
+# TODO: create a FindFmt to prevent redundant download
+FetchContent_Declare(
+  fmt
+  GIT_REPOSITORY https://github.com/fmtlib/fmt 
+  GIT_TAG 11.0.2
+)
+FetchContent_MakeAvailable(fmt)
 
 # MPI Dependent 3rd party libraries 
 if(MPI_FOUND)
-  #  # === Third Party Library: Hypre ===
-  #  if(ICEICLE_USE_HYPRE)
-  #    add_subdirectory(./hypre/src)
-  #  endif()
 
 # === Third Party Library: Petsc ===
 # NOTE: we use mpi functions in most cases with petsc 

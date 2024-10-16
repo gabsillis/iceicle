@@ -4,7 +4,7 @@
 #include "iceicle/fe_function/fespan.hpp"
 #include "iceicle/iceicle_mpi_utils.hpp"
 #include <fstream>
-#include <format>
+#include <fmt/core.h>
 #include <filesystem>
 #include <memory>
 #include <string>
@@ -43,9 +43,9 @@ namespace iceicle::io {
                 constexpr int npoin = 30;
                 if constexpr(ndim == 1){
                     // headers
-                    out << std::format("{:>{}}", "x", field_width);
+                    out << fmt::format("{:>{}}", "x", field_width);
                     for(const std::string &s : field_names){
-                        out << " " << std::format("{:>{}}", s, field_width);
+                        out << " " << fmt::format("{:>{}}", s, field_width);
                     }
                     out << std::endl;
 
@@ -57,7 +57,7 @@ namespace iceicle::io {
                         for(int ipoin = 0; ipoin < npoin; ++ipoin){
                             MATH::GEOMETRY::Point<T, ndim> refnode{-1.0 + 2.0 / (npoin - 1) * ipoin};
                             MATH::GEOMETRY::Point<T, ndim> physnode = el.transform(refnode);
-                            out << std::format("{:{}.{}e}", physnode[0], field_width, precision);
+                            out << fmt::format("{:{}.{}e}", physnode[0], field_width, precision);
 
                             for(IDX ifield = 0; ifield < field_names.size(); ++ifield){
                                 el.eval_basis(refnode, basis_data.data());
@@ -66,7 +66,7 @@ namespace iceicle::io {
                                     field_value += fedata[el.elidx, idof, ifield] 
                                         * basis_data[idof];
                                 }
-                                out << " " << std::format("{:>{}.{}e}", field_value, field_width, precision);
+                                out << " " << fmt::format("{:>{}.{}e}", field_value, field_width, precision);
                             }
 
                             out << std::endl;
@@ -106,9 +106,9 @@ namespace iceicle::io {
                 constexpr int npoin = 2;
                 if constexpr(ndim == 1){
                     // headers
-                    out << std::format("{:>{}}", "x", field_width);
+                    out << fmt::format("{:>{}}", "x", field_width);
                     for(const std::string &s : field_names){
-                        out << " " << std::format("{:>{}}", s, field_width);
+                        out << " " << fmt::format("{:>{}}", s, field_width);
                     }
                     out << std::endl;
 
@@ -120,7 +120,7 @@ namespace iceicle::io {
                         for(int ipoin = 0; ipoin < npoin; ++ipoin){
                             MATH::GEOMETRY::Point<T, ndim> refnode{-1.0 + 2.0 / (npoin - 1) * ipoin};
                             MATH::GEOMETRY::Point<T, ndim> physnode = el.transform(refnode);
-                            out << std::format("{:{}.{}e}", physnode[0], field_width, precision);
+                            out << fmt::format("{:{}.{}e}", physnode[0], field_width, precision);
 
                             for(IDX ifield = 0; ifield < field_names.size(); ++ifield){
                                 el.eval_basis(refnode, basis_data.data());
@@ -129,7 +129,7 @@ namespace iceicle::io {
                                     field_value += fedata[el.elidx, idof, ifield] 
                                         * basis_data[idof];
                                 }
-                                out << " " << std::format("{:>{}.{}e}", field_value, field_width, precision);
+                                out << " " << fmt::format("{:>{}.{}e}", field_value, field_width, precision);
                             }
 
                             out << std::endl;

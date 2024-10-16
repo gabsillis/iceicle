@@ -157,7 +157,7 @@ TEST(test_petsc_jacobian, test_mdg_bl){
             T petsc_mat_val;
             MatGetValue(jac, i, j, &petsc_mat_val);
             
-            std::cout << std::format("{:>16f}", (petsc_mat_val - jac_dense[i, j])) << " ";
+            std::cout << fmt::format("{:>16f}", (petsc_mat_val - jac_dense[i, j])) << " ";
             ASSERT_NEAR(petsc_mat_val, (jac_dense[i, j]), 1e-5);
         }
         std::cout << std::endl;

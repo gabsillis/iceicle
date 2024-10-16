@@ -10,7 +10,7 @@
 #include "iceicle/nonlinear_solver_utils.hpp"
 #include "iceicle/petsc_interface.hpp"
 #include "iceicle/mdg_utils.hpp"
-#include <format>
+#include <fmt/core.h>
 #include <functional>
 #include <iomanip>
 #include <iostream>

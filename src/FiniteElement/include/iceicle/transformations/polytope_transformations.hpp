@@ -273,10 +273,10 @@ namespace iceicle {
       auto facet_nodes(std::size_t nshp_1d, T domain_max) noexcept
       -> std::vector<std::array<T, get_ndim(t)>>
       {
-        static constexpr std::size_t ndim = get_ndim(t);
+        constexpr std::size_t ndim = get_ndim(t);
         // the dimension index we are currently focusing on
         // for the recursive algorithm
-        static constexpr std::size_t idim = ndim - 1; 
+        constexpr std::size_t idim = ndim - 1; 
 
         // denominator for number of partitions protected for divide by zero
         T npartition_den = (nshp_1d > 1) ? nshp_1d - 1 : 1;

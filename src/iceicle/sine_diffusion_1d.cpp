@@ -170,10 +170,10 @@ int main(int argc, char *argv[]){
         for(int ipoin = 0; ipoin < npoin; ++ipoin){
             T dx = 2 * M_PI / (npoin - 1);
             T x = ipoin * dx;
-            outexact << std::format("{:>{}.{}e}", x, field_width, precision);
+            outexact << fmt::format("{:>{}.{}e}", x, field_width, precision);
             T f;
             exactfunc(&x, &f);
-            outexact << " " << std::format("{:>{}.{}e}", f, field_width, precision) << std::endl;
+            outexact << " " << fmt::format("{:>{}.{}e}", f, field_width, precision) << std::endl;
         }
         AnomalyLog::handle_anomalies();
         return 0;

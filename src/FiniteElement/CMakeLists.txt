@@ -7,6 +7,7 @@ target_compile_features(iceicle_fe INTERFACE cxx_std_23)
 
 # link libraries
 target_link_libraries(iceicle_fe PUBLIC iceicle_util)
+target_link_libraries(iceicle_fe PUBLIC iceicle_math)
 target_link_libraries(iceicle_fe PUBLIC nt_general)
 target_link_libraries(iceicle_fe PUBLIC nt_tensor)
 target_link_libraries(iceicle_fe PUBLIC nt_polynomial)

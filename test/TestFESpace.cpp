@@ -15,7 +15,6 @@
 
 #include <gtest/gtest.h>
 #include <memory>
-#include <pstl/glue_execution_defs.h>
 
 using namespace iceicle;
 

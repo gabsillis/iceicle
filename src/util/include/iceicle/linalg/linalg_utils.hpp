@@ -3,9 +3,9 @@
 #include "Numtool/fixed_size_tensor.hpp"
 #include "mdspan/mdspan.hpp"
 #include <cstddef>
-#include <format>
 #include <ostream>
 #include <type_traits>
+#include <fmt/core.h>
 namespace iceicle::linalg {
 
     /// @brief whether or not something is an mdspan
@@ -121,7 +121,7 @@ namespace iceicle::linalg {
         for(index_type i = 0; i < m; ++i){
             for(index_type j = 0; j < n; ++j){
                 double value = A[i, j];
-                os << std::format("{:10.4f} ", value);
+                os << fmt::format("{:10.4f} ", value);
             }
             os << std::endl;
         }
@@ -136,7 +136,7 @@ namespace iceicle::linalg {
         os << "[ ";
         for(index_type i = 0; i < v.extent(0); ++i){
             double value = v[i];
-            os << std::format("{:10.4f} ", value);
+            os << fmt::format("{:10.4f} ", value);
         }
         os << "]" << std::endl;
         return os;
