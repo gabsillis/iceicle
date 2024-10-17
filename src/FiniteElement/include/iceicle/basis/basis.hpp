@@ -81,8 +81,6 @@
          * @brief Tell wether this basis is a Nodal basis or not
          * where the value of each basis function corresponds to a node
          *
-         * TODO: consider extract into subclass abstract class
-         *
          * @return true if this is a nodal basis
          */
         virtual

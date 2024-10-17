@@ -697,27 +697,31 @@ and the reference element domain with :math:`\hat{\mathcal{K}}`
 Geometric Entities
 ==================
 There are two primary abstractions iceicle defines for geometric entities used in finite element computations:
-:cpp:class:`iceicle::GeometricElement`, which represents the physical domain in :math:`\mathbb{R}^d`, and 
-:cpp:class:`iceicle::Face`, which represents the physical domain of the intersection of two 
-:cpp:class:`iceicle::GeometricElement` s. 
+:cpp:class:`iceicle::ElementTransformation`, which represents the physical domain transfromation in :math:`\mathbb{R}^d`, and 
+:cpp:class:`iceicle::Face`, which represents the physical domain of the intersection of two domains with their respective element transformations.
 
 ---------------------------------
 Element Coordinate Transformation
 ---------------------------------
-:cpp:class:`iceicle::GeometricElement` implementations must implement the transformation :math:`T:\mathbf{\xi}\mapsto\mathbf{x}`
+:cpp:class:`iceicle::ElementTransformation` is a function table that represents
+the transformation :math:`T:\mathbf{\xi}\mapsto\mathbf{x}`
 from a reference domain :math:`\hat{\mathcal{K}} \subset \mathbb{R}^d` 
 to the physical domain :math:`\mathcal{K} \subset \mathbb{R}^d` 
 where :math:`\mathbf{\xi}\in\hat{\mathcal{K}}, \mathbf{x}\in\mathcal{K}`. 
 The degrees of freedom that define the physical domain are termed "nodes".
-A :cpp:class:`iceicle::GeometricElement` will just store the indices to the coordinate degrees of freedom 
-which are stored in an :cpp:type:`iceicle::NodeArray`.
+:cpp:class:`iceicle::ElementTransformation` operates directly on node coordinates (``std::span<Point>``), 
+however, in general the coordinates are stored in a large :cpp:type:`iceicle::NodeArray`, 
+and the connectivity of node indices in this array for each element is stored separately.
 
-:cpp:func:`iceicle::GeometricElement::transform` represents the transformation :math:`T` provided the :cpp:type:`iceicle::NodeArray`.
+:cpp:class:`iceicle::ElementTransformation` requires a utility function :cpp:func:`iceicle::ElementTransformation::get_el_coord`
+to get the element local coordinates from the global coordinate array and the list of node indices.
 
-:cpp:func:`iceicle::GeometricElement::Jacobian` represents the Jacobian of the transformation :math:`\mathbf{J} = \frac{\partial T}{\partial \mathbf{\xi}}`, 
+:cpp:func:`iceicle::ElementTransformation::transform` represents the transformation :math:`T`
+
+:cpp:func:`iceicle::ElementTransformation::Jacobian` represents the Jacobian of the transformation :math:`\mathbf{J} = \frac{\partial T}{\partial \mathbf{\xi}}`, 
 alternatively :math:`\mathbf{J}` can be written as :math:`\frac{\partial \mathbf{x}}{\partial \mathbf{\xi}}`.
 
-:cpp:func:`iceicle::GeometricElement::Hessian` represents the hessian of the transformation 
+:cpp:func:`iceicle::ElementTransformation::Hessian` represents the hessian of the transformation 
 :math:`\mathbf{H} =\frac{\partial^2 T}{\partial \mathbf{\xi}\partial \mathbf{\xi}}` or :math:`\frac{\partial \mathbf{x}}{\partial \mathbf{\xi}\partial \mathbf{\xi}}`.
 
 
@@ -746,23 +750,12 @@ alternatively :math:`\mathbf{J}` can be written as :math:`\frac{\partial \mathbf
    \draw[->] (3.0,-1.5) -- (3.5,-1.5) node[anchor=west, scale=0.7]{$x$};
    \draw[->] (3.0,-1.5) -- (3.0,-1.0) node[anchor=south, scale=0.7]{$y$};
 
--------------------
-Element Node Access
--------------------
-Access to the indices of the nodes is provided in the following interfaces:
-
-:cpp:func:`iceicle::GeometricElement::nodes` gives a pointer to the start of the array of indices.
-
-:cpp:func:`iceicle::GeometricElement::nodes_span` gives the array of indices as a :cpp:class`std::span`
-
-:cpp:func:`iceicle::GeometricElement::n_nodes` gives the size of the array of indices (the number of nodes)
-
 ------------------
 Domain Definitions
 ------------------
 
 Domains are specified by the domain type and polynomial order of basis functions for the nodes, accesible through 
-:cpp:func:`iceicle::GeometricElement::domain_type` and :cpp:func:`iceicle::GeometricElement::geometry_order` respectively.
+:cpp:member:`iceicle::ReferenceElement::domain_type` and :cpp:member:`iceicle::ReferenceElement::geometry_order` respectively.
 
 ------
 Faces
@@ -970,6 +963,33 @@ to generate faces by finding the intersection between two elements.
 
 This can detect elements with different geometric polynomial orders because this operates on vertices.
 The polynomial order of the face geometry is the minimum of the two element polynomial orders
+
+===============
+Basis Functions
+===============
+
+The function spaces considered are discretized by a discrete set of functions :math:`\{\phi_i\}` that span a subset of the full space. 
+These functions are called the basis functions as they form a bases for this discretized space. 
+Any solution in this discretized space can be formed by a linear combination of coefficients and these basis functions:
+
+.. math::
+   
+   u(\mathbf{x}) = \sum_i a_i \phi_i(\mathbf{x})
+
+By Galerkin Orthogonality, weak forms enforced with this discrete set of basis functions give the best approximation 
+in the discretized space of the solution over the full space with respect to the energy norm.
+
+The :cpp:class:`iceicle::Basis` class is the interface used for Basis functions. 
+This provides an interface to evaluate basis functions, gradients with respect to reference domain coordinates, and hessians with respect to reference domain coordinates. 
+The interface also provides information such as the number of basis functions (:cpp:func:`iceicle::Basis::nbasis`),
+reference domain type (:cpp:func:`iceicle::Basis::domain_type`), flags for orthonormality, and nodal basis, and the polynomial order.
+
+Currently implemented:
+
+* Lagrange polynomials on hypercube domains (:cpp:class:`iceicle::HypercubeLagrangeBasis`) and simplex domains (:cpp:class:`iceicle::SimplexLagrangeBasis`) 
+   These are implemented with compile time constants for polynomial order up to ``FESPACE_BUILD_PN`` in ``build_config.hpp``.
+
+* Legendre polynomials on hypercube domains up to 10th order (:cpp:class:`iceicle::HypercubeLegendreBasis`)
 
 ==============
 Finite Element
