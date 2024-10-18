@@ -1,3 +1,10 @@
+-- Example: Sine Diffusion
+-- Author: Gianni Absillis (gabsill@ncsu.edu)
+--
+-- A diffusion process on a sine wave initial condition
+-- showcases some of the post-processing tasks
+-- good for convergence studies
+
 local fourier_nr = 0.0001
 
 local nelem_arg = 8

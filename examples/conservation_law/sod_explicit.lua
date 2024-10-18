@@ -1,3 +1,8 @@
+-- Example: Time-explicit solution of Sod's Shocktube Problem
+-- Author: Gianni Absillis
+--
+-- Works in parallel (just mpirun the executable with this input file and mesh partitioning happens automagically)
+
 local gamma = 1.4
 
 return {
@@ -60,7 +65,7 @@ return {
 	-- boundary conditions
 	boundary_conditions = {
 		dirichlet = {
-			{ 1.0, 0.0, 1.0 / (gamma - 1) },
+			{ 1.0,   0.0, 1.0 / (gamma - 1) },
 			{ 0.125, 0.0, 0.1 / (gamma - 1) },
 		},
 	},

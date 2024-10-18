@@ -617,6 +617,7 @@ namespace iceicle::solvers {
                             minJ = std::min(minJ, NUMTOOL::TENSOR::FIXED_SIZE::determinant(J));
                         }
                         if(minJ < 0.0){
+                            reset_for_element_inversion = true;
                             if(lambda_el[iel] == 0){
                                 lambda_el[iel] = lambda_b;
                             } else {
@@ -650,8 +651,8 @@ namespace iceicle::solvers {
                     } else {
                         // reset coordinates
                         update_mesh(coord, *(fespace.meshptr));
-                        lambda_u *= 1.5;
-                        lambda_b *= 1.5;
+                        lambda_u *= 1.8;
+                        lambda_b *= 1.8;
                         k--; // redo this iteration
                     }
                 }

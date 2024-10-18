@@ -1,3 +1,8 @@
+-- Example: NS Conservation Test
+-- Author: Gianni Absillis (gabsill@ncsu.edu)
+--
+-- Test the conservation of a constant valued solution over the domain
+
 return {
 	-- specify the number of dimensions (REQUIRED)
 	ndim = 1,
@@ -66,7 +71,7 @@ return {
 	-- solver
 	solver = {
 		type = "rk3-tvd",
-		dt = 0.00001,
+		cfl = 1.0,
 		tfinal = 0.2,
 		ivis = 10,
 	},
