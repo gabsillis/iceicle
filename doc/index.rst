@@ -36,8 +36,7 @@ Quickstart
 ==========
 A bare-bones version of the library (with unit tests built by default) can be built with 
 
-.. code::
-   :language: bash
+.. code-block:: bash
 
    mkdir build 
    cd build 
@@ -67,15 +66,14 @@ This library is located by use of the ``PETSC_DIR`` and ``PETSC_ARCH`` environme
 ---
 Lua
 ---
-``ICEICLE_USE_LUA``: Interface with thelua C api through sol2. 
+``ICEICLE_USE_LUA``: Interface with thelua C api through sol2. This is used for input decks with callback functions.
 
 .. note::
    This requires Lua development libraries.
 
 To get the lua development libraries on Fedora or RHEL
 
-.. code::
-   :language: bash
+.. code-block:: bash
 
    dnf install lua-devel
 
@@ -88,7 +86,7 @@ METIS
 Documentation 
 -------------
 
-These documentation pages can be built by enabling ``ICEICLE_BUILD_DOC``. This requires Sphinx and doxygen to be installed, along with the packages ``breathe``, ``sphinx.ext.mathjax``, ``sphinx.ext.autosectionlabel``, and ``sphinxcontrib.tikz``.
+These documentation pages can be built by enabling ``ICEICLE_BUILD_DOC``. This requires Sphinx and doxygen to be installed, along with the packages ``breathe``, ``sphinx_rtd_theme``, ``sphinx.ext.mathjax``, ``sphinx.ext.autosectionlabel``, and ``sphinxcontrib.tikz``.
 
 Technical Background
 ====================
