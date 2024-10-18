@@ -986,10 +986,34 @@ reference domain type (:cpp:func:`iceicle::Basis::domain_type`), flags for ortho
 
 Currently implemented:
 
-* Lagrange polynomials on hypercube domains (:cpp:class:`iceicle::HypercubeLagrangeBasis`) and simplex domains (:cpp:class:`iceicle::SimplexLagrangeBasis`) 
-   These are implemented with compile time constants for polynomial order up to ``FESPACE_BUILD_PN`` in ``build_config.hpp``.
+- Lagrange polynomials on hypercube domains (:cpp:class:`iceicle::HypercubeLagrangeBasis`) and simplex domains (:cpp:class:`iceicle::SimplexLagrangeBasis`). 
+These are implemented with compile time constants for polynomial order up to ``FESPACE_BUILD_PN`` in ``build_config.hpp``.
 
-* Legendre polynomials on hypercube domains up to 10th order (:cpp:class:`iceicle::HypercubeLegendreBasis`)
+- Legendre polynomials on hypercube domains up to 10th order (:cpp:class:`iceicle::HypercubeLegendreBasis`).
+
+================
+Quadrature Rules 
+================
+
+Quadrature rules approximate the integral of a function :math:`f` over a given domain by a linear combination of weights :math:`w_i` 
+with the function evaluated at specified points :math:`x_i`
+
+.. math::
+
+   \int_a^b f(x)\; dx \approx \sum_{i=1}^{n_q} w_i f(x_i)
+
+Where :math:`n_q` is the number of quadrature points in the quadrature rule. 
+Often there are theoretical results pretaining to the accuracy of certain quadrature rules which can be used to determine the number of quadrature points required.
+Quadrature rules are implemented to specify points in the reference domain, as most rules are defined in the reference domain to be able to specify the points.
+Currently implemented are:
+
+- Gauss-Legendre Quadrature on Hypercube domains (:cpp:class:`HypercubeGaussLegendre`). 
+The ``npoin`` parameter refers to the number of quadrature points in one dimension. 
+This can exactly integrate polynomials of order ``2 * npoin - 1``.
+
+- Grundmann-Moller transformation of Gauss-Legendre quadrature for simplex domains (:cpp:class:`GrundmannMollerSimplexQuadrature`)
+The ``order`` parameter refers to the order of the integrating polynomial (parameter :math:`s` in Grundmann and Moller [GrundmannMoller1978]_)
+This can exactly integrate polynomials of order ``2 * order + 1``.
 
 ==============
 Finite Element
@@ -1349,3 +1373,4 @@ References
 
 .. [Arnold2000]  Arnold, D. N., Brezzi, F., Cockburn, B., & Marini, D. (2000). Discontinuous Galerkin methods for elliptic problems. In Discontinuous Galerkin Methods: Theory, Computation and Applications (pp. 89-101). Berlin, Heidelberg: Springer Berlin Heidelberg.
 
+.. [GrundmannMoller1978] Grundmann, A., & Möller, H. M. (1978). Invariant integration formulas for the n-simplex by combinatorial methods. SIAM Journal on Numerical Analysis, 15(2), 282-290.

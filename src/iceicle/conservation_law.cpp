@@ -107,7 +107,8 @@ void initialize_and_solve(
   // =========
   // = Solve =
   // =========
-  IDX ncycles = config_tbl.get_or("ncycles", 1);
+  sol::table mdg_tbl = config_tbl["mdg"];
+  IDX ncycles = (mdg_tbl) ? mdg_tbl.get_or("ncycles", 1) : 1;
   for (IDX icycle = 0; icycle < ncycles; ++icycle) {
 
     mpi::execute_on_rank(0, [&] {

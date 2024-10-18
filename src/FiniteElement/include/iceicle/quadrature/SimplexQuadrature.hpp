@@ -22,7 +22,7 @@ namespace iceicle {
      * @tparam IDX The Index Type
      * @tparam ndim the number of spatial dimensions
      * @tparam order, the polynomial order of the integration rule
-     *      can integrate polynomials of order 2 * order + 1
+     *      can integrate polynomials of order: 2 * order + 1
      */
     template<typename T, typename IDX, int ndim, int order>
         class GrundmannMollerSimplexQuadrature final: public QuadratureRule<T, IDX, ndim> {

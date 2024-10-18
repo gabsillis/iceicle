@@ -80,8 +80,10 @@ namespace iceicle {
                 }
 
                 // add the contribution of the squared error
+                // NOTE: use a safegaurded jacobian for inverted elements
                 for(IDX ieq = 0; ieq < fedata.nv(); ieq++){
-                    l2_eq[ieq] += std::pow(u[ieq] - feval[ieq], 2) * quadpt.weight * detJ;
+                    l2_eq[ieq] += std::pow(u[ieq] - feval[ieq], 2) * quadpt.weight 
+                        * std::abs(detJ);
                 }
             }
         }
@@ -155,8 +157,10 @@ namespace iceicle {
                 }
 
                 // add the contribution of the squared error
+                // NOTE: use a safegaurded jacobian for inverted elements
                 for(IDX ieq = 0; ieq < fedata.nv(); ieq++){
-                    l1_eq[ieq] += std::abs(u[ieq] - feval[ieq]) * quadpt.weight * detJ;
+                    l1_eq[ieq] += std::abs(u[ieq] - feval[ieq]) * quadpt.weight
+                        * std::abs(detJ);
                 }
             }
         }

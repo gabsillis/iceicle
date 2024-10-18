@@ -76,16 +76,25 @@ return {
 		},
 	},
 
+	mdg = {
+		ncycles = 20,
+		ic_selection_threshold = function(icycle)
+			if icycle % 2 == 0 then
+				return 0.0
+			else
+				return 1e8
+			end
+		end,
+	},
+
 	-- solver
 	solver = {
 		type = "gauss-newton",
 		ivis = 1,
 		tau_abs = 1e-8,
 		tau_rel = 0,
-		kmax = 60,
-		regularization = function(k, res)
-			return 0.1
-		end,
+		kmax = 10,
+		lambda_b = 1e-2,
 		form_subproblem_mat = false,
 		verbosity = 0,
 		linesearch = {
@@ -93,16 +102,6 @@ return {
 			type = "none",
 			alpha_initial = 1.0,
 			alpha_max = 2.0,
-		},
-		mdg = {
-			ncycles = 200,
-			ic_selection_threshold = function(icycle)
-				if icycle % 2 == 0 then
-					return 0.0
-				else
-					return 1e8
-				end
-			end,
 		},
 	},
 
