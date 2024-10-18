@@ -315,7 +315,7 @@ namespace iceicle {
                         case 1:
                         {
                             if constexpr(ndim == 2){
-                                std::tuple<BOUNDARY_CONDITIONS, int> bcinfo = bcmap[fac_info.entity_tag];
+                                auto[bctype, bcflag] = bcmap[fac_info.entity_tag];
                                 std::vector<IDX> nodes{ (IDX) fac_info.nodes[0], (IDX) fac_info.nodes[1]};
                                 auto binfo_opt = boundary_face_info(nodes, trans, el_nodes);
                                 if(binfo_opt){ // we found the adjacent element yay ^.^
@@ -324,8 +324,10 @@ namespace iceicle {
 
                                     // get the face nodes again, but from element so they are in order for external normal
                                     nodes = trans->get_face_nodes(face_nr, el_nodes);
-                                    auto face_opt = make_face<T, IDX, ndim>(domain_type, trans->domain_type, trans->domain_type, 
-                                        1, ielem, ielem, nodes, face_nr, face_nr, 0, std::get<0>(bcinfo), std::get<1>(bcinfo));
+                                    auto face_opt = make_face<T, IDX, ndim>(
+                                        domain_type, trans->domain_type, trans->domain_type, 
+                                        1, ielem, ielem, nodes, face_nr, face_nr,
+                                        0, bctype, bcflag);
                                     mesh.faces.push_back(std::move(face_opt.value()));
                                     faces_surr_el[ielem].push_back(mesh.faces.size() - 1);
                                 } 
@@ -527,6 +529,17 @@ namespace iceicle {
             line_no++;
         }
 
+        mesh.elsup = to_elsup(mesh.conn_el, mesh.n_nodes());
+        { // build the element coordinates matrix
+            mesh.coord_els = util::crs<MATH::GEOMETRY::Point<T, ndim>, IDX>{
+                std::span{mesh.conn_el.cols(), mesh.conn_el.cols() + mesh.conn_el.nrow() + 1}};
+            for(IDX iel = 0; iel < mesh.nelem(); ++iel){
+                for(std::size_t icol = 0; icol < mesh.conn_el.rowsize(iel); ++icol){
+                    mesh.coord_els[iel, icol] = mesh.coord[mesh.conn_el[iel, icol]];
+                }
+            }
+        }
+
         // print details for small meshes
         if(mesh.coord.size() < 100){
             mesh.printNodes(std::cout);
@@ -534,7 +547,6 @@ namespace iceicle {
             mesh.printFaces(std::cout);
         }
 
-        mesh.elsup = to_elsup(mesh.conn_el, mesh.n_nodes());
         return mesh;
     }
 }

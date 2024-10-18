@@ -271,7 +271,10 @@ namespace iceicle::io {
             /// @brief constructor with argument forwarding for the vector constructor
             template<class... VecArgs>
             PVDDataField(fespan<T, LayoutPolicy, AccessorPolicy> fedata, VecArgs&&... vec_args)
-            : fedata(fedata), field_names({std::forward<VecArgs>(vec_args)...}){}
+            : fedata(fedata), field_names({std::forward<VecArgs>(vec_args)...}){
+                if(field_names.size() != fedata.nv()) 
+                    util::AnomalyLog::log_anomaly("Field names size does not match number of fields");
+            }
 
             /// @brief adds the xml DataArray tags and data to a given vtu file 
             void write_data(std::ofstream &vtu_file, FESpace<T, IDX, ndim> &fespace) const override
@@ -297,7 +300,7 @@ namespace iceicle::io {
 
                         // get the solution for each point in the vtk element
                         for(const MATH::GEOMETRY::Point<T, ndim> &refnode : vtk_el.nodes){
-                            el.evalBasis(refnode, basis_data.data());
+                            el.eval_basis(refnode, basis_data.data());
                             T field_value = 0;
                             for(std::size_t idof = 0; idof < el.nbasis(); ++idof){
                                 field_value += fedata[el.elidx, idof, ifield] 
@@ -430,13 +433,11 @@ namespace iceicle::io {
         /**
          * @brief register a set of fields represented in an fespan 
          * @param fedata the global data view to write to files 
-         * @param field_names the names for each field in fe_data
+         * @param field_names the names for each field in fe_data 
+         * (gets forwarded into a std::vector<string>)
          */
         template< class LayoutPolicy, class AccessorPolicy, class... FieldNameTs >
         void register_fields(fespan<T, LayoutPolicy, AccessorPolicy> &fedata, FieldNameTs&&... field_names){
-            // make sure the size matches
-            assert(fedata.get_layout().nv() == sizeof...(field_names));
-
             // create the field handle and add it to the list
             auto field_ptr = std::make_unique<PVDDataField<LayoutPolicy, AccessorPolicy>>(
                     fedata, std::forward<FieldNameTs>(field_names)...);

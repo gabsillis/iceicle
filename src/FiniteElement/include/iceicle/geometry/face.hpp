@@ -137,6 +137,10 @@ namespace iceicle {
             return BOUNDARY_CONDITIONS::SPACETIME_PAST;
         }
 
+        if(eq_icase(bcname, "slip wall")){
+            return BOUNDARY_CONDITIONS::SLIP_WALL;
+        }
+
         return BOUNDARY_CONDITIONS::INTERIOR;
     }
 

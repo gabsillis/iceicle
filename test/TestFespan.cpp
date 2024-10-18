@@ -25,14 +25,13 @@ TEST(test_fespan, test_dglayout){
     using BasisType = HypercubeLagrangeBasis<T, IDX, ndim, Pn>;
     using QuadratureType = HypercubeGaussLegendre<T, IDX, ndim, Pn>;
     using FiniteElement = FiniteElement<T, IDX, ndim>;
-    using EvaluationType = FEEvaluation<T, IDX, ndim>;
 
     std::vector<FiniteElement> elements;
 
     // create necesarry items to make finite elements 
     BasisType basis{};
     QuadratureType quadrule{};
-    EvaluationType evals(basis, quadrule);
+    auto evals = quadrature_point_evaluations(basis, quadrule);
 
     // create geometric elements 
     ElementTransformation<T, IDX, ndim> *trans = transformation_table<T, IDX, ndim>.get_transform(DOMAIN_TYPE::HYPERCUBE, Pn);
@@ -245,22 +244,22 @@ TEST(test_dofspan, test_node_set_layout){
         fespace
     };
 
-    ASSERT_TRUE(std::ranges::contains(nodeset1.selected_traces, 4));
-    ASSERT_TRUE(std::ranges::contains(nodeset1.selected_traces, 8));
-    ASSERT_TRUE(std::ranges::contains(nodeset1.selected_traces, 21));
+    ASSERT_TRUE(std::ranges::find(nodeset1.selected_traces, 4 ) != std::ranges::end(nodeset1.selected_traces));
+    ASSERT_TRUE(std::ranges::find(nodeset1.selected_traces, 8 ) != std::ranges::end(nodeset1.selected_traces));
+    ASSERT_TRUE(std::ranges::find(nodeset1.selected_traces, 21) != std::ranges::end(nodeset1.selected_traces));
     ASSERT_EQ(nodeset1.selected_traces.size(), 3);
 
     // trace 4
-    ASSERT_TRUE(std::ranges::contains(nodeset1.selected_nodes, 7));
-    ASSERT_TRUE(std::ranges::contains(nodeset1.selected_nodes, 12));
+    ASSERT_TRUE(std::ranges::find(nodeset1.selected_nodes, 7 ) != std::ranges::end(nodeset1.selected_traces));
+    ASSERT_TRUE(std::ranges::find(nodeset1.selected_nodes, 12) != std::ranges::end(nodeset1.selected_traces));
 
     // trace 8
-    ASSERT_TRUE(std::ranges::contains(nodeset1.selected_nodes, 13));
-    ASSERT_TRUE(std::ranges::contains(nodeset1.selected_nodes, 18));
+    ASSERT_TRUE(std::ranges::find(nodeset1.selected_nodes, 13) != std::ranges::end(nodeset1.selected_traces));
+    ASSERT_TRUE(std::ranges::find(nodeset1.selected_nodes, 18) != std::ranges::end(nodeset1.selected_traces));
 
     // trace 21
-    ASSERT_TRUE(std::ranges::contains(nodeset1.selected_nodes, 16));
-    ASSERT_TRUE(std::ranges::contains(nodeset1.selected_nodes, 17));
+    ASSERT_TRUE(std::ranges::find(nodeset1.selected_nodes, 16) != std::ranges::end(nodeset1.selected_traces));
+    ASSERT_TRUE(std::ranges::find(nodeset1.selected_nodes, 17) != std::ranges::end(nodeset1.selected_traces));
 
     // inverse mapping 
     ASSERT_EQ(nodeset1.inv_selected_nodes[ 0], 6);
@@ -297,11 +296,11 @@ TEST(test_dofspan, test_node_set_layout){
         fespace
     };
 
-    ASSERT_TRUE(std::ranges::contains(nodeset2.selected_traces, 5));
-    ASSERT_TRUE(std::ranges::contains(nodeset2.selected_traces, 15));
-    ASSERT_TRUE(std::ranges::contains(nodeset2.selected_traces, 17));
-    ASSERT_TRUE(std::ranges::contains(nodeset2.selected_traces, 9));
-    ASSERT_TRUE(std::ranges::contains(nodeset2.selected_traces, 0));
+    ASSERT_TRUE(std::ranges::find(nodeset2.selected_traces, 5) != std::ranges::end(nodeset2.selected_traces));
+    ASSERT_TRUE(std::ranges::find(nodeset2.selected_traces, 15) != std::ranges::end(nodeset2.selected_traces));
+    ASSERT_TRUE(std::ranges::find(nodeset2.selected_traces, 17) != std::ranges::end(nodeset2.selected_traces));
+    ASSERT_TRUE(std::ranges::find(nodeset2.selected_traces, 9) != std::ranges::end(nodeset2.selected_traces));
+    ASSERT_TRUE(std::ranges::find(nodeset2.selected_traces, 0) != std::ranges::end(nodeset2.selected_traces));
 
     // non boundary nodes 
     // 6, 8, 11, 12, 13, 16 
@@ -356,11 +355,11 @@ TEST(test_dofspan, test_geo_dof_map){
     fixed_component_constraint<T, ndim> left_wall_constraint{-1.0, 0};
     geo_dof_map geo_map{std::vector<int>{5, 15, 17, 9, 0}, fespace};
 
-    ASSERT_TRUE(std::ranges::contains(geo_map.selected_traces, 5));
-    ASSERT_TRUE(std::ranges::contains(geo_map.selected_traces, 15));
-    ASSERT_TRUE(std::ranges::contains(geo_map.selected_traces, 17));
-    ASSERT_TRUE(std::ranges::contains(geo_map.selected_traces, 9));
-    ASSERT_TRUE(std::ranges::contains(geo_map.selected_traces, 0));
+    ASSERT_TRUE(std::ranges::find(geo_map.selected_traces, 5) != std::ranges::end(geo_map.selected_traces));
+    ASSERT_TRUE(std::ranges::find(geo_map.selected_traces, 15) != std::ranges::end(geo_map.selected_traces));
+    ASSERT_TRUE(std::ranges::find(geo_map.selected_traces, 17) != std::ranges::end(geo_map.selected_traces));
+    ASSERT_TRUE(std::ranges::find(geo_map.selected_traces, 9) != std::ranges::end(geo_map.selected_traces));
+    ASSERT_TRUE(std::ranges::find(geo_map.selected_traces, 0) != std::ranges::end(geo_map.selected_traces));
 
     // non boundary nodes 
     // 6, 8, 11, 12, 13, 16 

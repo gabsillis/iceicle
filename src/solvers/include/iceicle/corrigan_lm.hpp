@@ -17,7 +17,6 @@
 #include "iceicle/form_residual.hpp"
 #include "iceicle/disc/bilinear_integrators.hpp"
 
-#include <mpi_proto.h>
 #include <petsc.h>
 
 #include <iostream>
@@ -187,7 +186,7 @@ namespace iceicle::solvers {
         {
             T res_norm;
             PetscCallAbort(PETSC_COMM_WORLD, VecNorm(res_data, NORM_2, &res_norm));
-            std::cout << std::format("itime: {:6d} | residual l1: {:16.8f}", k, res_norm) << std::endl;
+            std::cout << fmt::format("itime: {:6d} | residual l1: {:16.8f}", k, res_norm) << std::endl;
         };
 
         /// @brief if this is a positive integer 
@@ -618,6 +617,7 @@ namespace iceicle::solvers {
                             minJ = std::min(minJ, NUMTOOL::TENSOR::FIXED_SIZE::determinant(J));
                         }
                         if(minJ < 0.0){
+                            reset_for_element_inversion = true;
                             if(lambda_el[iel] == 0){
                                 lambda_el[iel] = lambda_b;
                             } else {
@@ -651,8 +651,8 @@ namespace iceicle::solvers {
                     } else {
                         // reset coordinates
                         update_mesh(coord, *(fespace.meshptr));
-                        lambda_u *= 1.01;
-                        lambda_b *= 1.5;
+                        lambda_u *= 1.8;
+                        lambda_b *= 1.8;
                         k--; // redo this iteration
                     }
                 }

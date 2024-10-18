@@ -15,7 +15,7 @@
 #include <ranges>
 #include <span>
 #include <ranges>
-#include <format>
+#include <fmt/core.h>
 #include <cmath>
 #include <type_traits>
 #include <iceicle/fe_function/layout_enums.hpp>
@@ -254,7 +254,7 @@ namespace iceicle {
                     os << " - Element " << ielem << ":" << std::endl;
                     for(index_type idof = 0; idof < fedata.ndof(ielem); ++idof){
                         for(index_type iv = 0; iv < fedata.nv(); ++iv){
-                            os << std::format("{:{}.{}e}", fedata[ielem, idof, iv], field_width, precision);
+                            os << fmt::format("{:{}.{}e}", fedata[ielem, idof, iv], field_width, precision);
                         }
                         os << std::endl;
                     }

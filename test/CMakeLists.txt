@@ -50,6 +50,7 @@ set(FELIB_TEST_SOURCES
     test_spacetime_utils.cpp
     test_utils.cpp
     test_mesh.cpp
+    test_evaluation.cpp
     )
 
 add_executable(test_felib ${FELIB_TEST_SOURCES})

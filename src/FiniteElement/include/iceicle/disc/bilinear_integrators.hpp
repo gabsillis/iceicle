@@ -18,7 +18,6 @@ namespace iceicle {
         ) const noexcept -> void {
             std::size_t nbasis = el.nbasis();
             std::vector<T> gradx_basis_data(nbasis * ndim);
-            std::vector<T> bi(nbasis);
 
             // zero out the matrix 
             for(int i = 0; i < nbasis; ++i) 
@@ -34,9 +33,9 @@ namespace iceicle {
                 T detJ = NUMTOOL::TENSOR::FIXED_SIZE::determinant(J);
 
                 // get the basis values and gradients in the physical domain
-                el.evalBasisQP(iqp, bi.data());
-                auto gradx_basis = el.evalPhysGradBasisQP(iqp, J, gradx_basis_data.data());
-
+                auto bi = el.eval_basis_qp(iqp);
+                auto gradx_basis = el.eval_phys_grad_basis(quadpt.abscisse, J,
+                        el.eval_grad_basis_qp(iqp), gradx_basis_data.data());
 
                 // form the matrix
                 for(std::size_t ibasis = 0; ibasis < nbasis; ++ibasis) {

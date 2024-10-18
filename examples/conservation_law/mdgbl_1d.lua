@@ -1,3 +1,9 @@
+-- Example: MDG 1D Boundary Layer
+-- Author: Gianni Absillis (gabsill@ncsu.edu)
+--
+-- Steady state advection diffusion equation with dirichlet boundary conditions to form a boundary layer type problem
+-- This is solved with MDG.
+
 local mu_arg = 0.01
 local v_arg = 1.0
 local l = 1.0
@@ -9,7 +15,7 @@ return {
 
 	-- create a uniform mesh
 	uniform_mesh = {
-		nelem = { 16 },
+		nelem = { 10 },
 		bounding_box = {
 			min = { 0.0 },
 			max = { l },
@@ -69,9 +75,9 @@ return {
 
 	-- MDG
 	mdg = {
-		ncycles = 1,
+		ncycles = 40,
 		ic_selection_threshold = function(icycle)
-			return 0.0
+			return 0.1 / (icycle * icycle)
 		end,
 	},
 
@@ -80,15 +86,14 @@ return {
 		type = "gauss-newton",
 		form_subproblem_mat = true,
 		linesearch = {
-			type = "none",
+			type = "corrigan",
 		},
-		lambda_b = 1e-3,
-		lambda_lag = 2.0,
-		lambda_u = 1e-20,
+		lambda_b = 0.1,
+		lambda_u = 1e-6,
 		ivis = 1000,
 		tau_abs = 1e-10,
 		tau_rel = 0,
-		kmax = 400000,
+		kmax = 100000,
 	},
 
 	-- output

@@ -15,7 +15,6 @@
 
 #include <gtest/gtest.h>
 #include <memory>
-#include <pstl/glue_execution_defs.h>
 
 using namespace iceicle;
 
@@ -311,14 +310,14 @@ TEST(test_fespace, test_dg_projection){
 
                 T projected_val = 0;
                 T *basis_vals = new double[el.nbasis()];
-                el.evalBasis(ref_pt, basis_vals);
+                el.eval_basis(ref_pt, basis_vals);
                 u_local_span.contract_dofs(basis_vals, &projected_val);
 
                 ASSERT_NEAR(projected_val, act_val, 1e-8);
 
                 // test the derivatives
                 std::vector<double> grad_basis_data(el.nbasis() * ndim);
-                auto grad_basis = el.evalPhysGradBasis(ref_pt, grad_basis_data.data());
+                auto grad_basis = el.eval_phys_grad_basis(ref_pt, grad_basis_data.data());
                 static_assert(grad_basis.rank() == 2);
                 static_assert(grad_basis.extent(1) == ndim);
 
@@ -332,7 +331,7 @@ TEST(test_fespace, test_dg_projection){
 
                 // test hessian
                 std::vector<double> hess_basis_data(el.nbasis() * ndim * ndim);
-                auto hess_basis = el.evalPhysHessBasis(ref_pt, hess_basis_data.data());
+                auto hess_basis = el.eval_phys_hess_basis(ref_pt, hess_basis_data.data());
 
                 // get the hessian for each equation by contraction 
                 std::vector<double> hess_eq_data(neq * ndim * ndim, 0);

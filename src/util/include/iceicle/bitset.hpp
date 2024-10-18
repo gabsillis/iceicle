@@ -376,9 +376,12 @@ namespace iceicle {
 
         /// @brief check if position is within bitset 
         /// @throws std::out_of_range if out of range
-        static
+        static constexpr
         auto _check_pos(std::size_t pos) -> void 
-        { throw std::out_of_range("Position is not within bitset"); }
+        {
+            (pos >= 0) ?  // hack for constexpr 
+            throw std::out_of_range("Position is not within bitset") : 0 ;
+        }
 
         /// @brief mask for all of the bits in the sequence
         static constexpr data_t full_set_mask = static_cast<data_t>(0) ;

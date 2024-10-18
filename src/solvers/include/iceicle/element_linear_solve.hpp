@@ -35,25 +35,9 @@ namespace iceicle::solvers {
          * @param node_coords the global node coordinates array
          */
         ElementLinearSolver(const FiniteElement<T, IDX, ndim> &el)
-        : mass(el.nbasis(), el.nbasis()), pi{} {
-            // calculate and decompose the mass matrix
-            mass = 0.0; // fill with zeros
+        : mass{calculate_mass_matrix(el)}, pi{} {
 
-            for(int ig = 0; ig < el.nQP(); ++ig){
-                const QuadraturePoint<T, ndim> quadpt = el.getQP(ig);
-
-                // calculate the jacobian determinant
-                auto J = el.jacobian(quadpt.abscisse);
-                T detJ = NUMTOOL::TENSOR::FIXED_SIZE::determinant(J);
-
-                // integrate Bi * Bj
-                for(int ibasis = 0; ibasis < el.nbasis(); ++ibasis){
-                    for(int jbasis = 0; jbasis < el.nbasis(); ++jbasis){
-                        mass[ibasis][jbasis] += el.basisQP(ig, ibasis) * el.basisQP(ig, jbasis) * quadpt.weight * detJ;
-                    }
-                }
-            }
-            
+            // decompse the mass matrix
             try {
                 pi = MATH::MATRIX::SOLVERS::decompose_lu(mass);
             } catch(MATH::MATRIX::SOLVERS::SingularMatrixException e){

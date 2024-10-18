@@ -4,6 +4,7 @@
  * @author Gianni Absillis (gabsill@ncsu.edu)
  */
 #pragma once
+#include "Numtool/fixed_size_tensor.hpp"
 #include "iceicle/fe_function/fespan.hpp"
 #include "iceicle/fespace/fespace.hpp"
 #include <variant>
@@ -74,9 +75,11 @@ namespace iceicle::solvers{
             for(const FiniteElement<T, IDX, ndim> &el : fespace.elements){
                 MATH::GEOMETRY::Point<T, ndim> center_xi = el.trans->centroid_ref();
                 auto J = el.jacobian(center_xi);
-                for(int idim = 0; idim < ndim; ++idim){
-                    reflen = std::min(reflen, J[idim][idim]);
-                }
+                // TODO: switch to min eigenvalues of jacobian
+                // since the determinant is the product of the eigenvalues, 
+                // we can take the ndim-th root to approximate based on isotropic transformation
+                reflen = std::min(reflen,
+                        std::pow(NUMTOOL::TENSOR::FIXED_SIZE::determinant(J), 1.0 / ndim));
 
                 Pn_max = std::max(Pn_max, el.basis->getPolynomialOrder());
             }

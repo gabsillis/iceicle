@@ -1,10 +1,16 @@
+-- Example: MDG Advection
+-- Author: Gianni Absillis (gabsill@ncsu.edu)
+--
+-- This example solves the linear advection equation on an initially uniform mesh
+-- using the implicit mesh adaptation provided by MDG-ICE.
+
 return {
 	-- specify the number of dimensions (REQUIRED)
 	ndim = 2,
 
 	-- create a uniform mesh
 	uniform_mesh = {
-		nelem = { 2, 2 },
+		nelem = { 10, 10 },
 		bounding_box = {
 			min = { 0.0, 0.0 },
 			max = { 1.0, 1.0 },
@@ -48,7 +54,7 @@ return {
 	conservation_law = {
 		-- the name of the conservation law being solved
 		name = "spacetime-burgers",
-		mu = 0,
+		mu = 0.00,
 		a_adv = { 0.20 },
 		b_adv = { 0.00 },
 	},
@@ -57,12 +63,12 @@ return {
 
 	-- initial condition
 	initial_condition = function(x, t)
-		-- return 0.0
-		if t > 5 * (x - 0.5) then
-			return 0.0
-		else
-			return 1.0
-		end
+		return 0.0
+		--		if t > 5 * (x - 0.5) then
+		--			return 0.0
+		--		else
+		--			return 1.0
+		--		end
 	end,
 
 	-- boundary conditions
@@ -89,14 +95,14 @@ return {
 	-- solver
 	solver = {
 		type = "gauss-newton",
-		form_subproblem_mat = true,
+		form_subproblem_mat = false,
 		linesearch = {
 			type = "none",
 		},
-		lambda_b = 1e-1,
-		lambda_u = 0,
+		lambda_b = 1e-5,
+		lambda_u = 1e-12,
 		ivis = 1,
-		tau_abs = 1e-10,
+		tau_abs = 1e-15,
 		tau_rel = 0,
 		kmax = 800,
 	},
@@ -105,4 +111,17 @@ return {
 	output = {
 		writer = "vtu",
 	},
+
+	-- post-processing
+	post = {
+		exact_solution = function(x, t)
+			if t > 5 * (x - 0.5) then
+				return 0.0
+			else
+				return 1.0
+			end
+		end,
+
+		tasks = { "l2_error" },
+	}
 }

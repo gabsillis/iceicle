@@ -1,5 +1,6 @@
 #include "iceicle/build_config.hpp"
-#include "iceicle/disc/heat_eqn.hpp"
+#include "iceicle/disc/conservation_law.hpp"
+#include "iceicle/disc/burgers.hpp"
 #include "iceicle/fe_function/component_span.hpp"
 #include "iceicle/fe_function/fespan.hpp"
 #include "iceicle/fe_function/geo_layouts.hpp"
@@ -46,12 +47,29 @@ TEST(test_petsc_jacobian, test_mdg_bl){
     FESpace<T, IDX, ndim> fespace{&mesh, FESPACE_ENUMS::LAGRANGE, FESPACE_ENUMS::GAUSS_LEGENDRE, std::integral_constant<int, pn_order>{}};
 
     // set up discretization
-    HeatEquation<T, IDX, ndim> disc{};
-    disc.mu = 0.01;
-    disc.a = 1.0;
-    disc.dirichlet_values.push_back(0.0);
-    disc.dirichlet_values.push_back(1.0);
-    disc.neumann_values.push_back(0.0);
+
+    BurgersCoefficients<T, ndim> burgers_coeffs{};
+    burgers_coeffs.mu = 0.01;
+    burgers_coeffs.a = 1.0;
+    BurgersFlux physical_flux{burgers_coeffs};
+    BurgersUpwind convective_flux{burgers_coeffs};
+    BurgersDiffusionFlux diffusive_flux{burgers_coeffs};
+    ConservationLawDDG disc{std::move(physical_flux),
+                          std::move(convective_flux),
+                          std::move(diffusive_flux)};
+    disc.field_names = std::vector<std::string>{"u"};
+    disc.dirichlet_callbacks.push_back( 
+        [](const T *x, T *out){
+            out[0] = 0.0;
+    });
+    disc.dirichlet_callbacks.push_back( 
+        [](const T *x, T *out){
+            out[0] = 1.0;
+    });
+    disc.neumann_callbacks.push_back( 
+        [](const T *x, T *out){
+            out[0] = 1.0;
+    });
 
     // define layout
     fe_layout_right u_layout{fespace.dg_map, std::integral_constant<std::size_t, neq>{}};
@@ -139,7 +157,7 @@ TEST(test_petsc_jacobian, test_mdg_bl){
             T petsc_mat_val;
             MatGetValue(jac, i, j, &petsc_mat_val);
             
-            std::cout << std::format("{:>16f}", (petsc_mat_val - jac_dense[i, j])) << " ";
+            std::cout << fmt::format("{:>16f}", (petsc_mat_val - jac_dense[i, j])) << " ";
             ASSERT_NEAR(petsc_mat_val, (jac_dense[i, j]), 1e-5);
         }
         std::cout << std::endl;

@@ -11,8 +11,10 @@
 #include <Numtool/matrix/dense_matrix.hpp>
 #include <Numtool/matrixT.hpp>
 #include <iceicle/basis/basis.hpp>
+#include <iceicle/element/evaluation.hpp>
 #include <iceicle/geometry/geo_element.hpp>
 #include <iceicle/quadrature/QuadratureRule.hpp>
+#include <iceicle/linalg/linalg_utils.hpp>
 #include <span>
 #include <vector>
 
@@ -100,6 +102,9 @@ struct FiniteElement {
   /** @brief the quadraature rule */
   const QuadratureRule<T, IDX, ndim> *quadrule;
 
+  /// @brief the basis evaluation type
+  using Eval_t = BasisEvaluation<T, ndim>;
+
   /** @brief precomputed evaluations of the basis functions 
    * at the quadrature points 
    *
@@ -108,7 +113,7 @@ struct FiniteElement {
    * therefore the evaluations will be the same
    *
    **/
-  const FEEvaluation<T, IDX, ndim> &qp_evals;
+  std::span<const Eval_t> qp_evals;
 
   /// @brief the node indices for the element
   const std::span<IDX> inodes;
@@ -133,32 +138,26 @@ struct FiniteElement {
    * @param [out] Bi the values of the basis functions at the point [size =
    * nbasis]
    */
-  void evalBasis(const T *xi, T *Bi) const { basis->evalBasis(xi, Bi); }
+  void eval_basis(const T *xi, T *Bi) const { basis->evalBasis(xi, Bi); }
+
+  /**
+   * @brief get the basis function evaluated at the quadrature point 
+   * @param iqp the quadrature point index 
+   * @param ibasis the basis function index
+   */
+  T basis_qp(int iqp, int ibasis) const noexcept
+  { return qp_evals[iqp].bi_span[ibasis]; }
 
   /**
    * @brief get the values of the basis functions at the given quadrature point
-   * cost: one memcpy of size nbasis
    * @param [in] quadrature_pt_idx the index of the quadrature point in [0,
-   * ngauss()]
-   * @param [out] Bi the values of the basis functions at the point [size =
+   * ngauss())
+   * @return the values of the basis functions at the quadrature point [size =
    * nbasis]
    */
-  void evalBasisQP(int quadrature_pt_idx, T *Bi) const {
-    const std::vector<T> &eval = qp_evals[quadrature_pt_idx];
-    std::copy(eval.begin(), eval.end(), Bi);
-  }
-
-  /**
-   * @brief directly access the evaluation of the given basis function at the
-   * given quadrature point cost: pointer dereference
-   * @param [in] quadrature_pt_idx the index of the quadrature point in [0,
-   * ngauss()]
-   * @param [in] ibasis the index of the basis function
-   * @return the evaluation of the basis function at the given quadrature point
-   */
-  inline T basisQP(int quadrature_pt_idx, int ibasis) const {
-    return qp_evals[quadrature_pt_idx][ibasis];
-  }
+  auto eval_basis_qp(int quadrature_pt_idx) const noexcept
+  -> Eval_t::bi_span_t 
+  { return qp_evals[quadrature_pt_idx].bi_span; }
 
   /**
    * @brief evaluate the first derivatives of the basis functions
@@ -175,11 +174,11 @@ struct FiniteElement {
    *         takes a pointer to the first element of this data structure
    *         [size = [nbasis : i][ndim : j]]
    */
-  auto evalGradBasis(const T *xi, T *dBidxj) const {
+  auto eval_grad_basis(const T *xi, T *dBidxj) const {
     basis->evalGradBasis(xi, dBidxj);
-    std::experimental::extents<int, std::dynamic_extent, ndim> extents(
+    std::extents<int, std::dynamic_extent, ndim> extents(
         nbasis());
-    std::experimental::mdspan gbasis{dBidxj, extents};
+    std::mdspan gbasis{dBidxj, extents};
     static_assert(gbasis.extent(1) == ndim);
     return gbasis;
   }
@@ -188,36 +187,25 @@ struct FiniteElement {
    * @brief evaluate the first derivatives of the basis functions at a
    * quadrature point
    *
-   * TODO: precompute evaluation to reduce cost to a memcpy
    * @param [in] quadrature_pt_idx the index of the quadrature point [0,
    * ngauss()]
-   * @param [out] dBidxj the values of the first derivatives of the basis
-   * functions with respect to the reference domain at that point This is in the
-   * form of a 1d pointer array that must be preallocated size must be nbasis *
-   * ndim or larger
    *
    * @return an mdspan view of dBidxj for an easy interface
    *         \frac{dB_i}{d\xi_j} where i is ibasis
    *         takes a pointer to the first element of this data structure
    *         [size = [nbasis : i][ndim : j]]
    */
-  auto evalGradBasisQP(int quadrature_pt_idx, T *dBidxj) const {
-    basis->evalGradBasis(quadrule[quadrature_pt_idx].abscisse, dBidxj);
-    std::experimental::extents<int, std::dynamic_extent, ndim> extents(
-        nbasis());
-    std::experimental::mdspan gbasis{dBidxj, extents};
-    static_assert(gbasis.extent(1) == ndim);
-    return gbasis;
-  }
+  auto eval_grad_basis_qp(int quadrature_pt_idx) const noexcept
+  -> Eval_t::grad_span_t 
+  { return qp_evals[quadrature_pt_idx].grad_bi_span; }
 
   /**
    * @brief evaluate the first derivatives of the basis functions
    *        with respect to physical domain coordinates
    * @param [in] xi the point in the reference domain (uses Point class)
-   * @param [in] transformation the transformation from the reference domain to
-   * the physical domain (must be compatible with the geometric element)
-   * @param [in] node_list the list of global node coordinates
    * @param [in] J the jacobian of the element transformation 
+   *               (optional: see overload)
+   * @param [in] grad_bi view over the gradients of the basis functions 
    *               (optional: see overload)
    * @param [out] dBidxj the values of the first derivatives of the basis
    * functions with respect to the reference domain at that point This is in the
@@ -229,9 +217,10 @@ struct FiniteElement {
    *         takes a pointer to the first element of this data structure
    *         [size = [nbasis : i][ndim : j]]
    */
-  auto evalPhysGradBasis(
+  auto eval_phys_grad_basis(
     const Point &xi,
     const JacobianType &J,
+    linalg::in_tensor auto grad_bi, 
     T *dBidxj
   ) const {
     using namespace NUMTOOL::TENSOR::FIXED_SIZE;
@@ -247,19 +236,15 @@ struct FiniteElement {
     auto detJ = determinant(J);
     detJ = (detJ == 0.0) ? 1.0 : detJ; // protect from div by zero
 
-    // Evaluate dBi in reference domain
-    std::vector<T> dBi_data(ndim * ndof, 0.0);
-    auto dBi = evalGradBasis(xi, dBi_data.data());
-
-    std::experimental::extents<int, std::dynamic_extent, ndim> extents(
+    std::extents<int, std::dynamic_extent, ndim> extents(
         ndof);
-    std::experimental::mdspan gbasis{dBidxj, extents};
+    std::mdspan gbasis{dBidxj, extents};
     // dBidxj =  Jadj_{jk} * dBidxk
     for (int i = 0; i < ndof; ++i) {
       for (int j = 0; j < ndim; ++j) {
         // gbasis[i, j] = 0.0;
         for (int k = 0; k < ndim; ++k) {
-          gbasis[i, j] += dBi[i, k] * adjJ[k][j];
+          gbasis[i, j] += grad_bi[i, k] * adjJ[k][j];
         }
       }
     }
@@ -272,56 +257,37 @@ struct FiniteElement {
     return gbasis;
   }
 
-  /** Calculates the Jacobian: \overload */
-  auto evalPhysGradBasis(
+  /** Calculates the gradient wrt reference domain: \overload */
+  auto eval_phys_grad_basis(
+    const Point &xi,
+    const JacobianType& J,
+    T *dbidxj 
+  ) const {
+    // compute the basis functions in reference domain
+    std::vector<T> dBi_data(ndim * nbasis());
+    auto grad_bi = eval_grad_basis(xi, dBi_data.data());
+
+    return eval_phys_grad_basis(xi, J, grad_bi, dbidxj);
+  }
+
+  /** Calculates the Jacobian and gradient wrt reference domain: \overload */
+  auto eval_phys_grad_basis(
     const Point &xi,
     T *dbidxj 
   ) const {
-    JacobianType J = trans->jacobian(coord_el, xi);
-    return evalPhysGradBasis(xi, J, dbidxj);
-  }
+    // compute the basis functions in reference domain
+    std::vector<T> dBi_data(ndim * nbasis());
+    auto grad_bi = eval_grad_basis(xi, dBi_data.data());
 
-  /**
-   * @brief evaluate the first derivatives of the basis functions
-   *        with respect to physical domain coordinates at the given quadrature
-   * point
-   *
-   * @param [in] quadrature_pt_idx the quadrature point index
-   * @param [in] transformation the transformation from the reference domain to
-   * the physical domain (must be compatible with the geometric element)
-   * @param [in] J the jacobian of the element transformation 
-   *               (optional: see overload)
-   * @param [out] dBidxj the values of the first derivatives of the basis
-   * functions with respect to the reference domain at that point This is in the
-   * form of a 1d pointer array that must be preallocated size must be nbasis *
-   * ndim or larger
-   *
-   * @return an mdspan view of dBidxj for an easy interface
-   *         \frac{dB_i}{d\xi_j} where i is ibasis
-   *         takes a pointer to the first element of this data structure
-   *         [size = [nbasis : i][ndim : j]]
-   */
-  auto evalPhysGradBasisQP(
-      int quadrature_pt_idx,
-      const JacobianType &J,
-      T *dBidxj
-  ) const {
-    // TODO: prestore
-    return evalPhysGradBasis(
-        (*quadrule)[quadrature_pt_idx].abscisse, J, dBidxj);
-  }
-  
-  /** Calculates the Jacobian: \overload */
-  auto evalPhysGradBasisQP(
-      int quadrature_pt_idx,
-      T *dBidxj
-  ) const {
-    // TODO: prestore
-    return evalPhysGradBasis( (*quadrule)[quadrature_pt_idx].abscisse, dBidxj);
+    // compute jacobian
+    JacobianType J = trans->jacobian(coord_el, xi);
+
+    return eval_phys_grad_basis(xi, J, grad_bi, dbidxj);
   }
 
   /**
    * @brief evaluate the second derivatives of the basis functions
+   * wrt the reference domain
    *
    * @param [in] xi the point in the reference domain to evaluate at
    * @param [out] basis_hessian_data pointer to the 1d array to store the
@@ -329,7 +295,7 @@ struct FiniteElement {
    * B_i}{\partial \xi_j \partial \xi_k}
    * @return a multidimensional array view of the basis_hessian_data
    */
-  auto evalHessBasis(const Point &xi, T *basis_hessian_data) const {
+  auto eval_hess_basis(const Point &xi, T *basis_hessian_data) const {
     using namespace std::experimental;
     basis->evalHessBasis(xi, basis_hessian_data);
     extents<int, std::dynamic_extent, ndim, ndim> exts{nbasis()};
@@ -338,8 +304,19 @@ struct FiniteElement {
   }
 
   /**
-   * @brief evaluate the second derivatives of the basis functions in the
-   * physical domain
+   * @brief get the hessian of the basis functions at a  quadrature point
+   * wrt the referene domain 
+   *
+   * @param quadrature_pt_idx the quadrature point index 
+   * @return a view over the hessian of the basis functions 
+   */
+  auto eval_hess_basis_qp(int quadrature_pt_idx) const noexcept 
+  -> Eval_t::hess_span_t
+  { return qp_evals[quadrature_pt_idx].hess_bi_span; }
+
+  /**
+   * @brief evaluate the second derivatives of the basis functions 
+   * wrt the physical domain coordinates
    *
    * @param [in] xi the point in the reference domain to evaluate at
    * @param [in] coord the global node coordinates array
@@ -348,32 +325,26 @@ struct FiniteElement {
    * B_i}{\partial x_j \partial x_k}
    * @return a multidimensional array view of the basis_hessian_data
    */
-  auto evalPhysHessBasis(
-    const Point &xi,
+  auto eval_phys_hess_basis(
+    const JacobianType& trans_jac,
+    const HessianType& trans_hess,
+    linalg::in_tensor auto phys_grad_basis,
+    linalg::in_tensor auto ref_hess_basis,
     T *basis_hessian_data
   ) const {
-    using namespace std::experimental;
 
     // pull nbasis to variable so its more likely to be put in register
     int ndof = nbasis();
 
-    // Get the Transformation Jacobian and Hessian
-    auto trans_jac = trans->jacobian(coord_el, xi);
-    auto trans_hess = trans->hessian(coord_el, xi);
+    // shape of hessian multidimensional arrays
+    std::extents<int, std::dynamic_extent, ndim, ndim> hess_exts{ndof};
 
-    // Evaluate basis function derivatives and second derivatives
-
-    // derivatives wrt Physical Coordinates
-    std::vector<T> dBi_data(ndim * ndof, 0.0);
-    auto dBi = evalPhysGradBasis(xi, dBi_data.data());
-
-    // Hessian wrt reference coordinates
-    std::vector<T> hess_Bi_data(ndim * ndim * ndof, 0.0);
-    auto hessBi = evalHessBasis(xi, hess_Bi_data.data());
+    // rhs of hessian equation
+    std::vector<T> rhs_data(ndim * ndim * ndof, 0.0);
+    std::mdspan rhs{rhs_data.data(), hess_exts};
 
     // multidimensional array view of hessian
-    extents<int, std::dynamic_extent, ndim, ndim> exts{ndof};
-    mdspan hess_phys{basis_hessian_data, exts};
+    std::mdspan hess_phys{basis_hessian_data, hess_exts};
 
     // fill with zeros
     std::fill_n(basis_hessian_data, ndim * ndim * ndof, 0.0);
@@ -389,12 +360,15 @@ struct FiniteElement {
     int idof, id, jd, kd, ld;
 
     // form the rhs of the physical hessian equation
-    // (put this result in hessBi overwriting the values)
+    // copy over the reference coordinate hessian to rhs
+    // adjust for gradient
     for (idof = 0; idof < ndof; ++idof) {
       for (id = 0; id < ndim; ++id) {
         for (jd = 0; jd < ndim; ++jd) {
+          rhs[idof, id, jd] = ref_hess_basis[idof, id, jd];
           for (kd = 0; kd < ndim; ++kd) {
-            hessBi[idof, id, jd] -= trans_hess[kd][id][jd] * dBi[idof, kd];
+            rhs[idof, id, jd] -=
+              trans_hess[kd][id][jd] * phys_grad_basis[idof, kd];
           }
         }
       }
@@ -408,13 +382,14 @@ struct FiniteElement {
           for (kd = 0; kd < ndim; ++kd) {
             for (ld = 0; ld < ndim; ++ld) {
               hess_phys[idof, id, jd] +=
-                  adjJ[kd][jd] * adjJ[ld][id] * hessBi[idof, ld, kd];
+                  adjJ[kd][jd] * adjJ[ld][id] * rhs[idof, ld, kd];
             }
           }
         }
       }
     }
 
+    // divide through the 1D array of hess_phys by jacobian determinant squared
     for (int i = 0; i < ndim * ndim * ndof; ++i) {
       basis_hessian_data[i] /= detJ2;
     }
@@ -422,23 +397,18 @@ struct FiniteElement {
     return hess_phys;
   }
 
-  /**
-   * @brief evaluate the second derivatives of the basis functions in the
-   * physical domain
-   *
-   * @param [in] iqp the quadrature point index
-   * @param [in] coord the global node coordinates array
-   * @param [out] basis_hessian_data pointer to the 1d array to store the
-   * hessian data in ordered i, j, k in C style array for \frac{\partial^2
-   * B_i}{\partial x_j \partial x_k}
-   * @return a multidimensional array view of the basis_hessian_data
-   */
-  auto evalPhysHessBasisQP(
-    int iqp,
-    NodeArray<T, ndim> &coord,
-    T *basis_hessian_data
+  /// @brief \overload recomputes jacobian, hessian, physical gradient, and reference hessian
+  auto eval_phys_hess_basis(
+      const Point& refpt,
+      T *hessian_data
   ) const {
-    return evalPhysHessBasis((*quadrule)[iqp].abscisse, coord, basis_hessian_data);
+    JacobianType jac = jacobian(refpt);
+    HessianType hess = hessian(refpt);
+    std::vector<T> grad_data(nbasis() * ndim);
+    std::vector<T> hess_data(nbasis() * ndim * ndim);
+    auto phys_grad_basis = eval_phys_grad_basis(refpt, jac, grad_data.data());
+    auto ref_hess_basis = eval_hess_basis(refpt, hess_data.data());
+    return eval_phys_hess_basis(jac, hess, phys_grad_basis, ref_hess_basis, hessian_data);
   }
 
   // =========================
@@ -493,6 +463,121 @@ struct FiniteElement {
 };
 
 /**
+ * @brief storage for use in PhysDomainEval 
+ *
+ * prevents re-creating the same std::vector's repeatedly
+ */
+template<class T, int ndim>
+class PhysDomainEvalStorage {
+  public:
+  std::vector<T> gradient_storage;
+  std::vector<T> hessian_storage;
+
+  template<class IDX>
+  PhysDomainEvalStorage(const FiniteElement<T, IDX, ndim>& el)
+  : gradient_storage(el.nbasis() * ndim),
+    hessian_storage(el.nbasis() * ndim * ndim)
+  {}
+};
+
+template<class T, class IDX, int ndim>
+PhysDomainEvalStorage(const FiniteElement<T, IDX, ndim>&) -> PhysDomainEvalStorage<T, ndim>;
+
+/**
+ * @brief given a finite element and a point in the reference domain 
+ * This utility computes and stores physical domain dependent information
+ * to reduce code duplication
+ * 
+ * - Transformation Jacobian
+ * - Transformation Hessian
+ *
+ * - Basis function gradients wrt physical domain coordinates 
+ * - Basis function hessians wrt physical domain coordinates 
+ */
+template<class T, int ndim>
+struct PhysDomainEval {
+  using Point = MATH::GEOMETRY::Point<T, ndim>;
+  using JacobianType = NUMTOOL::TENSOR::FIXED_SIZE::Tensor<T, ndim, ndim>;
+  using HessianType = NUMTOOL::TENSOR::FIXED_SIZE::Tensor<T, ndim, ndim, ndim>;
+
+  /// view of the gradient type
+  using grad_span_t = std::mdspan<T, std::extents<int, std::dynamic_extent, ndim>>;
+
+  /// view over the hessian type
+  using hess_span_t = std::mdspan<T, std::extents<int, std::dynamic_extent, ndim, ndim>>;
+
+  PhysDomainEvalStorage<T, ndim>& storage;
+
+  /// @brief the jacobian of the element transformation 
+  JacobianType jac;
+
+  /// @brief the hessian of the element transformation
+  HessianType hess;
+
+  /// @brief the gradient of the basis functions wrt physical domain coordinates
+  grad_span_t phys_grad_basis;
+
+  /// @brief the hessian of the basis functions wrt physical domain coordinates 
+  hess_span_t phys_hess_basis;
+
+  /** 
+   * @brief construct data arrays and compute the evaluation 
+   *
+   * @param el the FiniteElement to compute for 
+   * @param pt the point in the reference domain 
+   * @param ref_evals the evaluations of basis functions and derivatives
+   * wrt the reference domain 
+   * NOTE: this must be computed with pt to be correct
+   */
+  template<class IDX>
+  PhysDomainEval(
+      PhysDomainEvalStorage<T, ndim>& storage,
+      const FiniteElement<T, IDX, ndim>& el, 
+      const Point& pt,
+      const BasisEvaluation<T, ndim>& ref_evals
+  ) : storage{storage},
+      jac{el.jacobian(pt)}, hess{el.hessian(pt)}, 
+      phys_grad_basis{storage.gradient_storage.data(), el.nbasis()},
+      phys_hess_basis{storage.hessian_storage.data(), el.nbasis()}
+  {
+    el.eval_phys_grad_basis(pt, jac, ref_evals.grad_bi_span,
+        storage.gradient_storage.data());
+    el.eval_phys_hess_basis(jac, hess, phys_grad_basis,
+        ref_evals.hess_bi_span, storage.hessian_storage.data());
+  }
+
+  /**
+   * @brief overload to construct data arrays and compute evaluation 
+   * performs the reference domain basis functions on the fly 
+   * this may be redundant -- prefer manually computing these to using this constructor
+   *
+   * @param el the FiniteElement to compute for 
+   * @param pt the point in the reference domain 
+   */
+  template<class IDX>
+  PhysDomainEval(
+      PhysDomainEvalStorage<T, ndim>& storage,
+      const FiniteElement<T, IDX, ndim>& el,
+      const Point& pt
+  ) : PhysDomainEval{storage, el, pt, BasisEvaluation<T, ndim>{el.basis, pt}}
+  {}
+};
+
+template<class T, class IDX, int ndim>
+PhysDomainEval(
+    PhysDomainEvalStorage<T, ndim>&,
+    const FiniteElement<T, IDX, ndim>&,
+    const typename PhysDomainEval<T, ndim>::Point&,
+    const BasisEvaluation<T, ndim>&) 
+  -> PhysDomainEval<T, ndim>;
+template<class T, class IDX, int ndim>
+PhysDomainEval(
+    PhysDomainEvalStorage<T, ndim>&,
+    const FiniteElement<T, IDX, ndim>&,
+    const typename PhysDomainEval<T, ndim>::Point&)
+  -> PhysDomainEval<T, ndim>;
+
+/**
  * @brief calculate the mass matrix for an element 
  * @param el the element to calculate the mass matrix for 
  * @param node_coords the global node coordinates array 
@@ -514,9 +599,10 @@ MATH::MATRIX::DenseMatrix<T> calculate_mass_matrix(
 
     // integrate Bi * Bj
     int nbasis = el.nbasis();
+    auto bi = el.eval_basis_qp(ig);
     for(int ibasis = 0; ibasis < nbasis; ++ibasis){
       for(int jbasis = 0; jbasis < nbasis; ++jbasis){
-        mass[ibasis][jbasis] += el.basisQP(ig, ibasis) * el.basisQP(ig, jbasis) * quadpt.weight * detJ;
+        mass[ibasis][jbasis] += bi[ibasis] * bi[jbasis] * quadpt.weight * detJ;
       }
     }
   }

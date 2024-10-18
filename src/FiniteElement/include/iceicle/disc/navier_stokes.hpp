@@ -1,3 +1,5 @@
+#include "iceicle/anomaly_log.hpp"
+#include "iceicle/geometry/face.hpp"
 #include <Numtool/fixed_size_tensor.hpp>
 #include <iceicle/linalg/linalg_utils.hpp>
 
@@ -205,6 +207,50 @@ namespace iceicle {
                     flux[1 + ndim][jdim] = state.velocity[jdim] * (state.rhoe + state.pressure);
                 }
                 return flux;
+            }
+
+            inline constexpr 
+            auto apply_bc(
+                std::array<T, neq> uL,
+                linalg::in_tensor auto graduL,
+                Vector unit_normal,
+                BOUNDARY_CONDITIONS bctype,
+                int bcflag
+            ) const noexcept {
+                using namespace NUMTOOL::TENSOR::FIXED_SIZE;
+
+                // outputs
+                std::array<T, neq> uR{};
+                Tensor<T, neq, ndim> graduR{};
+
+                switch(bctype) {
+                    case BOUNDARY_CONDITIONS::SLIP_WALL: 
+                    {
+                        FlowState<T, ndim> stateL = physics.calc_flow_state(uL);
+
+                        // density and energy are the same
+                        uR[0] = uL[0];
+                        uR[1 + ndim] = uL[1 + ndim];
+
+                        // flip velocity over the normal
+                        T mom_n = dot(stateL.momentum, unit_normal);
+                        Vector mom_R = stateL.momentum;
+                        axpy(-2 * mom_n, unit_normal, mom_R);
+
+                        for(int idim = 0; idim < ndim; ++idim){
+                            uR[1 + idim] = mom_R[idim];
+                        }
+
+                        // exterior state gradients equal interor state gradients 
+                        linalg::copy(graduL, linalg::as_mdspan(graduR));
+
+                    } break;
+                    default:
+                    util::AnomalyLog::log_anomaly(util::Anomaly{"Unsupported BC",
+                            util::general_anomaly_tag{}});
+                }
+
+                return std::pair{uR, graduR};
             }
 
             inline constexpr 

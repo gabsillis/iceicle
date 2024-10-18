@@ -1,3 +1,9 @@
+-- Example: Steady state heat equation in 2D
+-- Author: Gianni Absillis
+--
+-- Solves the academic problem of a 2D heat equation with dirichlet boundary conditions.
+-- With error analysis
+
 local function sinh(x)
 	if x == 0 then
 		return 0.0
@@ -11,9 +17,11 @@ local function sinh(x)
 		local y = x * x
 		x = x
 			+ x
-				* y
-				* (((-0.78966127417357099479e0 * y + -0.16375798202630751372e3) * y + -0.11563521196851768270e5) * y + -0.35181283430177117881e6)
-				/ (((0.10000000000000000000e1 * y + -0.27773523119650701667e3) * y + 0.36162723109421836460e5) * y + -0.21108770058106271242e7)
+			* y
+			*
+			(((-0.78966127417357099479e0 * y + -0.16375798202630751372e3) * y + -0.11563521196851768270e5) * y + -0.35181283430177117881e6)
+			/
+			(((0.10000000000000000000e1 * y + -0.27773523119650701667e3) * y + 0.36162723109421836460e5) * y + -0.21108770058106271242e7)
 	else
 		x = math.exp(x)
 		x = x / 2.0 - 0.5 / x
@@ -33,14 +41,14 @@ return {
 	ndim = 2,
 
 	-- create a uniform mesh
-	mixed_uniform_mesh = {
+	uniform_mesh = {
 		nelem = { nelem_arg, nelem_arg },
 		bounding_box = {
 			min = { 0.0, 0.0 },
 			max = { 1.0, 1.0 },
 		},
 
-		quad_ratio = { 0.0, 0.5 },
+		-- quad_ratio = { 0.0, 0.0 },
 
 		-- set boundary conditions
 		boundary_conditions = {

@@ -67,7 +67,7 @@ namespace iceicle::solvers {
             if(writer_name && eq_icase(writer_name.value(), "vtu")){
                 io::PVDWriter<T, IDX, ndim> pvd_writer{};
                 pvd_writer.register_fespace(fespace);
-                pvd_writer.register_fields(u, "u");
+                pvd_writer.register_fields(u, disc.field_names);
                 writer = pvd_writer;
             }
         }
@@ -701,11 +701,11 @@ namespace iceicle::solvers {
                                 std::cout << std::endl;
                             }
 #else
+                            std::cout << "L_infty error: " << std::setprecision(12);
                             for(int iv = 0; iv < DiscType::nv_comp; ++iv){
                                 std::cout << errors[iv] << " ";
                             }
                             std::cout << std::endl;
-                            std::cout << "L_infty error: " << std::setprecision(12) << error << std::endl;
 #endif
                         }
 

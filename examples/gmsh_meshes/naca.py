@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 # parameters 
 
 # number of points on one of the airfoil surfaces
-npoints = 300
+npoints = 200
 
 # naca airfoil specification
 naca = [0, 0, 1, 2]
@@ -23,7 +23,7 @@ t = naca[2] / 10.0 + naca[3] / 100.0
 
 # mesh size parameter
 lc_airfoil = 0.02
-lc_freestream = 5.0
+lc_freestream = 0.3
 
 # ====================
 # = make the airfoil =
@@ -90,10 +90,10 @@ gmsh.model.addPhysicalGroup(1, [airfoil_spline], 1)
 gmsh.model.addPhysicalGroup(1, [bl1, bl3], 2)
 gmsh.model.addPhysicalGroup(1, [bl2], 3)
 gmsh.model.addPhysicalGroup(1, [bl4], 4)
-gmsh.model.addPhysicalGroup(2, [domain], 5)
+gmsh.model.addPhysicalGroup(2, [domain], 6)
 
 gmsh.model.geo.synchronize()
-gmsh.option.setNumber("Mesh.Algorithm", 11)  
+gmsh.option.setNumber("Mesh.Algorithm", 5)  
 gmsh.model.mesh.generate(2)
 gmsh.write("naca.msh");
 

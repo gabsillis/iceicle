@@ -1,3 +1,9 @@
+-- Example: Explicit Burgers Equation
+-- Author: Gianni Absillis
+--
+-- Modeled after the test problem in Kercher et al. for Moving Discontinuous Galerkin with Interface Condition Enforcement for Viscous Flows
+-- This solves the given burgers equation with dirichlet and extrapolation boundary conditions using a semi-discrete form on a uniform mesh
+
 local fourier_nr = 0.0001
 
 local nelem_arg = 100
@@ -45,7 +51,7 @@ return {
         quadrature = "gauss",
 
         -- the basis function order
-        order = 2,
+        order = 5,
     },
 
     -- describe the conservation law

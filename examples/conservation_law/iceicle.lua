@@ -1,3 +1,9 @@
+-- Example: Default control file
+-- Author: Gianni Absillis (gabsill@ncsu.edu)
+--
+-- shows that iceicle.lua is run when no --scriptfile is specified
+-- A spacetime-burgers mdg case (currently needs work)
+
 local fourier_nr = 0.0001
 
 local t_s = 0.5
@@ -9,7 +15,7 @@ return {
 	ndim = 2,
 
 	-- create a uniform mesh
-	uniform_mesh = {
+	mixed_uniform_mesh = {
 		nelem = { 10, 10 },
 		bounding_box = {
 			min = { 0.0, 0.0 },
@@ -41,7 +47,7 @@ return {
 	-- define the finite element domain
 	fespace = {
 		-- the basis function type (optional: default = lagrange)
-		basis = "legendre",
+		basis = "lagrange",
 
 		-- the quadrature type (optional: default = gauss)
 		quadrature = "gauss",
@@ -76,6 +82,13 @@ return {
 		},
 	},
 
+	mdg = {
+		ncycles = 2,
+		ic_selection_threshold = function(icycle)
+			return 1e-3
+		end,
+	},
+
 	-- solver
 	solver = {
 		type = "gauss-newton",
@@ -83,26 +96,16 @@ return {
 		tau_abs = 1e-8,
 		tau_rel = 0,
 		kmax = 60,
-		regularization = function(k, res)
-			return 0.1
-		end,
-		form_subproblem_mat = false,
+		lambda_u = 1e-6,
+		lambda_b = 1e-2,
+		lambda_lag = 0.0,
+		form_subproblem_mat = true,
 		verbosity = 0,
 		linesearch = {
 			kmax = 8,
 			type = "none",
 			alpha_initial = 1.0,
 			alpha_max = 2.0,
-		},
-		mdg = {
-			ncycles = 200,
-			ic_selection_threshold = function(icycle)
-				if icycle % 2 == 0 then
-					return 0.0
-				else
-					return 1e8
-				end
-			end,
 		},
 	},
 

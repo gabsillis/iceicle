@@ -28,6 +28,65 @@ Introduction
 ============
 ICEicle is a research finite element code aimed at implementing MDG-ICE.
 
+Installation
+============
+
+==========
+Quickstart 
+==========
+A bare-bones version of the library (with unit tests built by default) can be built with 
+
+.. code-block:: bash
+
+   mkdir build 
+   cd build 
+   cmake ..
+   make -j
+
+=====================
+Third Party Libraries
+=====================
+
+Third party libraries can be included in the build process by applying the corresponding cmake flag:
+``cmake -D<flag-name>=ON ..``. 
+Unless otherwise stated, the library is automatically downloaded using FetchContent by the cmake configuration when the flag is enabled.
+
+-----
+PETSc
+-----
+``ICEICLE_USE_PETSC``: Interface ICEicle with PETSc - a library for linear and nonlinear sparse solvers on distributed
+memory platforms. Currently integrated features include:
+- Finite difference construction of jacobians in a PETSc ``Mat``.
+- Newton solver that uses ``KSP`` linear solvers 
+- Gauss-Newton solver that uses ``KSP`` linear solvers 
+- Matrix free Newton-Krylov solver 
+
+This library is located by use of the ``PETSC_DIR`` and ``PETSC_ARCH`` environment variables using pkgconfig.
+
+---
+Lua
+---
+``ICEICLE_USE_LUA``: Interface with thelua C api through sol2. This is used for input decks with callback functions.
+
+.. note::
+   This requires Lua development libraries.
+
+To get the lua development libraries on Fedora or RHEL
+
+.. code-block:: bash
+
+   dnf install lua-devel
+
+-----
+METIS
+-----
+``ICEICLE_USE_METIS``: Enable mesh partitioning with METIS. The petsc bitbucket fork is used for the automatic install.
+
+-------------
+Documentation 
+-------------
+
+These documentation pages can be built by enabling ``ICEICLE_BUILD_DOC``. This requires Sphinx and doxygen to be installed, along with the packages ``breathe``, ``sphinx_rtd_theme``, ``sphinx.ext.mathjax``, ``sphinx.ext.autosectionlabel``, and ``sphinxcontrib.tikz``.
 
 Technical Background
 ====================
@@ -530,6 +589,7 @@ and some physical parameters.
 .. note::
    The Spacetime burgers equation will have ``ndim-1`` fields because of the one time dimension.
 
+
 =================
 Initial Condition
 =================
@@ -571,6 +631,8 @@ Boundary Conditions
 
    Assumes that the exterior state and derivatives are equivalent to the interior state
 
+* ``slip wall`` A frictionless wall, a symmetric boundary condition in the velocity components. Note this isn't strictly equivalent to a symmetric boundary condition because the state gradients are taken to be equivalent to the interior state.
+
 ======
 Solver
 ======
@@ -588,7 +650,7 @@ Implicit methods assume no method of lines for time, so are either steady state,
 
    * :cpp:`"rk3-ssp", "rk3-tvd"` : Three stage Runge-Kutta explicit time integration. Strong Stability Preserving (SSP) or Total Variation Diminishing (TVD) versions
 
-``ivis`` The visualization (output) is run every ``ivis`` iterations of the solver
+* ``ivis`` The visualization (output) is run every ``ivis`` iterations of the solver
 
 --------------------------
 Explicit Solver Parameters
@@ -642,7 +704,7 @@ Gauss-Newton Parameters
 
 * ``lambda_lag`` regularization value for lagrangian regularization -- defualts to :math:`10^{-5}`
 
-* ``lambda_1`` regularization value for curvature penalization -- defaults to :math:`10^{-3}`
+* ``lambda_1`` regularization value for curvature penalization (not implemented) -- defaults to :math:`10^{-3}`
 
 * ``lambda_b`` regularization value for geometric degrees of freedom -- defaults to :math:`10^{-2}`
 
@@ -694,27 +756,31 @@ and the reference element domain with :math:`\hat{\mathcal{K}}`
 Geometric Entities
 ==================
 There are two primary abstractions iceicle defines for geometric entities used in finite element computations:
-:cpp:class:`iceicle::GeometricElement`, which represents the physical domain in :math:`\mathbb{R}^d`, and 
-:cpp:class:`iceicle::Face`, which represents the physical domain of the intersection of two 
-:cpp:class:`iceicle::GeometricElement` s. 
+:cpp:class:`iceicle::ElementTransformation`, which represents the physical domain transfromation in :math:`\mathbb{R}^d`, and 
+:cpp:class:`iceicle::Face`, which represents the physical domain of the intersection of two domains with their respective element transformations.
 
 ---------------------------------
 Element Coordinate Transformation
 ---------------------------------
-:cpp:class:`iceicle::GeometricElement` implementations must implement the transformation :math:`T:\mathbf{\xi}\mapsto\mathbf{x}`
+:cpp:class:`iceicle::ElementTransformation` is a function table that represents
+the transformation :math:`T:\mathbf{\xi}\mapsto\mathbf{x}`
 from a reference domain :math:`\hat{\mathcal{K}} \subset \mathbb{R}^d` 
 to the physical domain :math:`\mathcal{K} \subset \mathbb{R}^d` 
 where :math:`\mathbf{\xi}\in\hat{\mathcal{K}}, \mathbf{x}\in\mathcal{K}`. 
 The degrees of freedom that define the physical domain are termed "nodes".
-A :cpp:class:`iceicle::GeometricElement` will just store the indices to the coordinate degrees of freedom 
-which are stored in an :cpp:type:`iceicle::NodeArray`.
+:cpp:class:`iceicle::ElementTransformation` operates directly on node coordinates (``std::span<Point>``), 
+however, in general the coordinates are stored in a large :cpp:type:`iceicle::NodeArray`, 
+and the connectivity of node indices in this array for each element is stored separately.
 
-:cpp:func:`iceicle::GeometricElement::transform` represents the transformation :math:`T` provided the :cpp:type:`iceicle::NodeArray`.
+:cpp:class:`iceicle::ElementTransformation` requires a utility function :cpp:func:`iceicle::ElementTransformation::get_el_coord`
+to get the element local coordinates from the global coordinate array and the list of node indices.
 
-:cpp:func:`iceicle::GeometricElement::Jacobian` represents the Jacobian of the transformation :math:`\mathbf{J} = \frac{\partial T}{\partial \mathbf{\xi}}`, 
+:cpp:func:`iceicle::ElementTransformation::transform` represents the transformation :math:`T`
+
+:cpp:func:`iceicle::ElementTransformation::Jacobian` represents the Jacobian of the transformation :math:`\mathbf{J} = \frac{\partial T}{\partial \mathbf{\xi}}`, 
 alternatively :math:`\mathbf{J}` can be written as :math:`\frac{\partial \mathbf{x}}{\partial \mathbf{\xi}}`.
 
-:cpp:func:`iceicle::GeometricElement::Hessian` represents the hessian of the transformation 
+:cpp:func:`iceicle::ElementTransformation::Hessian` represents the hessian of the transformation 
 :math:`\mathbf{H} =\frac{\partial^2 T}{\partial \mathbf{\xi}\partial \mathbf{\xi}}` or :math:`\frac{\partial \mathbf{x}}{\partial \mathbf{\xi}\partial \mathbf{\xi}}`.
 
 
@@ -743,23 +809,12 @@ alternatively :math:`\mathbf{J}` can be written as :math:`\frac{\partial \mathbf
    \draw[->] (3.0,-1.5) -- (3.5,-1.5) node[anchor=west, scale=0.7]{$x$};
    \draw[->] (3.0,-1.5) -- (3.0,-1.0) node[anchor=south, scale=0.7]{$y$};
 
--------------------
-Element Node Access
--------------------
-Access to the indices of the nodes is provided in the following interfaces:
-
-:cpp:func:`iceicle::GeometricElement::nodes` gives a pointer to the start of the array of indices.
-
-:cpp:func:`iceicle::GeometricElement::nodes_span` gives the array of indices as a :cpp:class`std::span`
-
-:cpp:func:`iceicle::GeometricElement::n_nodes` gives the size of the array of indices (the number of nodes)
-
 ------------------
 Domain Definitions
 ------------------
 
 Domains are specified by the domain type and polynomial order of basis functions for the nodes, accesible through 
-:cpp:func:`iceicle::GeometricElement::domain_type` and :cpp:func:`iceicle::GeometricElement::geometry_order` respectively.
+:cpp:member:`iceicle::ReferenceElement::domain_type` and :cpp:member:`iceicle::ReferenceElement::geometry_order` respectively.
 
 ------
 Faces
@@ -950,17 +1005,74 @@ to generate faces by finding the intersection between two elements.
 .. code-block:: cpp 
    :linenos:
 
-   HypercubeElement<double, int, 2, 1> el0{{0, 1, 2, 3}};
-   HypercubeElement<double, int, 2, 1> el2{{2, 3, 4, 5}};
+   // get a hypercube element transformation of polynomial order 1
+   int order = 1;
+   auto el_transformation = ElementTransformationTable<double, int, 2>::get_transform(
+      DOMAIN_TYPE::HYPERCUBE, order)
+
+   // connectivities
+   std::vector<int> el0_nodes{{0, 1, 2, 3}};
+   std::vector<int> el2_nodes{{2, 3, 4, 5}};
 
    // find and make the face with vertices {2, 3}
-   auto face_opt = make_face(0, 2, el0, el2);
+   auto face_opt = make_face(0, 2, el_transformation, el_transformation, el0_nodes, el2_nodes);
 
    // unique_ptr to face is stored in the value() of optional
    std::unique_ptr<Face<double, int, 2>> face{std::move(face_opt.value())}; 
 
 This can detect elements with different geometric polynomial orders because this operates on vertices.
 The polynomial order of the face geometry is the minimum of the two element polynomial orders
+
+===============
+Basis Functions
+===============
+
+The function spaces considered are discretized by a discrete set of functions :math:`\{\phi_i\}` that span a subset of the full space. 
+These functions are called the basis functions as they form a bases for this discretized space. 
+Any solution in this discretized space can be formed by a linear combination of coefficients and these basis functions:
+
+.. math::
+   
+   u(\mathbf{x}) = \sum_i a_i \phi_i(\mathbf{x})
+
+By Galerkin Orthogonality, weak forms enforced with this discrete set of basis functions give the best approximation 
+in the discretized space of the solution over the full space with respect to the energy norm.
+
+The :cpp:class:`iceicle::Basis` class is the interface used for Basis functions. 
+This provides an interface to evaluate basis functions, gradients with respect to reference domain coordinates, and hessians with respect to reference domain coordinates. 
+The interface also provides information such as the number of basis functions (:cpp:func:`iceicle::Basis::nbasis`),
+reference domain type (:cpp:func:`iceicle::Basis::domain_type`), flags for orthonormality, and nodal basis, and the polynomial order.
+
+Currently implemented:
+
+- Lagrange polynomials on hypercube domains (:cpp:class:`iceicle::HypercubeLagrangeBasis`) and simplex domains (:cpp:class:`iceicle::SimplexLagrangeBasis`). 
+These are implemented with compile time constants for polynomial order up to ``FESPACE_BUILD_PN`` in ``build_config.hpp``.
+
+- Legendre polynomials on hypercube domains up to 10th order (:cpp:class:`iceicle::HypercubeLegendreBasis`).
+
+================
+Quadrature Rules 
+================
+
+Quadrature rules approximate the integral of a function :math:`f` over a given domain by a linear combination of weights :math:`w_i` 
+with the function evaluated at specified points :math:`x_i`
+
+.. math::
+
+   \int_a^b f(x)\; dx \approx \sum_{i=1}^{n_q} w_i f(x_i)
+
+Where :math:`n_q` is the number of quadrature points in the quadrature rule. 
+Often there are theoretical results pretaining to the accuracy of certain quadrature rules which can be used to determine the number of quadrature points required.
+Quadrature rules are implemented to specify points in the reference domain, as most rules are defined in the reference domain to be able to specify the points.
+Currently implemented are:
+
+- Gauss-Legendre Quadrature on Hypercube domains (:cpp:class:`HypercubeGaussLegendre`). 
+The ``npoin`` parameter refers to the number of quadrature points in one dimension. 
+This can exactly integrate polynomials of order ``2 * npoin - 1``.
+
+- Grundmann-Moller transformation of Gauss-Legendre quadrature for simplex domains (:cpp:class:`GrundmannMollerSimplexQuadrature`)
+The ``order`` parameter refers to the order of the integrating polynomial (parameter :math:`s` in Grundmann and Moller [GrundmannMoller1978]_)
+This can exactly integrate polynomials of order ``2 * order + 1``.
 
 ==============
 Finite Element
@@ -1320,3 +1432,4 @@ References
 
 .. [Arnold2000]  Arnold, D. N., Brezzi, F., Cockburn, B., & Marini, D. (2000). Discontinuous Galerkin methods for elliptic problems. In Discontinuous Galerkin Methods: Theory, Computation and Applications (pp. 89-101). Berlin, Heidelberg: Springer Berlin Heidelberg.
 
+.. [GrundmannMoller1978] Grundmann, A., & Möller, H. M. (1978). Invariant integration formulas for the n-simplex by combinatorial methods. SIAM Journal on Numerical Analysis, 15(2), 282-290.
