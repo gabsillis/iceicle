@@ -153,7 +153,7 @@ namespace iceicle {
         std::vector< std::function<void(const T*, T*)> > neumann_callbacks;
 
         /// @brief user defined source term as a function callback 
-        /// Takes the current state (size = neq) 
+        /// Takes the position in the domain (size = ndim) 
         /// and outputs the source (size = neq) in the second argument
         std::optional< std::function<void(const T*, T*)> > user_source = std::nullopt;
 
@@ -280,7 +280,7 @@ namespace iceicle {
                 // compute the flux  and scatter to the residual
                 Tensor<T, neq, ndim> flux = phys_flux(u, gradu);
 
-                // loop over the test functions and construc the residual
+                // loop over the test functions and construct the residual
                 for(int itest = 0; itest < el.nbasis(); ++itest){
                     for(int ieq = 0; ieq < neq; ++ieq){
                         for(int jdim = 0; jdim < ndim; ++jdim){
@@ -291,9 +291,11 @@ namespace iceicle {
 
                 // if a source term has been defined, add it in
                 if(user_source){
-                    auto source_fcn = user_source.value();
+                    auto phys_pt = el.transform(quadpt.abscisse);
+
+                    auto& source_fcn = user_source.value();
                     std::array<T, neq> source;
-                    source_fcn(u.data(), source.data());
+                    source_fcn(phys_pt.data(), source.data());
                     for(int itest = 0; itest < el.nbasis(); ++itest){
                         for(int ieq = 0; ieq < neq; ++ieq) {
                             res[itest, ieq] -= source[ieq] * bi[itest] * detJ * quadpt.weight;

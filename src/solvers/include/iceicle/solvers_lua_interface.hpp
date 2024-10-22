@@ -46,7 +46,8 @@ namespace iceicle::solvers {
     /// The source term callback interface is a data member named user_source 
     /// of type std::optional<std::function<void(T*,T*)>>
     ///
-    /// This function takes the current state (neq) and outputs (neq) source terms 
+    /// This function takes a position in the physical domain (ndim) 
+    /// and outputs (neq) source terms 
     ///
     /// @tparam DiscType the discretization type
     template<class Disc_Type>
@@ -58,20 +59,23 @@ namespace iceicle::solvers {
     {
         if constexpr(source_term_callback_supported<Disc_Type>){
             using value_type = Disc_Type::value_type;
+            static constexpr int ndim = Disc_Type::dimensionality;
             static constexpr int neq = Disc_Type::nv_comp;
-            sol::optional<sol::function> source_opt = config_tbl["conservation_law"]["source"];
+            sol::table cons_law_tbl = config_tbl["conservation_law"];
+            sol::optional<sol::function> source_opt = cons_law_tbl["source"];
             if(source_opt){
                 sol::function source_f = source_opt.value();
                 std::function<void(const value_type*, value_type*)> func 
-                    = [source_f](const value_type *u_in, value_type *fout)
+                    = [source_f](const value_type *x_in, value_type *fout)
                     {
-                        std::integer_sequence seq = std::make_integer_sequence<int, neq>{};
-                        auto helper = [source_f]<int...Eq_Indices>(const value_type* u_in, value_type* f_out,
+                        std::integer_sequence seq = std::make_integer_sequence<int, ndim>{};
+                        auto helper = [source_f]<int...Eq_Indices>(const value_type* x_in, value_type* f_out,
                                 std::integer_sequence<int, Eq_Indices...> seq){
-                            tmp::sized_tuple_t<value_type, neq> result = source_f(u_in[Eq_Indices]...);
+                            tmp::sized_tuple_t<value_type, neq> result = source_f(x_in[Eq_Indices]...);
                             auto arr = tmp::get_array_from_tuple(result);
                             std::ranges::copy(arr, f_out);
                         };
+                        helper(x_in, fout, seq);
                     };
                 disc.user_source = std::optional{func};
             }
