@@ -30,6 +30,54 @@
 
 namespace iceicle::solvers {
 
+    namespace impl {
+        template<class Disc_Type>
+        struct source_term_callback_supported {
+            using value_type = Disc_Type::value_type;
+            using callback_opt_type = std::optional< std::function<void(const value_type*, value_type*)> >;
+            static constexpr bool value = requires(Disc_Type disc) {
+                {disc.user_source} -> std::convertible_to<callback_opt_type>;
+            };
+        };
+    }
+
+    /// @brief Whether or not the discretization type supports the source term callback interface 
+    /// Given a real value type T = Disc_Type::value_type 
+    /// The source term callback interface is a data member named user_source 
+    /// of type std::optional<std::function<void(T*,T*)>>
+    ///
+    /// This function takes the current state (neq) and outputs (neq) source terms 
+    ///
+    /// @tparam DiscType the discretization type
+    template<class Disc_Type>
+    concept source_term_callback_supported = impl::source_term_callback_supported<Disc_Type>::value;
+
+    template<class Disc_Type>
+    auto add_source_term_callback(Disc_Type &disc, sol::table config_tbl)
+    -> void 
+    {
+        if constexpr(source_term_callback_supported<Disc_Type>){
+            using value_type = Disc_Type::value_type;
+            static constexpr int neq = Disc_Type::nv_comp;
+            sol::optional<sol::function> source_opt = config_tbl["conservation_law"]["source"];
+            if(source_opt){
+                sol::function source_f = source_opt.value();
+                std::function<void(const value_type*, value_type*)> func 
+                    = [source_f](const value_type *u_in, value_type *fout)
+                    {
+                        std::integer_sequence seq = std::make_integer_sequence<int, neq>{};
+                        auto helper = [source_f]<int...Eq_Indices>(const value_type* u_in, value_type* f_out,
+                                std::integer_sequence<int, Eq_Indices...> seq){
+                            tmp::sized_tuple_t<value_type, neq> result = source_f(u_in[Eq_Indices]...);
+                            auto arr = tmp::get_array_from_tuple(result);
+                            std::ranges::copy(arr, f_out);
+                        };
+                    };
+                disc.user_source = std::optional{func};
+            }
+        }
+    }
+
     /// @brief Create a writer for output files 
     /// given the user configuration
     /// @param config_tbl the user configuration lua table 
@@ -61,7 +109,7 @@ namespace iceicle::solvers {
                 } else {
                     AnomalyLog::log_anomaly(Anomaly{"dat writer not defined for greater than 1D", general_anomaly_tag{}});
                 }
-            }
+         }
 
             // .vtu writer 
             if(writer_name && eq_icase(writer_name.value(), "vtu")){

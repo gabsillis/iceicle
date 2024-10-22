@@ -104,6 +104,11 @@ void initialize_and_solve(
     add_neumann_callbacks(conservation_law, bc_tbl);
   }
 
+  // ========================
+  // = Add User Source Term =
+  // ========================
+  solvers::add_source_term_callback(conservation_law, config_tbl);
+
   // =========
   // = Solve =
   // =========

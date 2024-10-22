@@ -102,7 +102,14 @@ namespace iceicle {
         CFlux conv_nflux;
         DiffusiveFlux diff_flux;
 
-        public:
+        // compile time correctness checks
+        static_assert(std::same_as<T, typename PFlux::value_type>, "Value type mismatch with physical flux");
+        static_assert(std::same_as<T, typename CFlux::value_type>, "Value type mismatch with convective flux");
+        static_assert(std::same_as<T, typename DiffusiveFlux::value_type>, "Value type mismatch with diffusive flux");
+        static_assert(ndim == PFlux::ndim, "ndim mismatch with physical flux");
+        static_assert(ndim == CFlux::ndim, "ndim mismatch with convective flux");
+        static_assert(ndim == DiffusiveFlux::ndim, "ndim mismatch with diffusive flux");
+
         // ============
         // = Typedefs =
         // ============
@@ -144,6 +151,11 @@ namespace iceicle {
         /// This function will take the physical domain point (size = ndim)
         /// and output neq values in the second argument
         std::vector< std::function<void(const T*, T*)> > neumann_callbacks;
+
+        /// @brief user defined source term as a function callback 
+        /// Takes the current state (size = neq) 
+        /// and outputs the source (size = neq) in the second argument
+        std::optional< std::function<void(const T*, T*)> > user_source = std::nullopt;
 
         /// @brief utility for SPACETIME_PAST boundary condition
         ST_Info spacetime_info;
@@ -273,6 +285,18 @@ namespace iceicle {
                     for(int ieq = 0; ieq < neq; ++ieq){
                         for(int jdim = 0; jdim < ndim; ++jdim){
                             res[itest, ieq] += flux[ieq][jdim] * gradxBi[itest, jdim] * detJ * quadpt.weight;
+                        }
+                    }
+                }
+
+                // if a source term has been defined, add it in
+                if(user_source){
+                    auto source_fcn = user_source.value();
+                    std::array<T, neq> source;
+                    source_fcn(u.data(), source.data());
+                    for(int itest = 0; itest < el.nbasis(); ++itest){
+                        for(int ieq = 0; ieq < neq; ++ieq) {
+                            res[itest, ieq] -= source[ieq] * bi[itest] * detJ * quadpt.weight;
                         }
                     }
                 }
@@ -1117,6 +1141,12 @@ namespace iceicle {
                     }
                 }
 
+                // HACK: disable diffusion IC for linear polynomials 
+                if(elL.basis->getPolynomialOrder() == 1 && elR.basis->getPolynomialOrder() == 1){
+                    std::ranges::fill(graduL_data, 0.0);
+                    std::ranges::fill(graduR_data, 0.0);
+                }
+
                 // get the physical flux on the left and right
                 Tensor<T, neq, ndim> fluxL = phys_flux(uL, graduL);
                 Tensor<T, neq, ndim> fluxR = phys_flux(uR, graduR);
@@ -1142,30 +1172,26 @@ namespace iceicle {
 
     // Deduction Guides
     template<
-        class T,
-        int ndim,
-        template<class T1, int ndim1> class PFlux,
-        template<class T1, int ndim1> class CFlux, 
-        template<class T1, int ndim1> class DiffusiveFlux
+        class PFlux,
+        class CFlux, 
+        class DiffusiveFlux
     >
     ConservationLawDDG(
-        PFlux<T, ndim>&& physical_flux,
-        CFlux<T, ndim>&& convective_numflux,
-        DiffusiveFlux<T, ndim>&& diffusive_flux
-    ) -> ConservationLawDDG<T, ndim, PFlux<T, ndim>, CFlux<T, ndim>, DiffusiveFlux<T, ndim>>;
+        PFlux&& physical_flux,
+        CFlux&& convective_numflux,
+        DiffusiveFlux&& diffusive_flux
+    ) -> ConservationLawDDG<typename PFlux::value_type, PFlux::ndim, PFlux, CFlux, DiffusiveFlux>;
 
     template<
-        class T,
-        int ndim,
-        template<class T1, int ndim1> class PFlux,
-        template<class T1, int ndim1> class CFlux, 
-        template<class T1, int ndim1> class DiffusiveFlux,
+        class PFlux,
+        class CFlux, 
+        class DiffusiveFlux,
         class ST_Info
     >
     ConservationLawDDG(
-        PFlux<T, ndim>&& physical_flux,
-        CFlux<T, ndim>&& convective_numflux,
-        DiffusiveFlux<T, ndim>&& diffusive_flux,
+        PFlux&& physical_flux,
+        CFlux&& convective_numflux,
+        DiffusiveFlux&& diffusive_flux,
         ST_Info st_info
-    ) -> ConservationLawDDG<T, ndim, PFlux<T, ndim>, CFlux<T, ndim>, DiffusiveFlux<T, ndim>, ST_Info>;
+    ) -> ConservationLawDDG<typename PFlux::value_type, PFlux::ndim, PFlux, CFlux, DiffusiveFlux, ST_Info>;
 }
