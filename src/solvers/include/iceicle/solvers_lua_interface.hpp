@@ -84,6 +84,8 @@ namespace iceicle::solvers {
 
     /// @brief Create a writer for output files 
     /// given the user configuration
+    ///
+    ///
     /// @param config_tbl the user configuration lua table 
     /// @param fespace the finite element space 
     /// @param disc the discretization
@@ -92,7 +94,7 @@ namespace iceicle::solvers {
     auto lua_get_writer(
         sol::table config_tbl,
         FESpace<T, IDX, ndim>& fespace,
-        DiscType disc,
+        DiscType& disc,
         fespan<T, LayoutPolicy> u 
     ) -> io::Writer 
     {
@@ -113,7 +115,7 @@ namespace iceicle::solvers {
                 } else {
                     AnomalyLog::log_anomaly(Anomaly{"dat writer not defined for greater than 1D", general_anomaly_tag{}});
                 }
-         }
+            }
 
             // .vtu writer 
             if(writer_name && eq_icase(writer_name.value(), "vtu")){
@@ -126,12 +128,44 @@ namespace iceicle::solvers {
         return writer;
     }
 
+    /// @brief create a writer for residuals
+    /// @param config_tbl the user configuration lua table 
+    /// @param fespace the finite element space 
+    /// @param disc the discretization
+    /// @param u the solution to write
+    template<class T, class IDX, int ndim, class DiscType, class LayoutPolicy>
+    auto lua_get_residuals_writer(
+        sol::table config_tbl,
+        FESpace<T, IDX, ndim>& fespace,
+        DiscType& disc,
+        fespan<T, LayoutPolicy> u 
+    ) -> io::Writer 
+    {
+        using namespace iceicle::util;
+        io::Writer writer;
+        sol::optional<sol::table> output_tbl_opt = config_tbl["output"];
+        if(output_tbl_opt){
+            sol::table output_tbl = output_tbl_opt.value();
+            sol::optional<std::string> writer_name = output_tbl["writer"];
+
+            // .vtu writer 
+            if(writer_name && eq_icase(writer_name.value(), "vtu")){
+                io::PVDWriter<T, IDX, ndim> pvd_writer{};
+                pvd_writer.collection_name = "residuals";
+                pvd_writer.register_fespace(fespace);
+                pvd_writer.register_residuals(u, disc.residual_names, disc);
+                writer = pvd_writer;
+            }
+        }
+        return writer;
+    }
+
 
     template<class T, class IDX, int ndim, class disc_type, class LayoutPolicy>
     auto lua_select_mdg_geometry(
         sol::table config_tbl,
         FESpace<T, IDX, ndim>& fespace,
-        disc_type disc, 
+        disc_type& disc, 
         IDX icycle,
         fespan<T, LayoutPolicy> u
     ) -> geo_dof_map<T, IDX, ndim>
@@ -369,7 +403,7 @@ namespace iceicle::solvers {
         sol::table config_tbl,
         FESpace<T, IDX, ndim>& fespace,
         geo_dof_map<T, IDX, ndim>& geo_map,
-        DiscType disc, 
+        DiscType& disc, 
         fespan<T, LayoutPolicy> u
     ) -> void {
         using namespace iceicle::util;
@@ -540,6 +574,7 @@ namespace iceicle::solvers {
 
             // Output Setup
             io::Writer writer{lua_get_writer(config_tbl, fespace, disc, u)};
+            io::Writer residuals_writer{lua_get_residuals_writer(config_tbl, fespace, disc, u)};
 
             linesearch >> select_fcn{
                 [&](const auto& ls){
@@ -568,9 +603,16 @@ namespace iceicle::solvers {
 
                                 write_restart(fespace, u, k);
                         };
+
+                        // diagnostics callback views the residuals
+                        solver.diag_callback = [&](IDX k, Vec res_data, Vec du_data){
+                            residuals_writer.write(k, (T) k);
+                        };
+
                         // write the final iteration
                         IDX kfinal = solver.solve(u);
                         writer.write(kfinal, (T) kfinal);
+                        residuals_writer.write(kfinal, (T) kfinal);
                     };
 
                     if(eq_icase_any(solver_type, "lm", "gauss-newton")){
@@ -616,7 +658,7 @@ namespace iceicle::solvers {
     auto lua_error_analysis(
         sol::table config_tbl,
         FESpace<T, IDX, ndim>& fespace,
-        DiscType disc, 
+        DiscType& disc, 
         fespan<T, LayoutPolicy> u
     ) -> void {
         using namespace iceicle::util;

@@ -195,24 +195,15 @@ namespace iceicle::solvers {
         IDX idiag = -1;
 
         /// @brief diagnostics function 
+        /// NOTE: Diagnostics get called before the solution update after residual evaluation and linear solve
         ///
-        /// very minimal by default other options are defined in this header
+        /// empty by default other options are defined in this header
         /// or a custom function can be made 
         ///
         /// Passes the current iteration number, the residual vector, and the du vector
         std::function<void(IDX, Vec, Vec)> diag_callback = []
             (IDX k, Vec res_data, Vec du_data)
-        {
-            int iproc;
-            MPI_Comm_rank(PETSC_COMM_WORLD, &iproc); if(iproc == 0){
-                std::cout << "Diagnostics for iteration: " << k << std::endl;
-            }
-            if(iproc == 0) std::cout << "Residual: " << std::endl;
-            PetscCallAbort(PETSC_COMM_WORLD, VecView(res_data, PETSC_VIEWER_STDOUT_WORLD));
-            if(iproc == 0) std::cout << std::endl << "du: " << std::endl;
-            PetscCallAbort(PETSC_COMM_WORLD, VecView(du_data, PETSC_VIEWER_STDOUT_WORLD));
-            if(iproc == 0) std::cout << "------------------------------------------" << std::endl << std::endl; 
-        };
+        {};
 
         /// @brief set to true if you want to explicitly form the J^TJ + lambda * I matrix
         ///
@@ -537,6 +528,11 @@ namespace iceicle::solvers {
                 PetscCallAbort(PETSC_COMM_WORLD, KSPSetOperators(ksp, subproblem_mat, subproblem_mat));
                 PetscCallAbort(PETSC_COMM_WORLD, KSPSolve(ksp, Jtr, du_data));
 
+                // Diagnostics 
+                if(idiag > 0 && k % idiag == 0) {
+                    diag_callback(k, res_data, du_data);
+                }
+
                 // update u 
                 if constexpr (std::is_same_v<ls_type, no_linesearch<T, IDX>>){
                     petsc::VecSpan du_view{du_data};
@@ -688,11 +684,6 @@ namespace iceicle::solvers {
                 // get the residual norm
                 T rk;
                 PetscCallAbort(PETSC_COMM_WORLD, VecNorm(res_data, NORM_2, &rk));
-
-                // Diagnostics 
-                if(idiag > 0 && k % idiag == 0) {
-                    diag_callback(k, res_data, du_data);
-                }
 
                 // visualization
                 if(ivis > 0 && k % ivis == 0) {

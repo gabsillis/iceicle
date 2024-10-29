@@ -163,6 +163,9 @@ namespace iceicle {
         /// @brief human readable names for each vector component of the variables
         std::vector<std::string> field_names;
 
+        /// @brief human readable names for each vector component of the residuals
+        std::vector<std::string> residual_names;
+
         // ===============
         // = Constructor =
         // ===============

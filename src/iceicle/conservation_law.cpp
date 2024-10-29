@@ -214,6 +214,7 @@ void setup(sol::table script_config, cli_parser cli_args) {
                               std::move(convective_flux),
                               std::move(diffusive_flux)};
       disc.field_names = std::vector<std::string>{"u"};
+      disc.residual_names = std::vector<std::string>{"residual"};
 
       // discretization options
       disc.sigma_ic = cons_law_tbl.get_or("sigma_ic", disc.sigma_ic);
@@ -253,6 +254,7 @@ void setup(sol::table script_config, cli_parser cli_args) {
                               std::move(convective_flux),
                               std::move(diffusive_flux)};
       disc.field_names = std::vector<std::string>{"u"};
+      disc.residual_names = std::vector<std::string>{"residual"};
       initialize_and_solve(script_config, fespace, disc);
 
     } else if (eq_icase_any(cons_law_tbl["name"].get<std::string>(),
@@ -269,11 +271,17 @@ void setup(sol::table script_config, cli_parser cli_args) {
                               std::move(convective_flux),
                               std::move(diffusive_flux)};
       disc.field_names = std::vector<std::string>{"rho", "rhou"};
-      if constexpr (ndim >= 2)
+      disc.field_names = std::vector<std::string>{"density_conservation", "momentum_u_conservation"};
+      if constexpr (ndim >= 2) {
         disc.field_names.push_back("rhov");
-      if constexpr (ndim >= 3)
+        disc.residual_names.push_back("momentum_v_conservation");
+      }
+      if constexpr (ndim >= 3) {
         disc.field_names.push_back("rhow");
+        disc.residual_names.push_back("momentum_w_conservation");
+      }
       disc.field_names.push_back("rhoe");
+      disc.residual_names.push_back("energy_conservation");
       initialize_and_solve(script_config, fespace, disc);
     } else {
       AnomalyLog::log_anomaly(

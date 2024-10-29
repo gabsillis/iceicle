@@ -568,11 +568,11 @@ and some physical parameters.
 * ``name`` the name of the conservation law, current options are: 
    * :cpp:`burgers` : The viscous burgers equation 
 
-      :math:`\frac{\partial u}{\partial t} + \frac{\partial (a_j u + b_j u^2)}{\partial x_j} = \mu\frac{\partial^2 u}{\partial x^2}`
+      :math:`\frac{\partial u}{\partial t} + \frac{\partial (a_j u + \frac{1}{2}b_j u^2)}{\partial x_j} = \mu\frac{\partial^2 u}{\partial x^2}`
 
    * :cpp:`spacetime-burgers` : The viscous burgers equation in spacetime (see :ref:`Spacetime DG`)
 
-      :math:`\frac{\partial u}{\partial t} + \frac{\partial (a_j u + b_j u^2)}{\partial x_j} = \mu\frac{\partial^2 u}{\partial x^2}`
+      :math:`\frac{\partial u}{\partial t} + \frac{\partial (a_j u + \frac{1}{2}b_j u^2)}{\partial x_j} = \mu\frac{\partial^2 u}{\partial x^2}`
 
    * ``euler`` the inviscid Euler equations
 

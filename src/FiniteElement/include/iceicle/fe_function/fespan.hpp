@@ -185,7 +185,7 @@ namespace iceicle {
              * @param iel the element index 
              * @return the element layout 
              */
-            constexpr auto create_element_layout(std::size_t iel){
+            constexpr auto create_element_layout(std::size_t iel) const {
                 constexpr int nv_static = LayoutPolicy::static_extent();
                 if constexpr (is_dynamic_size<nv_static>::value){
                     return compact_layout_right{
