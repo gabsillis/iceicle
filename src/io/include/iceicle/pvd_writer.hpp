@@ -58,9 +58,14 @@ namespace iceicle::io {
 
         template<typename T, int ndim>
         struct VTKElement {
+            // @brief the nodes in the reference domain
             std::vector<MATH::GEOMETRY::Point<T, ndim>> nodes;
 
+            /// @brief the id of the element in VTK
             int vtk_id;
+
+            /// @brief permutation of local nodes for H1 elements
+            std::vector<int> permutation;
         };
 
         // === Linear 2D ===
@@ -72,7 +77,8 @@ namespace iceicle::io {
                 { 1.0,  0.0},
                 { 0.0,  1.0},
             },
-            .vtk_id = 5
+            .vtk_id = 5,
+            .permutation = {0, 1, 2}
         };
 
 
@@ -97,7 +103,8 @@ namespace iceicle::io {
                 { 1.0,  1.0},
                 {-1.0,  1.0},
             },
-            .vtk_id = 9
+            .vtk_id = 9,
+            .permutation = { 0, 2, 3, 1 }
         };
 
         template<typename T>
@@ -234,7 +241,6 @@ namespace iceicle::io {
             }
         }
     }
-
 
     template<typename T, typename IDX, int ndim>
     class PVDWriter{

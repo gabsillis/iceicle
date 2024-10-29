@@ -572,9 +572,20 @@ namespace iceicle::solvers {
                 linesearch = no_linesearch<T, IDX>{};
             };
 
-            // Output Setup
+            // create writers
             io::Writer writer{lua_get_writer(config_tbl, fespace, disc, u)};
             io::Writer residuals_writer{lua_get_residuals_writer(config_tbl, fespace, disc, u)};
+
+            // create an equivalent H1 Fespace for MDG residuals
+            FESpace space_h1{fespace.meshptr};
+            fe_layout_right h1_layout{fespace.cg_map, tmp::to_size<DiscType::nv_comp>()};
+            std::vector<T> h1_mdg_residual_data(h1_layout.size());
+            fespan res_mdg_h1{h1_mdg_residual_data, h1_layout};
+
+            // writer for mdg residuals
+            io::Writer writer_mdg{lua_get_writer(config_tbl, space_h1, disc, res_mdg_h1)};
+            writer_mdg.rename_collection("mdg_residuals");
+            ic_residual_layout<T, IDX, ndim, DiscType::nv_comp> ic_layout{geo_map};
 
             linesearch >> select_fcn{
                 [&](const auto& ls){
@@ -607,6 +618,13 @@ namespace iceicle::solvers {
                         // diagnostics callback views the residuals
                         solver.diag_callback = [&](IDX k, Vec res_data, Vec du_data){
                             residuals_writer.write(k, (T) k);
+
+                            // get the MDG residuals 
+                            petsc::VecSpan res_span{res_data};
+                            dofspan ic_residual{res_span.data() + u.size(), ic_layout};
+                            auto res_mdg_dof_view = dof_view(res_mdg_h1);
+                            extract_icespan(ic_residual, res_mdg_dof_view);
+                            writer_mdg.write(k, (T) k);
                         };
 
                         // write the final iteration

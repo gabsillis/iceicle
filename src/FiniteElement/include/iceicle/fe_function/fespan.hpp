@@ -8,6 +8,7 @@
 #include "iceicle/element/TraceSpace.hpp"
 #include "iceicle/fe_function/el_layout.hpp"
 #include "iceicle/fe_function/trace_layout.hpp"
+#include "iceicle/fe_function/layout_right.hpp"
 #include "iceicle/fe_function/node_set_layout.hpp"
 #include "iceicle/fespace/fespace.hpp"
 #include <cstdlib>
@@ -740,6 +741,9 @@ namespace iceicle {
         /* || trace_layout_left dofspan*/
     >;
 
+    template<class T, class IDX, std::size_t vextent>
+    using simple_dof_span = dofspan<T, dof_layout_right<IDX, vextent>>;
+
     /**
      * @brief a facspan represents local dofs over a face in a compact layout.
      * and constrains the layout policy type to represent this 
@@ -761,6 +765,27 @@ namespace iceicle {
     // ================
     // = Span Utility =
     // ================
+    
+    /// @brief from a view over finite element data get a view per dof 
+    /// of the same data 
+    /// WARNING: data must not be strided (currently not a thing)
+    ///
+    /// @tparam T the data type 
+    /// @tparam LayoutPolicyFespan the LayoutPolicy of the fespan 
+    ///
+    /// @param fedata the fespan 
+    /// @return a simple_dof_span over the same data
+    template<class T, class LayoutPolicyFespan>
+    auto dof_view(fespan<T, LayoutPolicyFespan> fedata)
+    -> simple_dof_span<T, typename LayoutPolicyFespan::index_type, LayoutPolicyFespan::static_extent()>
+    {
+        static constexpr std::size_t vextent = LayoutPolicyFespan::static_extent();
+        using index_type = LayoutPolicyFespan::index_type;
+        // compute the number of degrees of freedom
+        std::size_t ndof = fedata.size() / fedata.nv();
+        return simple_dof_span<T, index_type, vextent> 
+            {fedata.data(), dof_layout_right<index_type, vextent>{ndof}};
+    }
 
     /// @brief copy the data from dofspan a to dofspan b 
     /// NOTE: not bounds checked in release mode
@@ -1047,7 +1072,7 @@ namespace iceicle {
      */
     template<class T, class IDX, int ndim, class disc_type, class uLayout, class uAccessor, std::size_t vextent>
     auto select_nodeset(
-        FESpace<T, IDX, ndim> &fespace,              /// [in] the finite elment space
+        FESpace<T, IDX, ndim> &fespace,                  /// [in] the finite elment space
         disc_type disc,                                  /// [in] the discretization
         fespan<T, uLayout, uAccessor> u,                 /// [in] the current finite element solution
         T residual_threshold,                            /// [in] residual threshhold for selecting a trace

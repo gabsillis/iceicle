@@ -209,6 +209,33 @@ namespace iceicle {
         // TODO: mesh validation and consistency operations
     }
 
+    /// @brief take data defined on a subset of degrees of freedom on the face (icespan)
+    /// and populate it in an span of nodal degrees of freedom for an H1 space 
+    /// represented by a simple_dof_span
+    ///
+    /// NOTE: to get a simple_dof_span of an H1 fespan use the dof_view() function
+    ///
+    /// @param icedata the data to copy to the nodal span 
+    /// @param h1_data the data for the h1 space organized by dof
+    template<class T, class IDX, std::size_t vextent>
+    inline auto extract_icespan(
+        icespan auto icedata,        
+        simple_dof_span<T, IDX, vextent> h1_data
+    ) {
+        static_assert(decltype(icedata)::static_extent() == vextent, "extents must match");
+        static_assert(std::same_as<typename decltype(icedata)::value_type, T>, "value type must match");
+        static_assert(std::same_as<typename decltype(icedata)::index_type, IDX>, "index type must match");
+
+        const auto& geo_map = icedata.get_layout().geo_map;
+
+        for(IDX idof = 0; idof < geo_map.ndof(); ++idof){
+            IDX inode = geo_map.selected_nodes[idof];
+            for(int iv = 0; iv < icedata.nv(); ++iv){
+                h1_data[inode, iv] = icedata[idof, iv];
+            }
+        }
+    }
+
     /**
      * @brief BLAS-like add scaled version of one dofspan to another with the same layout policy 
      * y <= y + alpha * x

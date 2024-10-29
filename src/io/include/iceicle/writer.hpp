@@ -23,6 +23,20 @@ namespace iceicle::io {
         writer.write_vtu(itime, time);
     }
 
+    namespace impl {
+        /// @brief external function interface for type erasure to rename the collection
+        template<class T, class IDX, int ndim>
+        auto rename_collection(DatWriter<T, IDX, ndim>& writer, std::string_view new_name)-> void {
+            writer.collection_name = new_name;
+        }
+
+        /// @brief external function interface for type erasure to rename the collection
+        template<class T, class IDX, int ndim>
+        auto rename_collection(PVDWriter<T, IDX, ndim>& writer, std::string_view new_name) -> void {
+            writer.collection_name = new_name;
+        }
+    }
+
     /// @brief Type erasure class for things that can write values to file
     /// given a time index and time value
     ///
@@ -37,6 +51,8 @@ namespace iceicle::io {
                 virtual void do_write_file(int itime, double time) = 0;
 
                 virtual auto clone() const -> std::unique_ptr<WriterConcept> = 0;
+
+                virtual void do_rename_collection(std::string_view new_name) = 0;
         };
 
         template< typename WriterT >
@@ -55,6 +71,11 @@ namespace iceicle::io {
             /// @param time the time 
             auto do_write_file(int itime, double time) -> void override {
                 write_file(_writer, itime, time);
+            }
+
+            /// @brief rename the collection of a writer
+            void do_rename_collection(std::string_view new_name) override {
+                impl::rename_collection(_writer, new_name);
             }
 
             auto clone() const -> std::unique_ptr<WriterConcept> override {
@@ -86,6 +107,11 @@ namespace iceicle::io {
         ) {
             pimpl->do_write_file(itime, time);
         }
+
+        /// @brief rename the collection of file names output
+        /// @param new_name the new name to set the collection to
+        void rename_collection(std::string_view new_name) 
+        { pimpl->do_rename_collection(new_name); }
 
         // copy
         Writer( const Writer& other ) 

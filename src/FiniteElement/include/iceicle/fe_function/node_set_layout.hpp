@@ -93,7 +93,6 @@ namespace iceicle {
     template<std::ranges::forward_range R, typename T, int ndim>
     nodeset_dof_map(R&&, FESpace<T, std::ranges::range_value_t<R>, ndim>&) -> nodeset_dof_map<std::ranges::range_value_t<R>>;
 
-
     template<class IDX, std::size_t vextent>
     struct node_selection_layout {
         // ============
@@ -117,7 +116,7 @@ namespace iceicle {
          * meaning that the data for a an element can be block copied 
          * to a elspan provided the layout parameters are the same
          */
-        inline static constexpr auto local_dof_contiguous() noexcept -> bool { return true; }
+        inline static constexpr auto local_dof_contiguous() noexcept -> bool { return false; }
 
         /// @brief static access to the extents 
         inline static constexpr auto static_extent() noexcept -> std::size_t {
