@@ -263,6 +263,9 @@ namespace iceicle {
                 // calculate the jacobian determinant 
                 auto J = el.jacobian(quadpt.abscisse);
                 T detJ = NUMTOOL::TENSOR::FIXED_SIZE::determinant(J);
+                // prevent duplicate contribution of overlapping range in transformation
+                // this occurs in concave elements
+                detJ = std::max((T) 0.0, detJ); 
 
                 // get the basis functions and gradients in the physical domain
                 auto bi = el.eval_basis_qp(iqp);
