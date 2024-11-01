@@ -314,6 +314,8 @@ namespace iceicle {
 
             mutable T lambda_max = 0.0;
 
+            std::vector<T> no_slip_wall_velocities{};
+
             inline constexpr 
             auto operator()(
                 std::array<T, nv_comp> u,
