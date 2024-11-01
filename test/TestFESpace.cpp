@@ -27,7 +27,7 @@ TEST(test_fespace, test_element_construction){
     static constexpr int pn_basis = 3;
 
     // create a uniform mesh
-    AbstractMesh<T, IDX, ndim> mesh({-1.0, -1.0}, {1.0, 1.0}, {2, 2}, pn_basis);
+    AbstractMesh<T, IDX, ndim> mesh({-1.0, -1.0}, {1.0, 1.0}, {2, 2}, pn_geo);
 
     FESpace<T, IDX, ndim> fespace{
         &mesh, FESPACE_ENUMS::LAGRANGE,
@@ -37,7 +37,7 @@ TEST(test_fespace, test_element_construction){
 
     ASSERT_EQ(fespace.elements.size(), 4);
 
-    ASSERT_EQ(fespace.dg_map.calculate_size_requirement(2), 4 * 2 * std::pow(pn_basis + 1, pn_geo));
+    ASSERT_EQ(fespace.dg_map.calculate_size_requirement(2), 4 * 2 * std::pow(pn_basis + 1, ndim));
 }
 
 class test_geo_el : public GeometricElement<double, int, 2>{

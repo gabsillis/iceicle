@@ -3,7 +3,7 @@
 # create the library target for finite element features 
 set(ICEICLE_FELIB_SOURCES mesh.cpp)
 add_library(iceicle_fe ${ICEICLE_FELIB_SOURCES})
-target_compile_features(iceicle_fe INTERFACE cxx_std_23)
+#target_compile_features(iceicle_fe INTERFACE cxx_std_23)
 
 # link libraries
 target_link_libraries(iceicle_fe PUBLIC iceicle_util)

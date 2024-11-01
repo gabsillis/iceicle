@@ -485,6 +485,15 @@ namespace iceicle {
                 return std::span{_ptr + _layout[idof, 0], _ptr + _layout[idof, 0] + _layout.nv()};
             }
 
+            /**
+             * @brief get the equivalent 1D index of the multi-dimensional indices 
+             * @return the 1D index determined by the layout 
+             */
+            constexpr inline 
+            auto index_1d(index_type idof, index_type iv) const 
+            -> index_type 
+            { return _layout[idof, iv]; }
+
             // ===========
             // = Utility =
             // ===========

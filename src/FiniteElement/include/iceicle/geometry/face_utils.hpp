@@ -68,7 +68,7 @@ namespace iceicle {
                 if(domain_right == DOMAIN_TYPE::HYPERCUBE){
 
                     // hypercube-hypercube 
-                    static constexpr int geo_pn_last = build_config::FESPACE_BUILD_GEO_PN + 1;
+                    constexpr int geo_pn_last = build_config::FESPACE_BUILD_GEO_PN + 1;
                     return invoke_at_index<int, 0, geo_pn_last>(
                         geo_order,
                         [&]<int geo_pn> -> std::optional< std::unique_ptr< Face<T, IDX, ndim> > >{
