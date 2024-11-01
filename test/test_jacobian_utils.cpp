@@ -47,8 +47,10 @@ TEST(test_jacobian_utils, test_fd_trace_operator){
     dofspan res{res_data, res_layout};
 
     /// setup jacobians 
-    auto [jdatauL, jac_wrt_uL] = setup_jacobian_storage(uL, res);
-    auto [jdatauR, jac_wrt_uR] = setup_jacobian_storage(uR, res);
+    std::vector<T> jdatauL(compute_jacobian_storage_requirement(uL, res));
+    auto jac_wrt_uL{create_jacobian_mdspan(uL, res, jdatauL)};
+    std::vector<T> jdatauR(compute_jacobian_storage_requirement(uR, res));
+    auto jac_wrt_uR{create_jacobian_mdspan(uR, res, jdatauR)};
 
     /// fill it with nonsense to test clearing out
     std::ranges::fill(jdatauL, 1.23423402343290);

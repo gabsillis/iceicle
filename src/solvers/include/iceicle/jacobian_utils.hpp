@@ -3,27 +3,34 @@
 #include "iceicle/mesh/mesh.hpp"
 #include "iceicle/fe_function/fespan.hpp"
 #include "iceicle/fd_utils.hpp"
+#include <ranges>
 #include <span>
 
 namespace iceicle {
 
-    /// @brief utility function to create storage for a given jacobian computation in a std::vector 
-    /// and build a mdspan with the correct extents 
+    /// @brief utility function to compute the storage requirement for a given jacobian computation 
     ///
     /// Jacobian is df / du where f is the rows and u is the columns
     ///
     /// @param input the input data view (variables u jacobian is wrt)
     /// @param output the output data view (values f jacobian is taking derivatives of)
-    /// @return a pair of 
-    ///  - the data in a std::vector 
-    ///  - mdspan representing the jacobian
+    /// @return the storage requirement
     template<class input_span, class output_span>
     [[nodiscard]] inline constexpr
-    auto setup_jacobian_storage(input_span input, output_span output)
+    auto compute_jacobian_storage_requirement(input_span input, output_span output)
+    -> std::size_t
+    { return output.size() * input.size(); }
+
+    template<class input_span, class output_span, std::ranges::contiguous_range R>
+    [[nodiscard]] inline constexpr
+    auto create_jacobian_mdspan(input_span input, output_span output, R&& data)
     {
-        std::vector<typename input_span::value_type> data(output.size() * input.size());
-        std::mdspan jac{data.data(), output.size(), input.size()};
-        return std::pair{data, jac};
+#ifndef NDEBUG
+        // bounds check
+        if(data.size() < compute_jacobian_storage_requirement(input, output))
+            util::AnomalyLog::log_anomaly(util::Anomaly{"Bounds error when creating jacobian mdspan.", util::general_anomaly_tag{}});
+#endif
+        return std::mdspan{data.data(), output.size(), input.size()};
     }
 
     template<class T, class IDX, int ndim>
