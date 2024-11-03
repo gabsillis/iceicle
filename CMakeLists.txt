@@ -3,7 +3,6 @@ project(ICEICLE_PROJECT VERSION 0.1.0)
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-
 # FLOATING POINT AND DOUBLE TYPES
 # in order of priority
 option(USE_DOUBLE_PRECISION "Use double precision floating point number" ON)

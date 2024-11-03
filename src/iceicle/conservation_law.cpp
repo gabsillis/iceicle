@@ -271,7 +271,7 @@ void setup(sol::table script_config, cli_parser cli_args) {
                               std::move(convective_flux),
                               std::move(diffusive_flux)};
       disc.field_names = std::vector<std::string>{"rho", "rhou"};
-      disc.field_names = std::vector<std::string>{"density_conservation", "momentum_u_conservation"};
+      disc.residual_names = std::vector<std::string>{"density_conservation", "momentum_u_conservation"};
       if constexpr (ndim >= 2) {
         disc.field_names.push_back("rhov");
         disc.residual_names.push_back("momentum_v_conservation");

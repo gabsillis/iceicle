@@ -474,6 +474,7 @@ namespace iceicle::solvers {
 
                 sol::optional<sol::table> output_tbl_opt = config_tbl["output"];
                 io::Writer writer{lua_get_writer(config_tbl, fespace, disc, u)};
+                io::Writer residuals_writer{lua_get_residuals_writer(config_tbl, fespace, disc, u)};
 
                 solver.vis_callback = [&](ExplicitSolverType& solver) mutable {
                     T sum = 0.0;
@@ -502,6 +503,7 @@ namespace iceicle::solvers {
                         << std::endl;
 #endif
                     if(writer) writer.write(solver.itime, solver.time);
+                    if(residuals_writer) residuals_writer.write(solver.itime, solver.time);
                 };
                 // =====================
                 // = Perform the solve =
