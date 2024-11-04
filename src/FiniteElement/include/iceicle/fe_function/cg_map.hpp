@@ -42,6 +42,19 @@ namespace iceicle {
         using index_type = IDX;
         using size_type = std::make_unsigned_t<index_type>;
 
+        // ==============
+        // = Properties =
+        // ==============
+
+        /**
+         * @brief consecutive local degrees of freedom (ignoring vector components)
+         * are contiguous in the layout
+         * meaning that the data for a an element can be block copied 
+         * to a elspan provided the layout parameters are the same
+         * This is not true for cg_dof_map because local element dofs map to shared dofs
+         */
+        inline static constexpr bool local_dof_contiguous() noexcept 
+        { return false; }
 
         // ================
         // = Data Members =

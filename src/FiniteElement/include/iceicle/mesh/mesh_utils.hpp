@@ -220,6 +220,11 @@ namespace iceicle {
         mesh.bdyFaceEnd = mesh.faces.size();
 
         mesh.elsup = to_elsup(mesh.conn_el, mesh.n_nodes());
+
+        // form face dof connectivity
+        for(const auto& fac_ptr : mesh.faces){
+            mesh.face_extended_conn.push_back(FaceGeoDofConnectivity{*fac_ptr, mesh.conn_el});
+        }
         return std::optional{mesh};
     }
 
@@ -361,6 +366,10 @@ namespace iceicle {
         mesh.bdyFaceEnd = mesh.faces.size();
         mesh.elsup = to_elsup(mesh.conn_el, mesh.n_nodes());
 
+        // form face dof connectivity
+        for(const auto& fac_ptr : mesh.faces){
+            mesh.face_extended_conn.push_back(FaceGeoDofConnectivity{*fac_ptr, mesh.conn_el});
+        }
         return std::optional{mesh};
     }
 

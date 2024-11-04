@@ -145,7 +145,8 @@ namespace iceicle {
          * meaning that the data for a an element can be block copied 
          * to a elspan provided the layout parameters are the same
          */
-        inline static constexpr bool local_dof_contiguous() noexcept { return true; }
+        inline static constexpr bool local_dof_contiguous() noexcept {
+            return dof_mapping_type::local_dof_contiguous(); }
 
         /// @brief static access to the extents 
         inline static constexpr std::size_t static_extent() noexcept {

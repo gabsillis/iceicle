@@ -540,6 +540,11 @@ namespace iceicle {
             }
         }
 
+        // form face dof connectivity
+        for(const auto& fac_ptr : mesh.faces){
+            mesh.face_extended_conn.push_back(FaceGeoDofConnectivity{*fac_ptr, mesh.conn_el});
+        }
+
         // print details for small meshes
         if(mesh.coord.size() < 100){
             mesh.printNodes(std::cout);

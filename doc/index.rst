@@ -1050,6 +1050,18 @@ These are implemented with compile time constants for polynomial order up to ``F
 
 - Legendre polynomials on hypercube domains up to 10th order (:cpp:class:`iceicle::HypercubeLegendreBasis`).
 
+
+----------------------
+FaceGeoDofConnectivity
+----------------------
+This class keeps node indices for a face and connected elements 
+The best use of this class is to loop over face dofs, then left dofs, then right dofs.
+The ``dofs`` array is defined as follows
+``[0, nfaces)`` will have ``gdof``, ``trace_dof``, ``left_dof``, and ``right_dof`` defined 
+where ``gdof`` is the node index in the mesh and the other are local indices to the respective domains. 
+Then ``[nfaces, nfaces + elL.n_nodes())`` has ``gdof`` and ``left_dof`` defined (others are -1).
+And the rest is the right dofs.
+
 ================
 Quadrature Rules 
 ================

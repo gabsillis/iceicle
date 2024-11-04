@@ -113,3 +113,16 @@ TEST(test_jacobian_utils, test_fd_trace_operator){
         }
     }
 }
+
+TEST(test_jacobian_utils, test_scatter){
+    using T = double;
+    using IDX = int;
+    static constexpr int ndim = 2;
+    static constexpr int pn_geo = 2;
+    static constexpr int neq = 1;
+
+    
+    AbstractMesh<T, IDX, ndim> mesh({-1.0, 1.0}, {1.0, 1.0}, {2, 2}, pn_geo);
+
+}
+    

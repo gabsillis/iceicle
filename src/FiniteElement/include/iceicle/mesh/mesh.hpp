@@ -25,6 +25,7 @@
 #include <ranges>
 #include <type_traits>
 #include <memory>
+#include <list>
 #ifndef NDEBUG
 #include <iomanip>
 #endif
@@ -124,6 +125,100 @@ namespace iceicle {
         std::vector<Point> coord_el;
     };
 
+    /// @brief node indices for a face and the connected elements. 
+    /// Duplicates are removed.
+    ///
+    /// First face dofs (shared), then left dofs, then right dofs
+    ///
+    /// @tparam IDX the index type
+    template<class IDX>
+    struct FaceGeoDofConnectivity {
+        struct Dofs {
+            IDX gdof; // global node index 
+            IDX trace_dof; // local trace node index or -1 if n/a
+            IDX left_dof; // local node index for left element or -1 if n/a
+            IDX right_dof; // local node index for right element or -1 if n/a
+        };
+
+        std::vector<Dofs> dofs; 
+
+        private:
+        template<class T, int ndim, class crs_index_t>
+        [[nodiscard]] static constexpr inline
+        auto create_dofs_array(const Face<T, IDX, ndim>& face, const util::crs<IDX, crs_index_t>& el_conn)
+        -> std::vector<Dofs>
+        {
+            std::vector<Dofs> ret;
+
+            std::list<std::pair<IDX, IDX>> left_ldofs{};
+            for(IDX ilnode = 0; ilnode < el_conn.rowsize(face.elemL); ++ilnode)
+                left_ldofs.push_back(std::pair{ilnode, el_conn[face.elemL, ilnode]});
+            std::list<std::pair<IDX, IDX>> right_ldofs{};
+            for(IDX irnode = 0; irnode < el_conn.rowsize(face.elemR); ++irnode)
+                right_ldofs.push_back(std::pair{irnode, el_conn[face.elemR, irnode]});
+
+            // get the trace nodes and remove duplicates from the lists
+            IDX inode;
+            for(inode = 0; inode < face.n_nodes(); ++inode){
+                ret[inode].gdof = face.nodes()[inode];
+                ret[inode].trace_dof = inode;
+
+                for(auto it = left_ldofs.begin(); it != left_ldofs.end(); ++it){
+                    if(it->second == ret[inode].gdof){
+                        ret[inode].left_dof = it->first;
+                        break;
+                    }
+                }
+                for(auto it = right_ldofs.begin(); it != right_ldofs.end(); ++it){
+                    if(it->second == ret[inode].gdof){
+                        ret[inode].right_dof = it->first;
+                        break;
+                    }
+                }
+            }
+            
+            // left nodes 
+            for(std::pair<IDX, IDX> lnode_gnode_pair : left_ldofs){
+                ret[inode].left_dof = lnode_gnode_pair.first;
+                ret[inode].gdof = lnode_gnode_pair.second;
+                ret[inode].trace_dof = -1;
+                ret[inode].right_dof = -1;
+                ++inode;
+            }
+
+            // right nodes 
+            for(std::pair<IDX, IDX> lnode_gnode_pair : right_ldofs){
+                ret[inode].right_dof = lnode_gnode_pair.first;
+                ret[inode].gdof = lnode_gnode_pair.second;
+                ret[inode].trace_dof = -1;
+                ret[inode].left_dof = -1;
+                ++inode;
+            }
+            return ret;
+        }
+
+        public:
+
+        // @brief given a face and the elemnt connectivity matrix 
+        // form the dof connectivity
+        template<class T, int ndim, class crs_index_t>
+        FaceGeoDofConnectivity(const Face<T, IDX, ndim>& face, const util::crs<IDX, crs_index_t>& el_conn)
+        : dofs{create_dofs_array(face, el_conn)}
+        {}
+
+        FaceGeoDofConnectivity(const FaceGeoDofConnectivity<IDX>& other) = default;
+        FaceGeoDofConnectivity<IDX>& operator=(const FaceGeoDofConnectivity<IDX>& other) = default;
+
+        // @brief get the size of connected degrees of freedom
+        [[nodiscard]] constexpr  inline
+        auto size() const
+        -> std::size_t 
+        { return dofs.size(); }
+    };
+    template<class T, class IDX, int ndim, class crs_index_t>
+    FaceGeoDofConnectivity(const Face<T, IDX, ndim>& face, const util::crs<IDX, crs_index_t>& el_conn)
+    -> FaceGeoDofConnectivity<IDX>;
+
     /**
      * @brief Abstract class that defines a mesh
      *
@@ -174,6 +269,9 @@ namespace iceicle {
         /// @brief The connectivity array ELements SUrrounding Points 
         /// represents the element indices that surround each node index
         util::crs<IDX, IDX> elsup;
+
+        /// @brief the node indices corresponding to a face and surrounding nodes
+        std::vector<FaceGeoDofConnectivity<IDX>> face_extended_conn;
 
         /// For each process i store a list of (this-local) element indices 
         /// that need to be sent 
@@ -299,6 +397,11 @@ namespace iceicle {
                 }
             }
             bdyFaceEnd = faces.size();
+
+            // form face dof connectivity
+            for(const auto& fac_ptr : faces){
+                face_extended_conn.push_back(FaceGeoDofConnectivity{*fac_ptr, conn_el});
+            }
         }
 
         AbstractMesh(const AbstractMesh<T, IDX, ndim>& other) 
@@ -306,6 +409,7 @@ namespace iceicle {
           el_transformations{other.el_transformations}, faces{},
           interiorFaceStart(other.interiorFaceStart), interiorFaceEnd(other.interiorFaceEnd),
           bdyFaceStart(other.bdyFaceStart), bdyFaceEnd(other.bdyFaceEnd), elsup{other.elsup},
+          face_extended_conn{other.face_extended_conn},
           el_send_list(other.el_send_list), el_recv_list(other.el_recv_list),
           communicated_elements(other.communicated_elements)
         {
@@ -330,6 +434,7 @@ namespace iceicle {
                 bdyFaceStart = other.bdyFaceStart;
                 bdyFaceEnd = other.bdyFaceEnd;
                 elsup = other.elsup;
+                face_extended_conn = other.face_extended_conn;
                 el_send_list = other.el_send_list;
                 el_recv_list = other.el_recv_list;
                 communicated_elements = other.communicated_elements;
@@ -738,6 +843,11 @@ namespace iceicle {
 
             // set up additional connectivity array
             elsup = to_elsup(conn_el, n_nodes());
+
+            // form face dof connectivity
+            for(const auto& fac_ptr : faces){
+                face_extended_conn.push_back(FaceGeoDofConnectivity{*fac_ptr, conn_el});
+            }
         } 
 
 

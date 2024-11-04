@@ -276,22 +276,22 @@ return {
 				nodes = { 9, 14 },
 			},
 			{
-				bc_type = "dirichlet",
+				bc_type = "extrapolation",
 				bc_flag = 1,
 				nodes = { 10, 11 },
 			},
 			{
-				bc_type = "dirichlet",
+				bc_type = "extrapolation",
 				bc_flag = 1,
 				nodes = { 11, 12 },
 			},
 			{
-				bc_type = "dirichlet",
+				bc_type = "extrapolation",
 				bc_flag = 1,
 				nodes = { 12, 13 },
 			},
 			{
-				bc_type = "dirichlet",
+				bc_type = "extrapolation",
 				bc_flag = 1,
 				nodes = { 13, 14 },
 			},

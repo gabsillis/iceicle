@@ -1,10 +1,14 @@
 #pragma once
 #include "iceicle/element/TraceSpace.hpp"
+#include "iceicle/linalg/linalg_utils.hpp"
 #include "iceicle/mesh/mesh.hpp"
 #include "iceicle/fe_function/fespan.hpp"
 #include "iceicle/fd_utils.hpp"
 #include <ranges>
-#include <span>
+
+#ifdef ICEICLE_USE_PETSC 
+#include "petscmat.h"
+#endif
 
 namespace iceicle {
 
@@ -171,7 +175,91 @@ namespace iceicle {
                     uR[idofu, iequ] = old_val;
                 }
             }
+
+            // stop if jacobian with respect to geometry is not requested
+            if(jac_wrt_x.empty()) return;
+
+
         }
     };
+
+#ifdef ICEICLE_USE_PETSC
+
+    /// @brief scatter a jacobian representing dres/du to a global petsc matrix 
+    /// @param jac_local the jacobian data to scatter 
+    /// @param iel_u the index of the element representing the intput 
+    ///              which sensitivities are wrt 
+    /// @param iel_res the index of the element representing the output 
+    ///                that we are getting sensitivities of 
+    /// @param u the span over input data for the finite element space 
+    ///          (determines the layout for input dofs)
+    /// @param res the span over output data for the finite element space 
+    ///            (determines the layout for output dofs)
+    /// @param jac_global the jacobian to scatter to as a petsc matrix 
+    /// @paramm comm the mpi communicator
+    template<class T, class IDX, class ul_pol, class ua_pol, class resl_pol, class resa_pol>
+    auto scatter_jacobian(
+        linalg::in_matrix auto jac_local,
+        IDX iel_u,
+        IDX iel_res,
+        fespan<T, ul_pol, ua_pol> u,
+        fespan<T, resl_pol, resa_pol> res,
+        Mat jac_global,
+        MPI_Comm comm
+    ) -> void 
+    {
+        std::size_t dimprod = jac_local.extent(0) * jac_local.extent(1);
+        std::vector<PetscInt> idxm(jac_local.extent(0));
+        std::vector<PetscInt> idxn(jac_local.extent(1));
+
+        // indices for residual 
+        if constexpr(resl_pol::local_dof_contiguous()) {
+            PetscInt rowstart = res.get_layout()[iel_res, 0, 0];
+            std::iota(idxm.begin(), idxm.end(), rowstart);
+        } else {
+            int iidxm = 0;
+            for(int idof = 0; idof < res.ndof(iel_res); ++idof){
+                for(int iv = 0; iv < res.nv(); ++iv, ++iidxm) {
+                    idxm[iidxm] = res.get_layout()[iel_res, idof, iv];
+                }
+            }
+        }
+
+        // indices for input
+        if constexpr(ul_pol::local_dof_contiguous()) {
+            PetscInt rowstart = u.get_layout()[iel_u, 0, 0];
+            std::iota(idxn.begin(), idxn.end(), rowstart);
+        } else {
+            int iidxn = 0;
+            for(int idof = 0; idof < u.ndof(iel_u); ++idof){
+                for(int iv = 0; iv < u.nv(); ++iv, ++iidxn) {
+                    idxn[iidxn] = u.get_layout()[iel_u, idof, iv];
+                }
+            }
+        }
+
+        if constexpr (linalg::contiguous_mdspan<decltype(jac_local)>){
+            // add values to the petsc matrix
+            PetscCallAbort(comm, MatSetValues(jac_global, jac_local.extent(0),
+                idxm.data(), jac_local.extent(1),
+                idxn.data(), jac_local.data_handle(), ADD_VALUES));
+
+        } else {
+            // get the values
+            std::vector<T> values{};
+            values.reserve(dimprod);
+            for(std::size_t i = 0; i < jac_local.extent(0); ++i){
+                for(std::size_t j = 0; j < jac_local.extent(1); ++j){
+                    values.push_back(jac_local[i, j]);
+                }
+            }
+
+            // add values to the petsc matrix
+            PetscCallAbort(comm, MatSetValues(jac_global, jac_local.extent(0),
+                idxm.data(), jac_local.extent(1),
+                idxn.data(), values.data(), ADD_VALUES));
+        }
+    }
+#endif
 
 }

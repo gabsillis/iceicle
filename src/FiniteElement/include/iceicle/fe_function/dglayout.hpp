@@ -4,6 +4,7 @@
  * a DG representation of a vector-valued fe_function
  */
 #pragma once
+#include <cmath>
 #include <iceicle/fe_function/layout_enums.hpp>
 #include <iceicle/geometry/geo_element.hpp>
 #include <iceicle/basis/basis.hpp>
@@ -27,6 +28,19 @@ namespace iceicle {
 
         using index_type = IndexType;
         using size_type = std::make_unsigned_t<index_type>;
+
+        // ==============
+        // = Properties =
+        // ==============
+
+        /**
+         * @brief consecutive local degrees of freedom (ignoring vector components)
+         * are contiguous in the layout
+         * meaning that the data for a an element can be block copied 
+         * to a elspan provided the layout parameters are the same
+         */
+        inline static constexpr bool local_dof_contiguous() noexcept 
+        { return true; }
 
     private:
         index_type calculate_max_dof_size(std::vector<index_type> &offsets_arg){
