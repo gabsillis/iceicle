@@ -1107,6 +1107,10 @@ geo_dof_map
 
 The struct :cpp:struct:`iceicle::geo_dof_map` represents a mapping to a subset of geometric (nodal) degrees of freedom
 
+-------------
+geo_param_map
+-------------
+Maps a geometric parameterization
 
 --------------
 component_span

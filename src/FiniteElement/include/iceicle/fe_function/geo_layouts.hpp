@@ -1,6 +1,7 @@
 /// @brief data layouts for geometry degrees of freedom
 /// @author Gianni Absillis (gabsill@ncsu.edu)
 #pragma once
+#include "iceicle/anomaly_log.hpp"
 #include <type_traits>
 #include <span>
 #include <memory>
@@ -43,6 +44,14 @@ namespace iceicle {
 
         /// @brief the dimensionality of the parametric coordinate space
         virtual auto s_size() const -> int = 0;
+
+        /// @brief which indices in the parametric coordinate space are shared 
+        /// between nodes 
+        /// e.g. parameterize the top of a time slab by one parameter: t_f
+        /// if coordinates are (x, y, t_f)
+        ///                    (0, 1, 2  )
+        /// then the shared indices vector would be {2}
+        std::vector<int> shared_s_indices{};
 };
 
     template<class T, int ndim>
@@ -227,6 +236,127 @@ namespace iceicle {
     }
 
     template<class T, class IDX, int ndim>
+    struct geo_param_map {
+        // ============
+        // = Typedefs =
+        // ============
+
+        using index_type = IDX;
+        using size_type = std::make_unsigned_t<index_type>;
+        using fcn_list = 
+            std::vector< 
+                std::unique_ptr< ParametricCoordTransformation<T, ndim> >  
+            >;
+
+        // ================
+        // = Data Members =
+        // ================
+
+        /// @brief a list of all the parametric functions
+        fcn_list parametric_functions;
+
+        /// the index of the parameterization in parametric_functions for each node
+        std::vector< std::size_t > node_param_map;
+
+        /// @brief true if the given node index is the identity parameterization
+        std::vector<bool> is_identity;
+
+        /// @brief for parametric_function
+        /// a list of the shared parametric coordinate indices
+        std::vector< std::vector< index_type > > shared_coord_param_map;
+
+        /// @brief map of the 1D index for each set of idof (node index) 
+        /// and iv (vector component index);
+        util::crs<IDX> map;
+
+        index_type n_shared_params;
+
+        /// @brief 
+        bool finalized = false;
+
+
+        /// @brief register a set of nodes with a given parametric transformation 
+        /// if there are shared parameters, these will be shared among all nodes in the list given 
+        ///
+        /// TODO: give a general form of this that takes pairs of {vector<index_type, parametric_ts>...}
+        /// and shares parametric indices between all of the transformations given
+        ///
+        /// @param node_indices the node indices to apply the parameterization to 
+        /// @param parametric_transform the transformation
+        template<class parametric_t>
+        auto register_parametric_nodes(std::vector<index_type> node_indices, parametric_t parametric_transform)
+        -> void 
+        requires(std::is_base_of_v<ParametricCoordTransformation<T, ndim>, parametric_t>)
+        {
+            finalized = false;
+
+            // we will be adding one to the list so this size will be the new index
+            std::size_t param_function_idx = parametric_functions.size();
+
+            // check for shared parametric coordinates
+            int n_shared = parametric_transform.shared_s_indices.size();
+            std::vector< index_type > shared_coord_indices(n_shared);
+            if(n_shared > 0) 
+                std::iota(shared_coord_indices.begin(), shared_coord_indices.end(), n_shared_params);
+            n_shared_params += n_shared;
+            shared_coord_param_map.push_back(shared_coord_indices);
+
+            // add the parametric function to the list
+            parametric_functions.push_back(
+                    std::make_unique<parametric_t>(std::move(parametric_transform)));
+
+            // map all the nodes to this parametric function
+            for(index_type inode : node_indices){
+                const ParametricCoordTransformation<T, ndim>& previous_parameterization =
+                    *(parametric_functions[node_param_map[inode]]);
+                if(previous_parameterization.shared_s_indices.size() > 0){
+                    util::AnomalyLog::log_anomaly(
+                        "Previous parameterization had shared indices and was overwritten,"
+                        "this could lead to redundant parameters");
+                }
+                is_identity[inode] = false;
+                node_param_map[inode] = param_function_idx;
+            }
+        }
+
+        auto finalize() -> void 
+        {
+            std::vector< std::vector<IDX> > map_ragged(node_param_map.size());
+
+            index_type iparam = n_shared_params;
+            for(index_type idof = 0; idof < node_param_map.size(); ++idof){
+                const ParametricCoordTransformation<T, ndim>& parameterization =
+                    *(parametric_functions[node_param_map[idof]]);
+                // set the sizes for each node
+                map_ragged[idof].resize(parameterization->s_size());
+                std::ranges::fill(map_ragged[idof], (index_type) -1);
+
+                // set the shared coordinate indices
+                for(int ilshared = 0; ilshared < parameterization.shared_s_indices.size(); ++ilshared){
+                    map_ragged[idof][parameterization.shared_s_indices[ilshared]] =
+                        shared_coord_param_map[ilshared];
+                }
+
+                // set the nonshared indices
+                for(int is = 0; is < parameterization.s_size(); ++is){
+                    if(map_ragged[idof][is] == (index_type) -1){
+                        map_ragged[idof][is] = iparam;
+                        ++iparam;
+                    }
+                }
+            }
+
+            map = util::crs<IDX>(map_ragged);
+            finalized = true;
+        }
+
+        [[nodiscard]] inline constexpr
+        auto size() const noexcept -> size_type 
+        { return map.nnz(); }
+        
+    };
+
+    template<class T, class IDX, int ndim>
     struct geo_dof_map {
 
         // ============
@@ -301,7 +431,7 @@ namespace iceicle {
                 inv_selected_nodes[selected_nodes[idof]] = idof;
             }
 
-            // initialize the is_parametric array
+// initialize the is_parametric array
             is_parametric = std::vector<bool>(selected_nodes.size(), false);
 
             // initialize the parametric accessors to the identity accessor 
@@ -453,6 +583,81 @@ namespace iceicle {
             }
         }
     }
+
+    /// @brief layout that represents the layout of parametric geometric coordinate data in memory
+    template<class T, class IDX, int ndim>
+    struct geo_param_layout {
+
+        // ============
+        // = Typedefs =
+        // ============
+        using index_type = IDX;
+        using size_type = std::make_unsigned_t<IDX>;
+
+        // ===========
+        // = Members =
+        // ===========
+
+        const geo_param_map<T, IDX, ndim>& geo_map;
+
+        // ==============
+        // = Properties =
+        // ==============
+
+        /**
+         * @brief consecutive local degrees of freedom (ignoring vector components)
+         * are contiguous in the layout
+         * meaning that the data for a an element can be block copied 
+         * to a elspan provided the layout parameters are the same
+         */
+        inline static constexpr auto local_dof_contiguous() noexcept -> bool { return true; }
+
+        // =========
+        // = Sizes =
+        // =========
+
+        /// @brief get the number of degrees of freedom
+        [[nodiscard]] inline constexpr auto ndof() const noexcept -> size_type { return geo_map.map.nrow(); }
+
+        /// @brief get the number of vector components
+        [[nodiscard]] inline constexpr auto nv(index_type idof) const noexcept -> size_type { 
+            return geo_map.rowsize(idof);
+        }
+
+        /// @brief the size of the compact index space
+        [[nodiscard]] inline constexpr auto size() const noexcept -> size_type { return geo_map.size(); }
+
+        // ============
+        // = Indexing =
+        // ============
+#ifndef NDEBUG 
+        inline static constexpr bool index_noexcept = false;
+#else 
+        inline static constexpr bool index_noexcept = true;
+#endif
+
+        /**
+         * Get the result of the mapping from an index pair 
+         * to the one dimensional index of the elment 
+         * @param idof the degree of freedom index 
+         * @param iv the vector component index
+         */
+        [[nodiscard]] constexpr auto operator[](
+            index_type idof,
+            index_type iv
+        ) const noexcept(index_noexcept) -> index_type {
+#ifndef NDEBUG
+            // Bounds checking version in debug 
+            // NOTE: allow indexing ndof()
+            // for nodes that arent in inv_selected_nodes but still 
+            // valid gdofs
+            if(idof < 0  || idof >= std::max((size_type) 1, ndof())  ) throw std::out_of_range("Dof index out of range");
+            if(iv < 0    || iv >= std::max((size_type) 1, nv(idof))  ) throw std::out_of_range("Vector compoenent index out of range");
+            if(!geo_map.finalized) throw std::out_of_range("indices have not been finalized");
+#endif
+           return geo_map.map[idof, iv];
+        }
+    };
 
     /// @brief layout that represents the layout of parametric geometric coordinate data in memory
     template<class T, class IDX, int ndim>
