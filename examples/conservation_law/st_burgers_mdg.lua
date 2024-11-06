@@ -39,7 +39,7 @@ return {
 	-- define the finite element domain
 	fespace = {
 		-- the basis function type (optional: default = lagrange)
-		basis = "legendre",
+		basis = "lagrange",
 
 		-- the quadrature type (optional: default = gauss)
 		quadrature = "gauss",
@@ -90,7 +90,8 @@ return {
 		linesearch = {
 			type = "none",
 		},
-		lambda_b = 1e-1,
+		lambda_b = 0.01,
+		-- lambda_lag = 0.01,
 		lambda_u = 0,
 		ivis = 1,
 		tau_abs = 1e-10,

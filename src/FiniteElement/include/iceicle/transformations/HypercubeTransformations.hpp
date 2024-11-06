@@ -842,7 +842,7 @@ int trace_coord = faceNr % ndim;
 
     IDX face_node_idx = 0;
 
-    auto next_ijk = [&](int ijk[ndim]){
+    auto next_ijk = [&](std::array<int, ndim>& ijk){
       for(int idim = ndim - 1; idim >= 0; --idim) if(idim != trace_coord) {
         if(idim == trace_first_dim && first_dim_sign[faceNr] < 0){
           // reversed order
@@ -865,7 +865,8 @@ int trace_coord = faceNr % ndim;
       return false;
     };
 
-    int ijk[ndim] = {0};
+    std::array<int, ndim> ijk;
+    std::ranges::fill(ijk, 0);
     if(first_dim_sign[faceNr] < 0){
       // anchor point needs to be at Pn 
       ijk[trace_first_dim] = Pn;
@@ -875,7 +876,7 @@ int trace_coord = faceNr % ndim;
 
     int inode = 0;
     do {
-      face_nodes[inode] = nodes_el[TensorProdType::convert_ijk(ijk)];
+      face_nodes[inode] = nodes_el[TensorProdType::convert_ijk(ijk.data())];
       inode++;
     } while(next_ijk(ijk));
   }

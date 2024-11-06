@@ -632,7 +632,7 @@ namespace iceicle::solvers {
                         // write the final iteration
                         IDX kfinal = solver.solve(u);
                         writer.write(kfinal, (T) kfinal);
-                        residuals_writer.write(kfinal, (T) kfinal);
+                        if(residuals_writer) residuals_writer.write(kfinal, (T) kfinal);
                     };
 
                     if(eq_icase_any(solver_type, "lm", "gauss-newton")){

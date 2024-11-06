@@ -447,7 +447,7 @@ namespace iceicle::solvers {
                     MatDiagonalSet(subproblem_mat, lambda, ADD_VALUES);
                     VecDestroy(&lambda);
 
-                    // lagrangian regularizationn
+                    // laplacian regularizationn
                     // loop over isoparametric cg elements
                     for(auto el : cg_fespace.elements){ 
 
@@ -480,7 +480,7 @@ namespace iceicle::solvers {
                                             PetscInt jmat = u_layout.size() + geo_layout[jgeo, jv];
 
                                             // WARNING: assumes g_u(u; v) is 1 for each non-fixed index
-                                            PetscScalar value = -Kmat[ilnode, jlnode] * (
+                                            PetscScalar value = Kmat[ilnode, jlnode] * Kmat[jlnode, ilnode] * (
                                                 lambda_lag );
 
                                             MatSetValueLocal(subproblem_mat, imat, jmat, value, ADD_VALUES);

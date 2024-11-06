@@ -148,13 +148,16 @@ namespace iceicle {
         auto create_dofs_array(const Face<T, IDX, ndim>& face, const util::crs<IDX, crs_index_t>& el_conn)
         -> std::vector<Dofs>
         {
-            std::vector<Dofs> ret;
+            std::size_t nnode_l = el_conn.rowsize(face.elemL);
+            std::size_t nnode_r = face.elemR != -1 ? el_conn.rowsize(face.elemR) : 0;
+            std::size_t size = nnode_r == 0 ? nnode_l : nnode_l + nnode_r - face.n_nodes();
+            std::vector<Dofs> ret(size);
 
             std::list<std::pair<IDX, IDX>> left_ldofs{};
-            for(IDX ilnode = 0; ilnode < el_conn.rowsize(face.elemL); ++ilnode)
+            for(IDX ilnode = 0; ilnode < nnode_l; ++ilnode)
                 left_ldofs.push_back(std::pair{ilnode, el_conn[face.elemL, ilnode]});
             std::list<std::pair<IDX, IDX>> right_ldofs{};
-            for(IDX irnode = 0; irnode < el_conn.rowsize(face.elemR); ++irnode)
+            for(IDX irnode = 0; irnode < nnode_r; ++irnode)
                 right_ldofs.push_back(std::pair{irnode, el_conn[face.elemR, irnode]});
 
             // get the trace nodes and remove duplicates from the lists
@@ -163,20 +166,26 @@ namespace iceicle {
                 ret[inode].gdof = face.nodes()[inode];
                 ret[inode].trace_dof = inode;
 
-                for(auto it = left_ldofs.begin(); it != left_ldofs.end(); ++it){
+                for(auto it = left_ldofs.begin(); it != left_ldofs.end(); ){
                     if(it->second == ret[inode].gdof){
                         ret[inode].left_dof = it->first;
+                        it = left_ldofs.erase(it); // remove to not double count
                         break;
+                    } else {
+                        ++it;
                     }
                 }
-                for(auto it = right_ldofs.begin(); it != right_ldofs.end(); ++it){
+                for(auto it = right_ldofs.begin(); it != right_ldofs.end(); ){
                     if(it->second == ret[inode].gdof){
                         ret[inode].right_dof = it->first;
+                        it = right_ldofs.erase(it); // remove to not double count
                         break;
+                    } else {
+                        ++it;
                     }
                 }
             }
-            
+          
             // left nodes 
             for(std::pair<IDX, IDX> lnode_gnode_pair : left_ldofs){
                 ret[inode].left_dof = lnode_gnode_pair.first;
@@ -205,9 +214,6 @@ namespace iceicle {
         FaceGeoDofConnectivity(const Face<T, IDX, ndim>& face, const util::crs<IDX, crs_index_t>& el_conn)
         : dofs{create_dofs_array(face, el_conn)}
         {}
-
-        FaceGeoDofConnectivity(const FaceGeoDofConnectivity<IDX>& other) = default;
-        FaceGeoDofConnectivity<IDX>& operator=(const FaceGeoDofConnectivity<IDX>& other) = default;
 
         // @brief get the size of connected degrees of freedom
         [[nodiscard]] constexpr  inline
@@ -536,7 +542,8 @@ namespace iceicle {
             coord.resize(nnodes);
 
             // Generate the nodes 
-            IDX ijk[ndim] = {0};
+            std::array<IDX, ndim> ijk;
+            std::ranges::fill(ijk, 0);
             for(int inode = 0; inode < nnodes; ++inode){
                 // calculate the coordinates 
                 for(int idim = 0; idim < ndim; ++idim){
@@ -576,7 +583,8 @@ namespace iceicle {
                     // WARNING: initializing this outside of order templated section breaks in O3
                     std::vector<std::vector<IDX>> ragged_conn_el(nelem, std::vector<IDX>{});
                     // form the element connectivity matrix
-                    for(int idim = 0; idim < ndim; ++idim) ijk[idim] = 0;
+                    std::array<IDX, ndim> ijk;
+                    std::ranges::fill(ijk, 0);
                     for(int ielem = 0; ielem < nelem; ++ielem){
                         // create the element
                         el_transformations.push_back( 
@@ -627,10 +635,11 @@ namespace iceicle {
                     for(int idir = 0; idir < ndim; ++idir){
 
                         // oordinates of the left element
-                        int ijk[ndim] = {0};
+                        std::array<IDX, ndim> ijk;
+                        std::ranges::fill(ijk, 0);
 
                         //function to increment the ijk of the left element 
-                        auto next_ijk = [&](int ijk[ndim]) -> bool {
+                        auto next_ijk = [&](std::array<IDX, ndim>& ijk) -> bool {
                             for(int idim = 0; idim < ndim; ++idim){
                                 if(idim == idir){
                                     // we have n-1 left elements in the given direction, n otherwise
@@ -658,8 +667,8 @@ namespace iceicle {
                         // do loop safegaurded against empty faces in that direction
                         if(directional_nelem[idir] > 1) do {
                             // make the face 
-                            IDX ijk_r[ndim];
-                            std::copy_n(ijk, ndim, ijk_r);
+                            std::array<IDX, ndim> ijk_r;
+                            std::ranges::copy(ijk, ijk_r.begin());
                             ijk_r[idir]++; // increment in the face direction
 
                             // get the element number from the ordinates
