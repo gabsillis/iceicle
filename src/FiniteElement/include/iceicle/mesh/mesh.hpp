@@ -830,7 +830,7 @@ namespace iceicle {
 
                             // increment the ordinates 
                             int first_dir = (idim == 0) ? 1 : 0;
-                            ++ijk[first_dir];
+                            if constexpr(ndim > 1) ++ijk[first_dir];
                             for(int jdim = first_dir; jdim < ndim; ++jdim){
                                 if(jdim == idim){
                                     // skip over the boundary normal direction
