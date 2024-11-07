@@ -619,7 +619,7 @@ namespace iceicle::solvers {
 
                         // diagnostics callback views the residuals
                         solver.diag_callback = [&](IDX k, Vec res_data, Vec du_data){
-                            residuals_writer.write(k, (T) k);
+                            if(residuals_writer) residuals_writer.write(k, (T) k);
 
                             // get the MDG residuals 
                             petsc::VecSpan res_span{res_data};

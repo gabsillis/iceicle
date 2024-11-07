@@ -422,6 +422,9 @@ namespace iceicle::solvers {
 //                VecView(res_data, r_viewer);
 
 
+                // form JTr
+                PetscCallAbort(PETSC_COMM_WORLD, MatMultTranspose(jac, res_data, Jtr));
+
                 // Form the subproblem
                 if(explicitly_form_subproblem){
 
@@ -449,13 +452,25 @@ namespace iceicle::solvers {
 
                     // laplacian regularizationn
                     // loop over isoparametric cg elements
+                    PetscReal rnorm;
+                    VecNorm(res_data, NORM_2, &rnorm);
                     for(auto el : cg_fespace.elements){ 
 
                         // form the diffusion matrix 
                         DiffusionIntegrator<T, IDX, ndim> K_integrator{1.0};
                         std::vector<T> Kmat_data(el.nbasis() * el.nbasis());
+                        std::vector<T> KTK_data(el.nbasis() * el.nbasis());
                         std::mdspan Kmat(Kmat_data.data(), el.nbasis(), el.nbasis());
+                        std::mdspan KTK(KTK_data.data(), el.nbasis(), el.nbasis());
+                        linalg::fill(KTK, 0);
                         K_integrator.form_operator(el, Kmat);
+                        for(int i = 0; i < el.nbasis(); ++i){
+                            for(int k = 0; k < el.nbasis(); ++k){
+                                for(int j = 0; j < el.nbasis(); ++j){
+                                    KTK[i, j] = Kmat[k, i] * Kmat[k, j];
+                                }
+                            }
+                        }
 
                         // get the minimum jacobian determinant of all quadrature points
                         T detJ = 1.0;
@@ -467,7 +482,7 @@ namespace iceicle::solvers {
                         detJ = std::max(1e-8, std::abs(detJ));
                         IDX nodes_size = geo_layout.geo_map.selected_nodes.size();
                         for(int ilnode = 0; ilnode < el.trans->nnode; ++ilnode){
-                            for(int jlnode = 0; ilnode < el.trans->nnode; ++ilnode){
+                            for(int jlnode = 0; jlnode < el.trans->nnode; ++jlnode){
                                 const IDX ignode = el.inodes[ilnode];
                                 const IDX jgnode = el.inodes[jlnode];
                                 IDX igeo = geo_layout.geo_map.inv_selected_nodes[ignode];
@@ -480,8 +495,8 @@ namespace iceicle::solvers {
                                             PetscInt jmat = u_layout.size() + geo_layout[jgeo, jv];
 
                                             // WARNING: assumes g_u(u; v) is 1 for each non-fixed index
-                                            PetscScalar value = Kmat[ilnode, jlnode] * Kmat[jlnode, ilnode] * (
-                                                lambda_lag );
+                                            PetscScalar value = KTK[ilnode, jlnode] * (
+                                                lambda_lag * rnorm );
 
                                             MatSetValueLocal(subproblem_mat, imat, jmat, value, ADD_VALUES);
                                         }
@@ -521,12 +536,17 @@ namespace iceicle::solvers {
                 PetscCallAbort(PETSC_COMM_WORLD, MatAssemblyBegin(subproblem_mat, MAT_FINAL_ASSEMBLY));
                 PetscCallAbort(PETSC_COMM_WORLD, MatAssemblyEnd(subproblem_mat, MAT_FINAL_ASSEMBLY));
 
-                // form JTr
-                PetscCallAbort(PETSC_COMM_WORLD, MatMultTranspose(jac, res_data, Jtr));
-
                 // Solve the subproblem
                 PetscCallAbort(PETSC_COMM_WORLD, KSPSetOperators(ksp, subproblem_mat, subproblem_mat));
                 PetscCallAbort(PETSC_COMM_WORLD, KSPSolve(ksp, Jtr, du_data));
+
+                if(verbosity >= 4){
+                    PetscViewer viewer;
+                    PetscViewerASCIIOpen(PETSC_COMM_WORLD, ("subproblem" + std::to_string(k)).c_str(),&viewer);
+                    PetscViewerPushFormat(viewer, PETSC_VIEWER_ASCII_DENSE);
+                    MatView(subproblem_mat, viewer);
+                    PetscViewerDestroy(&viewer);
+                }
 
                 // Diagnostics 
                 if(idiag > 0 && k % idiag == 0) {
