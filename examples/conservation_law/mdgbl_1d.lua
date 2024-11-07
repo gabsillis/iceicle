@@ -62,7 +62,7 @@ return {
 
 	-- initial condition
 	initial_condition = function(x)
-		return (1 - math.exp(x * Pe)) / (1 - math.exp(Pe))
+		return 1
 	end,
 
 	-- boundary conditions
@@ -75,9 +75,9 @@ return {
 
 	-- MDG
 	mdg = {
-		ncycles = 40,
+		ncycles = 1,
 		ic_selection_threshold = function(icycle)
-			return 0.1 / (icycle * icycle)
+			return 0.0
 		end,
 	},
 
@@ -86,14 +86,16 @@ return {
 		type = "gauss-newton",
 		form_subproblem_mat = true,
 		linesearch = {
-			type = "corrigan",
+			type = "none",
 		},
-		lambda_b = 0.1,
-		lambda_u = 1e-6,
-		ivis = 1000,
-		tau_abs = 1e-10,
-		tau_rel = 0,
-		kmax = 100000,
+		lambda_b = 0.0,
+		lambda_u = 0.0,
+		lambda_lag = 0.01,
+		ivis = 1,
+		idiag = 1,
+		tau_abs = 1e-8,
+		tau_rel = 1e-8,
+		kmax = 1000,
 	},
 
 	-- output
