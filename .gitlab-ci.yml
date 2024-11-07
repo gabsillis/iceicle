@@ -30,8 +30,8 @@ test-felib:
     stage: test
     script:
         - cd build
-        - ctest --output-junit report.xml -j4
         - valgrind --track-origins=yes ./bin/test_felib
+        - ctest --output-junit report.xml -j4
     artifacts:
         when: always
         reports:
