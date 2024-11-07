@@ -29,7 +29,8 @@ test-felib:
     stage: test
     script:
         - cd build
-        - ctest --output-junit report.xml -j4
+        - apt-get -y install valgrind
+        - valgrind --track-origins=yes ctest --output-junit report.xml -j4
     artifacts:
         when: always
         reports:
