@@ -7,7 +7,7 @@ return {
 	ndim = 2,
 
 	-- create a uniform mesh
-	uniform_mesh = {
+	mixed_uniform_mesh = {
 		nelem = { 10, 10 },
 		bounding_box = {
 			min = { 0.0, 0.0 },
@@ -45,7 +45,7 @@ return {
 		quadrature = "gauss",
 
 		-- the basis function order
-		order = 4,
+		order = 2,
 	},
 
 	-- describe the conservation law
@@ -90,13 +90,14 @@ return {
 		linesearch = {
 			type = "none",
 		},
-		lambda_b = 0.01,
-		-- lambda_lag = 0.01,
-		lambda_u = 0,
+		lambda_b = 0,
+		lambda_lag = 10,
+		lambda_u = 1e-8,
 		ivis = 1,
+		idiag = 1,
 		tau_abs = 1e-10,
 		tau_rel = 0,
-		kmax = 800,
+		kmax = 1000,
 	},
 
 	-- output

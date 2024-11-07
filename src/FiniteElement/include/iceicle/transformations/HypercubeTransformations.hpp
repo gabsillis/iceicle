@@ -602,20 +602,23 @@ public:
   // ====================
 
   private:
-  auto get_vertex_helper(const IDX nodes_el[nnode], IDX vert_el[nvert], int istart1, int istart2, int idim, int ivert) -> int {
-      if(idim == 2){
-        vert_el[ivert++] = nodes_el[istart1];
-        vert_el[ivert++] = nodes_el[istart1 + Pn];
-
-        vert_el[ivert++] = nodes_el[istart2];
-        vert_el[ivert++] = nodes_el[istart2 + Pn];
-        return ivert;
-      } else {
-        const int block = std::pow(Pn + 1, ndim - idim - 1);
-        ivert = get_vertex_helper(nodes_el, vert_el, istart1, istart1 + Pn * block, idim + 1, ivert);
-        ivert = get_vertex_helper(nodes_el, vert_el, istart2, istart2 + Pn * block, idim + 1, ivert);
-        return ivert;
-      }
+  template<int idim = ndim - 1>
+  inline constexpr
+  auto get_vertex_helper(const IDX nodes_el[nnode], IDX *vert_el_dim, int offset)
+  -> void {
+    if constexpr (idim == 0){
+      // lower bound
+      vert_el_dim[0] = nodes_el[offset];
+      vert_el_dim[1] = nodes_el[offset + Pn];
+    } else {
+      // NOTE: the end of the index set is (Pn+1) ^ (idim + 1) 
+      // but for the beginning we need one less "slab" 
+      // thus Pn * (Pn + 1) ^ (idim)
+      const int stride_nodes = std::pow(Pn + 1, idim) * Pn;
+      const int stride_vert = std::pow(2, idim);
+      get_vertex_helper<idim - 1>(nodes_el, vert_el_dim, offset);
+      get_vertex_helper<idim - 1>(nodes_el, vert_el_dim + stride_vert, offset + stride_nodes);
+    }
   }
 
   public:
@@ -625,7 +628,7 @@ public:
    * @param [out] vert_el the global indices of the element vertices 
    */
   void get_element_vert(const IDX nodes_el[nnode], IDX vert_el[nvert]){
-    (void) get_vertex_helper(nodes_el, vert_el, 0, Pn * std::pow(Pn + 1, ndim - 1), 0, 0);
+    (void) get_vertex_helper(nodes_el, vert_el, 0);
   }
 
   /** @brief rotates the node indices 

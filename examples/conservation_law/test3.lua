@@ -48,21 +48,21 @@ return {
 		quadrature = "gauss",
 
 		-- the basis function order
-		order = 2,
+		order = 1,
 	},
 
 	-- describe the conservation law
 	conservation_law = {
 		-- the name of the conservation law being solved
 		name = "burgers",
-		mu = 0.05,
+		mu = 0.1,
 		a_adv = { 1.0 },
 		b_adv = { 0.0 },
 	},
 
 	-- initial condition
 	initial_condition = function(x)
-		return (1 - math.exp(x * Pe)) / (1 - math.exp(Pe))
+		return 1
 	end,
 
 	-- boundary conditions
@@ -88,9 +88,9 @@ return {
 		linesearch = {
 			type = "none",
 		},
-		lambda_b = 0,
-		lambda_u = 0,
-		lambda_lag = 0.01,
+		lambda_b = 0.0,
+		lambda_u = 0.0,
+		lambda_lag = 0.1,
 		ivis = 1,
 		idiag = 1,
 		tau_abs = 1e-8,

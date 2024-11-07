@@ -581,7 +581,7 @@ namespace iceicle {
                 if(order == Pn){
 
                     // WARNING: initializing this outside of order templated section breaks in O3
-                    std::vector<std::vector<IDX>> ragged_conn_el(nelem, std::vector<IDX>{});
+                    std::vector<std::vector<IDX>> ragged_conn_el(nelem);
                     // form the element connectivity matrix
                     std::array<IDX, ndim> ijk;
                     std::ranges::fill(ijk, 0);
@@ -831,7 +831,7 @@ namespace iceicle {
                             // increment the ordinates 
                             int first_dir = (idim == 0) ? 1 : 0;
                             if constexpr(ndim > 1) ++ijk[first_dir];
-                            for(int jdim = first_dir; jdim < ndim; ++jdim){
+                            for(int jdim = first_dir; jdim < ndim - 1; ++jdim){
                                 if(jdim == idim){
                                     // skip over the boundary normal direction
                                 } else if(ijk[jdim] == directional_nelem[jdim]){

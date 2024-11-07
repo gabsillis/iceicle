@@ -54,9 +54,8 @@ set(CMAKE_C_FLAGS_RELWITHDEBINFO "-O3 -DNDEBUG -g")
 # ===============
 option(ICEICLE_USE_PETSC "Builds ICEicle with Petsc integration" OFF)
 option(ICEICLE_USE_LUA "Builds ICEicle with Lua integration integration provided through sol3" OFF)
-#option(ICEICLE_USE_IREP "Builds ICEicle with the irep library for Lua mixed-language" OFF)
-#option(ICEICLE_USE_HYPRE "Builds ICEicle with Hypre integration" OFF)
 option(ICEICLE_USE_MFEM  "Enables MFEM as a third party library" OFF)
+option(ICEICLE_USE_MPI  "Enables building with MPI" ON)
 option(ICEICLE_USE_OPENGL "Enables OpenGL visualization with imgui" OFF)
 option(ICEICLE_USE_MATPLOTPLUSPLUS "Enables matplotlib-cpp" OFF)
 option(ICEICLE_USE_VTK "Enables VTK third party functionality" OFF)
@@ -66,7 +65,9 @@ option(ICEICLE_USE_METIS "Enables Metis for mesh partitioning" OFF)
 # = CMake includes =
 # ==================
 include(FetchContent)
-find_package(MPI)
+if(ICEICLE_USE_MPI)
+  find_package(MPI)
+endif()
 find_package(PkgConfig REQUIRED)
 
 # custom modules
