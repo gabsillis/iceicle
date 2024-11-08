@@ -6,6 +6,7 @@
 
 #include "iceicle/disc/conservation_law.hpp"
 #include "iceicle/anomaly_log.hpp"
+#include "iceicle/dat_writer.hpp"
 #include "iceicle/disc/bc_lua_interface.hpp"
 #include "iceicle/disc/burgers.hpp"
 #include "iceicle/disc/navier_stokes.hpp"
@@ -86,6 +87,12 @@ void initialize_and_solve(
   // ===============================
   // = Output the Initial Solution =
   // ===============================
+  if constexpr(ndim == 1){
+    io::DatWriter<T, IDX, ndim> dat_writer{fespace};
+    dat_writer.register_fields(u, conservation_law.field_names);
+    dat_writer.collection_name = "initial_condition";
+    dat_writer.write_dat(0, 0.0);
+  }
   if constexpr (ndim == 2 || ndim == 3) {
     io::PVDWriter<T, IDX, ndim> pvd_writer{};
     pvd_writer.register_fespace(fespace);

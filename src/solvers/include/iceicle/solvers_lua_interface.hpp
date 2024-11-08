@@ -631,8 +631,12 @@ namespace iceicle::solvers {
 
                         // write the final iteration
                         IDX kfinal = solver.solve(u);
+                        std::cout << "itime: " << std::setw(6) << kfinal 
+                            << " | Termination Criteria Reached"
+                            << std::endl << std::endl;
                         writer.write(kfinal, (T) kfinal);
                         if(residuals_writer) residuals_writer.write(kfinal, (T) kfinal);
+                        write_restart(fespace, u, kfinal);
                     };
 
                     if(eq_icase_any(solver_type, "lm", "gauss-newton")){
