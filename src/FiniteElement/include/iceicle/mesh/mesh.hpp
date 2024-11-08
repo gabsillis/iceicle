@@ -276,6 +276,9 @@ namespace iceicle {
         /// represents the element indices that surround each node index
         util::crs<IDX, IDX> elsup;
 
+        /// @brief the faces surrounding elements
+        util::crs<IDX, IDX> facsuel;
+
         /// @brief the node indices corresponding to a face and surrounding nodes
         std::vector<FaceGeoDofConnectivity<IDX>> face_extended_conn;
 

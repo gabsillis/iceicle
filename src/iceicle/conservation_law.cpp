@@ -146,8 +146,11 @@ void setup(sol::table script_config, cli_parser cli_args) {
   // = Setup Mesh =
   // ==============
   auto mesh_opt = construct_mesh_from_config<T, IDX, ndim>(script_config);
-  if (!mesh_opt)
+  if (!mesh_opt){
+    std::cerr << "Mesh construction failed..." << std::endl;
+    AnomalyLog::handle_anomalies();
     return; // exit if we have no valid mesh
+  }
   AbstractMesh<T, IDX, ndim> mesh = mesh_opt.value();
   std::vector<IDX> invalid_faces;
   if (!validate_normals(mesh, invalid_faces)) {
