@@ -312,6 +312,11 @@ namespace iceicle {
         using boundary_face_desc = std::tuple<BOUNDARY_CONDITIONS, int, std::vector<IDX>>;
 
         /// @brief Construct a mesh from provided connectivity information
+        /// @param coord the mesh coordinates 
+        /// @param conn_el compressed row storage of element connectivity
+        /// @param el_transformations array of pointers to the corresponding transformation for each element
+        /// @param boundary_face_descriptions tuple of BOUNDARY_CONDITIONS (type), integer (flag), 
+        ///        and array of indices (the nodes) that describe boundary faces
         AbstractMesh(
             NodeArray<T, ndim>& coord,
             util::crs<IDX, IDX> conn_el,

@@ -73,7 +73,8 @@ namespace iceicle {
                         // set the points and weights
                         qpoint.weight = weight;
                         for(int idim = 0; idim < ndim; ++idim){
-                            qpoint.abscisse[idim] = static_cast<double>(2 * beta[idim] + 1) / (d + ndim - 2 * ipoin);
+                            qpoint.abscisse[idim] = static_cast<double>(2 * beta[idim] + 1) 
+                                / (d + ndim - 2 * ipoin);
                         }
 
                         // mfem method of incrementing beta (mfem/fem/intrules.cpp)

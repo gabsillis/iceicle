@@ -607,7 +607,7 @@ namespace iceicle::transformations {
          * @return the second derivative for the given node in the given directions at xi
          */
         T dshp2(const T *xi, int inode, int ideriv, int jderiv) const {
-            T term1, term2;
+            T term1, term2, term3, term4;
             T lambda_n = 1;
             for(int i = 0; i < ndim; ++i) lambda_n -= xi[i];
             if(ideriv == jderiv){ // use second derivative
@@ -630,11 +630,29 @@ namespace iceicle::transformations {
                 }
             }
 
-            term2 = d2shapefcn_1d(ijk_poin[inode][ndim], lambda_n);
+            term2 = dshapefcn_1d(ijk_poin[inode][ndim], lambda_n);
             for(int idim = 0; idim < ndim; ++idim)
-                term2 *= shapefcn_1d(ijk_poin[inode][idim], xi[idim]);
+            {
+                if(idim != ideriv)
+                    term2 *= shapefcn_1d(ijk_poin[inode][idim], xi[idim]);
+                else 
+                    term2 *= dshapefcn_1d(ijk_poin[inode][idim], xi[idim]);
+            }
+            
+            term3 = dshapefcn_1d(ijk_poin[inode][ndim], lambda_n);
+            for(int idim = 0; idim < ndim; ++idim)
+            {
+                if(idim != jderiv)
+                    term3 *= shapefcn_1d(ijk_poin[inode][idim], xi[idim]);
+                else 
+                    term3 *= dshapefcn_1d(ijk_poin[inode][idim], xi[idim]);
+            }
 
-            return term1 - term2;
+            term4 = d2shapefcn_1d(ijk_poin[inode][ndim], lambda_n);
+            for(int idim = 0; idim < ndim; ++idim)
+                term4 *= shapefcn_1d(ijk_poin[inode][idim], xi[idim]);
+
+            return term1 - term2 - term3 + term4;
         }
     
         private:

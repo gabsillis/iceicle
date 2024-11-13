@@ -482,11 +482,11 @@ namespace iceicle {
                                         for(int sdim = 0; sdim < ndim; ++sdim){
                                             
                                             resL[itest, ieq] -= 
-                                                Gtensor[ieq][kdim][req][sdim] * unit_normal[kdim] 
+                                                sigma_ic * Gtensor[ieq][kdim][req][sdim] * unit_normal[kdim] 
                                                 * average_gradv[sdim] * jumpu_r
                                                 * quadpt.weight * sqrtg;
                                             resR[itest, ieq] -= 
-                                                Gtensor[ieq][kdim][req][sdim] * unit_normal[kdim] 
+                                                sigma_ic * Gtensor[ieq][kdim][req][sdim] * unit_normal[kdim] 
                                                 * average_gradv[sdim] * jumpu_r
                                                 * quadpt.weight * sqrtg;
                                         }

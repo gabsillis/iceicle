@@ -4,6 +4,7 @@
  */
 #pragma once
 #include "Numtool/point.hpp"
+#include "iceicle/fe_definitions.hpp"
 #include "iceicle/geometry/face.hpp"
 #include "iceicle/geometry/face_utils.hpp"
 #include "iceicle/geometry/transformations_table.hpp"
@@ -67,167 +68,6 @@ namespace iceicle {
         }
     }
 
-    template<class T, class IDX>
-    auto burgers_linear_mesh(bool initial)
-    -> std::optional<AbstractMesh<T, IDX, 2>> {
-        using Point = MATH::GEOMETRY::Point<T, 2>;
-
-        AbstractMesh<T, IDX, 2> mesh{};
-        if(initial){
-            mesh.coord = std::vector<Point>{
-                Point{{0.00, 0.00}},
-                Point{{0.25, 0.00}},
-                Point{{0.75, 0.00}},
-                Point{{1.00, 0.00}},
-                Point{{0.00, 0.25}},
-                Point{{0.25, 0.25}},
-                Point{{0.75, 0.25}},
-                Point{{1.00, 0.25}},
-                Point{{0.00, 0.50}},
-                Point{{0.25, 0.50}},
-                Point{{0.75, 0.50}},
-                Point{{1.00, 0.50}}
-            };
-        } else {
-            mesh.coord = std::vector<Point>{
-                Point{{0.00, 0.00}},
-                Point{{0.25, 0.00}},
-                Point{{0.75, 0.00}},
-                Point{{1.00, 0.00}},
-                Point{{0.00, 0.125}},
-                Point{{0.50, 0.125}},
-                Point{{0.50, 0.125}},
-                Point{{1.00, 0.125}},
-                Point{{0.00, 0.50}},
-                Point{{0.25, 0.50}},
-                Point{{0.50, 0.50}},
-                Point{{1.00, 0.50}}
-            };
-        }
-
-        // make the elements by hand
-        std::vector<std::vector<IDX>> el_conn = {
-            std::vector<IDX>{0, 4, 1, 5},
-            std::vector<IDX> {1, 5, 2, 6},
-            std::vector<IDX> {2, 6, 3, 7},
-            std::vector<IDX> {4, 8, 5, 9},
-            std::vector<IDX> {5, 9, 6, 10},
-            std::vector<IDX> {6, 10, 7, 11}
-        };
-
-        mesh.conn_el = util::crs<IDX, IDX>(el_conn);
-        for(int ielem = 0; ielem < el_conn.size(); ++ielem){
-            mesh.el_transformations.push_back(
-                transformation_table<T, IDX, 2>.get_transform(DOMAIN_TYPE::HYPERCUBE, 1));
-        }
-        
-        // find the interior faces
-        find_interior_faces(mesh);
-        mesh.interiorFaceStart = 0;
-        mesh.interiorFaceEnd = mesh.faces.size();
-        mesh.bdyFaceStart = mesh.faces.size();
-
-        // boundary faces
-        auto add_bdy_face = [&mesh](int ielem, std::vector<IDX> nodes, BOUNDARY_CONDITIONS bctype, int bcflag){
-            auto face_info = boundary_face_info(nodes, mesh.el_transformations[ielem], mesh.get_el_nodes(ielem));
-            if(face_info){
-                auto [fac_domn, face_nr_l] = face_info.value();
-                ElementTransformation<T, IDX, 2> *trans = mesh.el_transformations[ielem];
-
-                // get the face nodes in the correct order
-                std::vector<IDX> ordered_face_nodes = trans->get_face_nodes(face_nr_l, mesh.get_el_nodes(ielem));
-
-                auto face_opt = make_face<T, IDX, 2>(fac_domn, trans->domain_type, trans->domain_type, 1,
-                        ielem, ielem, std::span<const IDX>{ordered_face_nodes},
-                        face_nr_l, 0, 0, bctype, bcflag);
-                if(face_opt){
-                    mesh.faces.push_back(std::move(face_opt.value()));
-                }
-            }
-        };
-
-        {
-            int ielem = 0;
-            std::vector<IDX> nodes{0, 1};
-            BOUNDARY_CONDITIONS bctype = BOUNDARY_CONDITIONS::DIRICHLET;
-            int bcflag = 0;
-            add_bdy_face(ielem, nodes, bctype, bcflag);
-        }
-        {
-            int ielem = 1;
-            std::vector<IDX> nodes{1, 2};
-            BOUNDARY_CONDITIONS bctype = BOUNDARY_CONDITIONS::DIRICHLET;
-            int bcflag = 0;
-            add_bdy_face(ielem, nodes, bctype, bcflag);
-        }
-        {
-            int ielem = 2;
-            std::vector<IDX> nodes{2, 3};
-            BOUNDARY_CONDITIONS bctype = BOUNDARY_CONDITIONS::DIRICHLET;
-            int bcflag = 0;
-            add_bdy_face(ielem, nodes, bctype, bcflag);
-        }
-        {
-            int ielem = 0;
-            std::vector<IDX> nodes{0, 4};
-            BOUNDARY_CONDITIONS bctype = BOUNDARY_CONDITIONS::DIRICHLET;
-            int bcflag = 0;
-            add_bdy_face(ielem, nodes, bctype, bcflag);
-        }
-        {
-            int ielem = 3;
-            std::vector<IDX> nodes{4, 8};
-            BOUNDARY_CONDITIONS bctype = BOUNDARY_CONDITIONS::DIRICHLET;
-            int bcflag = 0;
-            add_bdy_face(ielem, nodes, bctype, bcflag);
-        }
-        {
-            int ielem = 2;
-            std::vector<IDX> nodes{3, 7};
-            BOUNDARY_CONDITIONS bctype = BOUNDARY_CONDITIONS::DIRICHLET;
-            int bcflag = 0;
-            add_bdy_face(ielem, nodes, bctype, bcflag);
-        }
-        {
-            int ielem = 5;
-            std::vector<IDX> nodes{7, 11};
-            BOUNDARY_CONDITIONS bctype = BOUNDARY_CONDITIONS::DIRICHLET;
-            int bcflag = 0;
-            add_bdy_face(ielem, nodes, bctype, bcflag);
-        }
-        {
-            int ielem = 3;
-            std::vector<IDX> nodes{8, 9};
-            BOUNDARY_CONDITIONS bctype = BOUNDARY_CONDITIONS::SPACETIME_FUTURE;
-            int bcflag = 0;
-            add_bdy_face(ielem, nodes, bctype, bcflag);
-        }
-        {
-            int ielem = 4;
-            std::vector<IDX> nodes{9, 10};
-            BOUNDARY_CONDITIONS bctype = BOUNDARY_CONDITIONS::SPACETIME_FUTURE;
-            int bcflag = 0;
-            add_bdy_face(ielem, nodes, bctype, bcflag);
-        }
-        {
-            int ielem = 5;
-            std::vector<IDX> nodes{10, 11};
-            BOUNDARY_CONDITIONS bctype = BOUNDARY_CONDITIONS::SPACETIME_FUTURE;
-            int bcflag = 0;
-            add_bdy_face(ielem, nodes, bctype, bcflag);
-        }
-
-        mesh.bdyFaceEnd = mesh.faces.size();
-
-        mesh.elsup = to_elsup(mesh.conn_el, mesh.n_nodes());
-
-        // form face dof connectivity
-        for(const auto& fac_ptr : mesh.faces){
-            mesh.face_extended_conn.push_back(FaceGeoDofConnectivity{*fac_ptr, mesh.conn_el});
-        }
-        return std::optional{mesh};
-    }
-
     /// @brief form a mixed uniform mesh with square and triangle elements
     ///
     /// @param nelem the number of (quad) elements in each direction 
@@ -246,9 +86,10 @@ namespace iceicle {
         std::span<int> bcflags
     ) -> std::optional<AbstractMesh<T, IDX, 2>> {
         using Point = MATH::GEOMETRY::Point<T, 2>;
+        using boundary_face_desc = std::tuple<BOUNDARY_CONDITIONS, int, std::vector<IDX>>;
         using namespace util;
 
-        AbstractMesh<T, IDX, 2> mesh{};
+        NodeArray<T, 2> coord;
 
         // make the nodes
         T dx = (xmax[0] - xmin[0]) / (nelem[0]);
@@ -257,13 +98,14 @@ namespace iceicle {
         IDX nnodey = nelem[1] + 1;
         for(IDX iy = 0; iy < nnodey; ++iy){
             for(IDX ix = 0; ix < nnodex; ++ix){
-                mesh.coord.push_back(Point{{xmin[0] + ix * dx, xmin[1] + iy * dy}});
+                coord.push_back(Point{{xmin[0] + ix * dx, xmin[1] + iy * dy}});
             }
         }
 
         IDX half_quad_x = (IDX) (nelem[0] * quad_ratio[0] / 2);
         IDX half_quad_y = (IDX) (nelem[1] * quad_ratio[1] / 2);
 
+        std::vector< ElementTransformation<T, IDX, 2>* > el_transformations;
         std::vector<std::vector<IDX>> el_conn{};
         // make the elements 
         for(IDX ixquad = 0; ixquad < nelem[0]; ++ixquad){
@@ -279,16 +121,16 @@ namespace iceicle {
                     || (nelem[1] - iyquad) <= half_quad_y;
 
                 if(is_quad){
-                    mesh.el_transformations.push_back(transformation_table<T, IDX, 2>
+                    el_transformations.push_back(transformation_table<T, IDX, 2>
                             .get_transform(DOMAIN_TYPE::HYPERCUBE, 1));
                     std::vector<IDX> nodes{bottomleft, topleft, bottomright, topright};
                     el_conn.push_back(nodes);
                 } else {
                     std::vector<IDX> nodes1{bottomleft, bottomright, topleft};
                     std::vector<IDX> nodes2{topleft, bottomright, topright};
-                    mesh.el_transformations.push_back(transformation_table<T, IDX, 2>
+                    el_transformations.push_back(transformation_table<T, IDX, 2>
                             .get_transform(DOMAIN_TYPE::SIMPLEX, 1));
-                    mesh.el_transformations.push_back(transformation_table<T, IDX, 2>
+                    el_transformations.push_back(transformation_table<T, IDX, 2>
                             .get_transform(DOMAIN_TYPE::SIMPLEX, 1));
                     el_conn.push_back(nodes1);
                     el_conn.push_back(nodes2);
@@ -298,79 +140,30 @@ namespace iceicle {
         }
 
         // update the element crs matrices 
-        mesh.conn_el = util::crs<IDX, IDX>{el_conn};
+        util::crs<IDX, IDX> conn_el{el_conn};
 
-        { // build the element coordinates matrix
-            mesh.coord_els = util::crs<Point, IDX>{std::span{mesh.conn_el.cols(), mesh.conn_el.cols() + mesh.conn_el.nrow() + 1}};
-            for(IDX iel = 0; iel < mesh.nelem(); ++iel){
-                for(std::size_t icol = 0; icol < mesh.conn_el.rowsize(iel); ++icol){
-                    mesh.coord_els[iel, icol] = mesh.coord[mesh.conn_el[iel, icol]];
-                }
-            }
-        }
-
-        // find the interior faces
-        find_interior_faces(mesh);
-        mesh.interiorFaceStart = 0;
-        mesh.interiorFaceEnd = mesh.faces.size();
-        mesh.bdyFaceStart = mesh.faces.size();
-
-        // find the boundary faces TODO: switch to lists for removal efficiency
-        std::vector<std::vector<IDX>> bface_nodes{};
-        std::vector<std::pair<BOUNDARY_CONDITIONS, int>> bcinfos{};
+        // make array of descriptions of boundary faces
+        std::vector<boundary_face_desc> bdy_descriptions{};
+        bdy_descriptions.reserve(2 * (nelem[0] + nelem[1]));
         for(IDX ixquad = 0; ixquad < nelem[0]; ++ixquad){
             // bottom face
-            bface_nodes.push_back(std::vector<IDX>{ixquad, ixquad + 1});
-            bcinfos.push_back(std::pair{bcs[1], bcflags[1]});
+            bdy_descriptions.emplace_back(bcs[1], bcflags[1], std::vector<IDX>{ixquad, ixquad + 1});
 
             // top face
-            bface_nodes.push_back(std::vector<IDX>{nelem[1] * nnodex + ixquad, nelem[1] * nnodex + ixquad + 1});
-            bcinfos.push_back(std::pair{bcs[3], bcflags[3]});
+            bdy_descriptions.emplace_back(bcs[3], bcflags[3], 
+                    std::vector<IDX>{nelem[1] * nnodex + ixquad, nelem[1] * nnodex + ixquad + 1});
         }
         for(IDX iyquad = 0; iyquad < nelem[1]; ++iyquad) {
             // left face
-            bface_nodes.push_back(std::vector<IDX>{iyquad * nnodex, (iyquad + 1) * nnodex});
-            bcinfos.push_back(std::pair{bcs[0], bcflags[0]});
+            bdy_descriptions.emplace_back(bcs[0], bcflags[0], 
+                std::vector<IDX>{iyquad * nnodex, (iyquad + 1) * nnodex});
 
             // right face
-            bface_nodes.push_back(std::vector<IDX>{iyquad * nnodex + nelem[0], (iyquad + 1) * nnodex + nelem[0]});
-            bcinfos.push_back(std::pair{bcs[2], bcflags[2]});
+            bdy_descriptions.emplace_back(bcs[2], bcflags[2], 
+                std::vector<IDX>{iyquad * nnodex + nelem[0], (iyquad + 1) * nnodex + nelem[0]});
         }
-        for(IDX ielem = 0; ielem < mesh.nelem(); ++ielem){
-            for(IDX inodelist = 0; inodelist < bface_nodes.size(); ++inodelist){
-                auto face_info = boundary_face_info(std::span<const IDX>{bface_nodes[inodelist]}, 
-                    mesh.el_transformations[ielem], mesh.conn_el.rowspan(ielem)); 
-                if(face_info){
-                    auto [fac_domn, face_nr_l] = face_info.value();
-                    ElementTransformation<T, IDX, 2> *trans = mesh.el_transformations[ielem];
-
-                    // get the face nodes in the correct order
-                    std::vector<IDX> ordered_face_nodes = 
-                        trans->get_face_nodes(face_nr_l, mesh.conn_el.rowspan(ielem));
-
-                    auto [bctype, bcflag] = bcinfos[inodelist];
-                    DOMAIN_TYPE domain_type = trans->domain_type;
-                    auto face_opt = make_face<T, IDX, 2>(fac_domn, domain_type, domain_type, 1,
-                            ielem, ielem, std::span<const IDX>{ordered_face_nodes}, face_nr_l, 0, 0, bctype, bcflag);
-                    if(face_opt){
-                        mesh.faces.push_back(std::move(face_opt.value()));
-                    }
-
-                    // remove the found bface 
-                    bface_nodes.erase(bface_nodes.begin() + inodelist);
-                    bcinfos.erase(bcinfos.begin() + inodelist);
-                    inodelist--; // decrement after removal
-                }
-            }
-        }
-        mesh.bdyFaceEnd = mesh.faces.size();
-        mesh.elsup = to_elsup(mesh.conn_el, mesh.n_nodes());
-
-        // form face dof connectivity
-        for(const auto& fac_ptr : mesh.faces){
-            mesh.face_extended_conn.push_back(FaceGeoDofConnectivity{*fac_ptr, mesh.conn_el});
-        }
-        return std::optional{mesh};
+        
+        return std::optional{AbstractMesh{coord, conn_el, el_transformations, bdy_descriptions}};
     }
 
     /**

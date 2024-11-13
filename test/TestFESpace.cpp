@@ -5,6 +5,7 @@
 #include "iceicle/fe_function/dglayout.hpp"
 #include "iceicle/fe_function/el_layout.hpp"
 #include "iceicle/fe_function/layout_right.hpp"
+#include "iceicle/geometry/face.hpp"
 #include "iceicle/geometry/geo_element.hpp"
 #include "iceicle/mesh/mesh.hpp"
 #include "iceicle/mesh/mesh_utils.hpp"
@@ -230,6 +231,155 @@ TEST(test_fespace, test_dg_projection){
 //    };
 //    std::vector<bool> fixed_nodes = flag_boundary_nodes(mesh);
 //    perturb_nodes(mesh, perturb_fcn, fixed_nodes);
+
+
+    FESpace<T, IDX, ndim> fespace{
+        &mesh, FESPACE_ENUMS::LAGRANGE,
+        FESPACE_ENUMS::GAUSS_LEGENDRE, 
+        tmp::compile_int<pn_basis>()
+    };
+
+    // define a pn_basis order polynomial function to project onto the space 
+    auto projfunc = [](const double *xarr, double *out){
+        double x = xarr[0];
+        double y = xarr[1];
+        out[0] = std::pow(x, pn_basis) + std::pow(y, pn_basis);
+    };
+
+    auto dprojfunc = [](const double *xarr) {
+        double x = xarr[0];
+        double y = xarr[1];
+        NUMTOOL::TENSOR::FIXED_SIZE::Tensor<double, ndim> deriv = { 
+            pn_basis * std::pow(x, pn_basis - 1),
+            pn_basis * std::pow(y, pn_basis - 1)
+        };
+        return deriv;
+    };
+
+    auto hessfunc = [](const double *xarr){
+        double x = xarr[0];
+        double y = xarr[1];
+        int n = pn_basis;
+        if (pn_basis < 2){
+            NUMTOOL::TENSOR::FIXED_SIZE::Tensor<double, ndim, ndim> hess = {{
+                {0, 0},
+                {0, 0}
+            }};
+            return hess;
+        } else {
+            NUMTOOL::TENSOR::FIXED_SIZE::Tensor<double, ndim, ndim> hess = {{
+                {n * (n-1) *std::pow(x, n-2), 0.0},
+                {0.0, n * (n-1) *std::pow(y, n-2)}
+            }};
+            return hess;
+        }
+    };
+
+
+    // create the projection discretization
+    Projection<double, int, ndim, neq> projection{projfunc};
+
+    T *u = new T[fespace.ndof_dg() * neq](); // 0 initialized
+    fe_layout_right felayout{fespace.dg_map, tmp::to_size<neq>{}};
+    fespan u_span{u, felayout};
+
+    // solve the projection 
+    std::for_each(fespace.elements.begin(), fespace.elements.end(),
+        [&](const FiniteElement<T, IDX, ndim> &el){
+            compact_layout_right<IDX, 1> el_layout{el};
+            T *u_local = new T[el_layout.size()](); // 0 initialized 
+            dofspan<T, compact_layout_right<IDX, 1>> u_local_span(u_local, el_layout);
+
+            T *res_local = new T[el_layout.size()](); // 0 initialized 
+            dofspan<T, compact_layout_right<IDX, 1>> res_local_span(res_local, el_layout);
+            
+            // projection residual
+            projection.domain_integral(el, res_local_span);
+
+            // solve 
+            solvers::ElementLinearSolver<T, IDX, ndim, neq> solver{el};
+            solver.solve(u_local_span, res_local_span);
+
+            // test a bunch of random locations
+            for(int k = 0; k < 50; ++k){
+                MATH::GEOMETRY::Point<T, ndim> ref_pt = random_domain_point(el.trans);
+                MATH::GEOMETRY::Point<T, ndim> phys_pt = el.transform(ref_pt);
+                
+                // get the actual value of the function at the given point in the physical domain
+                T act_val;
+                projfunc(phys_pt, &act_val);
+
+                T projected_val = 0;
+                T *basis_vals = new double[el.nbasis()];
+                el.eval_basis(ref_pt, basis_vals);
+                u_local_span.contract_dofs(basis_vals, &projected_val);
+
+                ASSERT_NEAR(projected_val, act_val, 1e-8);
+
+                // test the derivatives
+                std::vector<double> grad_basis_data(el.nbasis() * ndim);
+                auto grad_basis = el.eval_phys_grad_basis(ref_pt, grad_basis_data.data());
+                static_assert(grad_basis.rank() == 2);
+                static_assert(grad_basis.extent(1) == ndim);
+
+                // get the derivatives for each equation by contraction
+                std::vector<double> grad_eq_data(neq * ndim, 0);
+                auto grad_eq = u_local_span.contract_mdspan(grad_basis, grad_eq_data.data());
+
+                auto dproj = dprojfunc(phys_pt);
+                ASSERT_NEAR(dproj[0], (grad_eq[0, 0]), 1e-10);
+                ASSERT_NEAR(dproj[1], (grad_eq[0, 1]), 1e-10);
+
+                // test hessian
+                std::vector<double> hess_basis_data(el.nbasis() * ndim * ndim);
+                auto hess_basis = el.eval_phys_hess_basis(ref_pt, hess_basis_data.data());
+
+                // get the hessian for each equation by contraction 
+                std::vector<double> hess_eq_data(neq * ndim * ndim, 0);
+                auto hess_eq = u_local_span.contract_mdspan(hess_basis, hess_eq_data.data());
+                auto hess_proj = hessfunc(phys_pt);
+                ASSERT_NEAR(hess_proj[0][0], (hess_eq[0, 0, 0]), 1e-8);
+                ASSERT_NEAR(hess_proj[0][1], (hess_eq[0, 0, 1]), 1e-8);
+                ASSERT_NEAR(hess_proj[1][0], (hess_eq[0, 1, 0]), 1e-8);
+                ASSERT_NEAR(hess_proj[1][1], (hess_eq[0, 1, 1]), 1e-8);
+
+                delete[] basis_vals;
+            }
+
+            delete[] u_local;
+            delete[] res_local;
+        }
+    );
+
+    delete[] u;
+}
+
+TEST(test_fespace, test_dg_projection_tri){
+
+    using T = double;
+    using IDX = int;
+
+    static constexpr int ndim = 2;
+    static constexpr int pn_geo = 1;
+    static constexpr int pn_basis = 2;
+    static constexpr int neq = 1;
+
+    // create a uniform mesh
+    int nx = 50;
+    int ny = 10;
+    std::vector<IDX> nelem{nx, ny};
+    std::vector<T> xmin{-1, -1};
+    std::vector<T> xmax{1, 1};
+    std::vector<T> quad_ratio{0 , 0};
+    std::vector<BOUNDARY_CONDITIONS> bcs{BOUNDARY_CONDITIONS::DIRICHLET, 
+        BOUNDARY_CONDITIONS::DIRICHLET, BOUNDARY_CONDITIONS::DIRICHLET, 
+        BOUNDARY_CONDITIONS::DIRICHLET};
+    std::vector<int> bcflags{0, 0, 0, 0};
+    AbstractMesh<T, IDX, ndim> mesh = mixed_uniform_mesh<T, IDX>(nelem, xmin, xmax, quad_ratio, bcs, bcflags).value();
+    auto fixed_nodes = flag_boundary_nodes(mesh);
+    
+    //PERTURBATION_FUNCTIONS::random_perturb<T, ndim> perturb_fcn(-0.4 * 1.0 / std::max(nx, ny), 0.4*1.0/std::max(nx, ny));
+    //perturb_nodes(mesh, perturb_fcn, fixed_nodes);
 
 
     FESpace<T, IDX, ndim> fespace{

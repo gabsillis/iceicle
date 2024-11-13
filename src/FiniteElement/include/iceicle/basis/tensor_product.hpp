@@ -605,20 +605,20 @@ namespace iceicle{
                             }
                         }
                         } else {
-                        // loop over the 1d basis functions for each dimension
-                        for(int idim = 0; idim < ndim; ++idim){
-                            if(idim == ideriv){
-                            hess[ibasis, ideriv, jderiv] *= 
-                                lagrange_derivs[ideriv][ijk_poin[ibasis][idim]];
-                            } else if(idim == jderiv){
-                            hess[ibasis, ideriv, jderiv] *= 
-                                lagrange_derivs[jderiv][ijk_poin[ibasis][idim]];
-                            } else {
-                            // not a derivative so just the 1d function 
-                            hess[ibasis, ideriv, jderiv] *=
-                                lagrange_evals[idim][ijk_poin[ibasis][idim]];
+                            // loop over the 1d basis functions for each dimension
+                            for(int idim = 0; idim < ndim; ++idim){
+                                if(idim == ideriv){
+                                hess[ibasis, ideriv, jderiv] *= 
+                                    lagrange_derivs[ideriv][ijk_poin[ibasis][idim]];
+                                } else if(idim == jderiv){
+                                hess[ibasis, ideriv, jderiv] *= 
+                                    lagrange_derivs[jderiv][ijk_poin[ibasis][idim]];
+                                } else {
+                                // not a derivative so just the 1d function 
+                                hess[ibasis, ideriv, jderiv] *=
+                                    lagrange_evals[idim][ijk_poin[ibasis][idim]];
+                                }
                             }
-                        }
                         }
                     }
                 }

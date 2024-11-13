@@ -177,20 +177,6 @@ namespace iceicle {
         }
     }
 
-    template<class T, class IDX, int ndim>
-    [[nodiscard]] inline 
-    auto lua_read_burgers_mesh(sol::table mesh_table){
-
-        using namespace iceicle::util;
-        using namespace NUMTOOL::TENSOR::FIXED_SIZE;
-        if constexpr (ndim == 2) {
-            bool initial = mesh_table.get_or("initial", true);
-            return burgers_linear_mesh<T, IDX>(initial);
-        } else {
-            return std::nullopt;
-        }
-    }
-
     /// @brief set up a mesh from a gmsh file 
     /// @param mesh_table the lua table to describe the gmsh file and mesh setup
     /// @return the mesh read from the input file
@@ -294,12 +280,6 @@ namespace iceicle {
         sol::optional<sol::table> user_mesh_table = config["user_mesh"];
         if(user_mesh_table){
             return lua_read_user_mesh<T, IDX, ndim>(user_mesh_table.value());
-        }
-
-        // try custom burgers mesh
-        sol::optional<sol::table> burgers_mesh_table = config["burgers_mesh"];
-        if(burgers_mesh_table){
-            return lua_read_burgers_mesh<T, IDX, ndim>(burgers_mesh_table.value());
         }
 
         // no valid mesh config found
