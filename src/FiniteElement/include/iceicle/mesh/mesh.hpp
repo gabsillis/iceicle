@@ -419,11 +419,14 @@ namespace iceicle {
             // faces surrounding elements
             std::vector<std::vector<IDX>> facsuel_ragged(nelem());
             for(IDX iel = 0; iel < nelem(); ++iel){
-                facsuel_ragged[iel].resize(el_transformations[iel]->nnode);
+                facsuel_ragged[iel].resize(el_transformations[iel]->nfac);
             }
-            for(IDX ifac = 0; ifac < faces.size(); ++ifac) {
+            for(IDX ifac = interiorFaceStart; ifac < interiorFaceEnd; ++ifac) {
                 facsuel_ragged[faces[ifac]->elemL][faces[ifac]->face_nr_l()] = ifac;
                 facsuel_ragged[faces[ifac]->elemR][faces[ifac]->face_nr_r()] = ifac;
+            }
+            for(IDX ifac = bdyFaceStart; ifac < bdyFaceEnd; ++ifac) {
+                facsuel_ragged[faces[ifac]->elemL][faces[ifac]->face_nr_l()] = ifac;
             }
             facsuel = util::crs<IDX, IDX>{facsuel_ragged};
         }
@@ -876,9 +879,12 @@ namespace iceicle {
             for(IDX iel = 0; iel < nelem; ++iel){
                 facsuel_ragged[iel].resize(el_transformations[iel]->nnode);
             }
-            for(IDX ifac = 0; ifac < faces.size(); ++ifac) {
+            for(IDX ifac = interiorFaceStart; ifac < interiorFaceEnd; ++ifac) {
                 facsuel_ragged[faces[ifac]->elemL][faces[ifac]->face_nr_l()] = ifac;
                 facsuel_ragged[faces[ifac]->elemR][faces[ifac]->face_nr_r()] = ifac;
+            }
+            for(IDX ifac = bdyFaceStart; ifac < bdyFaceEnd; ++ifac) {
+                facsuel_ragged[faces[ifac]->elemL][faces[ifac]->face_nr_l()] = ifac;
             }
             facsuel = util::crs<IDX, IDX>{facsuel_ragged};
         } 

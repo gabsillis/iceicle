@@ -35,7 +35,7 @@ local function sinh(x)
 	return x
 end
 
-local nelem_arg = 20
+local nelem_arg = 4
 local mu = 1.0
 
 return {
@@ -76,7 +76,7 @@ return {
 
 	-- manually do some edge flips
 	mesh_management = {
-		edge_flips = { 0 },
+		-- edge_flips = { 0, 17, 10 },
 	},
 
 	-- define the finite element domain

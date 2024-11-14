@@ -314,14 +314,14 @@ namespace iceicle {
             IDX a = mesh.conn_el[elemL, alL];
             IDX b = mesh.conn_el[elemL, blL];
             IDX c = mesh.conn_el[elemL, clL];
-            IDX d = mesh.conn_el[elemL, dlR];
+            IDX d = mesh.conn_el[elemR, dlR];
 
 
             // update element connectivity
             mesh.conn_el[elemL, 0] = b;
             mesh.conn_el[elemL, 1] = d;
             mesh.conn_el[elemL, 2] = a;
-            mesh.coord_els[elemL, 0] = mesh.coord[c];
+            mesh.coord_els[elemL, 0] = mesh.coord[b];
             mesh.coord_els[elemL, 1] = mesh.coord[d];
             mesh.coord_els[elemL, 2] = mesh.coord[a];
 
@@ -354,8 +354,18 @@ namespace iceicle {
             }
 
             // helper function to make new triangle faces using the info we have
+            // @param mesh the mesh 
+            // @param ifac_prev the index of the face to replace
+            // @param ielem the index of the element to be the new left element 
+            //        if the previous face is not a boundary face, the other element 
+            //        will be found using the element index that was previously attached
+            // @param face_nodes the nodes for the face in order 
+            // @param face_nr_l the face number for the new left element 
+            // @param prev_ielem the element index that was previously attached to this face
+            //
             auto generate_new_face = [](AbstractMesh<T, IDX, 2>&mesh, 
-                    IDX ifac_prev, IDX ielem, std::array<IDX, 2> face_nodes, int face_nr_l) -> void {
+                    IDX ifac_prev, IDX ielem, std::array<IDX, 2> face_nodes, int face_nr_l,
+                    IDX prev_ielem) -> void {
                 const Face<T, IDX, 2>& fac_prev = *(mesh.faces[ifac_prev]);
                 if(fac_prev.bctype != BOUNDARY_CONDITIONS::INTERIOR){
 
@@ -370,12 +380,11 @@ namespace iceicle {
                         std::swap(face_opt.value(), mesh.faces[ifac_prev]);
                     }
                 } else {
-                    IDX other_element = (ielem == fac_prev.elemL) ? fac_prev.elemR : fac_prev.elemL;
+                    IDX other_element = (prev_ielem == fac_prev.elemL) ? fac_prev.elemR : fac_prev.elemL;
                     ElementTransformation<T, IDX, 2>* trans_other = mesh.el_transformations[other_element];
 
                     int face_nr_r = trans_other->get_face_nr(face_nodes, mesh.conn_el.rowspan(other_element));
-                    std::array<IDX, 2> face_vert_r;
-                    trans_other->get_face_vert(face_nr_r, mesh.conn_el.rowspan(other_element));
+                    auto face_vert_r = trans_other->get_face_vert(face_nr_r, mesh.conn_el.rowspan(other_element));
                     int orient_r = hypercube_orient_trans<T, IDX, 2>.getOrientation(
                             face_nodes.data(), face_vert_r.data());
 
@@ -395,33 +404,34 @@ namespace iceicle {
             // left element faces
             std::array<IDX, 4> faces_to_update;
             { // clL equivalent face
+              // NOTE: facsuel is still pre-flip state
                 IDX ifac_prev = mesh.facsuel[elemL, clL];
                 std::array<IDX, 2> face_nodes{a, b};
                 int face_nr_l = 1;
-                generate_new_face(mesh, ifac_prev, elemL, face_nodes, face_nr_l);
+                generate_new_face(mesh, ifac_prev, elemL, face_nodes, face_nr_l, elemL);
                 faces_to_update[0] = ifac_prev;
             }
             { // clR equivalent face
                 IDX ifac_prev = mesh.facsuel[elemR, clR];
                 std::array<IDX, 2> face_nodes{b, d};
                 int face_nr_l = 2;
-                generate_new_face(mesh, ifac_prev, elemL, face_nodes, face_nr_l);
+                generate_new_face(mesh, ifac_prev, elemL, face_nodes, face_nr_l, elemR);
                 faces_to_update[1] = ifac_prev;
             }
 
             // right element faces
             { // blL equivalent face 
                 IDX ifac_prev = mesh.facsuel[elemL, blL];
-                std::array<IDX, 2> face_nodes{a, c};
+                std::array<IDX, 2> face_nodes{c, a}; // ccw
                 int face_nr_l = 1;
-                generate_new_face(mesh, ifac_prev, elemL, face_nodes, face_nr_l);
+                generate_new_face(mesh, ifac_prev, elemR, face_nodes, face_nr_l, elemL);
                 faces_to_update[2] = ifac_prev;
             }
             { // blR equivalent face 
                 IDX ifac_prev = mesh.facsuel[elemR, blR];
-                std::array<IDX, 2> face_nodes{c, d};
+                std::array<IDX, 2> face_nodes{d, c}; // ccw
                 int face_nr_l = 2;
-                generate_new_face(mesh, ifac_prev, elemL, face_nodes, face_nr_l);
+                generate_new_face(mesh, ifac_prev, elemR, face_nodes, face_nr_l, elemR);
                 faces_to_update[3] = ifac_prev;
             }
 
@@ -431,7 +441,10 @@ namespace iceicle {
             for(IDX ifac_update : faces_to_update){
                 const Face<T, IDX, 2>& fac = *(mesh.faces[ifac_update]);
                 mesh.facsuel[fac.elemL, fac.face_nr_l()] = ifac_update;
-                mesh.facsuel[fac.elemR, fac.face_nr_r()] = ifac_update;
+
+                // TODO: right side update may be unnecessary?
+                if(fac.bctype == BOUNDARY_CONDITIONS::INTERIOR)
+                    mesh.facsuel[fac.elemR, fac.face_nr_r()] = ifac_update;
             }
         }
     }
