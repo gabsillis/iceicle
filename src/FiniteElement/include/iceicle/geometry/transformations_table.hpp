@@ -34,6 +34,7 @@ namespace iceicle {
                         .get_face_vert = transformations::hypercube<T, IDX, ndim, order>::get_face_vert,
                         .n_face_nodes = transformations::hypercube<T, IDX, ndim, order>::n_face_nodes,
                         .get_face_nodes = transformations::hypercube<T, IDX, ndim, order>::get_face_nodes,
+                        .get_face_nr = transformations::hypercube<T, IDX, ndim, order>::get_face_nr,
                     };
                 }
             );
@@ -52,6 +53,7 @@ namespace iceicle {
                     .get_face_vert = transformations::triangle<T, IDX>::get_face_vert,
                     .n_face_nodes = transformations::triangle<T, IDX>::n_face_nodes,
                     .get_face_nodes = transformations::triangle<T, IDX>::get_face_nodes,
+                    .get_face_nr = transformations::triangle<T, IDX>::get_face_nr,
                 };
             }
         }

@@ -161,8 +161,15 @@ void setup(sol::table script_config, cli_parser cli_args) {
     return;
   }
   perturb_mesh(script_config, mesh);
+  manual_mesh_management(script_config, mesh);
 
   AbstractMesh<T, IDX, ndim> pmesh{partition_mesh(mesh)};
+
+  if(AnomalyLog::size() > 0){
+    std::cerr << "Errors from setting up mesh: ";
+    AnomalyLog::handle_anomalies(std::cerr);
+    return;
+  }
 
   if (cli_args["debug1"]) {
     // linear advection a = [0.2, 0];

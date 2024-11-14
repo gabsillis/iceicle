@@ -315,4 +315,31 @@ namespace iceicle {
             perturb_nodes(mesh, perturb_fcn, fixed_nodes);
         }
     }
+
+    template<class T, class IDX, int ndim>
+    auto manual_mesh_management(sol::table config, AbstractMesh<T, IDX, ndim>&mesh) -> void {
+        using namespace util;
+
+        sol::optional<sol::table> mesh_management = config["mesh_management"];
+
+        if constexpr (ndim == 2){
+       
+            if(mesh_management){ 
+                sol::optional<sol::table> edge_flip_list = mesh_management.value()["edge_flips"];
+                
+                if(edge_flip_list) for(const auto& kv_pair : edge_flip_list.value()){
+                    IDX ifac = kv_pair.second.as<IDX>();
+                    edge_swap(mesh, ifac);
+                }
+            }
+        }
+        std::vector<IDX> invalid_faces;
+        if (!validate_normals(mesh, invalid_faces)) {
+            std::string msg = "invalid normals on the following faces: ";
+            for(IDX ifac : invalid_faces){
+                msg = msg + std::to_string(ifac) + ", ";
+            }
+            AnomalyLog::log_anomaly(msg);
+        }
+    }
 }

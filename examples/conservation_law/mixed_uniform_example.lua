@@ -50,7 +50,7 @@ return {
 			max = { 1.0, 1.0 },
 		},
 
-		quad_ratio = { 1.0, 1.0 },
+		quad_ratio = { 0.0, 0.0 },
 
 		-- set boundary conditions
 		boundary_conditions = {
@@ -72,6 +72,11 @@ return {
 				0, -- top
 			},
 		},
+	},
+
+	-- manually do some edge flips
+	mesh_management = {
+		edge_flips = { 0 },
 	},
 
 	-- define the finite element domain

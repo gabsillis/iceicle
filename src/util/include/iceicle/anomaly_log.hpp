@@ -194,8 +194,9 @@ namespace iceicle::util {
                 anomalies.push_back(std::make_unique<Anomaly<Data>>(std::move(anomaly)));
             }
 
-            static void log_anomaly(std::string_view message){
-                AnomalyLog::log_anomaly(Anomaly{message, general_anomaly_tag{}});
+            static void log_anomaly(std::string_view message, 
+                    const source_location& loc = source_location::current()){
+                AnomalyLog::log_anomaly(Anomaly{message, general_anomaly_tag{}, loc});
             }
 
             template<class Data>

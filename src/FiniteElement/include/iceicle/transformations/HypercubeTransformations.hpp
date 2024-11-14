@@ -363,8 +363,7 @@ struct hypercube {
   {
     for(int ifac = 0; ifac < nfac; ++ifac){
       bool all_found = true; // assume true until mismatch
-      IDX vert_ifac[nfacevert];
-      get_face_vert(ifac, el_nodes, vert_ifac);
+      std::vector<IDX> vert_ifac = get_face_vert(ifac, el_nodes);
       for(int ivert = 0; ivert < nfacevert; ++ivert){
         bool found = false;
         // try to find ivert

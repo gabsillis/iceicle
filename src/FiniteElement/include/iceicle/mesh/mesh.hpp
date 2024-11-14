@@ -26,6 +26,7 @@
 #include <type_traits>
 #include <memory>
 #include <list>
+#include <set>
 #ifndef NDEBUG
 #include <iomanip>
 #endif
@@ -104,7 +105,7 @@ namespace iceicle {
                         TriangleElement<T, IDX> el{};
                         std::ranges::copy(nodes, el.node_idxs.begin());
                         return std::optional{std::make_unique<TriangleElement<T, IDX>>(el)};
-                    }
+}
 
                 return std::nullopt;
             }
@@ -277,10 +278,13 @@ namespace iceicle {
         util::crs<IDX, IDX> elsup;
 
         /// @brief the faces surrounding elements
+        /// in order of face number: 
+        /// i.e 
+        /// Let element (iel) have a face (ifac) where iel is the Left element 
+        /// and face_nr_l == 1
+        /// then
+        /// facsuel[iel, 1] = ifac
         util::crs<IDX, IDX> facsuel;
-
-        /// @brief the node indices corresponding to a face and surrounding nodes
-        std::vector<FaceGeoDofConnectivity<IDX>> face_extended_conn;
 
         /// For each process i store a list of (this-local) element indices 
         /// that need to be sent 
@@ -301,7 +305,7 @@ namespace iceicle {
         /** @brief construct an empty mesh */
         AbstractMesh() 
         : coord{}, conn_el{}, coord_els{}, el_transformations{}, faces{}, interiorFaceStart(0), interiorFaceEnd(0), 
-          bdyFaceStart(0), bdyFaceEnd(0), elsup{}, el_send_list(mpi::mpi_world_size()), 
+          bdyFaceStart(0), bdyFaceEnd(0), elsup{}, facsuel{}, el_send_list(mpi::mpi_world_size()), 
           el_recv_list(mpi::mpi_world_size()), communicated_elements(mpi::mpi_world_size()){}
 
         /// @brief A description of a boundary face 
@@ -412,10 +416,16 @@ namespace iceicle {
             }
             bdyFaceEnd = faces.size();
 
-            // form face dof connectivity
-            for(const auto& fac_ptr : faces){
-                face_extended_conn.push_back(FaceGeoDofConnectivity{*fac_ptr, conn_el});
+            // faces surrounding elements
+            std::vector<std::vector<IDX>> facsuel_ragged(nelem());
+            for(IDX iel = 0; iel < nelem(); ++iel){
+                facsuel_ragged[iel].resize(el_transformations[iel]->nnode);
             }
+            for(IDX ifac = 0; ifac < faces.size(); ++ifac) {
+                facsuel_ragged[faces[ifac]->elemL][faces[ifac]->face_nr_l()] = ifac;
+                facsuel_ragged[faces[ifac]->elemR][faces[ifac]->face_nr_r()] = ifac;
+            }
+            facsuel = util::crs<IDX, IDX>{facsuel_ragged};
         }
 
         AbstractMesh(const AbstractMesh<T, IDX, ndim>& other) 
@@ -423,7 +433,7 @@ namespace iceicle {
           el_transformations{other.el_transformations}, faces{},
           interiorFaceStart(other.interiorFaceStart), interiorFaceEnd(other.interiorFaceEnd),
           bdyFaceStart(other.bdyFaceStart), bdyFaceEnd(other.bdyFaceEnd), elsup{other.elsup},
-          face_extended_conn{other.face_extended_conn},
+          facsuel{other.facsuel},
           el_send_list(other.el_send_list), el_recv_list(other.el_recv_list),
           communicated_elements(other.communicated_elements)
         {
@@ -448,7 +458,7 @@ namespace iceicle {
                 bdyFaceStart = other.bdyFaceStart;
                 bdyFaceEnd = other.bdyFaceEnd;
                 elsup = other.elsup;
-                face_extended_conn = other.face_extended_conn;
+                facsuel = other.facsuel;
                 el_send_list = other.el_send_list;
                 el_recv_list = other.el_recv_list;
                 communicated_elements = other.communicated_elements;
@@ -861,10 +871,16 @@ namespace iceicle {
             // set up additional connectivity array
             elsup = to_elsup(conn_el, n_nodes());
 
-            // form face dof connectivity
-            for(const auto& fac_ptr : faces){
-                face_extended_conn.push_back(FaceGeoDofConnectivity{*fac_ptr, conn_el});
+            // faces surrounding elements
+            std::vector<std::vector<IDX>> facsuel_ragged(nelem);
+            for(IDX iel = 0; iel < nelem; ++iel){
+                facsuel_ragged[iel].resize(el_transformations[iel]->nnode);
             }
+            for(IDX ifac = 0; ifac < faces.size(); ++ifac) {
+                facsuel_ragged[faces[ifac]->elemL][faces[ifac]->face_nr_l()] = ifac;
+                facsuel_ragged[faces[ifac]->elemR][faces[ifac]->face_nr_r()] = ifac;
+            }
+            facsuel = util::crs<IDX, IDX>{facsuel_ragged};
         } 
 
 

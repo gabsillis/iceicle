@@ -4,6 +4,7 @@
  */
 #pragma once
 #include "Numtool/point.hpp"
+#include "iceicle/anomaly_log.hpp"
 #include "iceicle/fe_definitions.hpp"
 #include "iceicle/geometry/face.hpp"
 #include "iceicle/geometry/face_utils.hpp"
@@ -99,7 +100,7 @@ namespace iceicle {
         for(IDX iy = 0; iy < nnodey; ++iy){
             for(IDX ix = 0; ix < nnodex; ++ix){
                 coord.push_back(Point{{xmin[0] + ix * dx, xmin[1] + iy * dy}});
-            }
+}
         }
 
         IDX half_quad_x = (IDX) (nelem[0] * quad_ratio[0] / 2);
@@ -238,6 +239,201 @@ namespace iceicle {
             }
         }
         return invalid_faces.size() == 0;
+    }
+
+    template<class T, class IDX>
+    auto edge_swap(AbstractMesh<T, IDX, 2>& mesh, IDX ifac)
+    -> void {
+        IDX elemL = mesh.faces[ifac]->elemL;
+        IDX elemR = mesh.faces[ifac]->elemR;
+        ElementTransformation<T, IDX, 2> *transL = mesh.el_transformations[elemL];
+        ElementTransformation<T, IDX, 2> *transR = mesh.el_transformations[elemR];
+        const Face<T, IDX, 2>& old_face = *(mesh.faces[ifac]);
+
+        if(old_face.bctype != BOUNDARY_CONDITIONS::INTERIOR) [[unlikely]]
+            util::AnomalyLog::log_anomaly("Cannot edge swap a boundary face.");
+
+        // NOTE: only defined for triangles 
+        if(transL->domain_type == DOMAIN_TYPE::SIMPLEX
+            && transR->domain_type == DOMAIN_TYPE::SIMPLEX) {
+
+            if(transL->order != 1 || transR->order != 1) [[unlikely]] {
+                util::AnomalyLog::log_anomaly("Not implemented");
+                return;
+            }
+
+            //           c
+            //           O
+            //         . . .
+            //       .   .  .
+            //   a O   L .   .
+            //      .    . R  O d
+            //       .   .   .
+            //         . . .
+            //           O
+            //           b
+            //
+            // CCW abc 
+
+            // Flip to
+            //           c
+            //           O
+            //         .   .
+            //       .   R  .
+            //   a O  . .     .
+            //      .    . . . O d
+            //       .  L    .
+            //         .   .
+            //           O
+            //           b
+            //
+            // Local nodes: 
+            //  elemL : {b, d, a}
+            //  elemR : {c, d, a}
+            // WARNING: assumption of face number and node structure for simplex element implementation
+            // Assumes nodes are ordered vertices first
+            // Assumes face number is the local node index of the vertex not on the face
+            
+            // local face numbers
+            int alL = old_face.face_nr_l();
+            int blL = (alL + 1) % 3;
+            int clL = (blL + 1) % 3;
+
+            int blR, clR;
+            int dlR = old_face.face_nr_r();
+            if(old_face.orientation_r() == 0){
+                blR = (dlR + 1) % 3;
+                clR = (blR + 1) % 3;
+            } else {
+                clR = (dlR + 1) % 3;
+                blR = (clR + 1) % 3;
+
+            }
+
+            // global face numbers
+            IDX a = mesh.conn_el[elemL, alL];
+            IDX b = mesh.conn_el[elemL, blL];
+            IDX c = mesh.conn_el[elemL, clL];
+            IDX d = mesh.conn_el[elemL, dlR];
+
+
+            // update element connectivity
+            mesh.conn_el[elemL, 0] = b;
+            mesh.conn_el[elemL, 1] = d;
+            mesh.conn_el[elemL, 2] = a;
+            mesh.coord_els[elemL, 0] = mesh.coord[c];
+            mesh.coord_els[elemL, 1] = mesh.coord[d];
+            mesh.coord_els[elemL, 2] = mesh.coord[a];
+
+            mesh.conn_el[elemR, 0] = c;
+            mesh.conn_el[elemR, 1] = d;
+            mesh.conn_el[elemR, 2] = a;
+            mesh.coord_els[elemR, 0] = mesh.coord[c];
+            mesh.coord_els[elemR, 1] = mesh.coord[d];
+            mesh.coord_els[elemR, 2] = mesh.coord[a];
+
+            // === make the new faces ===
+            
+            // shared face 
+            {
+                std::array<IDX, 2> face_nodes{d, a};
+                // chosen to be these
+                int face_nr_l = 0;
+                int face_nr_r = 0;
+                int orient_r = 0;
+                auto face_opt = make_face<T, IDX, 2>(
+                        DOMAIN_TYPE::HYPERCUBE, DOMAIN_TYPE::SIMPLEX, DOMAIN_TYPE::SIMPLEX,
+                        1, elemL, elemR, std::span<const IDX>{face_nodes}, 
+                        face_nr_l, face_nr_r, orient_r);
+                if(!face_opt){
+                    util::AnomalyLog::log_anomaly("failed to make new face.");
+                    return;
+                } else {
+                    std::swap(face_opt.value(), mesh.faces[ifac]);
+                }
+            }
+
+            // helper function to make new triangle faces using the info we have
+            auto generate_new_face = [](AbstractMesh<T, IDX, 2>&mesh, 
+                    IDX ifac_prev, IDX ielem, std::array<IDX, 2> face_nodes, int face_nr_l) -> void {
+                const Face<T, IDX, 2>& fac_prev = *(mesh.faces[ifac_prev]);
+                if(fac_prev.bctype != BOUNDARY_CONDITIONS::INTERIOR){
+
+                    auto face_opt = make_face<T, IDX, 2>(
+                            DOMAIN_TYPE::HYPERCUBE, DOMAIN_TYPE::SIMPLEX, DOMAIN_TYPE::SIMPLEX,
+                            1, ielem, ielem, std::span<const IDX>{face_nodes}, 
+                            face_nr_l, 0, 0, fac_prev.bctype, fac_prev.bcflag);
+                    if(!face_opt){
+                        util::AnomalyLog::log_anomaly("failed to make new face.");
+                        return;
+                    } else {
+                        std::swap(face_opt.value(), mesh.faces[ifac_prev]);
+                    }
+                } else {
+                    IDX other_element = (ielem == fac_prev.elemL) ? fac_prev.elemR : fac_prev.elemL;
+                    ElementTransformation<T, IDX, 2>* trans_other = mesh.el_transformations[other_element];
+
+                    int face_nr_r = trans_other->get_face_nr(face_nodes, mesh.conn_el.rowspan(other_element));
+                    std::array<IDX, 2> face_vert_r;
+                    trans_other->get_face_vert(face_nr_r, mesh.conn_el.rowspan(other_element));
+                    int orient_r = hypercube_orient_trans<T, IDX, 2>.getOrientation(
+                            face_nodes.data(), face_vert_r.data());
+
+                    auto face_opt = make_face<T, IDX, 2>(
+                            DOMAIN_TYPE::HYPERCUBE, DOMAIN_TYPE::SIMPLEX, DOMAIN_TYPE::SIMPLEX,
+                            1, ielem, other_element, std::span<const IDX>{face_nodes}, 
+                            face_nr_l, face_nr_r, orient_r);
+                    if(!face_opt){
+                        util::AnomalyLog::log_anomaly("failed to make new face.");
+                        return;
+                    } else {
+                        std::swap(face_opt.value(), mesh.faces[ifac_prev]);
+                    }
+                }
+            };
+
+            // left element faces
+            std::array<IDX, 4> faces_to_update;
+            { // clL equivalent face
+                IDX ifac_prev = mesh.facsuel[elemL, clL];
+                std::array<IDX, 2> face_nodes{a, b};
+                int face_nr_l = 1;
+                generate_new_face(mesh, ifac_prev, elemL, face_nodes, face_nr_l);
+                faces_to_update[0] = ifac_prev;
+            }
+            { // clR equivalent face
+                IDX ifac_prev = mesh.facsuel[elemR, clR];
+                std::array<IDX, 2> face_nodes{b, d};
+                int face_nr_l = 2;
+                generate_new_face(mesh, ifac_prev, elemL, face_nodes, face_nr_l);
+                faces_to_update[1] = ifac_prev;
+            }
+
+            // right element faces
+            { // blL equivalent face 
+                IDX ifac_prev = mesh.facsuel[elemL, blL];
+                std::array<IDX, 2> face_nodes{a, c};
+                int face_nr_l = 1;
+                generate_new_face(mesh, ifac_prev, elemL, face_nodes, face_nr_l);
+                faces_to_update[2] = ifac_prev;
+            }
+            { // blR equivalent face 
+                IDX ifac_prev = mesh.facsuel[elemR, blR];
+                std::array<IDX, 2> face_nodes{c, d};
+                int face_nr_l = 2;
+                generate_new_face(mesh, ifac_prev, elemL, face_nodes, face_nr_l);
+                faces_to_update[3] = ifac_prev;
+            }
+
+            // === update face connectivity ===
+            mesh.facsuel[elemL, 0] = ifac;
+            mesh.facsuel[elemR, 0] = ifac;
+            for(IDX ifac_update : faces_to_update){
+                const Face<T, IDX, 2>& fac = *(mesh.faces[ifac_update]);
+                mesh.facsuel[fac.elemL, fac.face_nr_l()] = ifac_update;
+                mesh.facsuel[fac.elemR, fac.face_nr_r()] = ifac_update;
+            }
+        }
     }
 
     /**
