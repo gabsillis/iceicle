@@ -57,6 +57,8 @@ return {
 		b_adv = { 1.0 },
 	},
 
+	restart = "mu2e-3",
+
 	-- initial condition
 	initial_condition = function(x, t)
 		-- return y_inf
@@ -90,8 +92,8 @@ return {
 		linesearch = {
 			type = "none",
 		},
-		lambda_b = 0,
-		lambda_lag = 10,
+		lambda_b = .001,
+		lambda_lag = 1.0,
 		lambda_u = 1e-8,
 		ivis = 1,
 		idiag = 1,

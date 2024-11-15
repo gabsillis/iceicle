@@ -19,6 +19,7 @@
 #include "iceicle/solvers_lua_interface.hpp"
 #include "iceicle/string_utils.hpp"
 #include "iceicle/mesh/mesh_partition.hpp"
+#include <sol/table.hpp>
 #ifdef ICEICLE_USE_PETSC
 #elifdef ICEICLE_USE_MPI
 #include "mpi.h"
@@ -278,10 +279,19 @@ void setup(sol::table script_config, cli_parser cli_args) {
                             "navier-stokes", "euler")) {
 
       T gamma = cons_law_tbl.get_or("gamma", 1.4);
-
       navier_stokes::Physics<T, ndim> physics{gamma};
 
-      navier_stokes::Flux<T, ndim> physical_flux{physics};
+      // get isothermal wall temperatures
+      sol::optional<sol::table> iso_tmps_opt = cons_law_tbl["isothermal_temperatures"];
+      if(iso_tmps_opt){
+        sol::table iso_tmps = iso_tmps_opt.value();
+        for(int i = 0; i < iso_tmps.size(); ++i){
+           physics.isothermal_temperatures.push_back(iso_tmps[i + 1]);
+        }
+      }
+
+
+      auto fcn = [&]<class fluxtype>(fluxtype physical_flux){
       navier_stokes::VanLeer<T, ndim> convective_flux{physics};
       navier_stokes::DiffusionFlux<T, ndim> diffusive_flux{physics};
       ConservationLawDDG disc{std::move(physical_flux),
@@ -300,6 +310,14 @@ void setup(sol::table script_config, cli_parser cli_args) {
       disc.field_names.push_back("rhoe");
       disc.residual_names.push_back("energy_conservation");
       initialize_and_solve(script_config, fespace, disc);
+      };
+      if(eq_icase(cons_law_tbl["name"].get<std::string>(), "navier-stokes")){
+        navier_stokes::Flux<T, ndim, false> physical_flux{physics};
+        fcn(physical_flux);
+      } else {
+        navier_stokes::Flux<T, ndim> physical_flux{physics};
+        fcn(physical_flux);
+      }
     } else {
       AnomalyLog::log_anomaly(
           Anomaly{"No such conservation_law implemented",

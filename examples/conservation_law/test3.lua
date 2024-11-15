@@ -55,7 +55,7 @@ return {
 	conservation_law = {
 		-- the name of the conservation law being solved
 		name = "burgers",
-		mu = 0.1,
+		mu = 0.01,
 		a_adv = { 1.0 },
 		b_adv = { 0.0 },
 	},
@@ -81,6 +81,8 @@ return {
 		end,
 	},
 
+	restart = "mu_0p05",
+
 	-- solver
 	solver = {
 		type = "gauss-newton",
@@ -92,7 +94,7 @@ return {
 		lambda_u = 0.0,
 		lambda_lag = 0.1,
 		ivis = 1,
-		idiag = 1,
+		idiag = 100,
 		tau_abs = 1e-8,
 		tau_rel = 1e-8,
 		kmax = 1000,

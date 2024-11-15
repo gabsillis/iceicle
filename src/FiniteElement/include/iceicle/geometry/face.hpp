@@ -60,8 +60,13 @@ namespace iceicle {
         /// Use the characteristics of the pde to determine the left and right states 
         RIEMANN,
 
-        /// No-slip wall 
-        NO_SLIP,
+        /// No-slip wall isothermal
+        ///
+        /// Lua name: "isothermal" or "no-slip isothermal"
+        ///
+        /// Isothermal temperatures are stored in an array in the physics object
+        /// the boundary condition flag specifies which element in that array to use
+        NO_SLIP_ISOTHERMAL,
 
         /// Slip wall 
         ///
@@ -69,6 +74,8 @@ namespace iceicle {
         SLIP_WALL,
 
         /// General Wall BC, up to the implementation of the pde
+        ///
+        /// Lua name: "wall" or "general wall"
         WALL_GENERAL, 
 
         /// General flow inlet, uses free-stream properties
@@ -139,6 +146,14 @@ namespace iceicle {
 
         if(eq_icase(bcname, "slip wall")){
             return BOUNDARY_CONDITIONS::SLIP_WALL;
+        }
+
+        if(eq_icase_any(bcname, "isothermal", "no-slip isothermal")){
+            return BOUNDARY_CONDITIONS::NO_SLIP_ISOTHERMAL;
+        }
+
+        if(eq_icase_any(bcname, "wall", "general wall")){
+            return BOUNDARY_CONDITIONS::NO_SLIP_ISOTHERMAL;
         }
 
         return BOUNDARY_CONDITIONS::INTERIOR;

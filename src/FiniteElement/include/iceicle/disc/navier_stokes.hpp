@@ -97,6 +97,8 @@ namespace iceicle {
             /// @brief Sutherlands law temperature
             T T_s = 110.5; // K
 
+            std::vector<T> isothermal_temperatures{};
+
 
             /// @brief given the conservative variables, compute the flow state 
             /// @param u the conservative variables
@@ -314,8 +316,6 @@ namespace iceicle {
 
             mutable T lambda_max = 0.0;
 
-            std::vector<T> no_slip_wall_velocities{};
-
             inline constexpr 
             auto operator()(
                 std::array<T, nv_comp> u,
@@ -371,7 +371,15 @@ namespace iceicle {
                 Tensor<T, neq, ndim> graduR{};
 
                 switch(bctype) {
+                    case BOUNDARY_CONDITIONS::WALL_GENERAL:
+                        if(euler){
+                            goto euler_wall_bc_tag;
+                        } else {
+                            goto ns_wall_bc_tag;
+                        }
+                        break;
                     case BOUNDARY_CONDITIONS::SLIP_WALL: 
+euler_wall_bc_tag:
                     {
                         FlowState<T, ndim> stateL = physics.calc_flow_state(uL);
 
@@ -391,6 +399,29 @@ namespace iceicle {
                         // exterior state gradients equal interor state gradients 
                         linalg::copy(graduL, linalg::as_mdspan(graduR));
 
+                    } break;
+                    case BOUNDARY_CONDITIONS::NO_SLIP_ISOTHERMAL:
+ns_wall_bc_tag:
+                    {
+                        FlowState<T, ndim> stateL = physics.calc_flow_state(uL);
+
+                        // density is the same
+                        uR[irho] = stateL.density;
+
+                        // velocity, and therefore momentum, is zero
+                        for(int idim = 0; idim < ndim; ++idim){
+                            uR[irhou + idim] = 0;
+                        }
+
+                        // compute energy from Twall
+                        T Twall = physics.isothermal_temperatures[bcflag];
+                        T pressure = stateL.density * physics.R * Twall;
+                        // NOTE: kinetic energy term is zero because momentum is zero
+                        T E = pressure / (physics.gamma - 1) / stateL.density;
+                        uR[irhoe] = stateL.density * E;
+
+                        // exterior state gradients equal interor state gradients 
+                        linalg::copy(graduL, linalg::as_mdspan(graduR));
                     } break;
                     default:
                     util::AnomalyLog::log_anomaly(util::Anomaly{"Unsupported BC",
