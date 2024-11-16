@@ -59,7 +59,7 @@ end
 return {
 	ndim = 2,
 	uniform_mesh = {
-		nelem = { 40, 40 },
+		nelem = { 60, 60 },
 		bounding_box = { min = { -20, -20 }, max = { 20, 20 } },
 		boundary_conditions = {
 			types = {
@@ -82,7 +82,7 @@ return {
 		quadrature = "gauss",
 
 		-- the basis function order
-		order = 1,
+		order = 2,
 
 	},
 
