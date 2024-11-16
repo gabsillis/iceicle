@@ -57,6 +57,8 @@ namespace iceicle {
         ///
         /// a.k.a characteristic boundary condition 
         ///
+        /// Lua names: "riemann" or "characteristic"
+        ///
         /// Use the characteristics of the pde to determine the left and right states 
         RIEMANN,
 
@@ -154,6 +156,10 @@ namespace iceicle {
 
         if(eq_icase_any(bcname, "wall", "general wall")){
             return BOUNDARY_CONDITIONS::NO_SLIP_ISOTHERMAL;
+        }
+
+        if(eq_icase_any(bcname, "riemann", "characteristic")){
+            return BOUNDARY_CONDITIONS::RIEMANN;
         }
 
         return BOUNDARY_CONDITIONS::INTERIOR;

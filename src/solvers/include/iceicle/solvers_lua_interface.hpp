@@ -2,6 +2,7 @@
 /// @author Gianni Absillis (gabsill@ncsu.edu)
 
 #pragma once
+#include "iceicle/disc/projection.hpp"
 #include "iceicle/fe_function/geo_layouts.hpp"
 #include "iceicle/disc/l2_error.hpp"
 #include "iceicle/geometry/face.hpp"
@@ -702,6 +703,42 @@ namespace iceicle::solvers {
                     sol::table task_list = tasks_opt.value();
                     for(auto o : task_list){
                         std::string task_name = o.second.as<std::string>();
+
+                        if(eq_icase(task_name, "plot_exact_projection")){
+                            // =======================
+                            // = Plot Exact Solution =
+                            // =======================
+
+                            // plots a projection of the exact solution on the current fespace
+                            std::function<void(const T*, T*)> exactfunc = [exact](const T *x, T *u_exact){
+                                if constexpr(DiscType::nv_comp == 1){
+                                    // 1 equation case 
+                                    std::integer_sequence x_idx_seq = std::make_integer_sequence<int, ndim>();
+                                    auto helper = [exact]<int... Indices>(const T *x, T *u_exact, std::integer_sequence<int, Indices...> seq){
+                                        u_exact[0] = exact(x[Indices]...);
+                                    };
+                                    helper(x, u_exact, x_idx_seq);
+                                } else {
+                                    std::integer_sequence x_idx_seq = std::make_integer_sequence<int, ndim>();
+                                    auto helper = [exact]<int... Indices>(const T *x, T *u_exact, std::integer_sequence<int, Indices...> seq){
+                                        sol::table fout = exact(x[Indices]...);
+                                        for(int i = 0; i < DiscType::nv_comp; ++i)
+                                            u_exact[i] = fout[i + 1]; // lua 1-index
+                                    };
+                                    helper(x, u_exact, x_idx_seq);
+                                }
+                            };
+
+                            std::vector<T> projected_data(u.size());
+                            fespan u_proj{projected_data, u.get_layout()};
+                            projection_initialization(fespace, exactfunc, tmp::compile_int<DiscType::nv_comp>{}, u_proj);
+
+                            // get the writer and write out
+                            io::Writer writer{lua_get_writer(config_tbl, fespace, disc, u_proj)};
+                            writer.rename_collection("exact_solution");
+                            writer.write(0, 0.0);
+                        }
+
                         if(eq_icase(task_name, "l2_error")){
                             // =================
                             // = L2 error Task =

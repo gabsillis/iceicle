@@ -11,6 +11,7 @@
 #include "iceicle/disc/burgers.hpp"
 #include "iceicle/disc/navier_stokes.hpp"
 #include "iceicle/fespace/fespace_lua_interface.hpp"
+#include "iceicle/geometry/face.hpp"
 #include "iceicle/iceicle_mpi_utils.hpp"
 #include "iceicle/initialization.hpp"
 #include "iceicle/mesh/mesh_lua_interface.hpp"
@@ -288,8 +289,34 @@ void setup(sol::table script_config, cli_parser cli_args) {
         for(int i = 0; i < iso_tmps.size(); ++i){
            physics.isothermal_temperatures.push_back(iso_tmps[i + 1]);
         }
+      } else {
+        // check to make sure no isothermal boundary conditions are present
+        for(auto trace : fespace.get_boundary_traces()){
+          if(trace.face->bctype == BOUNDARY_CONDITIONS::NO_SLIP_ISOTHERMAL){
+            std::cerr << "Isothermal boundary condition on face " << trace.facidx
+              << " but no entries in isothermal_temperatures" << std::endl;
+            return;
+          }
+        }
       }
 
+      // get free stream conditions 
+      sol::optional<sol::table> free_stream_opt = cons_law_tbl["free_stream"];
+      if(free_stream_opt){
+        sol::table free_stream = free_stream_opt.value();
+        for(int i = 0; i < free_stream.size(); ++i){
+          physics.free_stream[i] = free_stream[i + 1];
+        }
+      } else {
+        // check to make sure no riemann boundary conditions are present
+        for(auto trace : fespace.get_boundary_traces()){
+          if(trace.face->bctype == BOUNDARY_CONDITIONS::RIEMANN){
+            std::cerr << "riemann boundary condition on face " << trace.facidx
+              << " but no state specified in free_stream" << std::endl;
+            return;
+          }
+        }
+      }
 
       auto fcn = [&]<class fluxtype>(fluxtype physical_flux){
       navier_stokes::VanLeer<T, ndim> convective_flux{physics};

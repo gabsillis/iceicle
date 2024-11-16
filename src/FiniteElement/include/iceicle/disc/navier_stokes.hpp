@@ -1,3 +1,4 @@
+#include "Numtool/MathUtils.hpp"
 #include "iceicle/anomaly_log.hpp"
 #include "iceicle/geometry/face.hpp"
 #include <Numtool/fixed_size_tensor.hpp>
@@ -69,6 +70,8 @@ namespace iceicle {
             /// @brief floor for the pressure so we don't have negative pressures
             static constexpr T MIN_PRESSURE = 1e-8;
 
+            static constexpr T MIN_DENSITY = 1e-14;
+
             /// @brief index of density
             static constexpr int irho = 0;
 
@@ -97,7 +100,11 @@ namespace iceicle {
             /// @brief Sutherlands law temperature
             T T_s = 110.5; // K
 
+            /// @brief the temperatures for isothermal boundary conditions
             std::vector<T> isothermal_temperatures{};
+
+            /// @brief the free stream state
+            std::array<T, nv_comp> free_stream{};
 
 
             /// @brief given the conservative variables, compute the flow state 
@@ -105,7 +112,8 @@ namespace iceicle {
             inline constexpr
             auto calc_flow_state(std::array<T, nv_comp> u) const noexcept
             -> FlowState<T, ndim> {
-                T density = u[0];
+                // safeguard for div by 0
+                T density = std::max(u[0], MIN_DENSITY);
 
                 // compute the square velocity magnitude 
                 Vector v;
@@ -127,7 +135,7 @@ namespace iceicle {
                 T rhoe = u[irhoe];
                 T pressure = std::max(MIN_PRESSURE, (gamma - 1) * (rhoe - 0.5 * density * vv));
 
-                // compute the speed of sound
+                // compute the speed of sound (safeguarded density)
                 T csound = std::sqrt(gamma * pressure / density);
 
                 // compute the temperature from ideal gas law
@@ -190,6 +198,25 @@ namespace iceicle {
                 }
 
                 return FlowStateGradients<T, ndim>{grad_vel, grad_temp, tau};
+            }
+
+            /// @brief convert a set of primitive variables to conservative
+            /// FUN3D variables 
+            /// @param rho the density 
+            /// @param uadv the velocity vector 
+            /// @param p the pressure 
+            /// @return conservative variables array
+            [[nodiscard]] inline constexpr
+            auto prim_to_cons(T rho, Vector uadv, T p) const noexcept
+            -> std::array<T, nv_comp> 
+            {
+                std::array<T, nv_comp> cons;
+                cons[irho] = rho;
+                for(int idim = 0; idim < ndim; ++idim){
+                    cons[irhou + idim] = rho * uadv[idim];
+                }
+                cons[irhoe] = p / (gamma - 1) + 0.5 * rho * dot(uadv, uadv);
+                return cons;
             }
         };
 
@@ -316,6 +343,8 @@ namespace iceicle {
 
             mutable T lambda_max = 0.0;
 
+            mutable T visc_max = 0.0;
+
             inline constexpr 
             auto operator()(
                 std::array<T, nv_comp> u,
@@ -351,6 +380,8 @@ namespace iceicle {
                         }
                         flux[irhoe][idim] -= state_grads.temp_gradient[idim];
                     }
+
+                    visc_max = std::max(visc_max, state.mu);
                 }
                 
                 return flux;
@@ -358,7 +389,7 @@ namespace iceicle {
 
             inline constexpr 
             auto apply_bc(
-                std::array<T, neq> uL,
+                std::array<T, neq> &uL,
                 linalg::in_tensor auto graduL,
                 Vector unit_normal,
                 BOUNDARY_CONDITIONS bctype,
@@ -367,8 +398,8 @@ namespace iceicle {
                 using namespace NUMTOOL::TENSOR::FIXED_SIZE;
 
                 // outputs
-                std::array<T, neq> uR{};
-                Tensor<T, neq, ndim> graduR{};
+                std::array<T, neq> uR;
+                Tensor<T, neq, ndim> graduR;
 
                 switch(bctype) {
                     case BOUNDARY_CONDITIONS::WALL_GENERAL:
@@ -423,9 +454,127 @@ ns_wall_bc_tag:
                         // exterior state gradients equal interor state gradients 
                         linalg::copy(graduL, linalg::as_mdspan(graduR));
                     } break;
+                    case BOUNDARY_CONDITIONS::RIEMANN:
+                    {
+                        // Carlson "Inflow/Outflow Boundary Conditions with Application to FUN3D"
+                        // NASA/TM-2011-217181
+
+                        // TODO: optimize over branches to remove unused calculations
+                        // in supersonic cases
+
+                        T gamma = physics.gamma; // used a ton, make more concise
+
+                        FlowState<T, ndim> stateL = physics.calc_flow_state(uL);
+                        FlowState<T, ndim> state_freestream 
+                            = physics.calc_flow_state(physics.free_stream);
+                        T normal_uadv_i = dot(stateL.velocity, unit_normal);
+                        T normal_uadv_o = dot(state_freestream.velocity, unit_normal);
+                        T normal_mach = normal_uadv_i / stateL.csound;
+
+                        // eq 8
+                        T Rplus = normal_uadv_i + 2 * stateL.csound / (gamma - 1);
+                        T Rminus = normal_uadv_o - 2 * state_freestream.csound 
+                            / (gamma - 1);
+
+                        if(normal_mach > 0) {
+                            // supersonic outflow 
+                            T Rminus = normal_uadv_i - 2 * stateL.csound 
+                                / (gamma - 1);
+                        } else if (normal_mach < 0){
+                            // supersonic inflow
+                            Rplus = normal_uadv_o + 2 * state_freestream.csound 
+                                / (gamma - 1);
+                        }
+
+                        T Ub = 0.5 * (Rplus + Rminus);
+                        T cb = 4.0 * (gamma - 1) * (Rplus - Rminus);
+
+                        // eq 15 and 16
+                        Vector uadvB;
+                        T sb;
+                        if(Ub > 0) {
+                            // outflow
+                            uadvB = stateL.velocity;
+                            axpy(Ub - normal_uadv_i, unit_normal, uadvB);
+                            sb = SQUARED(stateL.csound) / 
+                                (gamma * std::pow(stateL.density, gamma - 1));
+                        } else {
+                            // inflow
+                            uadvB = stateL.velocity;
+                            axpy(Ub - normal_uadv_i, unit_normal, uadvB);
+                            sb = SQUARED(stateL.csound) / 
+                                (gamma * std::pow(stateL.density, gamma - 1));
+                        }
+
+                        T rhoR = std::pow(SQUARED(cb) / (gamma * sb), 1.0 / (gamma - 1));
+                        T pR = rhoR * SQUARED(cb) / gamma;
+
+                        // convert to conservative variables
+                        uR = physics.prim_to_cons(rhoR, uadvB, pR);
+                        
+                        // exterior state gradients equal interor state gradients 
+                        linalg::copy(graduL, linalg::as_mdspan(graduR));
+
+//                            // subsonic outflow alternate
+//                            // Rodgriguez et al. "Formulation and Implementation of 
+//                            // Inflow/Outflow Boundary Conditions to Simulate 
+//                            // Propulsive Effects"
+//                            
+//                            // TODO: prestore?
+//                            FlowState<T, ndim> state_freestream 
+//                                = physics.calc_flow_state(physics.free_stream);
+//
+//                            // Entropy (eq. 3)
+//                            T SR = stateL.pressure / stateL.density;
+//
+//                            // Riemann invariant (eq. 4)
+//                            T JL = -normal_mach * stateL.csound
+//                                + 2 * stateL.csound / (physics.gamma - 1);
+//
+//                            // speed of sound on the right (eq. 5)
+//                            T csoundR = std::sqrt(
+//                                physics.gamma * std::pow(state_freestream.pressure,
+//                                    (physics.gamma - 1) / physics.gamma)
+//                                * std::pow(SR, 1.0 / physics.gamma)
+//                            );
+//
+//                            // Riemann invariant on the right (eq. 7)
+//                            T JR = JL - 4.0 / (physics.gamma - 1) * csoundR;
+//
+//                            // density on the right 
+//                            T rhoR = std::pow( 
+//                                csoundR * csoundR / (physics.gamma * SR),
+//                                1.0 / (physics.gamma - 1)
+//                            );
+//
+//                            // Tangential and normal internal velocities
+//                            // (vector quantitites)
+//                            Vector VtL, VnL;
+//                            VnL = unit_normal;
+//                            for(int i = 0; i < ndim; ++i) 
+//                                VnL[i] *= normal_mach * stateL.csound;
+//                            VtL = stateL.velocity;
+//                            axpy(-1.0, VnL, VtL);
+//
+//                            Vector uadvR = VtL;
+//                            // add in normal component (eq. 9);
+//                            axpy(-0.5 * (JL + JR), unit_normal, uadvR);
+//
+//                            // build the right state
+//                            uR[irho] = rhoR;
+//                            for(int idim = 0; idim < ndim; ++idim){
+//                                uR[irhou + idim] = rhoR * uadvR[idim];
+//                            }
+//                            uR[irhoe] = state_freestream.pressure / (physics.gamma - 1)
+//                                + 0.5 * rhoR * dot(uadvR, uadvR);
+//                            // exterior state gradients equal interor state gradients 
+//                            linalg::copy(graduL, linalg::as_mdspan(graduR));
+                    } break;
                     default:
                     util::AnomalyLog::log_anomaly(util::Anomaly{"Unsupported BC",
                             util::general_anomaly_tag{}});
+
+
                 }
 
                 return std::pair{uR, graduR};
@@ -433,7 +582,14 @@ ns_wall_bc_tag:
 
             inline constexpr 
             auto dt_from_cfl(T cfl, T reference_length) const noexcept -> T {
-                return (reference_length * cfl) / (lambda_max);
+                T dt = (reference_length * cfl) / lambda_max;
+                if(!euler){
+                    dt = std::min(dt, SQUARED(reference_length) * cfl / visc_max);
+                }
+                // reset maximums
+                lambda_max = 0;
+                visc_max = 0;
+                return dt;
             }
         };
 

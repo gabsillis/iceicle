@@ -62,7 +62,7 @@ namespace iceicle {
     concept implements_bcs =
     requires(
         FluxT flux,
-        std::array<typename FluxT::value_type, FluxT::nv_comp> uL,
+        std::array<typename FluxT::value_type, FluxT::nv_comp> &uL,
         std::mdspan<typename FluxT::value_type, std::extents<std::size_t, std::dynamic_extent, std::dynamic_extent>> graduL,
         NUMTOOL::TENSOR::FIXED_SIZE::Tensor< typename FluxT::value_type, FluxT::ndim > unit_normal,
         BOUNDARY_CONDITIONS bctype,
@@ -971,6 +971,7 @@ namespace iceicle {
                         auto graduL = unkelL.contract_mdspan(gradBiL, graduL_data.data());
 
                         // get the uR and graduR from the interior information
+                        // uL is also modifiable
                         auto [uR, graduR] = phys_flux.apply_bc(
                                 uL, graduL, unit_normal,
                                 trace.face->bctype, trace.face->bcflag);
