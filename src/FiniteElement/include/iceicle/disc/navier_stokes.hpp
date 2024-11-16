@@ -487,7 +487,14 @@ ns_wall_bc_tag:
                         }
 
                         T Ub = 0.5 * (Rplus + Rminus);
-                        T cb = 4.0 * (gamma - 1) * (Rplus - Rminus);
+                        // NOTE: paper says 4* but Rodriguez et al
+                        //"Formulation and Implementation of 
+                        // Inflow/Outflow Boundary Conditions to Simulate 
+                        // Propulsive Effects"
+                        // says (gamma - 1) / 4 
+                        // which would correctly recover the supersonic sound speeds
+                        // so this is most likely a typo
+                        T cb = 0.25 * (gamma - 1) * (Rplus - Rminus);
 
                         // eq 15 and 16
                         Vector uadvB;

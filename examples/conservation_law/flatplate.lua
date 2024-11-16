@@ -33,7 +33,7 @@ return {
             -- 2: no slip wall (isothermal)
             { "isothermal", 0 },
 
-            -- 3: dirichlet
+            -- 3: free stream
             { "dirichlet",  0 },
         },
     },
@@ -47,7 +47,7 @@ return {
         quadrature = "gauss",
 
         -- the basis function order
-        order = 0,
+        order = 1,
     },
 
     -- describe the conservation law
@@ -56,11 +56,14 @@ return {
         name = "navier-stokes",
 
         isothermal_temperatures = { 273.15 },
+
+        free_stream = { rho, rho * uadv, rho * vadv, rhoe },
+
     },
 
     -- initial condition
     initial_condition = function(x, y)
-        return { rho, 0, rho * vadv, rhoe }
+        return { rho, rho * uadv, rho * vadv, rhoe }
     end,
 
     -- boundary conditions
@@ -73,10 +76,10 @@ return {
     -- solver
     solver = {
         type = "rk3-tvd",
-        dt = 1e-6,
-        ntime = 100000,
-        ivis = 100,
-        idiag = 100,
+        cfl = 0.001,
+        ntime = 100,
+        ivis = 1,
+        idiag = 1,
     },
 
     -- solver
