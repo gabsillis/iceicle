@@ -113,6 +113,18 @@ namespace iceicle {
         using BasisType = Basis<T, ndim>;
         using QuadratureType = QuadratureRule<T, IDX, ndim>;
 
+        /// @brief what type of finite element space is being represented
+        enum class SPACE_TYPE {
+            L2, /// L2 elements are fully discontinuous at the interfaces
+            ISOPARAMETRIC_H1, /// A continuous finite element space over the whole domain 
+                              /// Basis functions for solution are equivalent
+                              /// to basis functionss for the geometry
+        };
+
+        /// @brief what type of finite element space is being represented
+        /// by this FESpace
+        SPACE_TYPE type;
+
         /// @brief pointer to the mesh used
         MeshType *meshptr;
 
@@ -191,7 +203,7 @@ namespace iceicle {
             FESPACE_ENUMS::FESPACE_BASIS_TYPE basis_type,
             FESPACE_ENUMS::FESPACE_QUADRATURE quadrature_type,
             tmp::compile_int<basis_order> basis_order_arg
-        ) : meshptr(meshptr), cg_map{*meshptr}, elements{} {
+        ) : type{SPACE_TYPE::L2}, meshptr(meshptr), cg_map{*meshptr}, elements{} {
 
             // Generate the Finite Elements
             elements.reserve(meshptr->nelem());
@@ -406,7 +418,7 @@ namespace iceicle {
         /// @brief construct an FESpace that represents an isoparametric CG space
         /// to the given mesh 
         /// @param meshptr pointer to the mesh
-        FESpace(MeshType *meshptr) : meshptr(meshptr), cg_map{*meshptr}, elements{} {
+        FESpace(MeshType *meshptr) : type{SPACE_TYPE::ISOPARAMETRIC_H1}, meshptr(meshptr), cg_map{*meshptr}, elements{} {
             
             // Generate the Finite Elements
             elements.reserve(meshptr->nelem());
@@ -649,6 +661,24 @@ namespace iceicle {
         std::span<TraceType> get_boundary_traces(){
             return std::span<TraceType>{traces.begin() + bdy_trace_start,
                 traces.begin() + bdy_trace_end};
+        }
+
+        auto print_info(std::ostream& out)
+        -> std::ostream& {
+            out << "Finite Element Space" << std::endl;
+            switch(type){
+                case SPACE_TYPE::L2:
+                    out << "Space Type: ";
+                    out << "L2" << std::endl;
+                    out << "ndof: " << dg_map.size() << std::endl;
+                    break;
+                case SPACE_TYPE::ISOPARAMETRIC_H1:
+                    out << "Space Type: ";
+                    out << "H1 (isoparametric)" << std::endl;
+                    out << "ndof: " << cg_map.size() << std::endl;
+                    break;
+            }
+            return out;
         }
 
     };

@@ -76,6 +76,15 @@ template <class T, class IDX, int ndim, class pflux, class cflux, class dflux>
 void initialize_and_solve(
     sol::table config_tbl, FESpace<T, IDX, ndim> &fespace,
     ConservationLawDDG<T, ndim, pflux, cflux, dflux> &conservation_law) {
+
+  // ==============================
+  // = Set Discretization Options =
+  // ==============================
+    sol::table cons_law_tbl = config_tbl["conservation_law"];
+    // discretization options
+    conservation_law.sigma_ic = cons_law_tbl.get_or("sigma_ic", conservation_law.sigma_ic);
+    conservation_law.interior_penalty = cons_law_tbl.get_or("interior_penalty", conservation_law.interior_penalty);
+
   // ==================================
   // = Initialize the solution vector =
   // ==================================
@@ -188,6 +197,7 @@ void setup(sol::table script_config, cli_parser cli_args) {
   // ===================================
   sol::table fespace_tbl = script_config["fespace"];
   auto fespace = lua_fespace(&pmesh, fespace_tbl);
+  fespace.print_info(std::cout);
 
   // ============================
   // = Setup the Discretization =
@@ -234,9 +244,6 @@ void setup(sol::table script_config, cli_parser cli_args) {
                               std::move(diffusive_flux)};
       disc.field_names = std::vector<std::string>{"u"};
       disc.residual_names = std::vector<std::string>{"residual"};
-
-      // discretization options
-      disc.sigma_ic = cons_law_tbl.get_or("sigma_ic", disc.sigma_ic);
 
       initialize_and_solve(script_config, fespace, disc);
 
@@ -397,6 +404,7 @@ int main(int argc, char *argv[]) {
   // Parse the input deck
   sol::state lua_state;
   lua_state.open_libraries(sol::lib::base);
+  lua_state.open_libraries(sol::lib::package);
   lua_state.open_libraries(sol::lib::math);
 
   sol::optional<sol::table> script_config_opt;

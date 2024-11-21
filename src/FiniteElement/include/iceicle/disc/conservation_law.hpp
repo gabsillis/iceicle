@@ -417,7 +417,6 @@ namespace iceicle {
                 // switch to interior penalty if set
                 if(interior_penalty) beta1 = 0.0;
 
-
                 std::mdspan<T, std::extents<int, neq, ndim>> grad_ddg{grad_ddg_data.data()};
                 for(int ieq = 0; ieq < neq; ++ieq){
                     // construct the DDG derivatives
@@ -429,7 +428,7 @@ namespace iceicle {
                         for(int jdim = 0; jdim < ndim; ++jdim){
                             hessTerm += (hessuR[ieq, jdim, idim] - hessuL[ieq, jdim, idim])
                                 * unit_normal[jdim];
-                    }
+                        }
                         grad_ddg[ieq, idim] += beta1 * h_ddg * hessTerm;
                     }
                 }
@@ -484,10 +483,12 @@ namespace iceicle {
                                             resL[itest, ieq] -= 
                                                 sigma_ic * Gtensor[ieq][kdim][req][sdim] * unit_normal[kdim] 
                                                 * average_gradv[sdim] * jumpu_r
+//                                                * gradBiL[itest, sdim] * jumpu_r
                                                 * quadpt.weight * sqrtg;
                                             resR[itest, ieq] -= 
                                                 sigma_ic * Gtensor[ieq][kdim][req][sdim] * unit_normal[kdim] 
                                                 * average_gradv[sdim] * jumpu_r
+//                                                * gradBiR[itest, sdim] * jumpu_r
                                                 * quadpt.weight * sqrtg;
                                         }
                                     }
