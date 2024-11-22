@@ -532,7 +532,6 @@ namespace iceicle {
             std::convertible_to<std::ranges::range_value_t<R_nelem>, IDX> &&
             std::same_as<std::ranges::range_value_t<R_bctype>, BOUNDARY_CONDITIONS> &&
             std::convertible_to<std::ranges::range_value_t<R_bcflags>, int>
-
         ) : coord{}, conn_el{}, coord_els{}, faces{}, el_send_list(mpi::mpi_world_size()), 
           el_recv_list(mpi::mpi_world_size()), communicated_elements(mpi::mpi_world_size()) 
         {

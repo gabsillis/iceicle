@@ -459,10 +459,9 @@ namespace iceicle {
 
                 // if applicable: apply the interface correction 
                 if constexpr (computes_homogeneity_tensor<DiffusiveFlux>) {
-                    auto gradBiL = trace.qp_evals_l[iqp].grad_bi_span;
-                    auto gradBiR = trace.qp_evals_r[iqp].grad_bi_span;
+                    auto gradBiL = evalL.phys_grad_basis;
+                    auto gradBiR = evalR.phys_grad_basis;
                     if(sigma_ic != 0.0){
-                        std::array<T, neq> interface_correction;
                         auto Gtensor = diff_flux.homogeneity_tensor(uavg);
 
                         T average_gradv[ndim];
@@ -473,28 +472,27 @@ namespace iceicle {
                                         gradBiL[itest, idim] + gradBiR[itest, idim] );
                             }
 
-                            std::ranges::fill(interface_correction, 0);
                             for(int ieq = 0; ieq < neq; ++ieq){
                                 for(int kdim = 0; kdim < ndim; ++kdim){
                                     for(int req = 0; req < neq; ++req){
                                         T jumpu_r = uR[req] - uL[req];
                                         for(int sdim = 0; sdim < ndim; ++sdim){
                                             
+                                            T ic_contrib = 
+                                                sigma_ic * Gtensor[ieq][kdim][req][sdim] * unit_normal[kdim]
+                                                * jumpu_r * quadpt.weight * sqrtg;
                                             resL[itest, ieq] -= 
-                                                sigma_ic * Gtensor[ieq][kdim][req][sdim] * unit_normal[kdim] 
-                                                * average_gradv[sdim] * jumpu_r
-//                                                * gradBiL[itest, sdim] * jumpu_r
-                                                * quadpt.weight * sqrtg;
+                                                ic_contrib
+//                                                * average_gradv[sdim]
+                                                * gradBiL[itest, sdim];
                                             resR[itest, ieq] -= 
-                                                sigma_ic * Gtensor[ieq][kdim][req][sdim] * unit_normal[kdim] 
-                                                * average_gradv[sdim] * jumpu_r
-//                                                * gradBiR[itest, sdim] * jumpu_r
-                                                * quadpt.weight * sqrtg;
+                                                ic_contrib
+//                                                * average_gradv[sdim]
+                                                * gradBiR[itest, sdim];
                                         }
                                     }
                                 }
                             }
-
                         }
                     }
                 }
@@ -642,7 +640,6 @@ namespace iceicle {
                         if constexpr (computes_homogeneity_tensor<DiffusiveFlux>) {
                             if(sigma_ic != 0.0){
 
-                                std::array<T, neq> interface_correction;
                                 auto Gtensor = diff_flux.homogeneity_tensor(uavg);
 
                                 T average_gradv[ndim];
@@ -652,7 +649,6 @@ namespace iceicle {
                                         average_gradv[idim] = gradBiL[itest, idim];
                                     }
 
-                                    std::ranges::fill(interface_correction, 0);
                                     for(int ieq = 0; ieq < neq; ++ieq){
                                         for(int kdim = 0; kdim < ndim; ++kdim){
                                             for(int req = 0; req < neq; ++req){
@@ -660,7 +656,7 @@ namespace iceicle {
                                                 for(int sdim = 0; sdim < ndim; ++sdim){
                                                     
                                                     resL[itest, ieq] -= 
-                                                        Gtensor[ieq][kdim][req][sdim] * unit_normal[kdim] 
+                                                        sigma_ic * Gtensor[ieq][kdim][req][sdim] * unit_normal[kdim] 
                                                         * average_gradv[sdim] * jumpu_r
                                                         * quadpt.weight * sqrtg;
                                                 }
