@@ -464,13 +464,7 @@ namespace iceicle {
                     if(sigma_ic != 0.0){
                         auto Gtensor = diff_flux.homogeneity_tensor(uavg);
 
-                        T average_gradv[ndim];
                         for(int itest = 0; itest < elL.nbasis(); ++itest){
-                            // get the average test function gradient
-                            for(int idim = 0; idim < ndim; ++idim){
-                                average_gradv[idim] = 0.5 * (
-                                        gradBiL[itest, idim] + gradBiR[itest, idim] );
-                            }
 
                             for(int ieq = 0; ieq < neq; ++ieq){
                                 for(int kdim = 0; kdim < ndim; ++kdim){
@@ -483,12 +477,10 @@ namespace iceicle {
                                                 * jumpu_r * quadpt.weight * sqrtg;
                                             resL[itest, ieq] -= 
                                                 ic_contrib
-//                                                * average_gradv[sdim]
-                                                * gradBiL[itest, sdim];
+                                                * 0.5 * gradBiL[itest, sdim]; // 0.5 comes from average operator
                                             resR[itest, ieq] -= 
                                                 ic_contrib
-//                                                * average_gradv[sdim]
-                                                * gradBiR[itest, sdim];
+                                                * 0.5 * gradBiR[itest, sdim];
                                         }
                                     }
                                 }
