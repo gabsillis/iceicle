@@ -78,7 +78,7 @@ end
 return {
 	ndim = 2,
 	uniform_mesh = {
-		nelem = { 40, 40 },
+		nelem = { 10, 10 },
 		bounding_box = { min = { 0.0, 0.0 }, max = { 1.0, 1.0 } },
 		boundary_conditions = {
 			types = {
@@ -101,11 +101,12 @@ return {
 		quadrature = "gauss",
 
 		-- the basis function order
-		order = 2,
+		order = 1,
 	},
 
 	conservation_law = {
-		name = "navier-stokes",
+		-- name = "navier-stokes",
+		name = "euler",
 		source = source
 	},
 
@@ -113,9 +114,10 @@ return {
 
 	solver = {
 		type = "rk3-tvd",
-		dt = 1e-6,
+		cfl = 0.1,
 		ntime = 100,
-		ivis = 1
+		ivis = 1,
+		idiag = 1
 	},
 
 	output = {

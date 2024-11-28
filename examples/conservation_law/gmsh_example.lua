@@ -80,7 +80,7 @@ return {
         type = "rk3-tvd",
         cfl = 0.5,
         ntime = 500000,
-        ivis = 100
+        ivis = 1
     },
 
     -- solver

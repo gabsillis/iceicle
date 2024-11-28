@@ -20,6 +20,7 @@
 #include "iceicle/solvers_lua_interface.hpp"
 #include "iceicle/string_utils.hpp"
 #include "iceicle/mesh/mesh_partition.hpp"
+#include "iceicle/disc/ns_lua_interface.hpp"
 #include <sol/table.hpp>
 #ifdef ICEICLE_USE_PETSC
 #elifdef ICEICLE_USE_MPI
@@ -285,9 +286,18 @@ void setup(sol::table script_config, cli_parser cli_args) {
 
     } else if (eq_icase_any(cons_law_tbl["name"].get<std::string>(),
                             "navier-stokes", "euler")) {
+      using namespace navier_stokes;
+      using namespace util;
 
-      T gamma = cons_law_tbl.get_or("gamma", 1.4);
-      navier_stokes::Physics<T, ndim> physics{gamma};
+      // Set up reference quantities for nondimensionalization
+      std::optional<std::string> reference_quantities;
+      if(reference_quantities){
+        if(eq_icase(reference_quantities.value(),"free_stream")){
+          
+        }
+      }
+      
+      Physics<T, ndim> physics{navier_stokes::parse_physics<T, ndim>(cons_law_tbl)};
 
       // get isothermal wall temperatures
       sol::optional<sol::table> iso_tmps_opt = cons_law_tbl["isothermal_temperatures"];

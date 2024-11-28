@@ -8,7 +8,7 @@
 local gamma = 1.4
 local rho = 1.0
 local pressure = 1
-local mach = 0.1
+local mach = 0.0
 
 local csound = math.sqrt(gamma * pressure / rho)
 print(csound)
