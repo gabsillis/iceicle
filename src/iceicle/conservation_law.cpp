@@ -20,7 +20,7 @@
 #include "iceicle/solvers_lua_interface.hpp"
 #include "iceicle/string_utils.hpp"
 #include "iceicle/mesh/mesh_partition.hpp"
-#include "iceicle/disc/ns_lua_interface.hpp"
+// #include "iceicle/disc/ns_lua_interface.hpp"
 #include <sol/table.hpp>
 #ifdef ICEICLE_USE_PETSC
 #elifdef ICEICLE_USE_MPI
@@ -286,82 +286,64 @@ void setup(sol::table script_config, cli_parser cli_args) {
 
     } else if (eq_icase_any(cons_law_tbl["name"].get<std::string>(),
                             "navier-stokes", "euler")) {
-      using namespace navier_stokes;
-      using namespace util;
-
-      // Set up reference quantities for nondimensionalization
-      std::optional<std::string> reference_quantities;
-      if(reference_quantities){
-        if(eq_icase(reference_quantities.value(),"free_stream")){
-          
-        }
-      }
-      
-      Physics<T, ndim> physics{navier_stokes::parse_physics<T, ndim>(cons_law_tbl)};
-
-      // get isothermal wall temperatures
-      sol::optional<sol::table> iso_tmps_opt = cons_law_tbl["isothermal_temperatures"];
-      if(iso_tmps_opt){
-        sol::table iso_tmps = iso_tmps_opt.value();
-        for(int i = 0; i < iso_tmps.size(); ++i){
-           physics.isothermal_temperatures.push_back(iso_tmps[i + 1]);
-        }
-      } else {
-        // check to make sure no isothermal boundary conditions are present
-        for(auto trace : fespace.get_boundary_traces()){
-          if(trace.face->bctype == BOUNDARY_CONDITIONS::NO_SLIP_ISOTHERMAL){
-            std::cerr << "Isothermal boundary condition on face " << trace.facidx
-              << " but no entries in isothermal_temperatures" << std::endl;
-            return;
-          }
-        }
-      }
-
-      // get free stream conditions 
-      sol::optional<sol::table> free_stream_opt = cons_law_tbl["free_stream"];
-      if(free_stream_opt){
-        sol::table free_stream = free_stream_opt.value();
-        for(int i = 0; i < free_stream.size(); ++i){
-          physics.free_stream[i] = free_stream[i + 1];
-        }
-      } else {
-        // check to make sure no riemann boundary conditions are present
-        for(auto trace : fespace.get_boundary_traces()){
-          if(trace.face->bctype == BOUNDARY_CONDITIONS::RIEMANN){
-            std::cerr << "riemann boundary condition on face " << trace.facidx
-              << " but no state specified in free_stream" << std::endl;
-            return;
-          }
-        }
-      }
-
-      auto fcn = [&]<class fluxtype>(fluxtype physical_flux){
-      navier_stokes::VanLeer<T, ndim> convective_flux{physics};
-      navier_stokes::DiffusionFlux<T, ndim> diffusive_flux{physics};
-      ConservationLawDDG disc{std::move(physical_flux),
-                              std::move(convective_flux),
-                              std::move(diffusive_flux)};
-      disc.field_names = std::vector<std::string>{"rho", "rhou"};
-      disc.residual_names = std::vector<std::string>{"density_conservation", "momentum_u_conservation"};
-      if constexpr (ndim >= 2) {
-        disc.field_names.push_back("rhov");
-        disc.residual_names.push_back("momentum_v_conservation");
-      }
-      if constexpr (ndim >= 3) {
-        disc.field_names.push_back("rhow");
-        disc.residual_names.push_back("momentum_w_conservation");
-      }
-      disc.field_names.push_back("rhoe");
-      disc.residual_names.push_back("energy_conservation");
-      initialize_and_solve(script_config, fespace, disc);
-      };
-      if(eq_icase(cons_law_tbl["name"].get<std::string>(), "navier-stokes")){
-        navier_stokes::Flux<T, ndim, false> physical_flux{physics};
-        fcn(physical_flux);
-      } else {
-        navier_stokes::Flux<T, ndim> physical_flux{physics};
-        fcn(physical_flux);
-      }
+//      using namespace navier_stokes;
+//      using namespace util;
+//
+//      // Set up reference quantities for nondimensionalization
+//      std::optional<std::string> reference_quantities;
+//      if(reference_quantities){
+//        if(eq_icase(reference_quantities.value(),"free_stream")){
+//          
+//        }
+//      }
+//      
+//      Physics<T, ndim> physics{navier_stokes::parse_physics<T, ndim>(cons_law_tbl)};
+//
+//      // get isothermal wall temperatures
+//      sol::optional<sol::table> iso_tmps_opt = cons_law_tbl["isothermal_temperatures"];
+//      if(iso_tmps_opt){
+//        sol::table iso_tmps = iso_tmps_opt.value();
+//        for(int i = 0; i < iso_tmps.size(); ++i){
+//           physics.isothermal_temperatures.push_back(iso_tmps[i + 1]);
+//        }
+//      } else {
+//        // check to make sure no isothermal boundary conditions are present
+//        for(auto trace : fespace.get_boundary_traces()){
+//          if(trace.face->bctype == BOUNDARY_CONDITIONS::NO_SLIP_ISOTHERMAL){
+//            std::cerr << "Isothermal boundary condition on face " << trace.facidx
+//              << " but no entries in isothermal_temperatures" << std::endl;
+//            return;
+//          }
+//        }
+//      }
+//
+//      auto fcn = [&]<class fluxtype>(fluxtype physical_flux){
+//      navier_stokes::VanLeer<T, ndim> convective_flux{physics};
+//      navier_stokes::DiffusionFlux<T, ndim> diffusive_flux{physics};
+//      ConservationLawDDG disc{std::move(physical_flux),
+//                              std::move(convective_flux),
+//                              std::move(diffusive_flux)};
+//      disc.field_names = std::vector<std::string>{"rho", "rhou"};
+//      disc.residual_names = std::vector<std::string>{"density_conservation", "momentum_u_conservation"};
+//      if constexpr (ndim >= 2) {
+//        disc.field_names.push_back("rhov");
+//        disc.residual_names.push_back("momentum_v_conservation");
+//      }
+//      if constexpr (ndim >= 3) {
+//        disc.field_names.push_back("rhow");
+//        disc.residual_names.push_back("momentum_w_conservation");
+//      }
+//      disc.field_names.push_back("rhoe");
+//      disc.residual_names.push_back("energy_conservation");
+//      initialize_and_solve(script_config, fespace, disc);
+//      };
+//      if(eq_icase(cons_law_tbl["name"].get<std::string>(), "navier-stokes")){
+//        navier_stokes::Flux<T, ndim, false> physical_flux{physics};
+//        fcn(physical_flux);
+//      } else {
+//        navier_stokes::Flux<T, ndim> physical_flux{physics};
+//        fcn(physical_flux);
+//      }
     } else {
       AnomalyLog::log_anomaly(
           Anomaly{"No such conservation_law implemented",
