@@ -557,9 +557,10 @@ namespace iceicle {
                         grad_temp[jdim] = 
                             mult *  grad_E[jdim] / (state.rho * nondim.e_coeff);
                         for(int kdim = 0; kdim < ndim; ++kdim){
-                            grad_temp += mult * state.velocity[kdim] * grad_vel[kdim][jdim];
+                            grad_temp[jdim] += mult * state.velocity[kdim] * grad_vel[kdim, jdim];
                         }
                     }
+                    return FlowStateGradients<real, ndim>{grad_vel, grad_temp};
                 } else if constexpr (variable_set == VARSET::RHO_U_T) {
                     static constexpr int irho = 0;
                     static constexpr int iu = 1;
@@ -576,6 +577,7 @@ namespace iceicle {
                     for(int jdim = 0; jdim < ndim; ++jdim){
                         grad_temp[jdim] = gradu[iT, jdim];
                     }
+                    return FlowStateGradients<real, ndim>{grad_vel, grad_temp};
                 } else { // variable_set = VARSET::RHO_U_P
                     static constexpr int irho = 0;
                     static constexpr int iu = 1;
@@ -594,6 +596,7 @@ namespace iceicle {
                         grad_temp[jdim] = (gradu[ip, jdim] * state.rho - gradu[irho] * state.p)
                             / SQUARED(state.rho) * gamma / (gamma - 1) / T_coeff;
                     }
+                    return FlowStateGradients<real, ndim>{grad_vel, grad_temp};
                 }
             }
         };
@@ -680,6 +683,13 @@ namespace iceicle {
             auto calc_thermo_state(std::array<real, nv_comp> u)
             const noexcept -> ThermodynamicState<real, ndim>
             { return eos.template calc_thermo_state<varset>(u, ref, nondim); }
+
+            [[nodiscard]] inline constexpr 
+            auto calc_thermo_state_gradients(
+                ThermodynamicState<real, ndim> state,
+                linalg::in_tensor auto gradu
+            ) const noexcept -> FlowStateGradients<real, ndim>
+            { return eos.template calc_state_gradients<varset>(state, gradu, ref, nondim); }
         };
 
         template<class real, class EoS>
@@ -724,49 +734,51 @@ namespace iceicle {
                 // compute positive fluxes and add contribution
                 if(machL > 1){
                     // supersonic left 
-                    flux[0] = stateL.density * vnormalL;
+                    flux[0] = stateL.rho * vnormalL;
                     for(int idim = 0; idim < ndim; ++idim)
                         flux[1 + idim] = stateL.momentum[idim] * vnormalL 
-                            + physics.nondim.Eu * stateL.pressure * unit_normal[idim];
-                    flux[ndim + 1] = vnormalL * (stateL.rhoe + physics.nondim.Eu * physics.nondim.e_coeff * stateL.pressure);
+                            + physics.nondim.Eu * stateL.p * unit_normal[idim];
+                    flux[ndim + 1] = vnormalL * (stateL.rhoE 
+                            + physics.nondim.Eu * physics.nondim.e_coeff * stateL.p);
                 } else if(machL < -1) {
                     std::ranges::fill(flux, 0);
                 } else {
-                    T fmL = stateL.density * stateL.csound * SQUARED(machL + 1) / 4.0;
+                    T fmL = stateL.rho * stateL.csound * SQUARED(machL + 1) / 4.0;
                     flux[0] = fmL;
                     for(int idim = 0; idim < ndim; ++idim){
                         flux[1 + idim] = fmL * (
                             stateL.velocity[idim] 
-                            + unit_normal[idim] * (-vnormalL + 2 * stateL.csound) / physics.gamma 
+                            + unit_normal[idim] * (-vnormalL + 2 * stateL.csound) / stateL.gamma 
                         );
                     }
                     flux[ndim + 1] = fmL * (
-                        (stateL.velocity_magnitude_squared - SQUARED(vnormalL)) / 2
-                        + SQUARED( (physics.gamma - 1) * vnormalL + 2 * stateL.csound)
-                        / (2 * (SQUARED(physics.gamma) - 1))
+                        (stateL.vv - SQUARED(vnormalL)) / 2
+                        + SQUARED( (stateL.gamma - 1) * vnormalL + 2 * stateL.csound)
+                        / (2 * (SQUARED(stateL.gamma) - 1))
                     );
                 }
 
                 // compute negative fluxes and add contribution
                 if(machR < -1){
-                    flux[0] += stateR.density * vnormalR;
+                    flux[0] += stateR.rho * vnormalR;
                     for(int idim = 0; idim < ndim; ++idim)
                         flux[1 + idim] += stateR.momentum[idim] * vnormalR 
-                            + physics.nondim.Eu * stateR.pressure * unit_normal[idim];
-                    flux[ndim + 1] += vnormalR * (stateR.rhoe + physics.nondim.Eu * physics.nondim.e_coeff * stateR.pressure);
+                            + physics.nondim.Eu * stateR.p * unit_normal[idim];
+                    flux[ndim + 1] += vnormalR * (stateR.rhoE 
+                            + physics.nondim.Eu * physics.nondim.e_coeff * stateR.p);
                 } else if (machR <= 1) {
-                    T fmR = -stateR.density * stateR.csound * SQUARED(machR - 1) / 4.0;
+                    T fmR = -stateR.rho * stateR.csound * SQUARED(machR - 1) / 4.0;
                     flux[0] += fmR;
                     for(int idim = 0; idim < ndim; ++idim){
                         flux[1 + idim] += fmR * (
                             stateR.velocity[idim] 
-                            + unit_normal[idim] * (-vnormalR - 2 * stateR.csound) / physics.gamma 
+                            + unit_normal[idim] * (-vnormalR - 2 * stateR.csound) / stateR.gamma 
                         );
                     }
                     flux[ndim + 1] += fmR * (
-                        (stateR.velocity_magnitude_squared - SQUARED(vnormalR)) / 2
-                        + SQUARED( (physics.gamma - 1) * vnormalR - 2 * stateR.csound)
-                        / (2 * (SQUARED(physics.gamma) - 1))
+                        (stateR.vv - SQUARED(vnormalR)) / 2
+                        + SQUARED( (stateR.gamma - 1) * vnormalR - 2 * stateR.csound)
+                        / (2 * (SQUARED(stateR.gamma) - 1))
                     );
                 } // else 0
                 
@@ -838,7 +850,7 @@ namespace iceicle {
                     for(int idim = 0; idim < ndim; ++idim)
                         flux[1 + idim][jdim] = state.momentum[idim] * state.velocity[jdim];
                     flux[1 + jdim][jdim] += Eu * state.p;
-                    flux[1 + ndim][jdim] = state.velocity[jdim] * (state.rhoe + Eu * e_coeff * state.pressure);
+                    flux[1 + ndim][jdim] = state.velocity[jdim] * (state.rhoE + Eu * e_coeff * state.p);
                 }
 
                 if(!euler) {
@@ -857,11 +869,11 @@ namespace iceicle {
                     for(int idim = 0; idim < ndim; ++idim){
                         for(int jdim = 0; jdim < ndim; ++jdim){
                             flux[irhou + idim][jdim] -= tau[idim][jdim] / physics.nondim.Re;
-                            flux[irhoe][jdim] -= state.velocity[idim] * state_grads.tau[idim][jdim] 
+                            flux[irhoe][jdim] -= state.velocity[idim] * tau[idim][jdim] 
                                 * e_coeff / Re;
                         }
-                        flux[irhoe][idim] -= state_grads.temp_gradient[idim] 
-                            * state.mu * e_coeff / Re * gamma * R_ref * Eu / (gamma - 1) / Pr;
+                        flux[irhoe][idim] -= state_grads.temp_gradient[idim] * e_coeff / Re 
+                            * mu * T_coeff * Eu / Re / Pr;
                     }
 
                     visc_max = std::max(visc_max, mu);
