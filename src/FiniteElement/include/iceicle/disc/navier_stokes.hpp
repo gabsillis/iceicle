@@ -4,6 +4,7 @@
 #include "iceicle/geometry/face.hpp"
 #include <Numtool/fixed_size_tensor.hpp>
 #include <iceicle/linalg/linalg_utils.hpp>
+#include <functional>
 
 namespace iceicle {
     namespace navier_stokes {
@@ -214,10 +215,32 @@ namespace iceicle {
             return Nondimensionalization{Re, Eu, Sr, e_coeff};
         };
 
+        /// @brief viscosity functions take 1 argument (temperature)
+        /// and return a viscosity
+        template<class visc_fcn>
+        concept is_viscosity_fcn = 
+        requires(const visc_fcn visc, typename visc_fcn::real_t T) {
+            {std::invoke(visc, T)} -> std::same_as<typename visc_fcn::real_t>;
+        };
+
+        /// @brief viscosity function that just returns the value given
+        template< class real >
+        struct constant_viscosity {
+            using real_t = real;
+            real mu;
+
+            [[nodiscard]] inline constexpr
+            auto operator()(real temp) const noexcept
+            -> real {
+                return mu;
+            }
+        };
+
         /// @brief Dimensional form of Sutherlands Law for temperature dependence of viscosity
         /// Temperatures are in degrees Kelvin (K)
         template< class real >
         struct Sutherlands {
+            using real_t = real;
             /// @brief reference viscosity
             real mu_0 = 1.716e-5; // Pa * s
 
@@ -238,6 +261,7 @@ namespace iceicle {
         /// a mismatch of reference temperature and reference viscosity
         template< class real >
         struct DimensionlessSutherlands {
+            using real_t = real;
             /// @brief reference viscosity
             real mu_0 = 1.716e-5; // Pa * s
 
@@ -608,7 +632,8 @@ namespace iceicle {
         /// @tparam ndim the number of dimensions 
         /// @tparam EoS the equation of state
         /// @tparam varset the variable set for the state vector
-        template<class real, int ndim, is_eos EoS, VARSET varset = VARSET::CONSERVATIVE>
+        template<class real, int ndim, is_eos EoS,
+            VARSET varset = VARSET::CONSERVATIVE>
         struct Physics {
             using Vector = NUMTOOL::TENSOR::FIXED_SIZE::Tensor<real, ndim>;
             using Tensor = NUMTOOL::TENSOR::FIXED_SIZE::Tensor<real, ndim, ndim>;
@@ -621,8 +646,8 @@ namespace iceicle {
             /// @brief reference parameters
             const ReferenceParameters<real> ref;
 
-            /// @brief Sutherlands law for viscosity temperature closure in dimensionless form
-            const DimensionlessSutherlands<real> viscosity;
+            /// @brief viscosity function
+            const std::function<real(real)> viscosity;
 
             /// @brief the nondimensionalization
             const Nondimensionalization<real> nondim;
@@ -640,8 +665,9 @@ namespace iceicle {
             Physics(
                 ReferenceParameters<real> ref, /// @param reference parameters for nondimensionalization
                 EoS eos,          /// @param the equation of state
+                is_viscosity_fcn auto viscosity, /// @param the viscosity function
                 real Pr = 0.72       /// @param Prandtl number
-            ) : Pr{Pr}, ref{ref}, viscosity{ref},
+            ) : Pr{Pr}, ref{ref}, viscosity{viscosity},
                 nondim{create_nondim(ref)}, eos{eos}
             {}
 
@@ -684,6 +710,13 @@ namespace iceicle {
             const noexcept -> ThermodynamicState<real, ndim>
             { return eos.template calc_thermo_state<varset>(u, ref, nondim); }
 
+            // @brief given a thermodynamic state and native variable set gradients
+            // get the flow state gradients 
+            // @param state the thermodynamic state
+            // @param gradu the gradients in the native variable set 
+            // NOTE: gradients are wrt same coordinates as gradu
+            //
+            // @return the thermodynamic state
             [[nodiscard]] inline constexpr 
             auto calc_thermo_state_gradients(
                 ThermodynamicState<real, ndim> state,
@@ -692,8 +725,8 @@ namespace iceicle {
             { return eos.template calc_state_gradients<varset>(state, gradu, ref, nondim); }
         };
 
-        template<class real, class EoS>
-        Physics(ReferenceParameters<real>, EoS) -> Physics<real, EoS::ndim, EoS>;
+        template<class real, class EoS, class visc>
+        Physics(ReferenceParameters<real>, EoS, visc&&) -> Physics<real, EoS::ndim, EoS>;
 
         /// @brief Van Leer flux
         /// implementation reference: http://www.chimeracfd.com/programming/gryphon/fluxvanleer.html
@@ -791,8 +824,9 @@ namespace iceicle {
         // @brief the physical flux for navier stokes equations
         // @tparam T the real number type
         // @tparam _ndim the number of dimensions 
-        // @tparam euler if true, limits computations for euler equations (don't compute viscous terms)
-        template< class real, int _ndim, is_eos EoS, VARSET varset, bool euler = true >
+        // @tparam full_ns if true computes everything for the navier stokes equaitions,
+        // if false limits computations for euler equations (don't compute viscous terms)
+        template< class real, int _ndim, is_eos EoS, VARSET varset, bool full_ns = true >
         struct Flux {
 
             template<class T2, std::size_t... sizes>
@@ -820,7 +854,13 @@ namespace iceicle {
             /// @brief index of energy density equation
             static constexpr int irhoe = ndim + 1;
 
+            /// @brief the physics implementation
             Physics<real, ndim, EoS, varset> physics;
+
+            /// @brief the argument for deduction 
+            /// true for full NS
+            /// set to false to restrict to Euler equations (inviscid)
+            std::integral_constant<bool, full_ns> full_ns_arg;
 
             mutable real lambda_max = 0.0;
 
@@ -853,7 +893,7 @@ namespace iceicle {
                     flux[1 + ndim][jdim] = state.velocity[jdim] * (state.rhoE + Eu * e_coeff * state.p);
                 }
 
-                if(!euler) {
+                if(full_ns) {
                     // get gradients of state
                     FlowStateGradients<real, ndim> state_grads{physics.calc_thermo_state_gradients(state, gradu)};
 
@@ -898,7 +938,7 @@ namespace iceicle {
 
                 switch(bctype) {
                     case BOUNDARY_CONDITIONS::WALL_GENERAL:
-                        if(euler){
+                        if(!full_ns){
                             goto euler_wall_bc_tag;
                         } else {
                             goto ns_wall_bc_tag;
@@ -934,7 +974,7 @@ ns_wall_bc_tag:
                         constexpr VARSET prim_varset = VARSET::RHO_U_T;
                         std::array<real, neq> prim;
                         // density is the same
-                        prim[0] = stateL.density;
+                        prim[0] = stateL.rho;
 
                         // velocity, and therefore momentum, is zero
                         for(int idim = 0; idim < ndim; ++idim){
@@ -945,7 +985,8 @@ ns_wall_bc_tag:
                         prim[1 + ndim] = physics.isothermal_temperatures[bcflag];
 
                         // convert
-                        uR = physics.eos.template convert_varset<prim_varset, varset>(prim);
+                        uR = physics.eos.template convert_varset<prim_varset, varset>
+                            (prim, physics.ref, physics.nondim);
 
                         // exterior state gradients equal interor state gradients 
                         linalg::copy(graduL, linalg::as_mdspan(graduR));
@@ -968,7 +1009,8 @@ ns_wall_bc_tag:
                             fs_vec[1 + idim] = free_stream.u_direction[idim] * free_stream.u_inf;
                         fs_vec[1 + ndim] = free_stream.temp_inf;
                         ThermodynamicState<real, ndim> state_freestream 
-                            = physics.eos.template calc_thermo_state<VARSET::RHO_U_T>(fs_vec);
+                            = physics.eos.template calc_thermo_state<VARSET::RHO_U_T>
+                                (fs_vec, physics.ref, physics.nondim);
                         real normal_uadv_i = dot(stateL.velocity, unit_normal);
                         real normal_uadv_o = dot(state_freestream.velocity, unit_normal);
                         real normal_mach = normal_uadv_i / stateL.csound;
@@ -1006,20 +1048,27 @@ ns_wall_bc_tag:
                             uadvB = stateL.velocity;
                             axpy(Ub - normal_uadv_i, unit_normal, uadvB);
                             sb = SQUARED(stateL.csound) / 
-                                (gamma * std::pow(stateL.density, gamma - 1));
+                                (gamma * std::pow(stateL.rho, gamma - 1));
                         } else {
                             // inflow
                             uadvB = stateL.velocity;
                             axpy(Ub - normal_uadv_i, unit_normal, uadvB);
                             sb = SQUARED(stateL.csound) / 
-                                (gamma * std::pow(stateL.density, gamma - 1));
+                                (gamma * std::pow(stateL.rho, gamma - 1));
                         }
 
                         real rhoR = std::pow(SQUARED(cb) / (gamma * sb), 1.0 / (gamma - 1));
                         real pR = rhoR * SQUARED(cb) / gamma;
 
                         // convert to conservative variables
-                        uR = physics.prim_to_cons(rhoR, uadvB, pR);
+                        constexpr VARSET prim_varset = VARSET::RHO_U_P;
+                        std::array<real, nv_comp> prim;
+                        prim[0] = rhoR;
+                        for(int idim = 0; idim < ndim; ++idim)
+                            prim[1 + idim] = uadvB[idim];
+                        prim[1 + ndim] = pR;
+                        uR = physics.eos.template convert_varset<prim_varset, varset>
+                            (prim, physics.ref, physics.nondim);
                         
                         // exterior state gradients equal interor state gradients 
                         linalg::copy(graduL, linalg::as_mdspan(graduR));
@@ -1092,7 +1141,7 @@ ns_wall_bc_tag:
             inline constexpr 
             auto dt_from_cfl(real cfl, real reference_length) const noexcept -> real {
                 real dt = (reference_length * cfl) / lambda_max;
-                if(!euler){
+                if(full_ns){
                     dt = std::min(dt, SQUARED(reference_length) * cfl / visc_max);
                 }
                 // reset maximums
@@ -1103,16 +1152,19 @@ ns_wall_bc_tag:
         };
         template< class T, int _ndim, is_eos EoS, VARSET varset>
         Flux(Physics<T, _ndim, EoS, varset>) -> Flux<T, _ndim, EoS, varset>;
+        template< class T, int _ndim, is_eos EoS, VARSET varset, bool euler>
+        Flux(Physics<T, _ndim, EoS, varset>, std::integral_constant<bool, euler>)
+        -> Flux<T, _ndim, EoS, varset, euler>;
 
-        template< class T, int _ndim, is_eos EoS, VARSET varset, bool euler = true >
+        template< class real, int _ndim, is_eos EoS, VARSET varset, bool full_ns = true >
         struct DiffusionFlux {
 
             static constexpr int ndim = _ndim;
-            using value_type = T;
+            using value_type = real;
 
             template<class T2, std::size_t... sizes>
             using Tensor = NUMTOOL::TENSOR::FIXED_SIZE::Tensor<T2, sizes...>;
-            using Vector = NUMTOOL::TENSOR::FIXED_SIZE::Tensor<T, ndim>;
+            using Vector = NUMTOOL::TENSOR::FIXED_SIZE::Tensor<real, ndim>;
 
             /// @brief number of variables
             static constexpr int nv_comp = ndim + 2;
@@ -1127,36 +1179,55 @@ ns_wall_bc_tag:
             /// @brief index of energy density equation
             static constexpr int irhoe = ndim + 1;
 
-            Physics<T, ndim, EoS, varset> physics;
+            Physics<real, ndim, EoS, varset> physics;
+
+            /// @brief the argument for deduction 
+            /// true for full NS
+            /// set to false to restrict to Euler equations (inviscid)
+            std::integral_constant<bool, full_ns> full_ns_arg;
 
             inline constexpr
             auto operator()(
-                std::array<T, nv_comp> u,
+                std::array<real, nv_comp> u,
                 linalg::in_tensor auto gradu,
-                Tensor<T, ndim> unit_normal
-            ) const noexcept -> std::array<T, neq>
+                Tensor<real, ndim> unit_normal
+            ) const noexcept -> std::array<real, neq>
             {
-                std::array<T, neq> flux;
+                std::array<real, neq> flux;
                 std::ranges::fill(flux, 0.0);
 
-                if(!euler) {
+                if(full_ns) {
 
                     // compute the state
-                    ThermodynamicState<T, ndim> state = physics.calc_thermo_state(u);
+                    ThermodynamicState<real, ndim> state = physics.calc_thermo_state(u);
+
+                    // nondimensional quantities
+                    real Re = physics.nondim.Re;
+                    real e_coeff = physics.nondim.e_coeff;
+                    real gamma = state.gamma;
+                    real Eu = physics.nondim.Eu;
+                    real Pr = physics.Pr;
 
                     // get gradients of state
-                    FlowStateGradients<T, ndim> state_grads{physics.calc_thermo_state_gradients(state, gradu)};
+                    FlowStateGradients<real, ndim> state_grads{physics.calc_thermo_state_gradients(state, gradu)};
 
-                    // calculate the heat conductivity coefficient
-                    T kappa = physics.gamma * physics.R * state.mu / (physics.Pr * ( physics.gamma - 1));
+                    // get the temperature coefficient
+                    real T_coeff = state.cp * physics.ref.T * physics.ref.rho / physics.ref.p;
 
-                    // subtract viscous fluxes
+                    // get the shear stress
+                    Tensor tau = physics.calc_shear_stress(state, state_grads);
+
+                    real mu = physics.viscosity(state.T);
+
+                    // contribution of viscous fluxes
                     for(int idim = 0; idim < ndim; ++idim){
                         for(int jdim = 0; jdim < ndim; ++jdim){
-                            flux[irhou + idim] += state_grads.tau[idim][jdim] * unit_normal[jdim];
-                            flux[irhoe] += state.velocity[idim] * state_grads.tau[idim][jdim] * unit_normal[jdim];
+                            flux[irhou + idim] += tau[idim][jdim] / physics.nondim.Re * unit_normal[jdim];
+                            flux[irhoe] += state.velocity[idim] * tau[idim][jdim] 
+                                * e_coeff / Re * unit_normal[jdim];
                         }
-                        flux[irhoe] += state_grads.temp_gradient[idim] * unit_normal[idim];
+                        flux[irhoe] += state_grads.temp_gradient[idim] * e_coeff / Re 
+                            * mu * T_coeff * Eu / Re / Pr * unit_normal[idim];
                     }
                 }
                 return flux;
@@ -1166,12 +1237,18 @@ ns_wall_bc_tag:
             /// given the prescribed normal gradient
             inline constexpr 
             auto neumann_flux(
-                std::array<T, nv_comp> gradn
-            ) const noexcept -> std::array<T, neq> {
-                std::array<T, nv_comp> flux{};
+                std::array<real, nv_comp> gradn
+            ) const noexcept -> std::array<real, neq> {
+                std::array<real, nv_comp> flux{};
                 std::ranges::fill(flux, 0.0);
                 return flux;
             }
         };
+
+        template< class T, int _ndim, is_eos EoS, VARSET varset>
+        DiffusionFlux(Physics<T, _ndim, EoS, varset>) -> DiffusionFlux<T, _ndim, EoS, varset>;
+        template< class T, int _ndim, is_eos EoS, VARSET varset, bool full_ns>
+        DiffusionFlux(Physics<T, _ndim, EoS, varset>, std::integral_constant<bool, full_ns>)
+        -> DiffusionFlux<T, _ndim, EoS, varset, full_ns>;
     }
 }

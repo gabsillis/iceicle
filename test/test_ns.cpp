@@ -68,7 +68,8 @@ TEST(test_ns, test_flux_consistency_vanleer){
     static constexpr int ndim = 3;
     ReferenceParameters<double> ref{};
     CaloricallyPerfectEoS<double, ndim> eos{};
-    Physics physics{ref, eos};
+    DimensionlessSutherlands<double> visc{ref};
+    Physics physics{ref, eos, visc};
 
     VanLeer numflux{physics};
     Flux pflux{physics};

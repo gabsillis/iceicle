@@ -36,6 +36,11 @@ if(ICEICLE_USE_LUA)
 
     # TODO: maybe add opengl for mesh visualization on the fly
 
+    if(ICEICLE_USE_PETSC)
+        add_executable(ns_manufactured ns_manufactured.cpp)
+    target_link_libraries(ns_manufactured iceicle_lib)
+    target_link_libraries(ns_manufactured ${MPI_CXX_LIBRARIES})
+    endif()
 endif()
 
 add_executable(sine_diffusion_1d sine_diffusion_1d.cpp)
