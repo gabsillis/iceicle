@@ -629,7 +629,7 @@ namespace iceicle {
                 } else if constexpr(in_mdspan::rank() == 2){
                     static constexpr int ext_1 = in_mdspan::static_extent(1);
 
-                    // set up the extents and construc the mdspan
+                    // set up the extents and construct the mdspan
                     std::experimental::extents<
                         int,
                         eq_static_extent,
@@ -655,7 +655,7 @@ namespace iceicle {
                     static constexpr int ext_1 = in_mdspan::static_extent(1);
                     static constexpr int ext_2 = in_mdspan::static_extent(2);
 
-                    // set up the extents and construc the mdspan
+                    // set up the extents and construct the mdspan
                     std::experimental::extents<
                         int,
                         eq_static_extent,
@@ -681,7 +681,7 @@ namespace iceicle {
                     return eq_mdspan;
                 } else {
 
-                    std::experimental::mdspan ret{result_data};
+                    std::mdspan ret{result_data};
                     return ret;
                 }
             }

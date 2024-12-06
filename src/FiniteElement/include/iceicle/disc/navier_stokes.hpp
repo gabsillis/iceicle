@@ -99,8 +99,8 @@ namespace iceicle {
             /// @brief velocity gradients du_i / dx_j
             Tensor velocity_gradient;
 
-            /// @brief gradient of the temperature
-            Vector temp_gradient;
+            /// @brief gradient of total energy
+            Vector E_gradient;
         };
 
         /// @brief The free stream state 
@@ -573,18 +573,18 @@ namespace iceicle {
                         ) / state.rho;
                     }
 
-                    real T_coeff = state.cp * ref.T * ref.rho / ref.p;
-                    // calculate temperature gradient 
-                    Vector grad_temp;
-                    for(int jdim = 0; jdim < ndim; ++jdim){
-                        real mult = (state.gamma / T_coeff / nondim.Eu); 
-                        grad_temp[jdim] = 
-                            mult *  grad_E[jdim] / (state.rho * nondim.e_coeff);
-                        for(int kdim = 0; kdim < ndim; ++kdim){
-                            grad_temp[jdim] += mult * state.velocity[kdim] * grad_vel[kdim, jdim];
-                        }
-                    }
-                    return FlowStateGradients<real, ndim>{grad_vel, grad_temp};
+//                     real T_coeff = state.cp * ref.T * ref.rho / ref.p;
+//                    // calculate temperature gradient 
+//                    Vector grad_temp;
+//                    for(int jdim = 0; jdim < ndim; ++jdim){
+//                        real mult = (state.gamma / T_coeff / nondim.Eu); 
+//                        grad_temp[jdim] = 
+//                            mult *  grad_E[jdim] / (state.rho * nondim.e_coeff);
+//                        for(int kdim = 0; kdim < ndim; ++kdim){
+//                            grad_temp[jdim] += mult * state.velocity[kdim] * grad_vel[kdim, jdim];
+//                        }
+//                    }
+                    return FlowStateGradients<real, ndim>{grad_vel, grad_E};
                 } else if constexpr (variable_set == VARSET::RHO_U_T) {
                     static constexpr int irho = 0;
                     static constexpr int iu = 1;
@@ -601,7 +601,18 @@ namespace iceicle {
                     for(int jdim = 0; jdim < ndim; ++jdim){
                         grad_temp[jdim] = gradu[iT, jdim];
                     }
-                    return FlowStateGradients<real, ndim>{grad_vel, grad_temp};
+
+                    // calculate the total energy gradient
+                    real T_coeff = state.cp * ref.T * ref.rho / ref.p;
+                    Vector grad_E;
+                    for(int jdim = 0; jdim < ndim; ++jdim){
+                        grad_E[jdim] = grad_temp[jdim] * T_coeff * nondim.Eu / state.gamma;
+                        for(int kdim = 0; kdim < ndim; ++kdim){
+                            grad_E += state.velocity[kdim] * grad_vel[kdim][jdim];
+                        }
+                        grad_E *= nondim.e_coeff * state.rho;
+                    }
+                    return FlowStateGradients<real, ndim>{grad_vel, grad_E};
                 } else { // variable_set = VARSET::RHO_U_P
                     static constexpr int irho = 0;
                     static constexpr int iu = 1;
@@ -620,7 +631,17 @@ namespace iceicle {
                         grad_temp[jdim] = (gradu[ip, jdim] * state.rho - gradu[irho] * state.p)
                             / SQUARED(state.rho) * gamma / (gamma - 1) / T_coeff;
                     }
-                    return FlowStateGradients<real, ndim>{grad_vel, grad_temp};
+
+                    // calculate the total energy gradient
+                    Vector grad_E;
+                    for(int jdim = 0; jdim < ndim; ++jdim){
+                        grad_E[jdim] = grad_temp[jdim] * T_coeff * nondim.Eu / state.gamma;
+                        for(int kdim = 0; kdim < ndim; ++kdim){
+                            grad_E += state.velocity[kdim] * grad_vel[kdim][jdim];
+                        }
+                        grad_E *= nondim.e_coeff * state.rho;
+                    }
+                    return FlowStateGradients<real, ndim>{grad_vel, grad_E};
                 }
             }
         };
@@ -671,8 +692,8 @@ namespace iceicle {
                 nondim{create_nondim(ref)}, eos{eos}
             {}
 
-            /// @brief calculate the shear stress given the thermodynamic state and 
-            /// flow gradiens 
+            /// @brief calculate the nondimensional shear stress 
+            /// given the thermodynamic state and flow gradients 
             /// @param state the thermodynamic stae 
             /// @param grads the flow state gradients
             [[nodiscard]] inline constexpr 
@@ -699,6 +720,29 @@ namespace iceicle {
                 }
 
                 return tau;
+            }
+
+            /// @brief calculate the nondimensional heat flux
+            /// given the thermodynamic state and flow gradients 
+            /// @param state the thermodynamic state 
+            /// @param grads the flow state gradients
+            [[nodiscard]] inline constexpr 
+            auto calc_heat_flux(
+                    ThermodynamicState<real, ndim>& state, FlowStateGradients<real, ndim>& grads)
+            const noexcept -> Vector {
+                real mu = viscosity(state.T);
+                const auto& dudx = grads.velocity_gradient;
+                const auto& dEdx = grads.E_gradient;
+
+                Vector q;
+                for(int jdim = 0; jdim < ndim; ++jdim){
+                    q[jdim] = dEdx[jdim] / nondim.e_coeff;
+                    for(int kdim = 0; kdim < ndim; ++kdim){
+                        q[jdim] -= state.velocity[kdim] * dudx[kdim][jdim];
+                    }
+                    q[jdim] *= mu * state.gamma / Pr;
+                }
+                return q;
             }
 
             // @brief given a state vector in the native variable set (varset)
@@ -864,6 +908,8 @@ namespace iceicle {
 
             mutable real lambda_max = 0.0;
 
+            mutable real gamma_max = 0.0;
+
             mutable real visc_max = 0.0;
 
             inline constexpr 
@@ -886,11 +932,11 @@ namespace iceicle {
                 Tensor<real, neq, ndim> flux;
                 // loop over the flux direction j
                 for(int jdim = 0; jdim < ndim; ++jdim) {
-                    flux[0][jdim] = u[1 + jdim];
+                    flux[irho][jdim] = state.momentum[jdim];
                     for(int idim = 0; idim < ndim; ++idim)
-                        flux[1 + idim][jdim] = state.momentum[idim] * state.velocity[jdim];
-                    flux[1 + jdim][jdim] += Eu * state.p;
-                    flux[1 + ndim][jdim] = state.velocity[jdim] * (state.rhoE + Eu * e_coeff * state.p);
+                        flux[irhou + idim][jdim] = state.momentum[idim] * state.velocity[jdim];
+                    flux[irhou + jdim][jdim] += Eu * state.p;
+                    flux[irhoe][jdim] = state.velocity[jdim] * (state.rhoE + Eu * e_coeff * state.p);
                 }
 
                 if(full_ns) {
@@ -903,20 +949,24 @@ namespace iceicle {
                     // get the shear stress
                     Tensor tau = physics.calc_shear_stress(state, state_grads);
 
-                    real mu = physics.viscosity(state.T);
+                    // get the heat flux 
+                    Vector q = physics.calc_heat_flux(state, state_grads);
+
 
                     // subtract viscous fluxes
-                    for(int idim = 0; idim < ndim; ++idim){
-                        for(int jdim = 0; jdim < ndim; ++jdim){
-                            flux[irhou + idim][jdim] -= tau[idim][jdim] / physics.nondim.Re;
-                            flux[irhoe][jdim] -= state.velocity[idim] * tau[idim][jdim] 
-                                * e_coeff / Re;
+                    for(int jdim = 0; jdim < ndim; ++jdim){
+                        real energy_flux = q[jdim];
+                        for(int idim = 0; idim < ndim; ++idim){
+                            flux[irhou + idim][jdim] -= tau[idim][jdim] / Re;
+                            energy_flux += state.velocity[idim] * tau[idim][jdim];
                         }
-                        flux[irhoe][idim] -= state_grads.temp_gradient[idim] * e_coeff / Re 
-                            * mu * T_coeff * Eu / Re / Pr;
+                        energy_flux *= e_coeff / Re;
+                        flux[irhoe][jdim] -= energy_flux;
                     }
 
+                    real mu = physics.viscosity(state.T);
                     visc_max = std::max(visc_max, mu);
+                    gamma_max = std::max(gamma_max, state.gamma);
                 }
                 
                 return flux;
@@ -1142,6 +1192,8 @@ ns_wall_bc_tag:
             auto dt_from_cfl(real cfl, real reference_length) const noexcept -> real {
                 real dt = (reference_length * cfl) / lambda_max;
                 if(full_ns){
+                    real scaling = std::max(visc_max / physics.nondim.Re, visc_max * physics.nondim.e_coeff / physics.nondim.Re);
+                    scaling = std::max(scaling, visc_max * physics.nondim.e_coeff / physics.nondim.Re * gamma_max / physics.Pr);
                     dt = std::min(dt, SQUARED(reference_length) * cfl / visc_max);
                 }
                 // reset maximums
@@ -1197,7 +1249,7 @@ ns_wall_bc_tag:
                 std::ranges::fill(flux, 0.0);
 
                 if(full_ns) {
-
+//
                     // compute the state
                     ThermodynamicState<real, ndim> state = physics.calc_thermo_state(u);
 
@@ -1217,17 +1269,20 @@ ns_wall_bc_tag:
                     // get the shear stress
                     Tensor tau = physics.calc_shear_stress(state, state_grads);
 
-                    real mu = physics.viscosity(state.T);
+                    // get the heat flux 
+                    Vector q = physics.calc_heat_flux(state, state_grads);
 
                     // contribution of viscous fluxes
-                    for(int idim = 0; idim < ndim; ++idim){
-                        for(int jdim = 0; jdim < ndim; ++jdim){
-                            flux[irhou + idim] += tau[idim][jdim] / physics.nondim.Re * unit_normal[jdim];
-                            flux[irhoe] += state.velocity[idim] * tau[idim][jdim] 
-                                * e_coeff / Re * unit_normal[jdim];
+                    for(int jdim = 0; jdim < ndim; ++jdim){
+                        real energy_flux = q[jdim] * unit_normal[jdim];
+                        real mu = physics.viscosity(state.T);
+                        energy_flux = mu * state.gamma / physics.Pr * state_grads.E_gradient[jdim] * unit_normal[jdim];
+                        for(int idim = 0; idim < ndim; ++idim){
+                            flux[irhou + idim] += tau[idim][jdim] / Re * unit_normal[jdim];
+                            energy_flux += state.velocity[idim] * tau[idim][jdim] * unit_normal[jdim];
                         }
-                        flux[irhoe] += state_grads.temp_gradient[idim] * e_coeff / Re 
-                            * mu * T_coeff * Eu / Re / Pr * unit_normal[idim];
+                        energy_flux *= e_coeff / Re;
+                        flux[irhoe] += energy_flux;
                     }
                 }
                 return flux;

@@ -205,7 +205,7 @@ TEST(test_fespace, test_dg_projection){
     static constexpr int ndim = 2;
     static constexpr int pn_geo = 1;
     static constexpr int pn_basis = 2;
-    static constexpr int neq = 1;
+    static constexpr int neq = 3;
 
     // create a uniform mesh
     int nx = 50;
@@ -244,15 +244,27 @@ TEST(test_fespace, test_dg_projection){
         double x = xarr[0];
         double y = xarr[1];
         out[0] = std::pow(x, pn_basis) + std::pow(y, pn_basis);
+        out[1] = std::pow(x, pn_basis);
+        out[2] = std::pow(y, pn_basis);
     };
 
     auto dprojfunc = [](const double *xarr) {
         double x = xarr[0];
         double y = xarr[1];
-        NUMTOOL::TENSOR::FIXED_SIZE::Tensor<double, ndim> deriv = { 
-            pn_basis * std::pow(x, pn_basis - 1),
-            pn_basis * std::pow(y, pn_basis - 1)
-        };
+        NUMTOOL::TENSOR::FIXED_SIZE::Tensor<double, neq, ndim> deriv{{  
+            {
+                pn_basis * std::pow(x, pn_basis - 1),
+                pn_basis * std::pow(y, pn_basis - 1)
+            },
+            {
+                pn_basis * std::pow(x, pn_basis - 1),
+                0.0
+            },
+            {
+                0.0,
+                pn_basis * std::pow(y, pn_basis - 1)
+            },
+        }};
         return deriv;
     };
 
@@ -261,15 +273,35 @@ TEST(test_fespace, test_dg_projection){
         double y = xarr[1];
         int n = pn_basis;
         if (pn_basis < 2){
-            NUMTOOL::TENSOR::FIXED_SIZE::Tensor<double, ndim, ndim> hess = {{
-                {0, 0},
-                {0, 0}
+            NUMTOOL::TENSOR::FIXED_SIZE::Tensor<double, neq, ndim, ndim> hess{{
+                {{
+                    {0, 0},
+                    {0, 0}
+                }},
+                {{
+                    {0, 0},
+                    {0, 0}
+                }},
+                {{
+                    {0, 0},
+                    {0, 0}
+                }}
             }};
             return hess;
         } else {
-            NUMTOOL::TENSOR::FIXED_SIZE::Tensor<double, ndim, ndim> hess = {{
-                {n * (n-1) *std::pow(x, n-2), 0.0},
-                {0.0, n * (n-1) *std::pow(y, n-2)}
+            NUMTOOL::TENSOR::FIXED_SIZE::Tensor<double, neq, ndim, ndim> hess = {{
+                {{
+                    {n * (n-1) *std::pow(x, n-2), 0.0},
+                    {0.0, n * (n-1) *std::pow(y, n-2)}
+                }},
+                {{
+                    {n * (n-1) *std::pow(x, n-2), 0.0},
+                    {0.0, 0.0}
+                }},
+                {{
+                    {0.0, 0.0},
+                    {0.0, n * (n-1) *std::pow(y, n-2)}
+                }}
             }};
             return hess;
         }
@@ -286,12 +318,12 @@ TEST(test_fespace, test_dg_projection){
     // solve the projection 
     std::for_each(fespace.elements.begin(), fespace.elements.end(),
         [&](const FiniteElement<T, IDX, ndim> &el){
-            compact_layout_right<IDX, 1> el_layout{el};
+            compact_layout_right<IDX, neq> el_layout{el};
             T *u_local = new T[el_layout.size()](); // 0 initialized 
-            dofspan<T, compact_layout_right<IDX, 1>> u_local_span(u_local, el_layout);
+            dofspan<T, compact_layout_right<IDX, neq>> u_local_span(u_local, el_layout);
 
             T *res_local = new T[el_layout.size()](); // 0 initialized 
-            dofspan<T, compact_layout_right<IDX, 1>> res_local_span(res_local, el_layout);
+            dofspan<T, compact_layout_right<IDX, neq>> res_local_span(res_local, el_layout);
             
             // projection residual
             projection.domain_integral(el, res_local_span);
@@ -306,15 +338,17 @@ TEST(test_fespace, test_dg_projection){
                 MATH::GEOMETRY::Point<T, ndim> phys_pt = el.transform(ref_pt);
                 
                 // get the actual value of the function at the given point in the physical domain
-                T act_val;
-                projfunc(phys_pt, &act_val);
+                std::array<T, neq> act_vals;
+                projfunc(phys_pt, act_vals.data());
 
-                T projected_val = 0;
+                std::array<T, neq> projected_vals;
+                std::ranges::fill(projected_vals, 0);
                 T *basis_vals = new double[el.nbasis()];
                 el.eval_basis(ref_pt, basis_vals);
-                u_local_span.contract_dofs(basis_vals, &projected_val);
+                u_local_span.contract_dofs(basis_vals, projected_vals.data());
 
-                ASSERT_NEAR(projected_val, act_val, 1e-8);
+                for(int ieq = 0; ieq < neq; ++ieq)
+                    ASSERT_NEAR(projected_vals[ieq], act_vals[ieq], 1e-8);
 
                 // test the derivatives
                 std::vector<double> grad_basis_data(el.nbasis() * ndim);
@@ -327,8 +361,10 @@ TEST(test_fespace, test_dg_projection){
                 auto grad_eq = u_local_span.contract_mdspan(grad_basis, grad_eq_data.data());
 
                 auto dproj = dprojfunc(phys_pt);
-                ASSERT_NEAR(dproj[0], (grad_eq[0, 0]), 1e-10);
-                ASSERT_NEAR(dproj[1], (grad_eq[0, 1]), 1e-10);
+                for(int ieq = 0; ieq < neq; ++ieq){
+                    ASSERT_NEAR(dproj[ieq][0], (grad_eq[ieq, 0]), 1e-10);
+                    ASSERT_NEAR(dproj[ieq][1], (grad_eq[ieq, 1]), 1e-10);
+                }
 
                 // test hessian
                 std::vector<double> hess_basis_data(el.nbasis() * ndim * ndim);
@@ -338,10 +374,12 @@ TEST(test_fespace, test_dg_projection){
                 std::vector<double> hess_eq_data(neq * ndim * ndim, 0);
                 auto hess_eq = u_local_span.contract_mdspan(hess_basis, hess_eq_data.data());
                 auto hess_proj = hessfunc(phys_pt);
-                ASSERT_NEAR(hess_proj[0][0], (hess_eq[0, 0, 0]), 1e-8);
-                ASSERT_NEAR(hess_proj[0][1], (hess_eq[0, 0, 1]), 1e-8);
-                ASSERT_NEAR(hess_proj[1][0], (hess_eq[0, 1, 0]), 1e-8);
-                ASSERT_NEAR(hess_proj[1][1], (hess_eq[0, 1, 1]), 1e-8);
+                for(int ieq = 0; ieq < neq; ++ieq){
+                    ASSERT_NEAR(hess_proj[ieq][0][0], (hess_eq[ieq, 0, 0]), 1e-8);
+                    ASSERT_NEAR(hess_proj[ieq][0][1], (hess_eq[ieq, 0, 1]), 1e-8);
+                    ASSERT_NEAR(hess_proj[ieq][1][0], (hess_eq[ieq, 1, 0]), 1e-8);
+                    ASSERT_NEAR(hess_proj[ieq][1][1], (hess_eq[ieq, 1, 1]), 1e-8);
+                }
 
                 delete[] basis_vals;
             }

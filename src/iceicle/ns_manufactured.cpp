@@ -18,6 +18,7 @@ using namespace std;
 using T = double;
 using IDX = int;
 
+double mu_arg = 0.1;
 
 void exact(const double *xvec, double *uvec)
 {
@@ -27,8 +28,33 @@ void exact(const double *xvec, double *uvec)
   uvec[0] = sin(2 * (x + y)) + 4; 
   uvec[1] = sin(2 * (x + y)) + 4; 
   uvec[2] = sin(2 * (x + y)) + 4; 
-  uvec[3] = pow(sin(2 * (x + y) + 4), 2); 
+  uvec[3] = pow(sin(2 * (x + y)) + 4, 2); 
+
+  uvec[0] = 1.0 + x;
+  uvec[1] = 1.0 + x;
+  uvec[2] = 1.0 + x;
+  uvec[3] = pow(1.0 + x, 2);
 }
+
+// void exact(const double *xvec, double *uvec)
+// {
+//   double x = xvec[0];
+//   double y = xvec[1];
+//   uvec[0] = x + y + 1;
+//   uvec[1] = x + y + 1;
+//   uvec[2] = x + y + 1;
+//   uvec[3] = pow(x + y + 1, 2);
+// }
+
+// void exact(const double *xvec, double *uvec)
+// {
+//   double x = xvec[0];
+//   double y = xvec[1];
+//   uvec[0] = 1.0;
+//   uvec[1] = 1.0;
+//   uvec[2] = 1.0;
+//   uvec[3] = 1.0;
+// }
 
 void initial_condition(const double *xvec, double *uvec)
 {
@@ -39,12 +65,17 @@ void initial_condition(const double *xvec, double *uvec)
   uvec[1] = 0.2 * sin(1.5 * (x + y)) + 3;
   uvec[2] = 0.8 * sin(1.5 * (x + y)) + 3;
   uvec[3] = pow(sin(1.5 * (x + y)) + 3, 2);
+
+  uvec[0] = 0.5;
+  uvec[1] = 0.5;
+  uvec[2] = 0.5;
+  uvec[3] = 0.25;
 }
 
 void source(const double *xvec, double *s){
   double gamma = 1.4;
   double Pr = 0.72;
-  double mu = 0.1;
+  double mu = mu_arg;
   double x = xvec[0];
   double y = xvec[1];
 
@@ -56,7 +87,56 @@ void source(const double *xvec, double *s){
   s[3] = cos(2 * (x + y)) * (28 * gamma + 4)
     + 4 * gamma * sin(4 * (x + y)) 
     + 8 * mu * gamma / Pr * sin(2 * (x + y));
+
+  s[0] = 1.0;
+  s[1] = (gamma - 1) * (2 * x + 1) + 1;
+  s[2] = 1.0;
+  s[3] = 2 * x + (2 * x + 1) * (gamma - 1) + 2;
+
+  // negate for rhs
+  for(int ieq = 0; ieq < 4; ++ieq)
+    s[ieq] = -s[ieq];
 }
+
+// void source(const double *xvec, double *s){
+//   double gamma = 1.4;
+//   double Pr = 0.72;
+//   double mu = mu_arg;
+//   double x = xvec[0];
+//   double y = xvec[1];
+// 
+//   double u = (x + y + 1);
+//   double v = (x + y + 1);
+//   double rho_ui_uj = pow(x + y + 1, 2);
+//   double diff_rho_ui_uj = 2 * (x + y + 1);
+//   double diff_rho = 2;
+//   double drhoedx = 2 * (x + y + 1);
+//   double drhoedy = 2 * (x + y + 1);
+//   double drhoudx = 0;
+//   double dudy = 0;
+//   double dvdx = 0;
+//   double dvdy = 0;
+//   double dpdx = (gamma - 1) * (drhoedx + diff_rho);
+//   double dpdy = dpdx;
+//   double diff_E = 2;
+// 
+//   s[0] = 2 * diff_rho;
+//   s[1] = 2 * diff_rho_ui_uj + dpdx;
+//   s[2] = 2 * diff_rho_ui_uj + dpdy;
+//   s[3] = u * drhoedx + v * drhoedy + u * dpdx + v * dpdy 
+//     - mu * gamma / Pr * (diff_E + diff_E);
+// 
+//   // negate for rhs
+//   for(int ieq = 0; ieq < 4; ++ieq)
+//     s[ieq] = -s[ieq];
+// }
+
+//void source(const double *xvec, double *s){
+//  s[0] = 0;
+//  s[1] = 0;
+//  s[2] = 0;
+//  s[3] = 0;
+//}
 
 int main(int argc, char *argv[]) {
   PetscInitialize(&argc, &argv, nullptr, nullptr);
@@ -151,12 +231,25 @@ int main(int argc, char *argv[]) {
   navier_stokes::constant_viscosity<T> mu{0.1};
   navier_stokes::Physics physics{ref, eos, mu};
 
-  navier_stokes::Flux flux{physics};
+  navier_stokes::Flux flux{physics, std::true_type{}};
   navier_stokes::VanLeer numflux{physics};
-  navier_stokes::DiffusionFlux diffusion_flux{physics};
+  navier_stokes::DiffusionFlux diffusion_flux{physics, std::true_type{}};
 
   ConservationLawDDG conservation_law{std::move(flux), std::move(numflux), std::move(diffusion_flux)};
+  // conservation_law.interior_penalty = true;
   conservation_law.user_source = std::function{source};
+  conservation_law.field_names = std::vector<std::string>{"rho", "rhou"};
+  conservation_law.residual_names = std::vector<std::string>{"density_conservation", "momentum_u_conservation"};
+  if constexpr (ndim >= 2) {
+    conservation_law.field_names.push_back("rhov");
+    conservation_law.residual_names.push_back("momentum_v_conservation");
+  }
+  if constexpr (ndim >= 3) {
+    conservation_law.field_names.push_back("rhow");
+    conservation_law.residual_names.push_back("momentum_w_conservation");
+  }
+  conservation_law.field_names.push_back("rhoe");
+  conservation_law.residual_names.push_back("energy_conservation");
   constexpr int neq =
       std::remove_reference_t<decltype(conservation_law)>::nv_comp;
 
@@ -167,6 +260,7 @@ int main(int argc, char *argv[]) {
   std::vector<T> u_data(u_layout.size());
   fespan u{u_data.data(), u_layout};
   projection_initialization(fespace, std::function{initial_condition}, tmp::compile_int<neq>{}, u);
+  // projection_initialization(fespace, std::function{exact}, tmp::compile_int<neq>{}, u);
 
   io::PVDWriter<T, IDX, ndim> pvd_writer{};
   pvd_writer.register_fespace(fespace);
