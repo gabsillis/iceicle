@@ -64,8 +64,8 @@ return {
     -- post-processing
     post = {
         exact_solution = function(x, y)
-            --- local rho = math.sin(2 * (x + y)) + 4
-            local rho = 1 + x
+            local rho = math.sin(2 * (x + y)) + 4
+            -- local rho = 1 + x
             return { rho, rho * 1, rho * 1, rho ^ 2 }
         end,
 

@@ -30,10 +30,11 @@ void exact(const double *xvec, double *uvec)
   uvec[2] = sin(2 * (x + y)) + 4; 
   uvec[3] = pow(sin(2 * (x + y)) + 4, 2); 
 
-  uvec[0] = 1.0 + x;
-  uvec[1] = 1.0 + x;
-  uvec[2] = 1.0 + x;
-  uvec[3] = pow(1.0 + x, 2);
+  // option 2
+//   uvec[0] = 1.0 + x;
+//   uvec[1] = 1.0 + x;
+//   uvec[2] = 1.0 + x;
+//   uvec[3] = pow(1.0 + x, 2);
 }
 
 // void exact(const double *xvec, double *uvec)
@@ -66,10 +67,10 @@ void initial_condition(const double *xvec, double *uvec)
   uvec[2] = 0.8 * sin(1.5 * (x + y)) + 3;
   uvec[3] = pow(sin(1.5 * (x + y)) + 3, 2);
 
-  uvec[0] = 0.5;
-  uvec[1] = 0.5;
-  uvec[2] = 0.5;
-  uvec[3] = 0.25;
+//   uvec[0] = 0.5;
+//   uvec[1] = 0.5;
+//   uvec[2] = 0.5;
+//   uvec[3] = 0.25;
 }
 
 void source(const double *xvec, double *s){
@@ -79,19 +80,23 @@ void source(const double *xvec, double *s){
   double x = xvec[0];
   double y = xvec[1];
 
-  s[0] = 4 * cos(2 * (x + y));
-  s[1] = cos(2 * (x + y)) * (14 * gamma - 10)
-    + sin(4 * (x + y)) * (2 * gamma - 2);
-  s[2] = cos(2 * (x + y)) * (14 * gamma - 10)
-    + sin(4 * (x + y)) * (2 * gamma - 2);
-  s[3] = cos(2 * (x + y)) * (28 * gamma + 4)
-    + 4 * gamma * sin(4 * (x + y)) 
-    + 8 * mu * gamma / Pr * sin(2 * (x + y));
+  // s[0] = 4 * cos(2 * (x + y));
+  s[0] = 4 * cos(2 * (x + y)); 
 
-  s[0] = 1.0;
-  s[1] = (gamma - 1) * (2 * x + 1) + 1;
-  s[2] = 1.0;
-  s[3] = 2 * x + (2 * x + 1) * (gamma - 1) + 2;
+  s[1] = cos(2 * (x + y)) * (14 * gamma - 10)
+     + sin(4 * (x + y)) * (2 * gamma - 2);
+  s[2] = cos(2 * (x + y)) * (14 * gamma - 10)
+     + sin(4 * (x + y)) * (2 * gamma - 2);
+  s[3] = cos(2 * (x + y)) * (28 * gamma + 4)
+     + 4 * gamma * sin(4 * (x + y)) 
+     + 8 * mu * gamma / Pr * sin(2 * (x + y));
+
+
+  // option 2
+//   s[0] = 1.0;
+//   s[1] = (gamma - 1) * (2 * x + 1) + 1;
+//   s[2] = 1.0;
+//   s[3] = 2 * x + (2 * x + 1) * (gamma - 1) + 2;
 
   // negate for rhs
   for(int ieq = 0; ieq < 4; ++ieq)

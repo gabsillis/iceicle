@@ -444,7 +444,7 @@ namespace iceicle {
                         .p = p,
                         .csound = csound,
                         .e = e,
-                        .E = e,
+                        .E = E,
                         .H = H
                     };
                 } else if constexpr (variable_set == VARSET::RHO_U_T) {
@@ -485,7 +485,7 @@ namespace iceicle {
                         .p = p,
                         .csound = csound,
                         .e = e,
-                        .E = e,
+                        .E = E,
                         .H = H
                     };
                 } else { // variable_set == VARSET::RHO_U_P
@@ -525,7 +525,7 @@ namespace iceicle {
                         .p = p,
                         .csound = csound,
                         .e = e,
-                        .E = e,
+                        .E = E,
                         .H = H
                     };
 
