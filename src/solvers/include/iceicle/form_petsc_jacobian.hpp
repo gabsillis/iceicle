@@ -297,48 +297,18 @@ namespace iceicle::solvers {
             mdspan jac_el{jacL_data.data(), extents{res_el.size(), u_el.size()}};
             std::fill_n(jacL_data.begin(), jac_el.size(), 0);
 
+
             // extract the compact values from the global u view 
             extract_elspan(el.elidx, u, u_el);
 
             res_el = 0;
             disc.domain_integral(el, u_el, res_el);
+            disc.domain_integral_jacobian(el, u_el, jac_el); // TODO: combine
 
             // get the global index to the start of the contiguous component x dof range for L/R elem
             std::size_t glob_index_el = u.get_layout()[el.elidx, 0, 0];
             // send residual to global residual 
             scatter_elspan(el.elidx, 1.0, res_el, 1.0, res);
-
-            // set up the perturbation amount scaled by unperturbed residual 
-            T eps_scaled = scale_fd_epsilon(epsilon, res_el.vector_norm());
-
-            // perturb and form jacobian wrt u_el
-            for(IDX idofu = 0; idofu < el.nbasis(); ++idofu){
-                for(IDX iequ = 0; iequ < ncomp; ++iequ){
-                    // get the compact column index for this dof and component 
-                    IDX jcol = u_el.get_layout()[idofu, iequ];
-
-                    // perturb
-                    T old_val = u_el[idofu, iequ];
-                    u_el[idofu, iequ] += eps_scaled;
-
-                    // zero out the residual 
-                    resp_el = 0;
-
-                    // get the perturbed residual
-                    disc.domain_integral(el, u_el, resp_el);
-
-                    // fill jacobian for this perturbation
-                    for(IDX idoff = 0; idoff < el.nbasis(); ++idoff) {
-                        for(IDX ieqf = 0; ieqf < ncomp; ++ieqf){
-                            IDX irow = u_el.get_layout()[idoff, ieqf];
-                            jac_el[irow, jcol] += (resp_el[idoff, ieqf] - res_el[idoff, ieqf]) / eps_scaled;
-                        }
-                    }
-
-                    // undo the perturbation
-                    u_el[idofu, iequ] = old_val;
-                }
-            }
 
             // TODO: change to a scatter generalized operation to support CG structures
             petsc::add_to_petsc_mat(jac, proc_range_beg + glob_index_el, 

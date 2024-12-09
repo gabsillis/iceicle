@@ -3,10 +3,12 @@
 #include "Numtool/fixed_size_tensor.hpp"
 #include "Numtool/point.hpp"
 #include "iceicle/element/finite_element.hpp"
+#include "iceicle/fd_utils.hpp"
 #include "iceicle/fe_function/fespan.hpp"
 #include "iceicle/geometry/face.hpp"
 #include "iceicle/mesh/mesh.hpp"
 #include <cmath>
+#include <limits>
 #include <string>
 #include <type_traits>
 #include <vector>
@@ -308,6 +310,124 @@ namespace iceicle {
                         }
                     }
                 }
+            }
+        }
+
+        template<class IDX>
+        auto domain_integral_jacobian(
+            const FiniteElement<T, IDX, ndim>& el,
+            elspan auto unkel,
+            linalg::out_matrix auto dfdu
+        ) {
+            static constexpr int neq = decltype(unkel)::static_extent();
+            static_assert(neq == PFlux::nv_comp, "Number of equations must match.");
+            using namespace NUMTOOL::TENSOR::FIXED_SIZE;
+            // basis function scratch space
+            std::vector<T> dbdx_data(el.nbasis() * ndim);
+
+            // solution scratch space
+            std::array<T, neq> u;
+            std::array<T, neq * ndim> gradu_data;
+
+            // get the degree of freedom layout for the element 
+            auto el_layout = unkel.get_layout();
+
+            // loop over the quadrature points
+            for(int iqp = 0; iqp < el.nQP(); ++iqp){
+                const QuadraturePoint<T, ndim> &quadpt = el.getQP(iqp);
+
+                // calculate the jacobian determinant 
+                auto J = el.jacobian(quadpt.abscisse);
+                T detJ = NUMTOOL::TENSOR::FIXED_SIZE::determinant(J);
+                // prevent duplicate contribution of overlapping range in transformation
+                // this occurs in concave elements
+                detJ = std::max((T) 0.0, detJ); 
+
+                // get the basis functions and gradients in the physical domain
+                auto bi = el.eval_basis_qp(iqp);
+                auto gradxBi = el.eval_phys_grad_basis(quadpt.abscisse, J,
+                        el.eval_grad_basis_qp(iqp), dbdx_data.data());
+
+                // construct the solution U at the quadrature point 
+                std::ranges::fill(u, 0.0);
+                for(int ibasis = 0; ibasis < el.nbasis(); ++ibasis){
+                    for(int ieq = 0; ieq < neq; ++ieq){
+                        u[ieq] += unkel[ibasis, ieq] * bi[ibasis];
+                    }
+                }
+
+                // construct the gradient of u 
+                auto gradu = unkel.contract_mdspan(gradxBi, gradu_data.data());
+
+                // compute the jacobian of the physical flux 
+                // with respect to field variables
+                // and gradients
+                Tensor<T, neq, ndim> flux = phys_flux(u, gradu);
+                T epsilon = scale_fd_epsilon(
+                    std::sqrt(std::numeric_limits<T>::epsilon()),
+                    frobenius(flux)
+                );
+
+                Tensor<T, neq, ndim, neq> dflux_du;
+                Tensor<T, neq, ndim, neq, ndim> dflux_dgradu;
+                for(int jeq = 0; jeq < neq; ++jeq){
+
+                    // peturb u
+                    T u_old = u[jeq];
+                    u[jeq] += epsilon;
+                    Tensor<T, neq, ndim> flux_p = phys_flux(u, gradu);
+                    Tensor<T, neq, ndim> diff = (flux_p - flux) / epsilon;
+                    for(int ieq = 0; ieq < neq; ++ieq){
+                        for(int idim = 0; idim < ndim; ++idim){
+                            dflux_du[ieq, idim, jeq] =
+                                diff[ieq, idim];
+                        }
+                    }
+                    u[jeq] = u_old;
+
+                    // peturb grad u
+                    for(int jdim = 0; jdim < ndim; ++jdim){
+                        T gradu_old = gradu[jeq, jdim];
+                        gradu[jeq, jdim] += epsilon;
+                    
+                        Tensor<T, neq, ndim> flux_p = phys_flux(u, gradu);
+                        Tensor<T, neq, ndim> diff = (flux_p - flux) / epsilon;
+                        for(int ieq = 0; ieq < neq; ++ieq){
+                            for(int idim = 0; idim < ndim; ++idim){
+                                dflux_dgradu[ieq, idim, jeq, jdim] =
+                                    diff[ieq, idim];
+                            }
+                        }
+                        gradu[jeq, jdim] = gradu_old;
+                    }
+                }
+                
+                // loop over the test functions and construct the jacobian
+                for(int itest = 0; itest < el.nbasis(); ++itest){
+                    for(int ieq = 0; ieq < neq; ++ieq){
+                        for(int idim = 0; idim < ndim; ++idim){
+                            for(int jdof = 0; jdof < el.nbasis(); ++jdof){
+                                for(int jeq = 0; jeq < neq; ++jeq){
+                                    // one-dimensional jacobian indices
+                                    auto ijac = el_layout[itest, ieq];
+                                    auto jjac = el_layout[jdof, jeq];
+                                    dfdu[ijac, jjac] += 
+                                        dflux_du[ieq, idim, jeq] * bi[jdof] 
+                                        * gradxBi[itest, idim] * detJ * quadpt.weight;
+                                    for(int jdim = 0; jdim < ndim; ++jdim){
+                                        dfdu[ijac, jjac] += 
+                                            dflux_dgradu[ieq, idim, jeq, jdim] * gradxBi[jdof, jdim] 
+                                            * gradxBi[itest, idim] * detJ * quadpt.weight;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // source has no dependence on U 
+                // therefore no contribution to 
+                // jacobian
             }
         }
 
