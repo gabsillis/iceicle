@@ -435,19 +435,22 @@ Uniform Mesh
 
 All simulations need a mesh to define and partition the geometric domain. Currently only uniform hyper-cube mesh generation is supported.
 
-:code:`uniform_mesh` : creates a uniform mesh 
+:code:`uniform_mesh` : creates a uniform mesh. There are two sets of supported inputs: bounding box and number of elements in each direction, or a table of nodes for each dimension.
 
 **Required Members**
+* Option 1: bounding box
+   * :code:`nelem` : the number of elements in each direction
 
-* :code:`nelem` : the number of elements in each direction
+     This is a table of size ``ndim`` and is ordered in axis order (x, y, z, ...)
 
-  This is a table of size ``ndim`` and is ordered in axis order (x, y, z, ...)
+   * :code:`bounding_box` : the bounding box of the mesh 
 
-* :code:`bounding_box` : the bounding box of the mesh 
+      * :code:`min` : the minimal corner of the mesh - if the mesh is the bi-unit hypercube, this is the :math:`\begin{pmatrix} -1 & -1 & ... \end{pmatrix}^T` corner of the mesh
 
-   * :code:`min` : the minimal corner of the mesh - if the mesh is the bi-unit hypercube, this is the :math:`\begin{pmatrix} -1 & -1 & ... \end{pmatrix}^T` corner of the mesh
+      * :code:`max` : the maximal corner of the mesh - if the mesh is the bi-unit hypercube, this is the :math:`\begin{pmatrix} 1 & 1 & ... \end{pmatrix}^T` corner of the mesh
 
-   * :code:`max` : the maximal corner of the mesh - if the mesh is the bi-unit hypercube, this is the :math:`\begin{pmatrix} 1 & 1 & ... \end{pmatrix}^T` corner of the mesh
+* Option 2: nodes by dimension 
+   * :code:`directional_nodes` a table of tables, there must be ``ndim`` tables inside directional_nodes. Each table contains the nodes in that direction. The mesh nodes will be the cartesian product of these arrays.
 
 * :code:`boundary_conditions` : table to define the boundary condition identifiers for the domain faces 
 

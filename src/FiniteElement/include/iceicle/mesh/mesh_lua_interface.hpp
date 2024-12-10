@@ -16,29 +16,13 @@
 namespace iceicle {
 
     /**
-     * @brief construct a uniform mesh from inputs provided in a lua state 
+     * @brief construct a uniform mesh from inputs provided in a lua table
      */
     template<class T, class IDX, int ndim>
-    AbstractMesh<T, IDX, ndim> lua_uniform_mesh(sol::state &lua_state){
+    [[nodiscard]]
+    auto lua_uniform_mesh(sol::table& mesh_table)
+    -> std::optional<AbstractMesh<T, IDX, ndim>> {
         using namespace NUMTOOL::TENSOR::FIXED_SIZE;
-        sol::table mesh_table = lua_state["uniform_mesh"];
-
-        // read nelem in each direction
-        Tensor<IDX, ndim> nelem;
-        sol::table nelem_table = mesh_table["nelem"];
-        for(int idim = 0; idim < ndim; ++idim ){
-            nelem[idim] = nelem_table[idim + 1]; // NOTE: Lua is 1-indexed
-        }
-
-        // bounding box
-        Tensor<T, ndim> xmin;
-        Tensor<T, ndim> xmax;
-        sol::table bounding_box_table = mesh_table["bounding_box"];
-        for(int idim = 0; idim < ndim; ++idim){
-            xmin[idim] = bounding_box_table["min"][idim + 1];
-            xmax[idim] = bounding_box_table["max"][idim + 1];
-        }
-
         // boundary conditions
         Tensor<BOUNDARY_CONDITIONS, 2 * ndim> bctypes;
         for(int iside = 0; iside < 2 * ndim; ++iside){
@@ -53,13 +37,64 @@ namespace iceicle {
         }
 
         // optional geometry order input
-        int geometry_order = 1;
-        sol::optional<int> geo_order_input = lua_state["uniform_mesh"]["geometry_order"];
-        if(geo_order_input){
-            geometry_order = geo_order_input.value();
-        }
+        int geometry_order = mesh_table.get_or("geometry_order", 1);
 
-        return AbstractMesh<T, IDX, ndim>{xmin, xmax, nelem, geometry_order, bctypes, bcflags};
+        // bounding box
+        Tensor<T, ndim> xmin;
+        Tensor<T, ndim> xmax;
+        sol::optional<sol::table> bounding_box_table = mesh_table["bounding_box"];
+        if(bounding_box_table){
+            // read nelem in each direction
+            Tensor<IDX, ndim> nelem;
+            sol::table nelem_table = mesh_table["nelem"];
+            for(int idim = 0; idim < ndim; ++idim ){
+                nelem[idim] = nelem_table[idim + 1]; // NOTE: Lua is 1-indexed
+            }
+            for(int idim = 0; idim < ndim; ++idim){
+                xmin[idim] = bounding_box_table.value()["min"][idim + 1];
+                xmax[idim] = bounding_box_table.value()["max"][idim + 1];
+            }
+            return std::optional{
+                AbstractMesh<T, IDX, ndim>{xmin, xmax, nelem, geometry_order, bctypes, bcflags}};
+        } else {
+            // NOTE: nelem will be inferred
+            sol::optional<sol::table> nodes_1d_table_opt = mesh_table["directional_nodes"];
+            if(nodes_1d_table_opt) {
+                sol::table nodes_1d_table = nodes_1d_table_opt.value();
+                if(nodes_1d_table.size() != ndim){
+                    util::AnomalyLog::log_anomaly("directional_nodes table does not have ndim tables of nodes");
+                    return std::nullopt;
+                }
+                std::array<IDX, ndim> nelem;
+                std::array<std::vector<T>, ndim> nodes_1d;
+                for(int idim = 0; idim < ndim; ++idim) {
+                    sol::optional<sol::table> nodes_dir_opt = nodes_1d_table[idim + 1];
+                    if(!nodes_dir_opt.has_value()) {
+                        util::AnomalyLog::log_anomaly("dimension " + std::to_string(idim + 1) + "nodes table not found" );
+                        return std::nullopt;
+                    }
+                    sol::table nodes_dir = nodes_1d_table[idim + 1];
+                    nelem[idim] = nodes_dir.size() - 1;
+                    nodes_1d[idim].reserve(nelem[idim] + 1);
+                    for(int inode = 0; inode < nelem[idim] + 1; ++inode){
+                        nodes_1d[idim].push_back(nodes_dir[inode + 1]);
+                    }
+                }
+                return std::optional{AbstractMesh<T, IDX, ndim>{nodes_1d, geometry_order, bctypes, bcflags}};
+            } else {
+                return std::nullopt;
+            }
+        }
+    }
+
+    /**
+     * @brief construct a uniform mesh from inputs provided in a lua state 
+     */
+    template<class T, class IDX, int ndim>
+    std::optional<AbstractMesh<T, IDX, ndim>> lua_uniform_mesh(sol::state &lua_state){
+        using namespace NUMTOOL::TENSOR::FIXED_SIZE;
+        sol::table mesh_table = lua_state["uniform_mesh"];
+        return lua_uniform_mesh<T, IDX, ndim>(mesh_table);
     }
 
     /// @brief read in a manually created user defined mesh 
@@ -210,50 +245,6 @@ namespace iceicle {
         }
     }
 
-    /**
-     * @brief construct a uniform mesh from inputs provided in a lua table
-     */
-    template<class T, class IDX, int ndim>
-    [[nodiscard]] AbstractMesh<T, IDX, ndim> lua_uniform_mesh(sol::table& mesh_table){
-        using namespace NUMTOOL::TENSOR::FIXED_SIZE;
-        // read nelem in each direction
-        Tensor<IDX, ndim> nelem;
-        sol::table nelem_table = mesh_table["nelem"];
-        for(int idim = 0; idim < ndim; ++idim ){
-            nelem[idim] = nelem_table[idim + 1]; // NOTE: Lua is 1-indexed
-        }
-
-        // bounding box
-        Tensor<T, ndim> xmin;
-        Tensor<T, ndim> xmax;
-        sol::table bounding_box_table = mesh_table["bounding_box"];
-        for(int idim = 0; idim < ndim; ++idim){
-            xmin[idim] = bounding_box_table["min"][idim + 1];
-            xmax[idim] = bounding_box_table["max"][idim + 1];
-        }
-
-        // boundary conditions
-        Tensor<BOUNDARY_CONDITIONS, 2 * ndim> bctypes;
-        for(int iside = 0; iside < 2 * ndim; ++iside){
-            std::string bcname = mesh_table["boundary_conditions"]["types"][iside + 1];
-            bctypes[iside] = get_bc_from_name(bcname);
-        }
-
-        // boundary condition flags
-        Tensor<int, 2 * ndim> bcflags;
-        for(int iside = 0; iside < 2 * ndim; ++iside){
-            bcflags[iside] = mesh_table["boundary_conditions"]["flags"][iside + 1];
-        }
-
-        // optional geometry order input
-        int geometry_order = 1;
-        sol::optional<int> geo_order_input = mesh_table["geometry_order"];
-        if(geo_order_input){
-            geometry_order = geo_order_input.value();
-        }
-
-        return AbstractMesh<T, IDX, ndim>{xmin, xmax, nelem, geometry_order, bctypes, bcflags};
-    }
     template<class T, class IDX, int ndim>
     std::optional<AbstractMesh<T, IDX, ndim>> construct_mesh_from_config(sol::table config){
         using namespace util;
