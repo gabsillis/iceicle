@@ -35,6 +35,7 @@ endif()
 # ====================
 # = Compiler Options =
 # ====================
+option(ICEICLE_ASAN "Enable address sanitizer" OFF)
 option(ICEICLE_MARCH "Build with the march=native flag if in release mode" ON)
 option(ICEICLE_MTUNE "Build with the mtune=native flag if in release mode" ON)
 if(ICEICLE_MARCH)
@@ -48,6 +49,11 @@ endif()
 # release flags + debug info
 set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "-O3 -DNDEBUG -g")
 set(CMAKE_C_FLAGS_RELWITHDEBINFO "-O3 -DNDEBUG -g")
+# address sanitizer on debug
+if(ICEICLE_ASAN)
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=address")
+  set(CMAKE_LINKER_FLAGS "${CMAKE_LINKER_FLAGS} -fsanitize=address")
+endif()
 
 # ===============
 # = TPL OPTIONS =

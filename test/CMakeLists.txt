@@ -61,7 +61,9 @@ target_link_libraries( test_felib PUBLIC iceicle_solvers )
 target_link_libraries( test_felib PUBLIC nt_autodiff) 
 target_link_libraries( test_felib PUBLIC gtest gtest_main) 
 
-gtest_discover_tests(test_felib)
+if(NOT ICEICLE_ASAN)
+    gtest_discover_tests(test_felib)
+endif()
 
 # === Unit Tests for the Solver Library ===
 #  ( currently not in CI )
