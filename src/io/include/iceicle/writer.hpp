@@ -2,6 +2,7 @@
 /// @author Gianni Absillis (gabsill@ncsu.edu)
 
 #pragma once
+#include "iceicle/anomaly_log.hpp"
 #include "iceicle/pvd_writer.hpp"
 #include <iceicle/fespace/fespace.hpp>
 #include <iceicle/dat_writer.hpp>
@@ -36,6 +37,10 @@ namespace iceicle::io {
             writer.collection_name = new_name;
         }
     }
+
+    struct EmptyWriter { using value_type = double; };
+    inline auto write_file(EmptyWriter& writer, int itime, double time) -> void {}
+    namespace impl {inline auto rename_collection(EmptyWriter& writer, std::string_view new_name) -> void {} }
 
     /// @brief Type erasure class for things that can write values to file
     /// given a time index and time value
@@ -87,9 +92,9 @@ namespace iceicle::io {
 
 
         public:
-        Writer() = default;
+        Writer() : pimpl{std::make_unique<WriterModel<EmptyWriter>>(std::move(EmptyWriter{}))} {}
 
-        template< typename WriterT>
+        template< typename WriterT >
         Writer(WriterT writer) 
          : pimpl{std::make_unique<WriterModel<WriterT>>(std::move(writer))}
         {}

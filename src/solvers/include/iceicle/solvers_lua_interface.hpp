@@ -506,6 +506,13 @@ namespace iceicle::solvers {
                     if(writer) writer.write(solver.itime, solver.time);
                     if(residuals_writer) residuals_writer.write(solver.itime, solver.time);
                 };
+
+                // === Check for invalid state ===
+                if(AnomalyLog::size() > 0){
+                    AnomalyLog::handle_anomalies();
+                    return;
+                }
+
                 // =====================
                 // = Perform the solve =
                 // =====================
@@ -630,8 +637,16 @@ namespace iceicle::solvers {
                             writer_mdg.write(k, (T) k);
                         };
 
-                        // write the final iteration
+                        // === Check for invalid state ===
+                        if(AnomalyLog::size() > 0){
+                            AnomalyLog::handle_anomalies();
+                            return;
+                        }
+
+                        // solve 
                         IDX kfinal = solver.solve(u);
+
+                        // write the final iteration
                         std::cout << "itime: " << std::setw(6) << kfinal 
                             << " | Termination Criteria Reached"
                             << std::endl << std::endl;
