@@ -26,22 +26,17 @@ return {
     gmsh = {
         file = "../gmsh_meshes/naca.msh",
 
-        -- WARNING: right now this is in order of definition of 2D entities (curves/lines)
-        -- TODO: look into actually matching up physical tags
         bc_definitions = {
             -- 1: airfoil boundary
             { "slip wall", 0 },
 
-            -- 2: bottom wall
+            -- 2: bottom and top walls
             { "dirichlet", 0 },
 
             -- 3: outlet
             { "dirichlet", 0 },
 
-            -- 4: top wall
-            { "dirichlet", 0 },
-
-            -- 5: inlet
+            -- 4: inlet
             { "dirichlet", 0 },
         },
     },
@@ -85,7 +80,7 @@ return {
         type = "rk3-tvd",
         cfl = 0.5,
         ntime = 500000,
-        ivis = 100
+        ivis = 1
     },
 
     -- solver

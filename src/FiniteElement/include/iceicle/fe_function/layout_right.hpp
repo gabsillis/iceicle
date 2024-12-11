@@ -1,7 +1,84 @@
 #pragma once
 #include <iceicle/fe_function/layout_enums.hpp>
+#include <stdexcept>
 
 namespace iceicle {
+
+    /// @brief simple layout of the index space over a set of contiguous degrees of freedom 
+    /// vector components are the fastest (analagous to std::layout_right)
+    ///
+    /// @tparam IDX the index type 
+    /// @tparam vextent the extent of the vector component
+    template< class IDX, std::size_t vextent >
+    struct dof_layout_right {
+
+        // ============
+        // = Typedefs =
+        // ============
+        using index_type = IDX;
+        using size_type = std::make_unsigned_t<IDX>;
+
+        // ===========
+        // = Members =
+        // ===========
+
+        /// @brief the number of degrees of freedom represented by this layout
+        std::size_t _ndof;
+
+        // ==============
+        // = Properties =
+        // ==============
+
+        /// @brief this makes no garuantees about contiguous degrees of freedom with respect to elements
+        inline static constexpr auto local_dof_contiguous() -> bool { return false; }
+
+        /// @brief static access to the extents 
+        inline static constexpr auto static_extent() noexcept -> std::size_t 
+        { return vextent; }
+
+        // =========
+        // = Sizes =
+        // =========
+        /// @brief get the number of degrees of freedom
+        [[nodiscard]] inline constexpr auto ndof() const noexcept -> size_type 
+        { return _ndof; }
+
+        /// @brief get the number of vector components
+        [[nodiscard]] inline constexpr auto nv() const noexcept -> size_type { return vextent; }
+
+        /// @brief the size of the compact index space
+        [[nodiscard]] inline constexpr auto size() const noexcept -> size_type { return ndof() * nv(); }
+
+        // ============
+        // = Indexing =
+        // ============
+#ifndef NDEBUG 
+        inline static constexpr bool index_noexcept = false;
+#else 
+        inline static constexpr bool index_noexcept = true;
+#endif
+
+        /**
+         * Get the result of the mapping from an index pair 
+         * to the one dimensional index of the elment 
+         * @param idof the degree of freedom index 
+         * @param iv the vector component index
+         */
+        [[nodiscard]] constexpr auto operator[](
+            index_type idof,
+            index_type iv
+        ) const noexcept(index_noexcept) -> index_type {
+#ifndef NDEBUG
+            // Bounds checking version in debug 
+            // NOTE: allow indexing ndof()
+            // for nodes that arent in inv_selected_nodes but still 
+            // valid gdofs
+            if(idof < 0  || idof >= ndof()  ) throw std::out_of_range("Dof index out of range");
+            if(iv < 0    || iv >= nv()      ) throw std::out_of_range("Vector compoenent index out of range");
+#endif
+           return idof * nv() + iv; 
+        }
+    };
 
     /**
      * @brief a dg layout of the index space where the 
@@ -68,7 +145,8 @@ namespace iceicle {
          * meaning that the data for a an element can be block copied 
          * to a elspan provided the layout parameters are the same
          */
-        inline static constexpr bool local_dof_contiguous() noexcept { return true; }
+        inline static constexpr bool local_dof_contiguous() noexcept {
+            return dof_mapping_type::local_dof_contiguous(); }
 
         /// @brief static access to the extents 
         inline static constexpr std::size_t static_extent() noexcept {

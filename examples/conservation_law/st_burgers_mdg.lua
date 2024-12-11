@@ -7,7 +7,7 @@ return {
 	ndim = 2,
 
 	-- create a uniform mesh
-	uniform_mesh = {
+	mixed_uniform_mesh = {
 		nelem = { 10, 10 },
 		bounding_box = {
 			min = { 0.0, 0.0 },
@@ -39,13 +39,13 @@ return {
 	-- define the finite element domain
 	fespace = {
 		-- the basis function type (optional: default = lagrange)
-		basis = "legendre",
+		basis = "lagrange",
 
 		-- the quadrature type (optional: default = gauss)
 		quadrature = "gauss",
 
 		-- the basis function order
-		order = 4,
+		order = 2,
 	},
 
 	-- describe the conservation law
@@ -56,6 +56,8 @@ return {
 		a_adv = { 0.0 },
 		b_adv = { 1.0 },
 	},
+
+	restart = "mu2e-3",
 
 	-- initial condition
 	initial_condition = function(x, t)
@@ -90,12 +92,14 @@ return {
 		linesearch = {
 			type = "none",
 		},
-		lambda_b = 1e-1,
-		lambda_u = 0,
+		lambda_b = .001,
+		lambda_lag = 1.0,
+		lambda_u = 1e-8,
 		ivis = 1,
+		idiag = 1,
 		tau_abs = 1e-10,
 		tau_rel = 0,
-		kmax = 800,
+		kmax = 1000,
 	},
 
 	-- output

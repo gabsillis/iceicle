@@ -1141,23 +1141,44 @@ TEST( test_hypercube_transform, test_hessian ) {
 
 TEST(test_hypercube_transform, test_get_element_vert){
 
-  HypercubeElementTransformation<double, int, 3, 2> trans{};
+  {
+    HypercubeElementTransformation<double, int, 3, 2> trans{};
 
-  int gnodes[trans.n_nodes()];
-  for(int i = 0; i < trans.n_nodes(); ++i) gnodes[i] = i;
+    int gnodes[trans.n_nodes()];
+    for(int i = 0; i < trans.n_nodes(); ++i) gnodes[i] = i;
 
-  int gvert[trans.n_vert()];
+    int gvert[trans.n_vert()];
 
-  trans.get_element_vert(gnodes, gvert);
+    trans.get_element_vert(gnodes, gvert);
 
-  ASSERT_EQ(gvert[0], 0);
-  ASSERT_EQ(gvert[1], 2);
-  ASSERT_EQ(gvert[2], 6);
-  ASSERT_EQ(gvert[3], 8);
-  ASSERT_EQ(gvert[4], 18);
-  ASSERT_EQ(gvert[5], 20);
-  ASSERT_EQ(gvert[6], 24);
-  ASSERT_EQ(gvert[7], 26);
+    ASSERT_EQ(gvert[0], 0);
+    ASSERT_EQ(gvert[1], 2);
+    ASSERT_EQ(gvert[2], 6);
+    ASSERT_EQ(gvert[3], 8);
+    ASSERT_EQ(gvert[4], 18);
+    ASSERT_EQ(gvert[5], 20);
+    ASSERT_EQ(gvert[6], 24);
+    ASSERT_EQ(gvert[7], 26);
+  }
+  {
+    HypercubeElementTransformation<double, int, 3, 3> trans{};
+
+    int gnodes[trans.n_nodes()];
+    for(int i = 0; i < trans.n_nodes(); ++i) gnodes[i] = i;
+
+    int gvert[trans.n_vert()];
+
+    trans.get_element_vert(gnodes, gvert);
+
+    ASSERT_EQ(gvert[0], 0);
+    ASSERT_EQ(gvert[1], 3);
+    ASSERT_EQ(gvert[2], 12);
+    ASSERT_EQ(gvert[3], 15);
+    ASSERT_EQ(gvert[4], 48);
+    ASSERT_EQ(gvert[5], 51);
+    ASSERT_EQ(gvert[6], 60);
+    ASSERT_EQ(gvert[7], 63);
+  }
 }
 
 TEST(test_hypercube_transform, test_get_face_vert){

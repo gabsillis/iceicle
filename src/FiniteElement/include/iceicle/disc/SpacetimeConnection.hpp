@@ -12,6 +12,33 @@
 
 namespace iceicle {
 
+    template<class riemann_t>
+    concept calculates_wavespeed = 
+    requires(
+        const riemann_t& riemann_solver,
+        std::array<typename riemann_t::value_type, riemann_t::nv_comp> uL,
+        std::array<typename riemann_t::value_type, riemann_t::nv_comp> uR
+    ){
+        {riemann_solver.wavespeeds(uL, uR)} 
+            -> std::same_as< std::vector< typename riemann_t::value_type > >;
+    };
+
+    template<class T, class IDX, int ndim, 
+        class LayoutPolicy, class AccessorPolicy, class riemann_t>
+    auto extrude_mesh( 
+        FESpace<T, IDX, ndim>& fespace,
+        fespan<T, LayoutPolicy, AccessorPolicy> u,
+        riemann_t riemann_solver,
+        std::function<void(const T*, T*)> ic,
+        T tfinal
+    ) -> std::optional< AbstractMesh<T, IDX, ndim + 1> > 
+    {
+        AbstractMesh<T, IDX, ndim>& mesh_old = *(fespace.meshptr);
+        if constexpr(calculates_wavespeed<riemann_t>){
+
+        }
+    }
+
     /**
      *
      *  NOTE: we assume the time dimension is always the last

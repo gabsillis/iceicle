@@ -238,7 +238,9 @@ namespace iceicle::io {
                 auto &field = *(fields[i]);
                 std::filesystem::path field_path = data_directory;
                 std::string name = (i % 2 == 0) ? "fieldset" : "endpoints";
-                field_path /= (name + std::to_string(i / 2)
+                field_path /= 
+                        collection_name + "_"
+                        + (name + std::to_string(i / 2)
                         + "_rank" + std::to_string(mpi::mpi_world_rank())
                         + "_i" + std::to_string(itime)
                         + ".dat");

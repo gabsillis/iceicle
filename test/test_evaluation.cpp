@@ -43,17 +43,18 @@ TEST(test_evaluation, test_2d_quad) {
 
     FiniteElement<double, int, ndim> el{trans_ptr, &basis, &quadrule, evals, inodes, coord, elidx};
 
-    // make the basis evaluation at a random point
-    auto domain_pt = random_domain_point(trans_ptr);
-    BasisEvaluation eval{basis, domain_pt};
+    for(int k = 0; k < 1000; ++k){
+        // make the basis evaluation at a random point
+        auto domain_pt = random_domain_point(trans_ptr);
+        BasisEvaluation eval{basis, domain_pt};
 
-    {
         double xi = domain_pt[0];
         double eta = domain_pt[1];
+        SCOPED_TRACE("Reference Domain Point: (" + std::to_string(xi) + ", " + std::to_string(eta) + ")");
 
-        ASSERT_DOUBLE_EQ(eval.bi_span[0], (xi - 1) * (eta - 1) / 4);
-        ASSERT_DOUBLE_EQ(eval.bi_span[1], -(xi - 1) * (eta + 1) / 4);
-        ASSERT_DOUBLE_EQ(eval.bi_span[2], -(xi + 1) * (eta - 1) / 4);
-        ASSERT_DOUBLE_EQ(eval.bi_span[3], (xi + 1) * (eta + 1) / 4);
+        ASSERT_NEAR(eval.bi_span[0], (xi - 1) * (eta - 1) / 4 , std::numeric_limits<double>::epsilon());
+        ASSERT_NEAR(eval.bi_span[1], -(xi - 1) * (eta + 1) / 4, std::numeric_limits<double>::epsilon());
+        ASSERT_NEAR(eval.bi_span[2], -(xi + 1) * (eta - 1) / 4, std::numeric_limits<double>::epsilon());
+        ASSERT_NEAR(eval.bi_span[3], (xi + 1) * (eta + 1) / 4 , std::numeric_limits<double>::epsilon());
     }
 }

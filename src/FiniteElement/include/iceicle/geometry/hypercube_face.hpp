@@ -23,9 +23,9 @@ namespace iceicle {
         static constexpr int ndim = 2;
         static constexpr int nnode = 2;
         using FaceBase = Face<T, IDX, ndim>;
-        using Point = FaceBase::Point;
-        using FacePoint = FaceBase::FacePoint;
-        using JacobianType = FaceBase::JacobianType;
+        using Point = typename FaceBase::Point;
+        using FacePoint = typename FaceBase::FacePoint;
+        using JacobianType = typename FaceBase::JacobianType;
 
         std::array<IDX, nnode> _nodes;
 
@@ -180,9 +180,9 @@ namespace iceicle {
     class HypercubeFace final : public Face<T, IDX, ndim> {
         public:
         using FaceBase = Face<T, IDX, ndim>;
-        using Point = FaceBase::Point;
-        using FacePoint = FaceBase::FacePoint;
-        using JacobianType = FaceBase::JacobianType;
+        using Point = typename FaceBase::Point;
+        using FacePoint = typename FaceBase::FacePoint;
+        using JacobianType = typename FaceBase::JacobianType;
 
         inline static auto orient_trans = hypercube_orient_trans<T, IDX, ndim>;
         inline static auto trans = hypercube_trans<T, IDX, ndim, Pn>;

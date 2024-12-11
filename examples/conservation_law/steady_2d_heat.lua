@@ -36,19 +36,38 @@ local nelem_arg = 10
 local mu = 1.0
 local tfinal = 1.0
 
+local non_uniform_coord = function(xmin, xmax, nelem, element_ratio)
+	local dx = xmax / (nelem // 2 + element_ratio * (nelem // 2));
+
+	-- Make the nodes
+	local coord = { xmin };
+	for inode = 1, nelem do
+		if inode % 2 == 0 then
+			coord[inode + 1] = coord[inode] + dx
+		else
+			coord[inode + 1] = coord[inode] + element_ratio * dx
+		end
+	end
+
+	return coord
+end
+
 return {
 	-- specify the number of dimensions (REQUIRED)
 	ndim = 2,
 
 	-- create a uniform mesh
 	uniform_mesh = {
-		nelem = { nelem_arg, nelem_arg },
-		bounding_box = {
-			min = { 0.0, 0.0 },
-			max = { 1.0, 1.0 },
-		},
+		--		nelem = { nelem_arg, nelem_arg },
+		--		bounding_box = {
+		--			min = { 0.0, 0.0 },
+		--			max = { 1.0, 1.0 },
+		--		},
 
-		-- quad_ratio = { 0.0, 0.0 },
+		directional_nodes = {
+			non_uniform_coord(0, 1, 20, 3),
+			non_uniform_coord(0, 1, 30, 1)
+		},
 
 		-- set boundary conditions
 		boundary_conditions = {

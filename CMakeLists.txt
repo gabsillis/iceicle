@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.20.0) # support for c++23
 project(ICEICLE_PROJECT VERSION 0.1.0)
 set(CMAKE_CXX_STANDARD 23)
-
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # FLOATING POINT AND DOUBLE TYPES
 # in order of priority
@@ -35,6 +35,7 @@ endif()
 # ====================
 # = Compiler Options =
 # ====================
+option(ICEICLE_ASAN "Enable address sanitizer" OFF)
 option(ICEICLE_MARCH "Build with the march=native flag if in release mode" ON)
 option(ICEICLE_MTUNE "Build with the mtune=native flag if in release mode" ON)
 if(ICEICLE_MARCH)
@@ -48,15 +49,19 @@ endif()
 # release flags + debug info
 set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "-O3 -DNDEBUG -g")
 set(CMAKE_C_FLAGS_RELWITHDEBINFO "-O3 -DNDEBUG -g")
+# address sanitizer on debug
+if(ICEICLE_ASAN)
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=address")
+  set(CMAKE_LINKER_FLAGS "${CMAKE_LINKER_FLAGS} -fsanitize=address")
+endif()
 
 # ===============
 # = TPL OPTIONS =
 # ===============
 option(ICEICLE_USE_PETSC "Builds ICEicle with Petsc integration" OFF)
 option(ICEICLE_USE_LUA "Builds ICEicle with Lua integration integration provided through sol3" OFF)
-#option(ICEICLE_USE_IREP "Builds ICEicle with the irep library for Lua mixed-language" OFF)
-#option(ICEICLE_USE_HYPRE "Builds ICEicle with Hypre integration" OFF)
 option(ICEICLE_USE_MFEM  "Enables MFEM as a third party library" OFF)
+option(ICEICLE_USE_MPI  "Enables building with MPI" ON)
 option(ICEICLE_USE_OPENGL "Enables OpenGL visualization with imgui" OFF)
 option(ICEICLE_USE_MATPLOTPLUSPLUS "Enables matplotlib-cpp" OFF)
 option(ICEICLE_USE_VTK "Enables VTK third party functionality" OFF)
@@ -66,7 +71,9 @@ option(ICEICLE_USE_METIS "Enables Metis for mesh partitioning" OFF)
 # = CMake includes =
 # ==================
 include(FetchContent)
-find_package(MPI)
+if(ICEICLE_USE_MPI)
+  find_package(MPI)
+endif()
 find_package(PkgConfig REQUIRED)
 
 # custom modules

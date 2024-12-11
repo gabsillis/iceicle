@@ -195,24 +195,15 @@ namespace iceicle::solvers {
         IDX idiag = -1;
 
         /// @brief diagnostics function 
+        /// NOTE: Diagnostics get called before the solution update after residual evaluation and linear solve
         ///
-        /// very minimal by default other options are defined in this header
+        /// empty by default other options are defined in this header
         /// or a custom function can be made 
         ///
         /// Passes the current iteration number, the residual vector, and the du vector
         std::function<void(IDX, Vec, Vec)> diag_callback = []
             (IDX k, Vec res_data, Vec du_data)
-        {
-            int iproc;
-            MPI_Comm_rank(PETSC_COMM_WORLD, &iproc); if(iproc == 0){
-                std::cout << "Diagnostics for iteration: " << k << std::endl;
-            }
-            if(iproc == 0) std::cout << "Residual: " << std::endl;
-            PetscCallAbort(PETSC_COMM_WORLD, VecView(res_data, PETSC_VIEWER_STDOUT_WORLD));
-            if(iproc == 0) std::cout << std::endl << "du: " << std::endl;
-            PetscCallAbort(PETSC_COMM_WORLD, VecView(du_data, PETSC_VIEWER_STDOUT_WORLD));
-            if(iproc == 0) std::cout << "------------------------------------------" << std::endl << std::endl; 
-        };
+        {};
 
         /// @brief set to true if you want to explicitly form the J^TJ + lambda * I matrix
         ///
@@ -431,6 +422,9 @@ namespace iceicle::solvers {
 //                VecView(res_data, r_viewer);
 
 
+                // form JTr
+                PetscCallAbort(PETSC_COMM_WORLD, MatMultTranspose(jac, res_data, Jtr));
+
                 // Form the subproblem
                 if(explicitly_form_subproblem){
 
@@ -456,15 +450,27 @@ namespace iceicle::solvers {
                     MatDiagonalSet(subproblem_mat, lambda, ADD_VALUES);
                     VecDestroy(&lambda);
 
-                    // lagrangian regularizationn
+                    // laplacian regularizationn
                     // loop over isoparametric cg elements
+                    PetscReal rnorm;
+                    VecNorm(res_data, NORM_2, &rnorm);
                     for(auto el : cg_fespace.elements){ 
 
                         // form the diffusion matrix 
                         DiffusionIntegrator<T, IDX, ndim> K_integrator{1.0};
                         std::vector<T> Kmat_data(el.nbasis() * el.nbasis());
+                        std::vector<T> KTK_data(el.nbasis() * el.nbasis());
                         std::mdspan Kmat(Kmat_data.data(), el.nbasis(), el.nbasis());
+                        std::mdspan KTK(KTK_data.data(), el.nbasis(), el.nbasis());
+                        linalg::fill(KTK, 0);
                         K_integrator.form_operator(el, Kmat);
+                        for(int i = 0; i < el.nbasis(); ++i){
+                            for(int k = 0; k < el.nbasis(); ++k){
+                                for(int j = 0; j < el.nbasis(); ++j){
+                                    KTK[i, j] = Kmat[k, i] * Kmat[k, j];
+                                }
+                            }
+                        }
 
                         // get the minimum jacobian determinant of all quadrature points
                         T detJ = 1.0;
@@ -476,7 +482,7 @@ namespace iceicle::solvers {
                         detJ = std::max(1e-8, std::abs(detJ));
                         IDX nodes_size = geo_layout.geo_map.selected_nodes.size();
                         for(int ilnode = 0; ilnode < el.trans->nnode; ++ilnode){
-                            for(int jlnode = 0; ilnode < el.trans->nnode; ++ilnode){
+                            for(int jlnode = 0; jlnode < el.trans->nnode; ++jlnode){
                                 const IDX ignode = el.inodes[ilnode];
                                 const IDX jgnode = el.inodes[jlnode];
                                 IDX igeo = geo_layout.geo_map.inv_selected_nodes[ignode];
@@ -489,8 +495,8 @@ namespace iceicle::solvers {
                                             PetscInt jmat = u_layout.size() + geo_layout[jgeo, jv];
 
                                             // WARNING: assumes g_u(u; v) is 1 for each non-fixed index
-                                            PetscScalar value = -Kmat[ilnode, jlnode] * (
-                                                lambda_lag );
+                                            PetscScalar value = KTK[ilnode, jlnode] * (
+                                                lambda_lag * rnorm );
 
                                             MatSetValueLocal(subproblem_mat, imat, jmat, value, ADD_VALUES);
                                         }
@@ -530,12 +536,22 @@ namespace iceicle::solvers {
                 PetscCallAbort(PETSC_COMM_WORLD, MatAssemblyBegin(subproblem_mat, MAT_FINAL_ASSEMBLY));
                 PetscCallAbort(PETSC_COMM_WORLD, MatAssemblyEnd(subproblem_mat, MAT_FINAL_ASSEMBLY));
 
-                // form JTr
-                PetscCallAbort(PETSC_COMM_WORLD, MatMultTranspose(jac, res_data, Jtr));
-
                 // Solve the subproblem
                 PetscCallAbort(PETSC_COMM_WORLD, KSPSetOperators(ksp, subproblem_mat, subproblem_mat));
                 PetscCallAbort(PETSC_COMM_WORLD, KSPSolve(ksp, Jtr, du_data));
+
+                if(verbosity >= 4){
+                    PetscViewer viewer;
+                    PetscViewerASCIIOpen(PETSC_COMM_WORLD, ("subproblem" + std::to_string(k)).c_str(),&viewer);
+                    PetscViewerPushFormat(viewer, PETSC_VIEWER_ASCII_DENSE);
+                    MatView(subproblem_mat, viewer);
+                    PetscViewerDestroy(&viewer);
+                }
+
+                // Diagnostics 
+                if(idiag > 0 && k % idiag == 0) {
+                    diag_callback(k, res_data, du_data);
+                }
 
                 // update u 
                 if constexpr (std::is_same_v<ls_type, no_linesearch<T, IDX>>){
@@ -688,11 +704,6 @@ namespace iceicle::solvers {
                 // get the residual norm
                 T rk;
                 PetscCallAbort(PETSC_COMM_WORLD, VecNorm(res_data, NORM_2, &rk));
-
-                // Diagnostics 
-                if(idiag > 0 && k % idiag == 0) {
-                    diag_callback(k, res_data, du_data);
-                }
 
                 // visualization
                 if(ivis > 0 && k % ivis == 0) {

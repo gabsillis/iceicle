@@ -89,8 +89,8 @@ namespace iceicle {
         }
 
         T l2_sum = 0;
-        for(int ieq = 0; ieq < fedata.nv(); ++ieq){ l2_sum += std::sqrt(l2_eq[ieq]); }
-        return l2_sum;
+        for(int ieq = 0; ieq < fedata.nv(); ++ieq){ l2_sum += l2_eq[ieq]; }
+        return std::sqrt(l2_sum);
     }
 
     /**

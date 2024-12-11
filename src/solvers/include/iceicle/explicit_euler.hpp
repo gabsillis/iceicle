@@ -151,6 +151,15 @@ public:
     template<int ndim, class disc_class, class LayoutPolicy, class uAccessorPolicy>
     void solve(FESpace<T, IDX, ndim> &fespace, disc_class &disc, fespan<T, LayoutPolicy, uAccessorPolicy> u) {
 
+        // call initial residual to get initial wavespeeds for dt 
+        {
+            // create view of the residual using the same Layout as u 
+            fespan res{res_data.data(), u.get_layout()};
+
+            // get the rhs
+            form_residual(fespace, disc, u, res);
+        }
+
         // visualization callback on initial state (0 % anything == 0) 
         vis_callback(*this);
 

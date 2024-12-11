@@ -58,9 +58,14 @@ namespace iceicle::io {
 
         template<typename T, int ndim>
         struct VTKElement {
+            // @brief the nodes in the reference domain
             std::vector<MATH::GEOMETRY::Point<T, ndim>> nodes;
 
+            /// @brief the id of the element in VTK
             int vtk_id;
+
+            /// @brief permutation of local nodes for H1 elements
+            std::vector<int> permutation;
         };
 
         // === Linear 2D ===
@@ -72,7 +77,8 @@ namespace iceicle::io {
                 { 1.0,  0.0},
                 { 0.0,  1.0},
             },
-            .vtk_id = 5
+            .vtk_id = 5,
+            .permutation = {0, 1, 2}
         };
 
 
@@ -97,7 +103,8 @@ namespace iceicle::io {
                 { 1.0,  1.0},
                 {-1.0,  1.0},
             },
-            .vtk_id = 9
+            .vtk_id = 9,
+            .permutation = { 0, 2, 3, 1 }
         };
 
         template<typename T>
@@ -235,7 +242,6 @@ namespace iceicle::io {
         }
     }
 
-
     template<typename T, typename IDX, int ndim>
     class PVDWriter{
 
@@ -256,9 +262,321 @@ namespace iceicle::io {
         };
 
         /**
+         * @brief a data field for outputting residuals 
+         * 
+         * given a list of field names and the fespan that points to the data 
+         * i.e {"mass_conservation", "mom_conservation_u", "mom_conservation_v", "energy_conservation"}
+         * output total pde residuals summed over test functions
+         * and residuals summed over test functions broken down as 
+         * - domain integrals 
+         * - trace integrals
+         *
+         * NOTE: This treats the residuals as a function in the test function space 
+         * This will be most useful with nodal basis functions where the 
+         * output at nodes will correspond to the same test function
+         *
+         * @tparam LayoutPolicy layout policy of data 
+         * @tparam AccessorPolicy accessor policy of the data 
+         * @tparam disc_t the type of the discretization
+         */
+        template< class LayoutPolicy, class AccessorPolicy, class disc_t >
+        struct ResidualsField final : public writeable_field {
+
+            /// the data view
+            fespan<T, LayoutPolicy, AccessorPolicy> fedata;
+
+            /// names for each residual
+            std::vector< std::string > residual_names;
+
+            /// the discretization
+            disc_t& disc;
+
+            /// Constructor
+            ResidualsField(fespan<T, LayoutPolicy, AccessorPolicy> fedata, 
+                std::vector<std::string> residual_names, disc_t& disc)
+            : fedata{fedata}, residual_names{residual_names}, disc{disc}
+            {}
+
+            void write_data(std::ofstream &vtu_file, FESpace<T, IDX, ndim>& fespace) const override 
+            {
+                using namespace impl;
+                using Element = FiniteElement<T, IDX, ndim>;
+                // compute the number of vtk points 
+                std::size_t n_vtk_poin = 0;
+                std::vector<std::size_t> el_vtk_offsets{0};
+                IDX iel = 0;
+                for(Element &el : fespace.elements){
+                    // NOTE: using the vtk el based on basis polynomial order
+                    VTKElement<T, ndim> &vtk_el = get_vtk_element(el.trans, el.basis->getPolynomialOrder());
+                    n_vtk_poin += vtk_el.nodes.size();
+                    el_vtk_offsets.push_back(el_vtk_offsets[iel] + vtk_el.nodes.size());
+                    ++iel;
+                }
+
+                std::vector<T> res_storage( residual_names.size() * n_vtk_poin );
+                std::mdspan res_mat{ res_storage.data(), n_vtk_poin, residual_names.size() };
+                std::vector<T> domain_storage( residual_names.size() * n_vtk_poin );
+                std::mdspan domain_mat{ domain_storage.data(), n_vtk_poin, residual_names.size() };
+                std::vector<T> trace_storage( residual_names.size() * n_vtk_poin );
+                std::mdspan trace_mat{ trace_storage.data(), n_vtk_poin, residual_names.size() };
+                std::ranges::fill(res_storage, 0.0);
+                std::ranges::fill(domain_storage, 0.0);
+                std::ranges::fill(trace_storage, 0.0);
+
+                // storage for element data
+                std::vector<T> el_data(fespace.dg_map.max_el_size_reqirement(disc_t::nv_comp));
+                std::vector<T> res_data(fespace.dg_map.max_el_size_reqirement(disc_t::nv_comp));
+                std::array<T, disc_t::nv_comp> res_poin{}; // residuals at the point
+
+                // === domain integral ===
+                std::size_t i_vtk_poin = 0;
+                iel = 0;
+                for(Element& el : fespace.elements) {
+                    dofspan u_el{el_data, fedata.create_element_layout(iel)};
+                    dofspan res_el{res_data, fedata.create_element_layout(iel)};
+                    extract_elspan(iel, fedata, u_el);
+
+                    res_el = 0;
+                    disc.domain_integral(el, u_el, res_el);
+
+                    // sum over test functions at each point
+                    // NOTE: using the vtk el based on basis polynomial order
+                    VTKElement<T, ndim> &vtk_el = get_vtk_element(el.trans, el.basis->getPolynomialOrder());
+
+                    // storage for basis functions 
+                    std::vector<T> basis_data(el.nbasis());
+
+                    // get the solution for each point in the vtk element
+                    for(const MATH::GEOMETRY::Point<T, ndim> &refnode : vtk_el.nodes){
+                        el.eval_basis(refnode, basis_data.data());
+
+                        // compute residual contribution at given node
+                        std::ranges::fill(res_poin, 0.0);
+                        for(int ieq = 0; ieq < fedata.nv(); ++ieq){
+                            for(std::size_t idof = 0; idof < el.nbasis(); ++idof){
+                                res_poin[ieq] += res_el[idof, ieq] 
+                                    * basis_data[idof];
+                            }
+
+                            res_mat[i_vtk_poin, ieq] += res_poin[ieq];
+                            domain_mat[i_vtk_poin, ieq] += res_poin[ieq];
+                        } 
+                        ++i_vtk_poin; // increment the point index
+                    }
+
+                    ++iel; // increment the element index
+                }
+
+                // === interior faces ===
+                std::vector<T> uL_data(fespace.dg_map.max_el_size_reqirement(disc_t::nv_comp));
+                std::vector<T> uR_data(fespace.dg_map.max_el_size_reqirement(disc_t::nv_comp));
+                std::vector<T> resL_data(fespace.dg_map.max_el_size_reqirement(disc_t::nv_comp));
+                std::vector<T> resR_data(fespace.dg_map.max_el_size_reqirement(disc_t::nv_comp));
+                for(const auto& trace : fespace.get_interior_traces()) {
+                    // compact data views 
+                    dofspan uL{uL_data.data(), fedata.create_element_layout(trace.elL.elidx)};
+                    dofspan uR{uR_data.data(), fedata.create_element_layout(trace.elR.elidx)};
+
+                    // compact residual views
+                    dofspan resL{resL_data.data(), fedata.create_element_layout(trace.elL.elidx)};
+                    dofspan resR{resR_data.data(), fedata.create_element_layout(trace.elL.elidx)};
+
+                    resL = 0; 
+                    resR = 0;
+
+                    // extract the compact values from the global u view 
+                    extract_elspan(trace.elL.elidx, fedata, uL);
+                    extract_elspan(trace.elR.elidx, fedata, uR);
+
+                    disc.trace_integral(trace, fespace.meshptr->coord, uL, uR, resL, resR);
+
+                    { // left
+                        VTKElement<T, ndim> &vtk_el = get_vtk_element(trace.elL.trans, trace.elL.basis->getPolynomialOrder());
+                        std::vector<T> basis_data(trace.elL.nbasis());
+
+                        for(int inode = 0; inode < vtk_el.nodes.size(); ++inode){
+                            auto& refnode = vtk_el.nodes[inode];
+                            trace.elL.eval_basis(refnode, basis_data.data());
+
+                            // compute residual contribution at given node
+                            std::ranges::fill(res_poin, 0.0);
+                            for(int ieq = 0; ieq < fedata.nv(); ++ieq){
+                                for(std::size_t idof = 0; idof < trace.elL.nbasis(); ++idof){
+                                    res_poin[ieq] += resL[idof, ieq] 
+                                        * basis_data[idof];
+                                }
+
+                                res_mat[el_vtk_offsets[trace.elL.elidx] + inode, ieq] += res_poin[ieq];
+                                trace_mat[el_vtk_offsets[trace.elL.elidx] + inode, ieq] += res_poin[ieq];
+                            } 
+
+                        }
+                    }
+                    { // right
+                        VTKElement<T, ndim> &vtk_el = get_vtk_element(trace.elR.trans, trace.elR.basis->getPolynomialOrder());
+                        std::vector<T> basis_data(trace.elR.nbasis());
+
+                        for(int inode = 0; inode < vtk_el.nodes.size(); ++inode){
+                            auto& refnode = vtk_el.nodes[inode];
+                            trace.elR.eval_basis(refnode, basis_data.data());
+
+                            // compute residual contribution at given node
+                            std::ranges::fill(res_poin, 0.0);
+                            for(int ieq = 0; ieq < fedata.nv(); ++ieq){
+                                for(std::size_t idof = 0; idof < trace.elR.nbasis(); ++idof){
+                                    res_poin[ieq] += resR[idof, ieq] 
+                                        * basis_data[idof];
+                                }
+
+                                res_mat[el_vtk_offsets[trace.elR.elidx] + inode, ieq] += res_poin[ieq];
+                                trace_mat[el_vtk_offsets[trace.elR.elidx] + inode, ieq] += res_poin[ieq];
+                            } 
+                        }
+                    }
+                }
+
+                // === Boundary Faces ===
+                for(const auto& trace : fespace.get_boundary_traces()) {
+                    // compact data views 
+                    dofspan uL{uL_data.data(), fedata.create_element_layout(trace.elL.elidx)};
+                    dofspan uR{uR_data.data(), fedata.create_element_layout(trace.elR.elidx)};
+
+                    // compact residual views
+                    dofspan resL{resL_data.data(), fedata.create_element_layout(trace.elL.elidx)};
+
+                    resL = 0; 
+
+                    // extract the compact values from the global u view 
+                    extract_elspan(trace.elL.elidx, fedata, uL);
+                    extract_elspan(trace.elR.elidx, fedata, uR);
+
+                    disc.boundaryIntegral(trace, fespace.meshptr->coord, uL, uR, resL);
+                    { // left
+                        VTKElement<T, ndim> &vtk_el = get_vtk_element(trace.elL.trans, trace.elL.basis->getPolynomialOrder());
+                        std::vector<T> basis_data(trace.elL.nbasis());
+
+                        for(int inode = 0; inode < vtk_el.nodes.size(); ++inode){
+                            auto& refnode = vtk_el.nodes[inode];
+                            trace.elL.eval_basis(refnode, basis_data.data());
+
+                            // compute residual contribution at given node
+                            std::ranges::fill(res_poin, 0.0);
+                            for(int ieq = 0; ieq < fedata.nv(); ++ieq){
+                                for(std::size_t idof = 0; idof < trace.elL.nbasis(); ++idof){
+                                    res_poin[ieq] += resL[idof, ieq] 
+                                        * basis_data[idof];
+                                }
+
+                                res_mat[el_vtk_offsets[trace.elL.elidx] + inode, ieq] += res_poin[ieq];
+                                trace_mat[el_vtk_offsets[trace.elL.elidx] + inode, ieq] += res_poin[ieq];
+                            } 
+                        }
+                    }
+                }
+
+                // === write full residuals ===
+                for(std::size_t ifield = 0; ifield < residual_names.size(); ++ifield){
+                    // point data tag
+                    write_open(XMLTag{"DataArray", {
+                        {"type", "Float64"},
+                        {"Name", residual_names[ifield]}, 
+                        {"format", "ascii"}
+                    }}, vtu_file);
+
+                    // loop over the elements
+                    std::size_t i_vtk_poin = 0;
+                    for(Element &el : fespace.elements){
+                        // NOTE: using the vtk el based on basis polynomial order
+                        VTKElement<T, ndim> &vtk_el = get_vtk_element(el.trans, el.basis->getPolynomialOrder());
+
+                        // storage for basis functions 
+                        std::vector<T> basis_data(el.nbasis());
+                        for(int ilnode = 0; ilnode < vtk_el.nodes.size(); ++ilnode){
+                            vtu_file << " " << res_mat[i_vtk_poin, ifield];
+                            ++i_vtk_poin;
+                        }
+
+                        // line break for each element
+                        vtu_file << std::endl;
+                    }
+
+                    // close the data array tag
+                    write_close(XMLTag{"DataArray"}, vtu_file);
+                }
+
+                // === write domain residuals ===
+                for(std::size_t ifield = 0; ifield < residual_names.size(); ++ifield){
+                    // point data tag
+                    write_open(XMLTag{"DataArray", {
+                        {"type", "Float64"},
+                        {"Name", std::string{"domain_"} + residual_names[ifield]}, 
+                        {"format", "ascii"}
+                    }}, vtu_file);
+
+                    // loop over the elements
+                    std::size_t i_vtk_poin = 0;
+                    for(Element &el : fespace.elements){
+                        // NOTE: using the vtk el based on basis polynomial order
+                        VTKElement<T, ndim> &vtk_el = get_vtk_element(el.trans, el.basis->getPolynomialOrder());
+
+                        // storage for basis functions 
+                        std::vector<T> basis_data(el.nbasis());
+                        for(int ilnode = 0; ilnode < vtk_el.nodes.size(); ++ilnode){
+                            vtu_file << " " << domain_mat[i_vtk_poin, ifield];
+                            ++i_vtk_poin;
+                        }
+
+                        // line break for each element
+                        vtu_file << std::endl;
+                    }
+
+                    // close the data array tag
+                    write_close(XMLTag{"DataArray"}, vtu_file);
+                }
+
+                // === write trace residuals ===
+                for(std::size_t ifield = 0; ifield < residual_names.size(); ++ifield){
+                    // point data tag
+                    write_open(XMLTag{"DataArray", {
+                        {"type", "Float64"},
+                        {"Name", std::string{"trace_"} + residual_names[ifield]}, 
+                        {"format", "ascii"}
+                    }}, vtu_file);
+
+                    // loop over the elements
+                    std::size_t i_vtk_poin = 0;
+                    for(Element &el : fespace.elements){
+                        // NOTE: using the vtk el based on basis polynomial order
+                        VTKElement<T, ndim> &vtk_el = get_vtk_element(el.trans, el.basis->getPolynomialOrder());
+
+                        // storage for basis functions 
+                        std::vector<T> basis_data(el.nbasis());
+                        for(int ilnode = 0; ilnode < vtk_el.nodes.size(); ++ilnode){
+                            vtu_file << " " << trace_mat[i_vtk_poin, ifield];
+                            ++i_vtk_poin;
+                        }
+
+                        // line break for each element
+                        vtu_file << std::endl;
+                    }
+
+                    // close the data array tag
+                    write_close(XMLTag{"DataArray"}, vtu_file);
+                }
+            }
+
+            auto clone() const -> std::unique_ptr<writeable_field> override {
+                return std::make_unique<ResidualsField<LayoutPolicy, AccessorPolicy, disc_t>>(*this);
+            }
+        };
+
+        // TODO: L2 mdg residuals (corrigan formulation)
+
+        /**
         * @brief a data field for output 
         * contains a name list that will be the field names in VTK 
         * and an fespan that points to the data 
+        * and a callback function and name list for derived fields 
         */
         template< class LayoutPolicy, class AccessorPolicy>
         struct PVDDataField final : public writeable_field {
@@ -268,12 +586,21 @@ namespace iceicle::io {
             /// the field name for each vector component of fespan 
             std::vector<std::string> field_names;
 
-            /// @brief constructor with argument forwarding for the vector constructor
-            template<class... VecArgs>
-            PVDDataField(fespan<T, LayoutPolicy, AccessorPolicy> fedata, VecArgs&&... vec_args)
-            : fedata(fedata), field_names({std::forward<VecArgs>(vec_args)...}){
+            // Function to get derived fields from the current state
+            std::function<std::vector<T>(const T *)> derived_fields_callback;
+
+            /// the field name for each derived field
+            std::vector<std::string> derived_field_names;
+
+            PVDDataField(fespan<T, LayoutPolicy, AccessorPolicy> fedata,
+                std::vector<std::string> field_names, 
+                std::function<std::vector<T>(const T *)> derived_fields_callback,
+                std::vector<std::string> derived_field_names
+            ) : fedata{fedata}, field_names{field_names}, derived_fields_callback{derived_fields_callback},
+                derived_field_names{derived_field_names}
+            {
                 if(field_names.size() != fedata.nv()) 
-                    util::AnomalyLog::log_anomaly("Field names size does not match number of fields");
+                    util::AnomalyLog::log_anomaly("field names size does not match number of fields");
             }
 
             /// @brief adds the xml DataArray tags and data to a given vtu file 
@@ -281,17 +608,23 @@ namespace iceicle::io {
             {
                 using namespace impl;
                 using Element = FiniteElement<T, IDX, ndim>;
-                for(std::size_t ifield = 0; ifield < field_names.size(); ++ifield){
 
-                    // point data tag
-                    write_open(XMLTag{"DataArray", {
-                        {"type", "Float64"},
-                        {"Name", field_names[ifield]}, 
-                        {"format", "ascii"}
-                    }}, vtu_file);
+                // compute the number of vtk points 
+                std::size_t n_vtk_poin = 0;
+                for(Element &el : fespace.elements){
+                    // NOTE: using the vtk el based on basis polynomial order
+                    VTKElement<T, ndim> &vtk_el = get_vtk_element(el.trans, el.basis->getPolynomialOrder());
+                    n_vtk_poin += vtk_el.nodes.size();
+                }
 
-                    // loop over the elements
-                    for(Element &el : fespace.elements){
+                // storage for the fields 
+                std::vector<T> output_storage( (field_names.size() + derived_field_names.size()) * n_vtk_poin );
+                std::mdspan output_mat{output_storage.data(), n_vtk_poin, field_names.size() + derived_field_names.size()};
+
+                std::size_t i_vtk_poin = 0;
+                // loop over the elements
+                for(Element &el : fespace.elements){
+
                         // NOTE: using the vtk el based on basis polynomial order
                         VTKElement<T, ndim> &vtk_el = get_vtk_element(el.trans, el.basis->getPolynomialOrder());
 
@@ -301,13 +634,78 @@ namespace iceicle::io {
                         // get the solution for each point in the vtk element
                         for(const MATH::GEOMETRY::Point<T, ndim> &refnode : vtk_el.nodes){
                             el.eval_basis(refnode, basis_data.data());
-                            T field_value = 0;
-                            for(std::size_t idof = 0; idof < el.nbasis(); ++idof){
-                                field_value += fedata[el.elidx, idof, ifield] 
-                                    * basis_data[idof];
-                            }
 
-                            vtu_file << field_value << " ";
+                            // compute the pde variables
+                            std::vector<T> u(fedata.nv());
+                            std::ranges::fill(u, 0.0);
+                            for(int ieq = 0; ieq < fedata.nv(); ++ieq){
+                                for(std::size_t idof = 0; idof < el.nbasis(); ++idof){
+                                    u[ieq] += fedata[el.elidx, idof, ieq] 
+                                        * basis_data[idof];
+                                }
+
+                                output_mat[i_vtk_poin, ieq] = u[ieq];
+                            } 
+
+                            // compute derived variables 
+                            std::vector<T> u_derived = derived_fields_callback(u.data());
+                            for(int ifield = 0; ifield < derived_field_names.size(); ++ifield){
+                                output_mat[i_vtk_poin, fedata.nv() + ifield] = u_derived[ifield];
+                            }
+                            ++i_vtk_poin; // increment the point index
+                        }
+                }
+
+                // print out pde variables
+                for(std::size_t ifield = 0; ifield < field_names.size(); ++ifield){
+                    // point data tag
+                    write_open(XMLTag{"DataArray", {
+                        {"type", "Float64"},
+                        {"Name", field_names[ifield]}, 
+                        {"format", "ascii"}
+                    }}, vtu_file);
+
+                    // loop over the elements
+                    std::size_t i_vtk_poin = 0;
+                    for(Element &el : fespace.elements){
+                        // NOTE: using the vtk el based on basis polynomial order
+                        VTKElement<T, ndim> &vtk_el = get_vtk_element(el.trans, el.basis->getPolynomialOrder());
+
+                        // storage for basis functions 
+                        std::vector<T> basis_data(el.nbasis());
+                        for(int ilnode = 0; ilnode < vtk_el.nodes.size(); ++ilnode){
+                            vtu_file << " " << output_mat[i_vtk_poin, ifield];
+                            ++i_vtk_poin;
+                        }
+
+                        // line break for each element
+                        vtu_file << std::endl;
+                    }
+
+                    // close the data array tag
+                    write_close(XMLTag{"DataArray"}, vtu_file);
+                }
+
+                // print out derived variables
+                for(std::size_t ifield = 0; ifield < derived_field_names.size(); ++ifield){
+                    // point data tag
+                    write_open(XMLTag{"DataArray", {
+                        {"type", "Float64"},
+                        {"Name", derived_field_names[ifield]}, 
+                        {"format", "ascii"}
+                    }}, vtu_file);
+
+                    // loop over the elements
+                    std::size_t i_vtk_poin = 0;
+                    for(Element &el : fespace.elements){
+                        // NOTE: using the vtk el based on basis polynomial order
+                        VTKElement<T, ndim> &vtk_el = get_vtk_element(el.trans, el.basis->getPolynomialOrder());
+
+                        // storage for basis functions 
+                        std::vector<T> basis_data(el.nbasis());
+                        for(int ilnode = 0; ilnode < vtk_el.nodes.size(); ++ilnode){
+                            vtu_file << " " << output_mat[i_vtk_poin, fedata.nv() + ifield];
+                            ++i_vtk_poin;
                         }
 
                         // line break for each element
@@ -391,6 +789,12 @@ namespace iceicle::io {
         FESpace<T, IDX, ndim> *fespace_ptr = nullptr;
         std::vector<std::unique_ptr<writeable_field>> fields;
 
+        // @brief callback function for when no derived fields are used
+        static constexpr 
+        auto empty_derived_fields_callback(const T *)
+        -> std::vector<T>
+        { return std::vector<T>{}; }
+
         public:
         using value_type = T;
 
@@ -434,13 +838,33 @@ namespace iceicle::io {
          * @brief register a set of fields represented in an fespan 
          * @param fedata the global data view to write to files 
          * @param field_names the names for each field in fe_data 
-         * (gets forwarded into a std::vector<string>)
          */
-        template< class LayoutPolicy, class AccessorPolicy, class... FieldNameTs >
-        void register_fields(fespan<T, LayoutPolicy, AccessorPolicy> &fedata, FieldNameTs&&... field_names){
+        template< class LayoutPolicy, class AccessorPolicy >
+        void register_fields(
+            fespan<T, LayoutPolicy, AccessorPolicy> &fedata,
+            std::vector<std::string> field_names,
+            std::function<std::vector<T>(const T*)> derived_fields_callback = empty_derived_fields_callback,
+            std::vector<std::string> derived_field_names = std::vector<std::string>{}
+        ) {
             // create the field handle and add it to the list
             auto field_ptr = std::make_unique<PVDDataField<LayoutPolicy, AccessorPolicy>>(
-                    fedata, std::forward<FieldNameTs>(field_names)...);
+                    fedata, field_names, derived_fields_callback, derived_field_names);
+            fields.push_back(std::move(field_ptr));
+        }
+
+        /**
+         * @brief register a set of residuals over an fespan with given discretization 
+         * @param fedata the solution data 
+         * @param residual_names the names for each residual 
+         * @param disc the discretiation 
+         */
+        template< class LayoutPolicy, class AccessorPolicy, class disc_t >
+        void register_residuals(
+            fespan<T, LayoutPolicy, AccessorPolicy> &fedata,
+            std::vector<std::string> residual_names,
+            disc_t& disc
+        ) {
+            auto field_ptr = std::make_unique<ResidualsField<LayoutPolicy, AccessorPolicy, disc_t>>(fedata, residual_names, disc);
             fields.push_back(std::move(field_ptr));
         }
 
@@ -692,7 +1116,6 @@ namespace iceicle::io {
             // create the path if it doesn't exist
             std::filesystem::create_directories(data_directory);
 
-            // create the mesh file 
             std::filesystem::path mesh_path = data_directory;
             mesh_path /= (collection_name + std::to_string(itime) + ".vtu");
 

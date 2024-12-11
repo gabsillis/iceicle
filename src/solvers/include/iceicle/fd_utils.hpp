@@ -12,4 +12,11 @@ namespace iceicle {
 //        return epsilon; // for debugging
         return std::max(epsilon, scale * epsilon);
     }
+
+    namespace finite_difference {
+        
+        template< class func_t, class... args_t>
+        auto forward_first_order(func_t, args_t...);
+
+    }
 }

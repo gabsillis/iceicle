@@ -5,6 +5,7 @@
 
 #pragma once 
 
+#include <ranges>
 #include <type_traits>
 #include <vector>
 #include <span>
@@ -70,21 +71,37 @@ namespace iceicle::util {
         }
 
         /**
-         * @brief construct from existing ragged data 
-         * @param ragged_data a 2D ragged array of data to copy
+         * @brief generic range based constructor for existing ragged data 
+         * Any range of ranges (with arbitrary sizes) 
+         * can then be converted into a compressed row storage
+         *
+         * @param R the range of ranges to copy 
          */
-        constexpr crs(const std::vector<std::vector<T>> &ragged_data)
-        : _nnz{0}, _nrow{(size_type) ragged_data.size()}, _cols{new index_type[_nrow + 1]}{
+        template< class R >
+        constexpr crs( const R &ragged_data )
+        requires(std::ranges::range<R> && std::ranges::range<std::ranges::range_value_t<R>>)
+        : _nnz{0}, _nrow{(size_type) std::distance(std::ranges::begin(ragged_data), std::ranges::end(ragged_data))},
+          _cols{new index_type[_nrow + 1]}
+        {
             // count up the number of nonzeros and row lengths
             _cols[0] = 0;
-            for(index_type irow = 0; irow < ragged_data.size(); ++irow){
-                _nnz += ragged_data[irow].size();
-                _cols[irow + 1] = _cols[irow] + ragged_data[irow].size();
+            IDX irow = 0;
+            for(auto rowit = std::ranges::begin(ragged_data);
+                    rowit != std::ranges::end(ragged_data); ++rowit, ++irow) {
+                std::size_t sz = std::distance(std::ranges::begin(*rowit), std::ranges::end(*rowit));
+                _nnz += sz;
+                _cols[irow + 1] = _cols[irow] + sz;
             }
-            _data = new value_type[_nnz];
-            for(index_type irow = 0; irow < ragged_data.size(); ++irow){
-                std::copy(ragged_data[irow].begin(),
-                        ragged_data[irow].end(), _data + _cols[irow]);
+
+            // allocate the _data 
+            _data = new T[_nnz];
+
+            // copy over the data 
+            irow = 0;
+            for(auto rowit = std::ranges::begin(ragged_data);
+                    rowit != std::ranges::end(ragged_data); ++rowit, ++irow) {
+                std::copy(std::ranges::begin(*rowit),
+                        std::ranges::end(*rowit), _data + _cols[irow]);
             }
         }
 
@@ -260,7 +277,7 @@ namespace iceicle::util {
     };
 
     template<class T>
-    crs(std::vector<std::vector<T>>) -> crs<T>;
+    crs(const std::vector<std::vector<T>>&) -> crs<T>;
 
     template<class Tnew, class IDXnew, class T, class IDX>
     constexpr

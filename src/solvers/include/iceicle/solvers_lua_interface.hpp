@@ -2,6 +2,7 @@
 /// @author Gianni Absillis (gabsill@ncsu.edu)
 
 #pragma once
+#include "iceicle/disc/projection.hpp"
 #include "iceicle/fe_function/geo_layouts.hpp"
 #include "iceicle/disc/l2_error.hpp"
 #include "iceicle/geometry/face.hpp"
@@ -30,8 +31,62 @@
 
 namespace iceicle::solvers {
 
+    namespace impl {
+        template<class Disc_Type>
+        struct source_term_callback_supported {
+            using value_type = Disc_Type::value_type;
+            using callback_opt_type = std::optional< std::function<void(const value_type*, value_type*)> >;
+            static constexpr bool value = requires(Disc_Type disc) {
+                {disc.user_source} -> std::convertible_to<callback_opt_type>;
+            };
+        };
+    }
+
+    /// @brief Whether or not the discretization type supports the source term callback interface 
+    /// Given a real value type T = Disc_Type::value_type 
+    /// The source term callback interface is a data member named user_source 
+    /// of type std::optional<std::function<void(T*,T*)>>
+    ///
+    /// This function takes a position in the physical domain (ndim) 
+    /// and outputs (neq) source terms 
+    ///
+    /// @tparam DiscType the discretization type
+    template<class Disc_Type>
+    concept source_term_callback_supported = impl::source_term_callback_supported<Disc_Type>::value;
+
+    template<class Disc_Type>
+    auto add_source_term_callback(Disc_Type &disc, sol::table config_tbl)
+    -> void 
+    {
+        if constexpr(source_term_callback_supported<Disc_Type>){
+            using value_type = Disc_Type::value_type;
+            static constexpr int ndim = Disc_Type::dimensionality;
+            static constexpr int neq = Disc_Type::nv_comp;
+            sol::table cons_law_tbl = config_tbl["conservation_law"];
+            sol::optional<sol::function> source_opt = cons_law_tbl["source"];
+            if(source_opt){
+                sol::function source_f = source_opt.value();
+                std::function<void(const value_type*, value_type*)> func 
+                    = [source_f](const value_type *x_in, value_type *fout)
+                    {
+                        std::integer_sequence seq = std::make_integer_sequence<int, ndim>{};
+                        auto helper = [source_f]<int...Eq_Indices>(const value_type* x_in, value_type* f_out,
+                                std::integer_sequence<int, Eq_Indices...> seq){
+                            tmp::sized_tuple_t<value_type, neq> result = source_f(x_in[Eq_Indices]...);
+                            auto arr = tmp::get_array_from_tuple(result);
+                            std::ranges::copy(arr, f_out);
+                        };
+                        helper(x_in, fout, seq);
+                    };
+                disc.user_source = std::optional{func};
+            }
+        }
+    }
+
     /// @brief Create a writer for output files 
     /// given the user configuration
+    ///
+    ///
     /// @param config_tbl the user configuration lua table 
     /// @param fespace the finite element space 
     /// @param disc the discretization
@@ -40,7 +95,7 @@ namespace iceicle::solvers {
     auto lua_get_writer(
         sol::table config_tbl,
         FESpace<T, IDX, ndim>& fespace,
-        DiscType disc,
+        DiscType& disc,
         fespan<T, LayoutPolicy> u 
     ) -> io::Writer 
     {
@@ -74,12 +129,44 @@ namespace iceicle::solvers {
         return writer;
     }
 
+    /// @brief create a writer for residuals
+    /// @param config_tbl the user configuration lua table 
+    /// @param fespace the finite element space 
+    /// @param disc the discretization
+    /// @param u the solution to write
+    template<class T, class IDX, int ndim, class DiscType, class LayoutPolicy>
+    auto lua_get_residuals_writer(
+        sol::table config_tbl,
+        FESpace<T, IDX, ndim>& fespace,
+        DiscType& disc,
+        fespan<T, LayoutPolicy> u 
+    ) -> io::Writer 
+    {
+        using namespace iceicle::util;
+        io::Writer writer;
+        sol::optional<sol::table> output_tbl_opt = config_tbl["output"];
+        if(output_tbl_opt){
+            sol::table output_tbl = output_tbl_opt.value();
+            sol::optional<std::string> writer_name = output_tbl["writer"];
+
+            // .vtu writer 
+            if(writer_name && eq_icase(writer_name.value(), "vtu")){
+                io::PVDWriter<T, IDX, ndim> pvd_writer{};
+                pvd_writer.collection_name = "residuals";
+                pvd_writer.register_fespace(fespace);
+                pvd_writer.register_residuals(u, disc.residual_names, disc);
+                writer = pvd_writer;
+            }
+        }
+        return writer;
+    }
+
 
     template<class T, class IDX, int ndim, class disc_type, class LayoutPolicy>
     auto lua_select_mdg_geometry(
         sol::table config_tbl,
         FESpace<T, IDX, ndim>& fespace,
-        disc_type disc, 
+        disc_type& disc, 
         IDX icycle,
         fespan<T, LayoutPolicy> u
     ) -> geo_dof_map<T, IDX, ndim>
@@ -317,7 +404,7 @@ namespace iceicle::solvers {
         sol::table config_tbl,
         FESpace<T, IDX, ndim>& fespace,
         geo_dof_map<T, IDX, ndim>& geo_map,
-        DiscType disc, 
+        DiscType& disc, 
         fespan<T, LayoutPolicy> u
     ) -> void {
         using namespace iceicle::util;
@@ -388,6 +475,7 @@ namespace iceicle::solvers {
 
                 sol::optional<sol::table> output_tbl_opt = config_tbl["output"];
                 io::Writer writer{lua_get_writer(config_tbl, fespace, disc, u)};
+                io::Writer residuals_writer{lua_get_residuals_writer(config_tbl, fespace, disc, u)};
 
                 solver.vis_callback = [&](ExplicitSolverType& solver) mutable {
                     T sum = 0.0;
@@ -416,7 +504,15 @@ namespace iceicle::solvers {
                         << std::endl;
 #endif
                     if(writer) writer.write(solver.itime, solver.time);
+                    if(residuals_writer) residuals_writer.write(solver.itime, solver.time);
                 };
+
+                // === Check for invalid state ===
+                if(AnomalyLog::size() > 0){
+                    AnomalyLog::handle_anomalies();
+                    return;
+                }
+
                 // =====================
                 // = Perform the solve =
                 // =====================
@@ -486,8 +582,20 @@ namespace iceicle::solvers {
                 linesearch = no_linesearch<T, IDX>{};
             };
 
-            // Output Setup
+            // create writers
             io::Writer writer{lua_get_writer(config_tbl, fespace, disc, u)};
+            io::Writer residuals_writer{lua_get_residuals_writer(config_tbl, fespace, disc, u)};
+
+            // create an equivalent H1 Fespace for MDG residuals
+            FESpace space_h1{fespace.meshptr};
+            fe_layout_right h1_layout{fespace.cg_map, tmp::to_size<DiscType::nv_comp>()};
+            std::vector<T> h1_mdg_residual_data(h1_layout.size());
+            fespan res_mdg_h1{h1_mdg_residual_data, h1_layout};
+
+            // writer for mdg residuals
+            io::Writer writer_mdg{lua_get_writer(config_tbl, space_h1, disc, res_mdg_h1)};
+            writer_mdg.rename_collection("mdg_residuals");
+            ic_residual_layout<T, IDX, ndim, DiscType::nv_comp> ic_layout{geo_map};
 
             linesearch >> select_fcn{
                 [&](const auto& ls){
@@ -516,9 +624,35 @@ namespace iceicle::solvers {
 
                                 write_restart(fespace, u, k);
                         };
-                        // write the final iteration
+
+                        // diagnostics callback views the residuals
+                        solver.diag_callback = [&](IDX k, Vec res_data, Vec du_data){
+                            if(residuals_writer) residuals_writer.write(k, (T) k);
+
+                            // get the MDG residuals 
+                            petsc::VecSpan res_span{res_data};
+                            dofspan ic_residual{res_span.data() + u.size(), ic_layout};
+                            auto res_mdg_dof_view = dof_view(res_mdg_h1);
+                            extract_icespan(ic_residual, res_mdg_dof_view);
+                            writer_mdg.write(k, (T) k);
+                        };
+
+                        // === Check for invalid state ===
+                        if(AnomalyLog::size() > 0){
+                            AnomalyLog::handle_anomalies();
+                            return;
+                        }
+
+                        // solve 
                         IDX kfinal = solver.solve(u);
+
+                        // write the final iteration
+                        std::cout << "itime: " << std::setw(6) << kfinal 
+                            << " | Termination Criteria Reached"
+                            << std::endl << std::endl;
                         writer.write(kfinal, (T) kfinal);
+                        if(residuals_writer) residuals_writer.write(kfinal, (T) kfinal);
+                        write_restart(fespace, u, kfinal);
                     };
 
                     if(eq_icase_any(solver_type, "lm", "gauss-newton")){
@@ -564,7 +698,7 @@ namespace iceicle::solvers {
     auto lua_error_analysis(
         sol::table config_tbl,
         FESpace<T, IDX, ndim>& fespace,
-        DiscType disc, 
+        DiscType& disc, 
         fespan<T, LayoutPolicy> u
     ) -> void {
         using namespace iceicle::util;
@@ -584,6 +718,42 @@ namespace iceicle::solvers {
                     sol::table task_list = tasks_opt.value();
                     for(auto o : task_list){
                         std::string task_name = o.second.as<std::string>();
+
+                        if(eq_icase(task_name, "plot_exact_projection")){
+                            // =======================
+                            // = Plot Exact Solution =
+                            // =======================
+
+                            // plots a projection of the exact solution on the current fespace
+                            std::function<void(const T*, T*)> exactfunc = [exact](const T *x, T *u_exact){
+                                if constexpr(DiscType::nv_comp == 1){
+                                    // 1 equation case 
+                                    std::integer_sequence x_idx_seq = std::make_integer_sequence<int, ndim>();
+                                    auto helper = [exact]<int... Indices>(const T *x, T *u_exact, std::integer_sequence<int, Indices...> seq){
+                                        u_exact[0] = exact(x[Indices]...);
+                                    };
+                                    helper(x, u_exact, x_idx_seq);
+                                } else {
+                                    std::integer_sequence x_idx_seq = std::make_integer_sequence<int, ndim>();
+                                    auto helper = [exact]<int... Indices>(const T *x, T *u_exact, std::integer_sequence<int, Indices...> seq){
+                                        sol::table fout = exact(x[Indices]...);
+                                        for(int i = 0; i < DiscType::nv_comp; ++i)
+                                            u_exact[i] = fout[i + 1]; // lua 1-index
+                                    };
+                                    helper(x, u_exact, x_idx_seq);
+                                }
+                            };
+
+                            std::vector<T> projected_data(u.size());
+                            fespan u_proj{projected_data, u.get_layout()};
+                            projection_initialization(fespace, exactfunc, tmp::compile_int<DiscType::nv_comp>{}, u_proj);
+
+                            // get the writer and write out
+                            io::Writer writer{lua_get_writer(config_tbl, fespace, disc, u_proj)};
+                            writer.rename_collection("exact_solution");
+                            writer.write(0, 0.0);
+                        }
+
                         if(eq_icase(task_name, "l2_error")){
                             // =================
                             // = L2 error Task =

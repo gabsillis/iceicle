@@ -3,7 +3,7 @@
 # create the library target for finite element features 
 set(ICEICLE_FELIB_SOURCES mesh.cpp)
 add_library(iceicle_fe ${ICEICLE_FELIB_SOURCES})
-target_compile_features(iceicle_fe INTERFACE cxx_std_23)
+#target_compile_features(iceicle_fe INTERFACE cxx_std_23)
 
 # link libraries
 target_link_libraries(iceicle_fe PUBLIC iceicle_util)
@@ -13,13 +13,13 @@ target_link_libraries(iceicle_fe PUBLIC nt_tensor)
 target_link_libraries(iceicle_fe PUBLIC nt_polynomial)
 target_link_libraries(iceicle_fe PUBLIC nt_tmp)
 target_link_libraries(iceicle_fe PUBLIC nt_geometry)
-target_link_libraries(iceicle_fe PUBLIC ${MPI_C_LIBRARIES})
 target_link_libraries(iceicle_fe PUBLIC ${MFEM_LIBRARIES})
 target_link_libraries(iceicle_fe PUBLIC mdspan)
 
 # OPTIONAL LIBRARIES
 if(MPI_FOUND)
     target_compile_definitions(iceicle_fe PUBLIC ICEICLE_USE_MPI)
+    target_link_libraries(iceicle_fe PUBLIC ${MPI_CXX_LIBRARIES})
 endif()
 if(ICEICLE_USE_MFEM)
     target_include_directories(iceicle_fe PUBLIC ${MFEM_INCLUDE_DIRS})

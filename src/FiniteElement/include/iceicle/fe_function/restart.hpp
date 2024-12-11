@@ -95,6 +95,7 @@ namespace iceicle {
             for(int idim = 0; idim < ndim; ++idim) 
                 { in >> node[idim]; }
         }
+        fespace.meshptr->update_coord_els();
 
         // write out the solution vector
         for(IDX ielem = 0; ielem < fespace.elements.size(); ++ielem){

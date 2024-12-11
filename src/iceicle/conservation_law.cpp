@@ -6,10 +6,12 @@
 
 #include "iceicle/disc/conservation_law.hpp"
 #include "iceicle/anomaly_log.hpp"
+#include "iceicle/dat_writer.hpp"
 #include "iceicle/disc/bc_lua_interface.hpp"
 #include "iceicle/disc/burgers.hpp"
 #include "iceicle/disc/navier_stokes.hpp"
 #include "iceicle/fespace/fespace_lua_interface.hpp"
+#include "iceicle/geometry/face.hpp"
 #include "iceicle/iceicle_mpi_utils.hpp"
 #include "iceicle/initialization.hpp"
 #include "iceicle/mesh/mesh_lua_interface.hpp"
@@ -18,6 +20,8 @@
 #include "iceicle/solvers_lua_interface.hpp"
 #include "iceicle/string_utils.hpp"
 #include "iceicle/mesh/mesh_partition.hpp"
+// #include "iceicle/disc/ns_lua_interface.hpp"
+#include <sol/table.hpp>
 #ifdef ICEICLE_USE_PETSC
 #elifdef ICEICLE_USE_MPI
 #include "mpi.h"
@@ -73,6 +77,15 @@ template <class T, class IDX, int ndim, class pflux, class cflux, class dflux>
 void initialize_and_solve(
     sol::table config_tbl, FESpace<T, IDX, ndim> &fespace,
     ConservationLawDDG<T, ndim, pflux, cflux, dflux> &conservation_law) {
+
+  // ==============================
+  // = Set Discretization Options =
+  // ==============================
+    sol::table cons_law_tbl = config_tbl["conservation_law"];
+    // discretization options
+    conservation_law.sigma_ic = cons_law_tbl.get_or("sigma_ic", conservation_law.sigma_ic);
+    conservation_law.interior_penalty = cons_law_tbl.get_or("interior_penalty", conservation_law.interior_penalty);
+
   // ==================================
   // = Initialize the solution vector =
   // ==================================
@@ -86,6 +99,12 @@ void initialize_and_solve(
   // ===============================
   // = Output the Initial Solution =
   // ===============================
+  if constexpr(ndim == 1){
+    io::DatWriter<T, IDX, ndim> dat_writer{fespace};
+    dat_writer.register_fields(u, conservation_law.field_names);
+    dat_writer.collection_name = "initial_condition";
+    dat_writer.write_dat(0, 0.0);
+  }
   if constexpr (ndim == 2 || ndim == 3) {
     io::PVDWriter<T, IDX, ndim> pvd_writer{};
     pvd_writer.register_fespace(fespace);
@@ -104,11 +123,16 @@ void initialize_and_solve(
     add_neumann_callbacks(conservation_law, bc_tbl);
   }
 
+  // ========================
+  // = Add User Source Term =
+  // ========================
+  solvers::add_source_term_callback(conservation_law, config_tbl);
+
   // =========
   // = Solve =
   // =========
-  sol::table mdg_tbl = config_tbl["mdg"];
-  IDX ncycles = (mdg_tbl) ? mdg_tbl.get_or("ncycles", 1) : 1;
+  sol::optional<sol::table> mdg_tbl = config_tbl["mdg"];
+  IDX ncycles = (mdg_tbl) ? mdg_tbl.value().get_or("ncycles", 1) : 1;
   for (IDX icycle = 0; icycle < ncycles; ++icycle) {
 
     mpi::execute_on_rank(0, [&] {
@@ -134,8 +158,11 @@ void setup(sol::table script_config, cli_parser cli_args) {
   // = Setup Mesh =
   // ==============
   auto mesh_opt = construct_mesh_from_config<T, IDX, ndim>(script_config);
-  if (!mesh_opt)
+  if (!mesh_opt){
+    std::cerr << "Mesh construction failed..." << std::endl;
+    AnomalyLog::handle_anomalies();
     return; // exit if we have no valid mesh
+  }
   AbstractMesh<T, IDX, ndim> mesh = mesh_opt.value();
   std::vector<IDX> invalid_faces;
   if (!validate_normals(mesh, invalid_faces)) {
@@ -146,8 +173,15 @@ void setup(sol::table script_config, cli_parser cli_args) {
     return;
   }
   perturb_mesh(script_config, mesh);
+  manual_mesh_management(script_config, mesh);
 
   AbstractMesh<T, IDX, ndim> pmesh{partition_mesh(mesh)};
+
+  if(AnomalyLog::size() > 0){
+    std::cerr << "Errors from setting up mesh: ";
+    AnomalyLog::handle_anomalies(std::cerr);
+    return;
+  }
 
   if (cli_args["debug1"]) {
     // linear advection a = [0.2, 0];
@@ -164,6 +198,7 @@ void setup(sol::table script_config, cli_parser cli_args) {
   // ===================================
   sol::table fespace_tbl = script_config["fespace"];
   auto fespace = lua_fespace(&pmesh, fespace_tbl);
+  fespace.print_info(std::cout);
 
   // ============================
   // = Setup the Discretization =
@@ -209,9 +244,7 @@ void setup(sol::table script_config, cli_parser cli_args) {
                               std::move(convective_flux),
                               std::move(diffusive_flux)};
       disc.field_names = std::vector<std::string>{"u"};
-
-      // discretization options
-      disc.sigma_ic = cons_law_tbl.get_or("sigma_ic", disc.sigma_ic);
+      disc.residual_names = std::vector<std::string>{"residual"};
 
       initialize_and_solve(script_config, fespace, disc);
 
@@ -248,28 +281,69 @@ void setup(sol::table script_config, cli_parser cli_args) {
                               std::move(convective_flux),
                               std::move(diffusive_flux)};
       disc.field_names = std::vector<std::string>{"u"};
+      disc.residual_names = std::vector<std::string>{"residual"};
       initialize_and_solve(script_config, fespace, disc);
 
     } else if (eq_icase_any(cons_law_tbl["name"].get<std::string>(),
                             "navier-stokes", "euler")) {
-
-      T gamma = cons_law_tbl.get_or("gamma", 1.4);
-
-      navier_stokes::Physics<T, ndim> physics{gamma};
-
-      navier_stokes::Flux<T, ndim> physical_flux{physics};
-      navier_stokes::VanLeer<T, ndim> convective_flux{physics};
-      navier_stokes::DiffusionFlux<T, ndim> diffusive_flux{physics};
-      ConservationLawDDG disc{std::move(physical_flux),
-                              std::move(convective_flux),
-                              std::move(diffusive_flux)};
-      disc.field_names = std::vector<std::string>{"rho", "rhou"};
-      if constexpr (ndim >= 2)
-        disc.field_names.push_back("rhov");
-      if constexpr (ndim >= 3)
-        disc.field_names.push_back("rhow");
-      disc.field_names.push_back("rhoe");
-      initialize_and_solve(script_config, fespace, disc);
+//      using namespace navier_stokes;
+//      using namespace util;
+//
+//      // Set up reference quantities for nondimensionalization
+//      std::optional<std::string> reference_quantities;
+//      if(reference_quantities){
+//        if(eq_icase(reference_quantities.value(),"free_stream")){
+//          
+//        }
+//      }
+//      
+//      Physics<T, ndim> physics{navier_stokes::parse_physics<T, ndim>(cons_law_tbl)};
+//
+//      // get isothermal wall temperatures
+//      sol::optional<sol::table> iso_tmps_opt = cons_law_tbl["isothermal_temperatures"];
+//      if(iso_tmps_opt){
+//        sol::table iso_tmps = iso_tmps_opt.value();
+//        for(int i = 0; i < iso_tmps.size(); ++i){
+//           physics.isothermal_temperatures.push_back(iso_tmps[i + 1]);
+//        }
+//      } else {
+//        // check to make sure no isothermal boundary conditions are present
+//        for(auto trace : fespace.get_boundary_traces()){
+//          if(trace.face->bctype == BOUNDARY_CONDITIONS::NO_SLIP_ISOTHERMAL){
+//            std::cerr << "Isothermal boundary condition on face " << trace.facidx
+//              << " but no entries in isothermal_temperatures" << std::endl;
+//            return;
+//          }
+//        }
+//      }
+//
+//      auto fcn = [&]<class fluxtype>(fluxtype physical_flux){
+//      navier_stokes::VanLeer<T, ndim> convective_flux{physics};
+//      navier_stokes::DiffusionFlux<T, ndim> diffusive_flux{physics};
+//      ConservationLawDDG disc{std::move(physical_flux),
+//                              std::move(convective_flux),
+//                              std::move(diffusive_flux)};
+//      disc.field_names = std::vector<std::string>{"rho", "rhou"};
+//      disc.residual_names = std::vector<std::string>{"density_conservation", "momentum_u_conservation"};
+//      if constexpr (ndim >= 2) {
+//        disc.field_names.push_back("rhov");
+//        disc.residual_names.push_back("momentum_v_conservation");
+//      }
+//      if constexpr (ndim >= 3) {
+//        disc.field_names.push_back("rhow");
+//        disc.residual_names.push_back("momentum_w_conservation");
+//      }
+//      disc.field_names.push_back("rhoe");
+//      disc.residual_names.push_back("energy_conservation");
+//      initialize_and_solve(script_config, fespace, disc);
+//      };
+//      if(eq_icase(cons_law_tbl["name"].get<std::string>(), "navier-stokes")){
+//        navier_stokes::Flux<T, ndim, false> physical_flux{physics};
+//        fcn(physical_flux);
+//      } else {
+//        navier_stokes::Flux<T, ndim> physical_flux{physics};
+//        fcn(physical_flux);
+//      }
     } else {
       AnomalyLog::log_anomaly(
           Anomaly{"No such conservation_law implemented",
@@ -322,6 +396,7 @@ int main(int argc, char *argv[]) {
   // Parse the input deck
   sol::state lua_state;
   lua_state.open_libraries(sol::lib::base);
+  lua_state.open_libraries(sol::lib::package);
   lua_state.open_libraries(sol::lib::math);
 
   sol::optional<sol::table> script_config_opt;

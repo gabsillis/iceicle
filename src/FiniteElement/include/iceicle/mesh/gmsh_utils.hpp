@@ -61,6 +61,27 @@ namespace iceicle {
             std::map<std::size_t, std::vector<std::size_t>> curv_map;
             std::map<std::size_t, std::vector<std::size_t>> surf_map;
             std::map<std::size_t, std::vector<std::size_t>> vol_map;
+
+            /// @brief given the dimensionality return the tag map of entities of that dimensionality 
+            /// or an empty map if not applicable
+            inline constexpr
+            auto map_by_dimensionality(int ndim) const
+            -> const std::map<std::size_t, std::vector<std::size_t>>&
+            {
+                switch(ndim){
+                    case 0:
+                        return pt_map;
+                    case 1:
+                        return curv_map;
+                    case 2:
+                        return surf_map;
+                    case 3:
+                        return vol_map;
+                    default:
+                        static std::map<std::size_t, std::vector<std::size_t>> empty{};
+                        return empty;
+                }
+            }
         };
 
         inline
@@ -137,18 +158,21 @@ namespace iceicle {
             return tag_maps;
         }
 
+        /// @brief read the node coordinate data from the gmsh file 
+        /// @param line the string holding the metadata for the nodes section
+        /// @param line_no the current line number in the file 
+        /// @param infile the input stream representing the gmsh file
         template<class T, class IDX, int ndim>
         auto read_nodes(
             std::string line,
             std::size_t& line_no,
-            std::istream& infile,
-            AbstractMesh<T, IDX, ndim>& mesh
-        ) -> void {
+            std::istream& infile
+        ) -> std::optional<NodeArray<T, ndim>> {
             
             // get the metadata 
             std::size_t nblocks, nnodes, min_nodetag, max_nodetag;
             sscanf(line.c_str(), "%ld %ld %ld %ld", &nblocks, &nnodes, &min_nodetag, &max_nodetag);
-            mesh.coord.resize(max_nodetag + 1);
+            NodeArray<T, ndim> coord(max_nodetag + 1);
 
             for(int iblock = 0; iblock < nblocks; ++iblock){
                 std::getline(infile, line); 
@@ -172,10 +196,12 @@ namespace iceicle {
                 for(IDX inode = 0; inode < n_blocknodes && std::getline(infile, line); ++inode, ++line_no){
                     std::istringstream linestream{line};
                     for(int idim = 0; idim < ndim; ++idim){
-                        linestream >> mesh.coord[node_idxs[inode]][idim];
+                        linestream >> coord[node_idxs[inode]][idim];
                     }
                 }
             }
+
+            return std::optional{coord};
         }
 
         template<class IDX>
@@ -351,16 +377,32 @@ namespace iceicle {
             std::string line,
             std::size_t& line_no,
             std::istream& infile,
-            std::map<int, std::tuple<BOUNDARY_CONDITIONS, int>>& bcmap,
-            AbstractMesh<T, IDX, ndim>& mesh
-        ) -> void {
+            const TagMaps& tag_maps,
+            const std::map<int, std::tuple<BOUNDARY_CONDITIONS, int>>& bcmap
+        ) -> std::optional< std::tuple< 
+            std::vector< ElementTransformation<T, IDX, ndim> *>, 
+            util::crs<IDX, IDX>, 
+            std::vector< std::tuple< BOUNDARY_CONDITIONS, int, std::vector<IDX> > >
+        > > {
+            
+            /// @brief A description of a boundary face 
+            /// contains all the information needed to generate the face data structure 
+            /// first the boundary condition type 
+            /// then the boundary condition integer flag 
+            /// then the nodes of the boundary face
+            using boundary_face_desc = std::tuple<BOUNDARY_CONDITIONS, int, std::vector<IDX>>;
+
+            // Data structures to be constructed
+            std::vector< ElementTransformation<T, IDX, ndim>* > el_transformations{};
+            std::vector<std::vector<IDX>> el_conn_ragged{};
+            std::vector<boundary_face_desc> boundary_infos{};
 
             // get the metadata
             std::size_t nblocks, nelem, min_eltag, max_eltag;
             sscanf(line.c_str(), "%ld %ld %ld %ld", &nblocks, &nelem, &min_eltag, &max_eltag);
+            el_transformations.reserve(nelem);
+            el_conn_ragged.reserve(nelem);
 
-            std::vector<bdy_face_parse> boundary_face_infos{};
-            std::vector<std::vector<IDX>> el_conn_ragged;
             for(int iblock = 0; iblock < nblocks; ++iblock){
                 std::getline(infile, line); 
                 line_no++;
@@ -370,8 +412,25 @@ namespace iceicle {
                 int entity_dim, entity_tag, element_type;
                 std::size_t nelem_block;
                 linestream >> entity_dim >> entity_tag >> element_type >> nelem_block;
+                auto physical_tags = tag_maps.map_by_dimensionality(entity_dim).find(entity_tag);
 
                 if (entity_dim == ndim-1){
+
+                    // === Get the Boundary condition information ===
+                    // default index: 0
+                    int bdy_map_index = 0;
+                    if(physical_tags != tag_maps.map_by_dimensionality(entity_dim).end()
+                            && physical_tags->second.size() > 0){
+                        bdy_map_index = physical_tags->second[0];
+                    }
+                    auto lookup = bcmap.find(bdy_map_index);
+                    if(lookup == bcmap.end()){
+                        util::AnomalyLog::log_anomaly("Could not map boundary condition with physical tag: " + std::to_string(bdy_map_index));
+                        return std::nullopt;
+                    }
+                    auto [bc_type, bc_flag] = lookup->second;
+
+                    // === Compile the boundary face descriptions ===
                     // these are boundary face definitions
                     // read in the nodes and store with entity tag for later
                     for(int ifac = 0; ifac < nelem_block; ++ifac){
@@ -379,13 +438,14 @@ namespace iceicle {
                         std::getline(infile, line);
                         ++line_no;
                         std::istringstream linestream{line};
-                        int element_tag;
+                        std::size_t element_tag;
                         linestream >> element_tag;
-                        bdy_face_parse parsed_face{entity_tag, element_type, std::vector<std::size_t>(nnode)};
+                        std::vector<IDX> fac_nodes(nnode);
+                        
                         for(int inode = 0; inode < nnode; ++inode){
-                            linestream >> parsed_face.nodes[inode];
+                            linestream >> fac_nodes[inode];
                         }
-                        boundary_face_infos.push_back(parsed_face);
+                        boundary_infos.push_back(std::tuple{bc_type, bc_flag, fac_nodes});
                     }
 
                 } else if (entity_dim == ndim){
@@ -398,7 +458,7 @@ namespace iceicle {
                             auto conn = read_linear_tris<IDX>(nelem_block, line_no, infile);
                             el_conn_ragged.insert(el_conn_ragged.end(), conn.begin(), conn.end());
                             for(IDX i = 0; i < nelem_block; ++i)
-                                mesh.el_transformations.push_back(trans);
+                                el_transformations.push_back(trans);
                         }
                         break;
                         case 3:
@@ -407,7 +467,7 @@ namespace iceicle {
                             auto conn = read_linear_quads<IDX>(nelem_block, line_no, infile);
                             el_conn_ragged.insert(el_conn_ragged.end(), conn.begin(), conn.end());
                             for(IDX i = 0; i < nelem_block; ++i)
-                                mesh.el_transformations.push_back(trans);
+                                el_transformations.push_back(trans);
                         }
                         break;
                         default:
@@ -418,17 +478,8 @@ namespace iceicle {
             }
 
             std::cout << "Compressing element list" << std::endl;
-            mesh.conn_el = util::crs<IDX, IDX>(el_conn_ragged);
-
-            // generate interior faces
-            std::cout << "Generating interior faces" << std::endl;
-            find_interior_faces(mesh);
-            mesh.interiorFaceStart = 0;
-            mesh.interiorFaceEnd = mesh.faces.size();
-
-            // generate boundary faces
-            std::cout << "Generating boundary faces" << std::endl;
-            create_boundary_faces(boundary_face_infos, bcmap, mesh);
+            util::crs<IDX, IDX> el_conn{el_conn_ragged};
+            return std::optional{std::tuple{el_transformations, el_conn, boundary_infos}};
         }
     }
 
@@ -439,18 +490,28 @@ namespace iceicle {
     /// that physical tag should have an entry in the map:
     /// a tuple which contains the boundary condition type and integer boundary flag. 
     template<class T, class IDX, int ndim>
-    auto read_gmsh(std::istream& infile, std::map<int, std::tuple<BOUNDARY_CONDITIONS, int>>& bcmap) -> AbstractMesh<T, IDX, ndim> {
+    auto read_gmsh(std::istream& infile, std::map<int, std::tuple<BOUNDARY_CONDITIONS, int>>& bcmap) 
+    -> std::optional<AbstractMesh<T, IDX, ndim>> {
         using namespace impl::gmsh;
         using namespace util;
+        /// @brief A description of a boundary face 
+        /// contains all the information needed to generate the face data structure 
+        /// first the boundary condition type 
+        /// then the boundary condition integer flag 
+        /// then the nodes of the boundary face
+        using boundary_face_desc = std::tuple<BOUNDARY_CONDITIONS, int, std::vector<IDX>>;
 
         // setup for parsing
         std::size_t line_no = 0;
         READER_STATE state = READER_STATE::TOP_LEVEL; 
         
         // data 
-        AbstractMesh<T, IDX, ndim> mesh{};
+        NodeArray<T, ndim> coord;
         Header header;
         TagMaps tag_maps{};
+        std::vector< ElementTransformation<T, IDX, ndim>* > el_transformations{};
+        util::crs<IDX, IDX> el_conn{};
+        std::vector<boundary_face_desc> boundary_infos{};
 
         std::cout << "Reading gmsh file... " << std::endl;
 
@@ -512,7 +573,11 @@ namespace iceicle {
                     if(eq_icase(line, "$EndNodes")){
                         state = READER_STATE::TOP_LEVEL;
                     } else {
-                        read_nodes(line, line_no, infile, mesh);
+                        auto coord_opt = read_nodes<T, IDX, ndim>(line, line_no, infile);
+                        if(coord_opt)
+                            coord = coord_opt.value();
+                        else 
+                            return std::nullopt;
                     }
                     break;
 
@@ -520,7 +585,12 @@ namespace iceicle {
                     if(eq_icase(line, "$EndElements")){
                         state = READER_STATE::TOP_LEVEL;
                     } else {
-                        read_elements(line, line_no, infile, bcmap, mesh);
+                        auto opt = read_elements<T, IDX, ndim>(line, line_no, infile, tag_maps, bcmap);
+                        if(opt){
+                            std::tie(el_transformations, el_conn, boundary_infos) = opt.value();
+                        } else {
+                            return std::nullopt;
+                        }
                     }
                 default:
                     break;
@@ -528,25 +598,6 @@ namespace iceicle {
 
             line_no++;
         }
-
-        mesh.elsup = to_elsup(mesh.conn_el, mesh.n_nodes());
-        { // build the element coordinates matrix
-            mesh.coord_els = util::crs<MATH::GEOMETRY::Point<T, ndim>, IDX>{
-                std::span{mesh.conn_el.cols(), mesh.conn_el.cols() + mesh.conn_el.nrow() + 1}};
-            for(IDX iel = 0; iel < mesh.nelem(); ++iel){
-                for(std::size_t icol = 0; icol < mesh.conn_el.rowsize(iel); ++icol){
-                    mesh.coord_els[iel, icol] = mesh.coord[mesh.conn_el[iel, icol]];
-                }
-            }
-        }
-
-        // print details for small meshes
-        if(mesh.coord.size() < 100){
-            mesh.printNodes(std::cout);
-            mesh.printElements(std::cout);
-            mesh.printFaces(std::cout);
-        }
-
-        return mesh;
+        return std::optional{AbstractMesh{coord, el_conn, el_transformations, boundary_infos}};
     }
 }

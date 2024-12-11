@@ -42,6 +42,19 @@ namespace iceicle {
         using index_type = IDX;
         using size_type = std::make_unsigned_t<index_type>;
 
+        // ==============
+        // = Properties =
+        // ==============
+
+        /**
+         * @brief consecutive local degrees of freedom (ignoring vector components)
+         * are contiguous in the layout
+         * meaning that the data for a an element can be block copied 
+         * to a elspan provided the layout parameters are the same
+         * This is not true for cg_dof_map because local element dofs map to shared dofs
+         */
+        inline static constexpr bool local_dof_contiguous() noexcept 
+        { return false; }
 
         // ================
         // = Data Members =
@@ -86,7 +99,7 @@ namespace iceicle {
          * @param idof the local degree of freedom index
          */
         constexpr index_type operator[](index_type ielem, index_type idof) 
-            const noexcept { return mesh.elements[ielem]->nodes(idof); }
+            const noexcept { return mesh.conn_el[ielem, idof]; }
 
         // ===========
         // = Utility =
@@ -108,8 +121,8 @@ namespace iceicle {
          */
         constexpr size_type max_el_size_reqirement( index_type nv_comp ) const noexcept {
             size_type max = 0;
-            for(auto& element_ptr : mesh.elements){
-                max = std::max(element_ptr->n_nodes() * nv_comp, max);
+            for(auto element_ptr : mesh.el_transformations){
+                max = std::max(element_ptr->nnode * nv_comp, max);
             }
             return max;
         }
@@ -120,14 +133,14 @@ namespace iceicle {
          * @return the number of degrees of freedom 
          */
         [[nodiscard]] constexpr size_type ndof_el( index_type elidx ) const noexcept {
-            return mesh.elements[elidx]->n_nodes();
+            return mesh.el_transformations[elidx]->nnode;
         }
 
         /** @brief get the number of elements represented in the map */
-        [[nodiscard]] constexpr size_type nelem() const noexcept { return mesh.elements.size(); }
+        [[nodiscard]] constexpr size_type nelem() const noexcept { return mesh.el_transformations.size(); }
 
         /** @brief get the size of the global degree of freedom index space represented by this map */
-        [[nodiscard]] constexpr size_type size() const noexcept { return static_cast<size_type>(mesh.nodes.size()); }
+        [[nodiscard]] constexpr size_type size() const noexcept { return static_cast<size_type>(mesh.coord.size()); }
     };
 
     // Deduction guide

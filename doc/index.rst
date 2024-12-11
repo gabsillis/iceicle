@@ -435,19 +435,22 @@ Uniform Mesh
 
 All simulations need a mesh to define and partition the geometric domain. Currently only uniform hyper-cube mesh generation is supported.
 
-:code:`uniform_mesh` : creates a uniform mesh 
+:code:`uniform_mesh` : creates a uniform mesh. There are two sets of supported inputs: bounding box and number of elements in each direction, or a table of nodes for each dimension.
 
 **Required Members**
+* Option 1: bounding box
+   * :code:`nelem` : the number of elements in each direction
 
-* :code:`nelem` : the number of elements in each direction
+     This is a table of size ``ndim`` and is ordered in axis order (x, y, z, ...)
 
-  This is a table of size ``ndim`` and is ordered in axis order (x, y, z, ...)
+   * :code:`bounding_box` : the bounding box of the mesh 
 
-* :code:`bounding_box` : the bounding box of the mesh 
+      * :code:`min` : the minimal corner of the mesh - if the mesh is the bi-unit hypercube, this is the :math:`\begin{pmatrix} -1 & -1 & ... \end{pmatrix}^T` corner of the mesh
 
-   * :code:`min` : the minimal corner of the mesh - if the mesh is the bi-unit hypercube, this is the :math:`\begin{pmatrix} -1 & -1 & ... \end{pmatrix}^T` corner of the mesh
+      * :code:`max` : the maximal corner of the mesh - if the mesh is the bi-unit hypercube, this is the :math:`\begin{pmatrix} 1 & 1 & ... \end{pmatrix}^T` corner of the mesh
 
-   * :code:`max` : the maximal corner of the mesh - if the mesh is the bi-unit hypercube, this is the :math:`\begin{pmatrix} 1 & 1 & ... \end{pmatrix}^T` corner of the mesh
+* Option 2: nodes by dimension 
+   * :code:`directional_nodes` a table of tables, there must be ``ndim`` tables inside directional_nodes. Each table contains the nodes in that direction. The mesh nodes will be the cartesian product of these arrays.
 
 * :code:`boundary_conditions` : table to define the boundary condition identifiers for the domain faces 
 
@@ -568,11 +571,11 @@ and some physical parameters.
 * ``name`` the name of the conservation law, current options are: 
    * :cpp:`burgers` : The viscous burgers equation 
 
-      :math:`\frac{\partial u}{\partial t} + \frac{\partial (a_j u + b_j u^2)}{\partial x_j} = \mu\frac{\partial^2 u}{\partial x^2}`
+      :math:`\frac{\partial u}{\partial t} + \frac{\partial (a_j u + \frac{1}{2}b_j u^2)}{\partial x_j} = \mu\frac{\partial^2 u}{\partial x^2}`
 
    * :cpp:`spacetime-burgers` : The viscous burgers equation in spacetime (see :ref:`Spacetime DG`)
 
-      :math:`\frac{\partial u}{\partial t} + \frac{\partial (a_j u + b_j u^2)}{\partial x_j} = \mu\frac{\partial^2 u}{\partial x^2}`
+      :math:`\frac{\partial u}{\partial t} + \frac{\partial (a_j u + \frac{1}{2}b_j u^2)}{\partial x_j} = \mu\frac{\partial^2 u}{\partial x^2}`
 
    * ``euler`` the inviscid Euler equations
 
@@ -1050,6 +1053,18 @@ These are implemented with compile time constants for polynomial order up to ``F
 
 - Legendre polynomials on hypercube domains up to 10th order (:cpp:class:`iceicle::HypercubeLegendreBasis`).
 
+
+----------------------
+FaceGeoDofConnectivity
+----------------------
+This class keeps node indices for a face and connected elements 
+The best use of this class is to loop over face dofs, then left dofs, then right dofs.
+The ``dofs`` array is defined as follows
+``[0, nfaces)`` will have ``gdof``, ``trace_dof``, ``left_dof``, and ``right_dof`` defined 
+where ``gdof`` is the node index in the mesh and the other are local indices to the respective domains. 
+Then ``[nfaces, nfaces + elL.n_nodes())`` has ``gdof`` and ``left_dof`` defined (others are -1).
+And the rest is the right dofs.
+
 ================
 Quadrature Rules 
 ================
@@ -1095,6 +1110,10 @@ geo_dof_map
 
 The struct :cpp:struct:`iceicle::geo_dof_map` represents a mapping to a subset of geometric (nodal) degrees of freedom
 
+-------------
+geo_param_map
+-------------
+Maps a geometric parameterization
 
 --------------
 component_span

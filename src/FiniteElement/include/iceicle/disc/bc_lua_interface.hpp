@@ -1,6 +1,6 @@
 /// @brief lua interface for boundary conditions
 /// @author Gianni Absillis (gabsill@ncsu.edu)
-
+#pragma once
 #include "Numtool/tmp_flow_control.hpp"
 #include "iceicle/anomaly_log.hpp"
 #include <functional>

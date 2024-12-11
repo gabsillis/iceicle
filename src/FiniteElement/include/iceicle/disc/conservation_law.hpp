@@ -3,10 +3,12 @@
 #include "Numtool/fixed_size_tensor.hpp"
 #include "Numtool/point.hpp"
 #include "iceicle/element/finite_element.hpp"
+#include "iceicle/fd_utils.hpp"
 #include "iceicle/fe_function/fespan.hpp"
 #include "iceicle/geometry/face.hpp"
 #include "iceicle/mesh/mesh.hpp"
 #include <cmath>
+#include <limits>
 #include <string>
 #include <type_traits>
 #include <vector>
@@ -62,7 +64,7 @@ namespace iceicle {
     concept implements_bcs =
     requires(
         FluxT flux,
-        std::array<typename FluxT::value_type, FluxT::nv_comp> uL,
+        std::array<typename FluxT::value_type, FluxT::nv_comp> &uL,
         std::mdspan<typename FluxT::value_type, std::extents<std::size_t, std::dynamic_extent, std::dynamic_extent>> graduL,
         NUMTOOL::TENSOR::FIXED_SIZE::Tensor< typename FluxT::value_type, FluxT::ndim > unit_normal,
         BOUNDARY_CONDITIONS bctype,
@@ -102,7 +104,14 @@ namespace iceicle {
         CFlux conv_nflux;
         DiffusiveFlux diff_flux;
 
-        public:
+        // compile time correctness checks
+        static_assert(std::same_as<T, typename PFlux::value_type>, "Value type mismatch with physical flux");
+        static_assert(std::same_as<T, typename CFlux::value_type>, "Value type mismatch with convective flux");
+        static_assert(std::same_as<T, typename DiffusiveFlux::value_type>, "Value type mismatch with diffusive flux");
+        static_assert(ndim == PFlux::ndim, "ndim mismatch with physical flux");
+        static_assert(ndim == CFlux::ndim, "ndim mismatch with convective flux");
+        static_assert(ndim == DiffusiveFlux::ndim, "ndim mismatch with diffusive flux");
+
         // ============
         // = Typedefs =
         // ============
@@ -145,11 +154,19 @@ namespace iceicle {
         /// and output neq values in the second argument
         std::vector< std::function<void(const T*, T*)> > neumann_callbacks;
 
+        /// @brief user defined source term as a function callback 
+        /// Takes the position in the domain (size = ndim) 
+        /// and outputs the source (size = neq) in the second argument
+        std::optional< std::function<void(const T*, T*)> > user_source = std::nullopt;
+
         /// @brief utility for SPACETIME_PAST boundary condition
         ST_Info spacetime_info;
 
         /// @brief human readable names for each vector component of the variables
         std::vector<std::string> field_names;
+
+        /// @brief human readable names for each vector component of the residuals
+        std::vector<std::string> residual_names;
 
         // ===============
         // = Constructor =
@@ -248,6 +265,9 @@ namespace iceicle {
                 // calculate the jacobian determinant 
                 auto J = el.jacobian(quadpt.abscisse);
                 T detJ = NUMTOOL::TENSOR::FIXED_SIZE::determinant(J);
+                // prevent duplicate contribution of overlapping range in transformation
+                // this occurs in concave elements
+                detJ = std::max((T) 0.0, detJ); 
 
                 // get the basis functions and gradients in the physical domain
                 auto bi = el.eval_basis_qp(iqp);
@@ -268,7 +288,7 @@ namespace iceicle {
                 // compute the flux  and scatter to the residual
                 Tensor<T, neq, ndim> flux = phys_flux(u, gradu);
 
-                // loop over the test functions and construc the residual
+                // loop over the test functions and construct the residual
                 for(int itest = 0; itest < el.nbasis(); ++itest){
                     for(int ieq = 0; ieq < neq; ++ieq){
                         for(int jdim = 0; jdim < ndim; ++jdim){
@@ -276,6 +296,138 @@ namespace iceicle {
                         }
                     }
                 }
+
+                // if a source term has been defined, add it in
+                if(user_source){
+                    auto phys_pt = el.transform(quadpt.abscisse);
+
+                    auto& source_fcn = user_source.value();
+                    std::array<T, neq> source;
+                    source_fcn(phys_pt.data(), source.data());
+                    for(int itest = 0; itest < el.nbasis(); ++itest){
+                        for(int ieq = 0; ieq < neq; ++ieq) {
+                            res[itest, ieq] -= source[ieq] * bi[itest] * detJ * quadpt.weight;
+                        }
+                    }
+                }
+            }
+        }
+
+        template<class IDX>
+        auto domain_integral_jacobian(
+            const FiniteElement<T, IDX, ndim>& el,
+            elspan auto unkel,
+            linalg::out_matrix auto dfdu
+        ) {
+            static constexpr int neq = decltype(unkel)::static_extent();
+            static_assert(neq == PFlux::nv_comp, "Number of equations must match.");
+            using namespace NUMTOOL::TENSOR::FIXED_SIZE;
+            // basis function scratch space
+            std::vector<T> dbdx_data(el.nbasis() * ndim);
+
+            // solution scratch space
+            std::array<T, neq> u;
+            std::array<T, neq * ndim> gradu_data;
+
+            // get the degree of freedom layout for the element 
+            auto el_layout = unkel.get_layout();
+
+            // loop over the quadrature points
+            for(int iqp = 0; iqp < el.nQP(); ++iqp){
+                const QuadraturePoint<T, ndim> &quadpt = el.getQP(iqp);
+
+                // calculate the jacobian determinant 
+                auto J = el.jacobian(quadpt.abscisse);
+                T detJ = NUMTOOL::TENSOR::FIXED_SIZE::determinant(J);
+                // prevent duplicate contribution of overlapping range in transformation
+                // this occurs in concave elements
+                detJ = std::max((T) 0.0, detJ); 
+
+                // get the basis functions and gradients in the physical domain
+                auto bi = el.eval_basis_qp(iqp);
+                auto gradxBi = el.eval_phys_grad_basis(quadpt.abscisse, J,
+                        el.eval_grad_basis_qp(iqp), dbdx_data.data());
+
+                // construct the solution U at the quadrature point 
+                std::ranges::fill(u, 0.0);
+                for(int ibasis = 0; ibasis < el.nbasis(); ++ibasis){
+                    for(int ieq = 0; ieq < neq; ++ieq){
+                        u[ieq] += unkel[ibasis, ieq] * bi[ibasis];
+                    }
+                }
+
+                // construct the gradient of u 
+                auto gradu = unkel.contract_mdspan(gradxBi, gradu_data.data());
+
+                // compute the jacobian of the physical flux 
+                // with respect to field variables
+                // and gradients
+                Tensor<T, neq, ndim> flux = phys_flux(u, gradu);
+                T epsilon = scale_fd_epsilon(
+                    std::sqrt(std::numeric_limits<T>::epsilon()),
+                    frobenius(flux)
+                );
+
+                Tensor<T, neq, ndim, neq> dflux_du;
+                Tensor<T, neq, ndim, neq, ndim> dflux_dgradu;
+                for(int jeq = 0; jeq < neq; ++jeq){
+
+                    // peturb u
+                    T u_old = u[jeq];
+                    u[jeq] += epsilon;
+                    Tensor<T, neq, ndim> flux_p = phys_flux(u, gradu);
+                    Tensor<T, neq, ndim> diff = (flux_p - flux) / epsilon;
+                    for(int ieq = 0; ieq < neq; ++ieq){
+                        for(int idim = 0; idim < ndim; ++idim){
+                            dflux_du[ieq, idim, jeq] =
+                                diff[ieq, idim];
+                        }
+                    }
+                    u[jeq] = u_old;
+
+                    // peturb grad u
+                    for(int jdim = 0; jdim < ndim; ++jdim){
+                        T gradu_old = gradu[jeq, jdim];
+                        gradu[jeq, jdim] += epsilon;
+                    
+                        Tensor<T, neq, ndim> flux_p = phys_flux(u, gradu);
+                        Tensor<T, neq, ndim> diff = (flux_p - flux) / epsilon;
+                        for(int ieq = 0; ieq < neq; ++ieq){
+                            for(int idim = 0; idim < ndim; ++idim){
+                                dflux_dgradu[ieq, idim, jeq, jdim] =
+                                    diff[ieq, idim];
+                            }
+                        }
+                        gradu[jeq, jdim] = gradu_old;
+                    }
+                }
+                
+                // loop over the test functions and construct the jacobian
+                for(int itest = 0; itest < el.nbasis(); ++itest){
+                    for(int ieq = 0; ieq < neq; ++ieq){
+                        for(int idim = 0; idim < ndim; ++idim){
+                            for(int jdof = 0; jdof < el.nbasis(); ++jdof){
+                                for(int jeq = 0; jeq < neq; ++jeq){
+                                    // one-dimensional jacobian indices
+                                    auto ijac = el_layout[itest, ieq];
+                                    auto jjac = el_layout[jdof, jeq];
+                                    dfdu[ijac, jjac] += 
+                                        dflux_du[ieq, idim, jeq] * bi[jdof] 
+                                        * gradxBi[itest, idim] * detJ * quadpt.weight;
+                                    for(int jdim = 0; jdim < ndim; ++jdim){
+                                        dfdu[ijac, jjac] += 
+                                            dflux_dgradu[ieq, idim, jeq, jdim] * gradxBi[jdof, jdim] 
+                                            * gradxBi[itest, idim] * detJ * quadpt.weight;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // source has no dependence on U 
+                // therefore no contribution to 
+                // jacobian
             }
         }
 
@@ -385,7 +537,6 @@ namespace iceicle {
                 // switch to interior penalty if set
                 if(interior_penalty) beta1 = 0.0;
 
-
                 std::mdspan<T, std::extents<int, neq, ndim>> grad_ddg{grad_ddg_data.data()};
                 for(int ieq = 0; ieq < neq; ++ieq){
                     // construct the DDG derivatives
@@ -397,7 +548,7 @@ namespace iceicle {
                         for(int jdim = 0; jdim < ndim; ++jdim){
                             hessTerm += (hessuR[ieq, jdim, idim] - hessuL[ieq, jdim, idim])
                                 * unit_normal[jdim];
-                    }
+                        }
                         grad_ddg[ieq, idim] += beta1 * h_ddg * hessTerm;
                     }
                 }
@@ -428,40 +579,32 @@ namespace iceicle {
 
                 // if applicable: apply the interface correction 
                 if constexpr (computes_homogeneity_tensor<DiffusiveFlux>) {
-                    auto gradBiL = trace.qp_evals_l[iqp].grad_bi_span;
-                    auto gradBiR = trace.qp_evals_r[iqp].grad_bi_span;
+                    auto gradBiL = evalL.phys_grad_basis;
+                    auto gradBiR = evalR.phys_grad_basis;
                     if(sigma_ic != 0.0){
-                        std::array<T, neq> interface_correction;
                         auto Gtensor = diff_flux.homogeneity_tensor(uavg);
 
-                        T average_gradv[ndim];
                         for(int itest = 0; itest < elL.nbasis(); ++itest){
-                            // get the average test function gradient
-                            for(int idim = 0; idim < ndim; ++idim){
-                                average_gradv[idim] = 0.5 * (
-                                        gradBiL[itest, idim] + gradBiR[itest, idim] );
-                            }
 
-                            std::ranges::fill(interface_correction, 0);
                             for(int ieq = 0; ieq < neq; ++ieq){
                                 for(int kdim = 0; kdim < ndim; ++kdim){
                                     for(int req = 0; req < neq; ++req){
                                         T jumpu_r = uR[req] - uL[req];
                                         for(int sdim = 0; sdim < ndim; ++sdim){
                                             
+                                            T ic_contrib = 
+                                                sigma_ic * Gtensor[ieq][kdim][req][sdim] * unit_normal[kdim]
+                                                * jumpu_r * quadpt.weight * sqrtg;
                                             resL[itest, ieq] -= 
-                                                Gtensor[ieq][kdim][req][sdim] * unit_normal[kdim] 
-                                                * average_gradv[sdim] * jumpu_r
-                                                * quadpt.weight * sqrtg;
+                                                ic_contrib
+                                                * 0.5 * gradBiL[itest, sdim]; // 0.5 comes from average operator
                                             resR[itest, ieq] -= 
-                                                Gtensor[ieq][kdim][req][sdim] * unit_normal[kdim] 
-                                                * average_gradv[sdim] * jumpu_r
-                                                * quadpt.weight * sqrtg;
+                                                ic_contrib
+                                                * 0.5 * gradBiR[itest, sdim];
                                         }
                                     }
                                 }
                             }
-
                         }
                     }
                 }
@@ -609,7 +752,6 @@ namespace iceicle {
                         if constexpr (computes_homogeneity_tensor<DiffusiveFlux>) {
                             if(sigma_ic != 0.0){
 
-                                std::array<T, neq> interface_correction;
                                 auto Gtensor = diff_flux.homogeneity_tensor(uavg);
 
                                 T average_gradv[ndim];
@@ -619,7 +761,6 @@ namespace iceicle {
                                         average_gradv[idim] = gradBiL[itest, idim];
                                     }
 
-                                    std::ranges::fill(interface_correction, 0);
                                     for(int ieq = 0; ieq < neq; ++ieq){
                                         for(int kdim = 0; kdim < ndim; ++kdim){
                                             for(int req = 0; req < neq; ++req){
@@ -627,7 +768,7 @@ namespace iceicle {
                                                 for(int sdim = 0; sdim < ndim; ++sdim){
                                                     
                                                     resL[itest, ieq] -= 
-                                                        Gtensor[ieq][kdim][req][sdim] * unit_normal[kdim] 
+                                                        sigma_ic * Gtensor[ieq][kdim][req][sdim] * unit_normal[kdim] 
                                                         * average_gradv[sdim] * jumpu_r
                                                         * quadpt.weight * sqrtg;
                                                 }
@@ -939,6 +1080,7 @@ namespace iceicle {
                         auto graduL = unkelL.contract_mdspan(gradBiL, graduL_data.data());
 
                         // get the uR and graduR from the interior information
+                        // uL is also modifiable
                         auto [uR, graduR] = phys_flux.apply_bc(
                                 uL, graduL, unit_normal,
                                 trace.face->bctype, trace.face->bcflag);
@@ -1117,6 +1259,12 @@ namespace iceicle {
                     }
                 }
 
+                // HACK: disable diffusion IC for linear polynomials 
+                if(elL.basis->getPolynomialOrder() == 1 && elR.basis->getPolynomialOrder() == 1){
+                    std::ranges::fill(graduL_data, 0.0);
+                    std::ranges::fill(graduR_data, 0.0);
+                }
+
                 // get the physical flux on the left and right
                 Tensor<T, neq, ndim> fluxL = phys_flux(uL, graduL);
                 Tensor<T, neq, ndim> fluxR = phys_flux(uR, graduR);
@@ -1142,30 +1290,26 @@ namespace iceicle {
 
     // Deduction Guides
     template<
-        class T,
-        int ndim,
-        template<class T1, int ndim1> class PFlux,
-        template<class T1, int ndim1> class CFlux, 
-        template<class T1, int ndim1> class DiffusiveFlux
+        class PFlux,
+        class CFlux, 
+        class DiffusiveFlux
     >
     ConservationLawDDG(
-        PFlux<T, ndim>&& physical_flux,
-        CFlux<T, ndim>&& convective_numflux,
-        DiffusiveFlux<T, ndim>&& diffusive_flux
-    ) -> ConservationLawDDG<T, ndim, PFlux<T, ndim>, CFlux<T, ndim>, DiffusiveFlux<T, ndim>>;
+        PFlux&& physical_flux,
+        CFlux&& convective_numflux,
+        DiffusiveFlux&& diffusive_flux
+    ) -> ConservationLawDDG<typename PFlux::value_type, PFlux::ndim, PFlux, CFlux, DiffusiveFlux>;
 
     template<
-        class T,
-        int ndim,
-        template<class T1, int ndim1> class PFlux,
-        template<class T1, int ndim1> class CFlux, 
-        template<class T1, int ndim1> class DiffusiveFlux,
+        class PFlux,
+        class CFlux, 
+        class DiffusiveFlux,
         class ST_Info
     >
     ConservationLawDDG(
-        PFlux<T, ndim>&& physical_flux,
-        CFlux<T, ndim>&& convective_numflux,
-        DiffusiveFlux<T, ndim>&& diffusive_flux,
+        PFlux&& physical_flux,
+        CFlux&& convective_numflux,
+        DiffusiveFlux&& diffusive_flux,
         ST_Info st_info
-    ) -> ConservationLawDDG<T, ndim, PFlux<T, ndim>, CFlux<T, ndim>, DiffusiveFlux<T, ndim>, ST_Info>;
+    ) -> ConservationLawDDG<typename PFlux::value_type, PFlux::ndim, PFlux, CFlux, DiffusiveFlux, ST_Info>;
 }

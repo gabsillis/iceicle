@@ -4,6 +4,7 @@
 #include "mdspan/mdspan.hpp"
 #include <cstddef>
 #include <ostream>
+#include <span>
 #include <type_traits>
 #include <fmt/core.h>
 namespace iceicle::linalg {
@@ -58,6 +59,12 @@ namespace iceicle::linalg {
             y[i] = x[i];
     }
 
+    /// @brief an mdspan containing nothing
+    using empty_mdspan = std::mdspan<double, std::extents<int, std::dynamic_extent>>;
+
+    /// @brief a matrix containing nothing
+    using empty_matrix = std::mdspan<double, std::extents<int, std::dynamic_extent, std::dynamic_extent>>;
+
     /// @brief copy the contents of a into b 
     /// @param a the mdspan to copy from 
     /// @param b the mdspan to copy to
@@ -67,6 +74,12 @@ namespace iceicle::linalg {
             b.data_handle()[i] = a.data_handle()[i];
         }
     }
+
+    /// @brief fill a contiguous mdspan with a given value 
+    /// @param a the mdspan to fill 
+    /// @param value the value to set each element to
+    auto fill(contiguous_mdspan auto a, typename decltype(a)::value_type value) -> void 
+    { std::fill_n(a.data_handle(), a.size(), value); }
 
     /// @brief get a view over a fixed-size-tensor as an mdspan 
     template<class T, std::size_t... sizes>

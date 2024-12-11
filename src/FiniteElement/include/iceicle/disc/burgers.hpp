@@ -140,17 +140,32 @@ namespace iceicle {
             Tensor<T, ndim> unit_normal
         ) const noexcept -> std::array<T, nv_comp>
         {
-            T lambdaL = 0;
-            T lambdaR = 0;
+//            T lambdaL = 0;
+//            T lambdaR = 0;
+//            for(int idim = 0; idim < ndim; ++idim){
+//                lambdaL += unit_normal[idim] * (coeffs.a[idim] + 0.5 * coeffs.b[idim] * uL[0]);
+//                lambdaR += unit_normal[idim] * (coeffs.a[idim] + 0.5 * coeffs.b[idim] * uR[0]);
+//            }
+//
+//            T lambda_l_plus = 0.5 * (lambdaL + std::abs(lambdaL));
+//            T lambda_r_plus = 0.5 * (lambdaR - std::abs(lambdaR));
+//            T fadvn = uL[0] * lambda_l_plus + uR[0] * lambda_r_plus;
+//            return std::array<T, nv_comp>{fadvn};
+            T u_avg = 0.5 * (uL[0] + uR[0]);
+            T P = 0;
             for(int idim = 0; idim < ndim; ++idim){
-                lambdaL += unit_normal[idim] * (coeffs.a[idim] + 0.5 * coeffs.b[idim] * uL[0]);
-                lambdaR += unit_normal[idim] * (coeffs.a[idim] + 0.5 * coeffs.b[idim] * uR[0]);
+                P += unit_normal[idim] * (coeffs.a[idim] + 0.5 * coeffs.b[idim] * u_avg);
             }
 
-            T lambda_l_plus = 0.5 * (lambdaL + std::abs(lambdaL));
-            T lambda_r_plus = 0.5 * (lambdaR - std::abs(lambdaR));
-            T fadvn = uL[0] * lambda_l_plus + uR[0] * lambda_r_plus;
-            return std::array<T, nv_comp>{fadvn};
+            T u_upwind = (P > 0) ? uL[0] : uR[0];
+
+            std::array<T, nv_comp> fadvn = {0};
+            for(int idim = 0; idim < ndim; ++idim){
+                fadvn[0] += unit_normal[idim] * (coeffs.a[idim] + 0.5 * coeffs.b[idim] * u_upwind);
+            }
+            fadvn[0] *= u_upwind; // factor out u from the flux to reduce computation
+
+            return fadvn;
         }
     };
     template<class T, int ndim>
@@ -376,8 +391,6 @@ namespace iceicle {
             }
             fadvn[0] += unit_normal[idim_time];
             fadvn[0] *= u_upwind; // factor out u from the flux to reduce computation
-
-            P += unit_normal[idim_time];
 
             return fadvn;
 

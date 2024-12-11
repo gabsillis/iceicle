@@ -14,10 +14,35 @@
 #include <vector>
 #include <memory>
 #include <ostream>
+#if __cpp_lib_source_location
 #include <source_location>
+#endif
 #include <string>
 namespace iceicle::util {
 
+#if __cpp_lib_source_location
+    using source_location = std::source_location;
+#else 
+
+    struct source_location{
+        static constexpr 
+        auto current() -> source_location 
+        { return source_location{}; }
+
+        auto file_name() const  -> std::string
+        { return std::string{"source_location not supported"}; }
+
+        auto line() const -> std::string
+        { return std::string{""}; }
+
+        auto column() const -> std::string
+        { return std::string{""}; }
+
+        auto function_name() const -> std::string
+        { return std::string{""}; }
+    };
+
+#endif
     class AbstractAnomaly {
         friend class AnomalyLog;
 
@@ -33,18 +58,18 @@ namespace iceicle::util {
     private:
         std::string desc;
         Data user_data;
-        std::source_location loc;
+        source_location loc;
 
     public:
         Anomaly(
             std::string_view desc, 
             const Data &data,
-            const std::source_location &loc = std::source_location::current()
+            const source_location &loc = source_location::current()
         ) : desc{desc}, user_data{data}, loc{loc}
         {}
 
         const std::string &what() const noexcept { return desc; }
-        const std::source_location &where() const noexcept { return loc; }
+        const source_location &where() const noexcept { return loc; }
         const Data& data() const noexcept { return user_data; }
 
         void handle_self (std::ostream &log_out) override;
@@ -53,10 +78,10 @@ namespace iceicle::util {
     template<class Data>
     Anomaly(std::string_view, const Data&) -> Anomaly<Data>;
     template<class Data>
-    Anomaly(std::string_view, const Data &, std::source_location) -> Anomaly<Data>;
+    Anomaly(std::string_view, const Data &, source_location) -> Anomaly<Data>;
 
-    /** @brief overload for stream out of std::source_location */
-    inline std::ostream& operator<<(std::ostream& os, const std::source_location &loc){
+    /** @brief overload for stream out of source_location */
+    inline std::ostream& operator<<(std::ostream& os, const source_location &loc){
         os << loc.file_name() << "("
            << loc.line() << ":"
            << loc.column() << "), function `"
@@ -169,8 +194,9 @@ namespace iceicle::util {
                 anomalies.push_back(std::make_unique<Anomaly<Data>>(std::move(anomaly)));
             }
 
-            static void log_anomaly(std::string_view message){
-                AnomalyLog::log_anomaly(Anomaly{message, general_anomaly_tag{}});
+            static void log_anomaly(std::string_view message, 
+                    const source_location& loc = source_location::current()){
+                AnomalyLog::log_anomaly(Anomaly{message, general_anomaly_tag{}, loc});
             }
 
             template<class Data>
@@ -180,7 +206,7 @@ namespace iceicle::util {
 
             // can't get forwarding and source location to play nice
 //            template<class... anomaly_argsT>
-//            static void log_anomaly(anomaly_argsT&&... args, std::source_location loc = std::source_location::current()){
+//            static void log_anomaly(anomaly_argsT&&... args, source_location loc = source_location::current()){
 //                Anomaly anomaly{std::forward<anomaly_argsT>(args)..., loc};
 //                using anomalyT = decltype(anomaly);
 //                auto anomalyptr = std::make_unique<anomalyT>(anomaly);
@@ -217,7 +243,7 @@ namespace iceicle::util {
     inline static void expect(
         bool expect_true,
         std::string_view message_if_false,
-        std::source_location loc = std::source_location::current()
+        source_location loc = source_location::current()
     ){
         if(!expect_true){
             AnomalyLog::log_anomaly(Anomaly{"Expectation failed", expectation_anomaly_tag{}, loc});

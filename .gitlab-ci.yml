@@ -11,6 +11,7 @@ before_script:
     - apt-get -y install cmake
     - apt-get -y install libblas-dev
     - apt-get -y install liblapack-dev
+    - apt-get -y install valgrind
 
 build-job:
     # build iceicle and the test suite
@@ -18,7 +19,7 @@ build-job:
     script:
         - mkdir build
         - cd build
-        - cmake ..
+        - cmake .. -DCMAKE_CXX_FLAGS="-g"
         - make -j
     artifacts:
         paths:
@@ -29,6 +30,7 @@ test-felib:
     stage: test
     script:
         - cd build
+        - valgrind --track-origins=yes ./bin/test_felib
         - ctest --output-junit report.xml -j4
     artifacts:
         when: always
