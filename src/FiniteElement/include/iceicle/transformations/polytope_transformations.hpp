@@ -211,18 +211,14 @@ namespace iceicle {
     [[nodiscard]] inline constexpr 
     auto n_vert(tcode<ndim> t, ecode<ndim> e)
     -> std::size_t {
-      if(e.to_ullong() == 0) {
-        return n_vert(t);
-      } else {
-        std::size_t nvert = 1;
-        for(int idim = 0; idim < ndim; ++idim){
-          if(e[idim] != 0){
-            if(t[idim] == prism_ext) nvert *= 2;
-            else nvert += 1;
-          }
+      std::size_t nvert = 1;
+      for(int idim = 0; idim < ndim; ++idim){
+        if(e[idim] != 0){
+          if(t[idim] == prism_ext) nvert *= 2;
+          else nvert += 1;
         }
-        return nvert;
       }
+      return nvert;
     }
 
     // @brief get the topology of a given extrusion e of a topology t 
@@ -241,13 +237,43 @@ namespace iceicle {
       return ext_t;
     }
 
+    [[nodiscard]] inline constexpr
+    auto validate_facet(geo_code auto t, geo_code auto e, geo_code auto v)
+    -> bool {
+      // prevent ambiguous facet definitions
+      int ndim = get_ndim(t);
+      for(int idim = 0; idim < ndim; ++idim){
+        
+      }
+      return true;
+    }
+
     template<geo_code auto t, geo_code auto e, geo_code auto v>
-    [[nodiscard]] inline constexpr 
+    [[nodiscard]]
     auto facet_vertices()
-    -> std::array<vcode<get_ndim(t)>, nvert(t, e)>
+    -> std::array<vcode<get_ndim(t)>, n_vert(t, e)>
     {
       static constexpr int ndim = get_ndim(t);
-      std::array<vcode<get_ndim(t)>, nvert(t, e)> vertices;
+      std::array<vcode<get_ndim(t)>, n_vert(t, e)> vertices;
+      vertices[0] = v;
+      std::size_t inode = 1;
+      for(int idim = 0; idim < ndim; ++idim){
+        if (e[idim] != 0){
+          if (t[idim] == simpl_ext){
+            vertices[inode] = vertices[inode - 1];
+            for(int jdim = 0; jdim < ndim; ++jdim)
+              vertices[inode][jdim] = 0;
+            vertices[inode].flip(idim);
+            ++inode;
+          } else {
+            std::copy_n(vertices.begin(), inode, &vertices[inode]);
+            std::size_t end = 2 * inode;
+            for(; inode < end; ++inode ){
+              vertices[inode].flip(idim);
+            }
+          }
+        }
+      }
       return vertices;
     }
 
