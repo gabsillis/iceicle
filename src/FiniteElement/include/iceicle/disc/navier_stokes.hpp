@@ -1298,6 +1298,71 @@ ns_wall_bc_tag:
                 std::ranges::fill(flux, 0.0);
                 return flux;
             }
+
+            /// @brief compute the homogeneity tensor 
+            [[nodiscard]] inline constexpr 
+            auto homogeneity_tensor(
+                std::array<real, nv_comp> u
+            ) const noexcept -> Tensor<real, nv_comp, ndim, nv_comp, ndim>
+            {
+                ThermodynamicState<real, ndim> state = physics.calc_thermo_state(u);
+                real mu = physics.viscosity(state.T);
+                Tensor<real, nv_comp, ndim, nv_comp, ndim> G;
+                G = 0;
+
+                // Compute the shear stress homogeneity tensor 
+                Tensor<real, ndim, ndim, nv_comp, ndim> tau_tensor;
+                for(int i = 0; i < ndim; ++i){
+                    // density terms
+                    for(int j = 0; j < ndim; ++j){
+                        int r = 0;
+                        int s = j;
+                        tau_tensor[i, j, r, s] -= state.velocity[s] * mu / physics.rho;
+
+                        s = i;
+                        tau_tensor[i, j, r, s] -= state.velocity[j] * mu / physics.rho;
+                    }
+                    int j = i;
+                    int r = 0;
+                    for(int s = 0; s < ndim; ++s){
+                        tau_tensor[i, j, r, s] += 2.0 / 3.0 * state.velocity[s] * mu / physics.rho;
+                    }
+
+                    // velocity terms
+                    for(int j = 0; j < ndim; ++j){
+                        int r = irhou + i;
+                        int s = j;
+                        tau_tensor[i, j, r, s] += mu / physics.rho;
+
+                        r = irhou + j;
+                        s = i; 
+                        tau_tensor[i, j, r, s] += mu / physics.rho;
+                    }
+                    j = 0;
+                    for(int s = 0; s < ndim; ++s) {
+                        int r = irhou + s;
+                        tau_tensor[i, j, r, s] -= 2.0 / 3.0 * mu / physics.rho;
+                    }
+                }
+
+                // momentum terms of homogeneity
+                for(int iadv = 0; iadv < ndim; ++iadv){
+                    for(int jadv = 0; jadv < ndim; ++jadv){
+                        G[irhou + iadv, irhou + jadv] = tau_tensor / physics.nondim.Re;
+                    }
+                }
+
+                // energy terms of homogeneity
+                for(int iadv = 0; iadv < ndim; ++iadv){
+                    for(int k = 0; k < ndim; ++k){
+                        for(int r = 0; r < nv_comp; ++r){
+                            for(int s = 0; s < ndim; ++s){
+
+                            }
+                        }
+                    }
+                }
+            }
         };
 
         template< class T, int _ndim, is_eos EoS, VARSET varset>
