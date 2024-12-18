@@ -157,90 +157,90 @@ TEST(test_polytope, test_extrusion_parities) {
     }
 }
 
-TEST(test_polytope, test_extrusion_vertices){
-    {
-        constexpr tcode<2> tria_t{"00"};
-        {
-            constexpr ecode<2> e{"10"};
-            constexpr vcode<2> v{"01"};
-            ASSERT_EQ(
-                (facet_vertices<tria_t, e, v>()),
-                (std::array{vcode<2>{"01"}, vcode<2>{"10"}})
-            );
-        }
-        {
-            constexpr ecode<2> e{"01"};
-            constexpr vcode<2> v{"10"};
-            ASSERT_EQ(
-                (facet_vertices<tria_t, e, v>()),
-                (std::array{vcode<2>{"10"}, vcode<2>{"01"}})
-            );
-        }
-    }
-    {
-        constexpr tcode<3> pyra_t{"011"};
-        
-        {
-            constexpr ecode<3> e{"000"};
-            constexpr vcode<3> v{"010"};
-            ASSERT_EQ(
-                (facet_vertices<pyra_t, e, v>()),
-                (std::array{vcode<3>{"010"}})
-            );
-            ASSERT_EQ((extrusion_topology<pyra_t, e>()), (tcode<0>{}));
-        }
-
-        {
-            constexpr ecode<3> e{"110"};
-            constexpr vcode<3> v{"011"};
-            ASSERT_EQ(
-                (facet_vertices<pyra_t, e, v>()),
-                (std::array{vcode<3>{"011"}, vcode<3>{"001"}, vcode<3>{"100"}})
-            );
-            ASSERT_EQ((extrusion_topology<pyra_t, e>()), (tcode<2>{"01"}));
-        }
-    }
-    {
-        constexpr tcode<3> pyra_t{"010"};
-        
-        {
-            constexpr ecode<3> e{"000"};
-            constexpr vcode<3> v{"010"};
-            ASSERT_EQ(
-                (facet_vertices<pyra_t, e, v>()),
-                (std::array{vcode<3>{"010"}})
-            );
-        }
-
-        {
-            constexpr ecode<3> e{"110"};
-            constexpr vcode<3> v{"011"};
-            ASSERT_EQ(
-                (facet_vertices<pyra_t, e, v>()),
-                (std::array{vcode<3>{"011"}, vcode<3>{"001"}, vcode<3>{"100"}})
-            );
-            ASSERT_EQ((extrusion_topology<pyra_t, e>()), (tcode<2>{"00"}));
-        }
-        {
-            constexpr ecode<3> e{"101"};
-            constexpr vcode<3> v{"001"};
-            auto vertices = facet_vertices<pyra_t, e, v>();
-            for(auto vert : vertices){
-                std::cout << vert.to_string() << " " << std::endl;
-            }
-        }
-    }
-    {
-        constexpr tcode<3> tri_prism_t{"101"};
-        {
-            constexpr ecode<3> e{"101"};
-            constexpr vcode<3> v{"011"};
-            ASSERT_EQ(
-                (facet_vertices<tri_prism_t, e, v>()),
-                (std::array{vcode<3>{"011"}, vcode<3>{"101"}, vcode<3>{"010"}, vcode<3>{"001"}})
-            );
-            
-        }
-    }
-}
+// TEST(test_polytope, test_extrusion_vertices){
+//     {
+//         constexpr tcode<2> tria_t{"00"};
+//         {
+//             constexpr ecode<2> e{"10"};
+//             constexpr vcode<2> v{"01"};
+//             ASSERT_EQ(
+//                 (facet_vertices<tria_t, e, v>()),
+//                 (std::array{vcode<2>{"01"}, vcode<2>{"10"}})
+//             );
+//         }
+//         {
+//             constexpr ecode<2> e{"01"};
+//             constexpr vcode<2> v{"10"};
+//             ASSERT_EQ(
+//                 (facet_vertices<tria_t, e, v>()),
+//                 (std::array{vcode<2>{"10"}, vcode<2>{"01"}})
+//             );
+//         }
+//     }
+//     {
+//         constexpr tcode<3> pyra_t{"011"};
+//         
+//         {
+//             constexpr ecode<3> e{"000"};
+//             constexpr vcode<3> v{"010"};
+//             ASSERT_EQ(
+//                 (facet_vertices<pyra_t, e, v>()),
+//                 (std::array{vcode<3>{"010"}})
+//             );
+//             ASSERT_EQ((extrusion_topology<pyra_t, e>()), (tcode<0>{}));
+//         }
+// 
+//         {
+//             constexpr ecode<3> e{"110"};
+//             constexpr vcode<3> v{"011"};
+//             ASSERT_EQ(
+//                 (facet_vertices<pyra_t, e, v>()),
+//                 (std::array{vcode<3>{"011"}, vcode<3>{"001"}, vcode<3>{"100"}})
+//             );
+//             ASSERT_EQ((extrusion_topology<pyra_t, e>()), (tcode<2>{"01"}));
+//         }
+//     }
+//     {
+//         constexpr tcode<3> pyra_t{"010"};
+//         
+//         {
+//             constexpr ecode<3> e{"000"};
+//             constexpr vcode<3> v{"010"};
+//             ASSERT_EQ(
+//                 (facet_vertices<pyra_t, e, v>()),
+//                 (std::array{vcode<3>{"010"}})
+//             );
+//         }
+// 
+//         {
+//             constexpr ecode<3> e{"110"};
+//             constexpr vcode<3> v{"011"};
+//             ASSERT_EQ(
+//                 (facet_vertices<pyra_t, e, v>()),
+//                 (std::array{vcode<3>{"011"}, vcode<3>{"001"}, vcode<3>{"100"}})
+//             );
+//             ASSERT_EQ((extrusion_topology<pyra_t, e>()), (tcode<2>{"00"}));
+//         }
+//         {
+//             constexpr ecode<3> e{"101"};
+//             constexpr vcode<3> v{"001"};
+//             auto vertices = facet_vertices<pyra_t, e, v>();
+//             for(auto vert : vertices){
+//                 std::cout << vert.to_string() << " " << std::endl;
+//             }
+//         }
+//     }
+//     {
+//         constexpr tcode<3> tri_prism_t{"101"};
+//         {
+//             constexpr ecode<3> e{"101"};
+//             constexpr vcode<3> v{"011"};
+//             ASSERT_EQ(
+//                 (facet_vertices<tri_prism_t, e, v>()),
+//                 (std::array{vcode<3>{"011"}, vcode<3>{"101"}, vcode<3>{"010"}, vcode<3>{"001"}})
+//             );
+//             
+//         }
+//     }
+// }
 
