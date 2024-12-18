@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 #include <iceicle/disc/navier_stokes.hpp>
+#include <random>
 
 using namespace iceicle;
 using namespace navier_stokes;
@@ -104,4 +105,87 @@ TEST(test_ns, test_flux_consistency_vanleer){
                 ASSERT_NEAR(f_phys[ieq][2], f_num[ieq], 1e-10);
         }
     }
+}
+
+TEST(test_ns, test_homogeneity_tensor) {
+    static constexpr int ndim = 2;
+    ReferenceParameters<double> ref{};
+    CaloricallyPerfectEoS<double, ndim> eos{};
+    constant_viscosity<double> visc{1.0};
+    Physics physics{ref, eos, visc};
+    DiffusionFlux diff_flux{physics};
+
+    std::random_device rdev{};
+    std::default_random_engine engine{rdev()};
+    std::uniform_real_distribution<double> rho_dist{0.5, 1.0};
+    std::uniform_real_distribution<double> u_dist{0.0, 1.0};
+    std::uniform_real_distribution<double> e_dist{0.5, 2.0};
+    std::uniform_real_distribution<double> grad_dist{-1.0, 1.0};
+    for(int k = 0; k < 50; ++k){
+        double rho = rho_dist(engine);
+        double rhou = rho * u_dist(engine);
+        double rhov = rho * u_dist(engine);
+        double rhoE = rho * e_dist(engine) + 0.5 * (rhou * rhou + rhov * rhov) / rho;
+        std::array U{rho, rhou, rhov, rhoE};
+        std::array gradu_data = {
+            grad_dist(engine), grad_dist(engine), 
+            grad_dist(engine), grad_dist(engine),
+            grad_dist(engine), grad_dist(engine),
+            grad_dist(engine), grad_dist(engine)
+        };
+        std::mdspan gradU{gradu_data.data(), std::extents<std::size_t, 4, 2>{}};
+
+        auto calc_f_phys = [&diff_flux](std::array<double, 4> U,
+                std::mdspan<double, std::extents<std::size_t, 4, 2>> gradU)
+        {
+            Tensor<double, 4, 2> f_phys;
+            auto f_x = diff_flux(U, gradU, Tensor<double, 2>{{1.0, 0.0}});
+            auto f_y = diff_flux(U, gradU, Tensor<double, 2>{{0.0, 1.0}});
+            for(int ieq = 0; ieq < 4; ++ieq){
+                f_phys[ieq][0] = f_x[ieq];
+                f_phys[ieq][1] = f_y[ieq];
+            }
+            return f_phys;
+        };
+
+        Tensor<double, 4, 2> f_phys{calc_f_phys(U, gradU)};
+
+        double epsilon = 1e-8;
+        Tensor<double, 4, 2, 4, 2> G_fd{};
+        for(int r = 0; r < 4; ++r){
+            for(int s = 0; s < 2; ++s){
+                double temp = gradU[r, s];
+                gradU[r, s] += epsilon;
+                auto f_peturb = calc_f_phys(U, gradU);
+                for(int i = 0; i < 4; ++i){
+                    for(int j = 0; j < 2; ++j){
+                        G_fd[i, j, r, s] = -(f_phys[i, j] - f_peturb[i, j]) / epsilon;
+                    }
+                }
+                gradU[r, s] = temp;
+            }
+        }
+
+        auto G = diff_flux.homogeneity_tensor(U);
+        Tensor<double, 4, 2> f_homogeneity{};
+        f_homogeneity = 0;
+        for(int i = 0; i < 4; ++i){
+            for(int k = 0; k < 2; ++k){
+                for(int r = 0; r < 4; ++r){
+                    for(int s = 0; s < 2; ++s){
+                        f_homogeneity[i, k] += G[i, k, r, s] * gradU[r, s];
+                    }
+                }
+            }
+        }
+        auto diff = G - G_fd;
+
+        for(int i = 0; i < 4; ++i){
+            for(int k = 0; k < 2; ++k){
+                SCOPED_TRACE("i = " + std::to_string(i) + ", k = " + std::to_string(k));
+                ASSERT_NEAR((f_homogeneity[i, k]), (f_phys[i, k]), 1e-12);
+            }
+        }
+    }
+    
 }

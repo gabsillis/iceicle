@@ -947,7 +947,7 @@ namespace iceicle {
                     real T_coeff = state.cp * physics.ref.T * physics.ref.rho / physics.ref.p;
 
                     // get the shear stress
-                    Tensor tau = physics.calc_shear_stress(state, state_grads);
+                    Tensor<real, ndim, ndim> tau = physics.calc_shear_stress(state, state_grads);
 
                     // get the heat flux 
                     Vector q = physics.calc_heat_flux(state, state_grads);
@@ -1267,7 +1267,7 @@ ns_wall_bc_tag:
                     real T_coeff = state.cp * physics.ref.T * physics.ref.rho / physics.ref.p;
 
                     // get the shear stress
-                    Tensor tau = physics.calc_shear_stress(state, state_grads);
+                    Tensor<real, 2, 2> tau = physics.calc_shear_stress(state, state_grads);
 
                     // get the heat flux 
                     Vector q = physics.calc_heat_flux(state, state_grads);
@@ -1275,8 +1275,6 @@ ns_wall_bc_tag:
                     // contribution of viscous fluxes
                     for(int jdim = 0; jdim < ndim; ++jdim){
                         real energy_flux = q[jdim] * unit_normal[jdim];
-                        real mu = physics.viscosity(state.T);
-                        energy_flux = mu * state.gamma / physics.Pr * state_grads.E_gradient[jdim] * unit_normal[jdim];
                         for(int idim = 0; idim < ndim; ++idim){
                             flux[irhou + idim] += tau[idim][jdim] / Re * unit_normal[jdim];
                             energy_flux += state.velocity[idim] * tau[idim][jdim] * unit_normal[jdim];
@@ -1300,6 +1298,7 @@ ns_wall_bc_tag:
             }
 
             /// @brief compute the homogeneity tensor 
+            /// TODO: only conservative variables rn
             [[nodiscard]] inline constexpr 
             auto homogeneity_tensor(
                 std::array<real, nv_comp> u
@@ -1310,58 +1309,89 @@ ns_wall_bc_tag:
                 Tensor<real, nv_comp, ndim, nv_comp, ndim> G;
                 G = 0;
 
-                // Compute the shear stress homogeneity tensor 
-                Tensor<real, ndim, ndim, nv_comp, ndim> tau_tensor;
-                for(int i = 0; i < ndim; ++i){
-                    // density terms
-                    for(int j = 0; j < ndim; ++j){
+                if constexpr (varset == VARSET::CONSERVATIVE) {
+                    // Compute the shear stress homogeneity tensor 
+                    Tensor<real, ndim, ndim, nv_comp, ndim> tau_tensor;
+                    tau_tensor = 0;
+                    for(int i = 0; i < ndim; ++i){
+                        // density terms
+                        for(int j = 0; j < ndim; ++j){
+                            int r = 0;
+                            int s = j;
+                            tau_tensor[i, j, r, s] -= state.velocity[i] * mu / state.rho;
+
+                            s = i;
+                            tau_tensor[i, j, r, s] -= state.velocity[j] * mu / state.rho;
+                        }
+                        int j = i;
                         int r = 0;
-                        int s = j;
-                        tau_tensor[i, j, r, s] -= state.velocity[s] * mu / physics.rho;
+                        for(int s = 0; s < ndim; ++s){
+                            tau_tensor[i, j, r, s] += 2.0 / 3.0 * state.velocity[s] * mu / state.rho;
+                        }
 
-                        s = i;
-                        tau_tensor[i, j, r, s] -= state.velocity[j] * mu / physics.rho;
+                        // velocity terms
+                        for(int j = 0; j < ndim; ++j){
+                            int r = irhou + i;
+                            int s = j;
+                            tau_tensor[i, j, r, s] += mu / state.rho;
+
+                            r = irhou + j;
+                            s = i; 
+                            tau_tensor[i, j, r, s] += mu / state.rho;
+                        }
+                        j = i;
+                        for(int s = 0; s < ndim; ++s) {
+                            int r = irhou + s;
+                            tau_tensor[i, j, r, s] -= 2.0 / 3.0 * mu / state.rho;
+                        }
                     }
-                    int j = i;
-                    int r = 0;
-                    for(int s = 0; s < ndim; ++s){
-                        tau_tensor[i, j, r, s] += 2.0 / 3.0 * state.velocity[s] * mu / physics.rho;
+
+                    // momentum terms of homogeneity
+                    for(int iadv = 0; iadv < ndim; ++iadv){
+                        for(int jadv = 0; jadv < ndim; ++jadv){
+                            G[irhou + iadv, jadv] += tau_tensor[iadv, jadv] / physics.nondim.Re;
+                        }
                     }
 
-                    // velocity terms
-                    for(int j = 0; j < ndim; ++j){
-                        int r = irhou + i;
-                        int s = j;
-                        tau_tensor[i, j, r, s] += mu / physics.rho;
-
-                        r = irhou + j;
-                        s = i; 
-                        tau_tensor[i, j, r, s] += mu / physics.rho;
-                    }
-                    j = 0;
-                    for(int s = 0; s < ndim; ++s) {
-                        int r = irhou + s;
-                        tau_tensor[i, j, r, s] -= 2.0 / 3.0 * mu / physics.rho;
-                    }
-                }
-
-                // momentum terms of homogeneity
-                for(int iadv = 0; iadv < ndim; ++iadv){
-                    for(int jadv = 0; jadv < ndim; ++jadv){
-                        G[irhou + iadv, irhou + jadv] = tau_tensor / physics.nondim.Re;
-                    }
-                }
-
-                // energy terms of homogeneity
-                for(int iadv = 0; iadv < ndim; ++iadv){
-                    for(int k = 0; k < ndim; ++k){
-                        for(int r = 0; r < nv_comp; ++r){
-                            for(int s = 0; s < ndim; ++s){
-
+                    // energy terms of homogeneity
+                    for(int iadv = 0; iadv < ndim; ++iadv){
+                        for(int k = 0; k < ndim; ++k){
+                            for(int r = 0; r < nv_comp; ++r){
+                                for(int s = 0; s < ndim; ++s){
+                                    G[irhoe, k, r, s] += state.velocity[iadv] * tau_tensor[iadv, k, r, s]
+                                        * physics.nondim.e_coeff / physics.nondim.Re;
+                                }
                             }
                         }
                     }
+
+                    // NOTE: leave out energy coefficient b/c it cancels for part
+                    real heat_flux_multiplier = mu * state.gamma / physics.Pr
+                        * physics.nondim.Re;
+                    for(int k = 0; k < ndim; ++k){
+                        // density derivative part of dE/dx chain rule
+                        int r = irho;
+                        int s = k;
+                        G[irhoe, k, r, s] -= state.E / state.rho * heat_flux_multiplier;
+
+                        // u_k du_k / dx_k
+                        for(int iadv = 0; iadv < ndim; ++iadv){
+                            r = irhou + iadv;
+                            s = k;
+                            G[irhoe, k, r, s] -= state.velocity[iadv] * physics.nondim.e_coeff
+                                * heat_flux_multiplier / state.rho;
+                            G[irhoe, k, 0, s] += state.velocity[iadv] * state.velocity[iadv] 
+                                * physics.nondim.e_coeff * heat_flux_multiplier / state.rho;
+                        }
+
+                        // energy derivative part of dE/dx chain rule
+                        r = irhoe;
+                        G[irhoe, k, r, s] += heat_flux_multiplier / state.rho;
+                    }
+                } else {
+                    util::AnomalyLog::log_anomaly("not yet implemented");
                 }
+                return G;
             }
         };
 
