@@ -36,6 +36,7 @@ include(GoogleTest)
 # === Unit Tests for the Finite Element Library ===
 set(FELIB_TEST_SOURCES
     test_felib_main.cpp
+    test_geometry.cpp
     test_polytope.cpp
     test_face_utils.cpp
     TestTraceSpace.cpp
@@ -63,6 +64,15 @@ target_link_libraries( test_felib PUBLIC gtest gtest_main)
 
 if(NOT ICEICLE_ASAN)
     gtest_discover_tests(test_felib)
+endif()
+
+if(ICEICLE_USE_METIS)
+    add_executable(test_mesh_partition test_mesh_partition.cpp)
+    target_link_libraries( test_mesh_partition PUBLIC iceicle_fe )
+    target_link_libraries( test_mesh_partition PUBLIC iceicle_solvers )
+    target_link_libraries( test_mesh_partition PUBLIC gtest )
+    target_include_directories( test_mesh_partition PUBLIC ${MPI_CXX_INCLUDE_PATH})
+    target_link_libraries( test_mesh_partition PUBLIC ${MPI_CXX_LIBRARIES} )
 endif()
 
 # === Unit Tests for the Solver Library ===

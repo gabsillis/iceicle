@@ -145,6 +145,6 @@ namespace iceicle {
 
     // Deduction guide
     template< class T, class IDX, int ndim >
-    cg_dof_map(const AbstractMesh<T, IDX, ndim>&) -> cg_dof_map<T, IDX, ndim>;
+    cg_dof_map(AbstractMesh<T, IDX, ndim>&) -> cg_dof_map<T, IDX, ndim>;
 
 }

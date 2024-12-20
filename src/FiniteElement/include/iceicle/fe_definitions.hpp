@@ -43,4 +43,17 @@ namespace iceicle {
 
         return DOMAIN_TYPE::N_DOMAIN_TYPES;
     }
+
+    // @brief the conformity code for H1 elements
+    // Conformity codes 
+    [[nodiscard]] static inline constexpr 
+    auto h1_conformity(int ndim) -> int 
+    { return 0; }
+
+    // @brief the conformity code for L2 elements
+    // Conformity codes 
+    [[nodiscard]] static inline constexpr 
+    auto l2_conformity(int ndim) -> int 
+    { return ndim; }
+
 }

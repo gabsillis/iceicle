@@ -1,11 +1,40 @@
 // @brief compile macro protected calls to mpi utilities
 #pragma once
+#include <optional>
+#include <ranges>
 #ifdef ICEICLE_USE_MPI
 #include <mpi.h>
+#include <iceicle/mpi_type.hpp>
 #endif
 #include <utility>
 namespace iceicle {
+
+    /// @brief a parallel index pair 
+    /// contains the rank where the item being indexed is 
+    /// and the process-local index
+    template< class IDX >
+    struct p_index {
+        IDX rank;
+        IDX index;
+    };
+
     namespace mpi {
+
+        /// @brief broadcast a contiguous range using MPI_Bcast  
+        /// After calling this the range on all processes will contain 
+        /// the data of the "root"
+        /// @param range the data to broadcast 
+        /// @param root the process that we want to broadcast the data from
+        template<std::ranges::contiguous_range R>
+        inline 
+        auto mpi_bcast_range(R&& range, int root){
+            using value_type = std::ranges::range_value_t<R>;
+#ifdef ICEICLE_USE_MPI 
+            MPI_Bcast(std::ranges::data(range), std::ranges::size(range), 
+                mpi_get_type<value_type>(), root, MPI_COMM_WORLD);
+#endif
+        }
+
 
         /// @brief check if mpi has been initialized
         inline
@@ -61,6 +90,91 @@ namespace iceicle {
 #endif
         }
 
+        /// @brief mark that data only satisfies invariants on a given mpi_rank 
+        template<class T>
+        class on_rank {
+            private:
+            T _value;
+            int rank;
+
+            public:
+            inline constexpr 
+            on_rank(auto&& value, int rank) 
+            : _value{value}, rank{rank} {}
+
+            [[nodiscard]] inline constexpr 
+            auto valid_rank() const -> int { return rank; }
+
+            [[nodiscard]] inline constexpr 
+            bool has_value() const { return mpi_world_rank() == rank; }
+
+            [[nodiscard]] inline constexpr 
+            operator bool() const { return has_value(); }
+
+            [[nodiscard]] inline constexpr 
+            auto value()& -> T&
+            {
+                if(has_value()){
+                    return _value;
+                } else {
+                    throw std::bad_optional_access{};
+                }
+            }
+
+            [[nodiscard]] inline constexpr 
+            auto value()const& -> const T&
+            {
+                if(has_value()){
+                    return _value;
+                } else {
+                    throw std::bad_optional_access{};
+                }
+            }
+
+            [[nodiscard]] inline constexpr 
+            auto value()&& -> T&&
+            {
+                if(has_value()){
+                    return _value;
+                } else {
+                    throw std::bad_optional_access{};
+                }
+            }
+
+            [[nodiscard]] inline constexpr 
+            auto value()const&& -> const T&&
+            {
+                if(has_value()){
+                    return _value;
+                } else {
+                    throw std::bad_optional_access{};
+                }
+            }
+
+            template< class U >
+            [[nodiscard]] inline constexpr 
+            auto value_or(U&& other) const& -> T
+            {
+                if(has_value()){
+                    return _value;
+                } else {
+                    return other;
+                }
+
+            }
+
+            template< class U >
+            [[nodiscard]] inline constexpr 
+            auto value_or(U&& other)&& -> T&
+            {
+                if(has_value()){
+                    return _value;
+                } else {
+                    return other;
+                }
+
+            }
+        };
     }
 }
 

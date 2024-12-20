@@ -26,7 +26,7 @@
 #include <type_traits>
 #include <memory>
 #include <list>
-#include <set>
+#include <iceicle/basis/dof_mapping.hpp>
 #ifndef NDEBUG
 #include <iomanip>
 #endif
@@ -36,14 +36,14 @@ namespace iceicle {
     /// elsup -> elements surrounding points
     /// @param conn_el the element connectivity matrix
     /// @param nnode the number of nodes
-    template<class IDX>
+    template<class IDX, int ndim>
     constexpr
-    auto to_elsup(util::crs<IDX, IDX>& conn_el, std::integral auto nnode)
+    auto to_elsup(dof_map<IDX, ndim, h1_conformity(ndim)>& conn_el)
     -> util::crs<IDX, IDX>
     {
-        std::vector<std::vector<IDX>> elsup_ragged(nnode);
-        for(IDX iel = 0; iel < conn_el.nrow(); ++iel){
-            for(IDX inode : conn_el.rowspan(iel)){
+        std::vector<std::vector<IDX>> elsup_ragged(conn_el.size());
+        for(IDX iel = 0; iel < conn_el.nelem(); ++iel){
+            for(const IDX inode : conn_el.rowspan(iel)){
                 elsup_ragged[inode].push_back(iel);
             }
         }
@@ -291,8 +291,8 @@ namespace iceicle {
         /// The node coordinates
         NodeArray<T, ndim> coord;
 
-        /// Connectivity array for the elements
-        util::crs<IDX, IDX> conn_el;
+        /// Connectivity array for the elements to the nodes
+        dof_map<IDX, ndim, h1_conformity(ndim)> conn_el;
 
         /// The node coordinates for each element 
         /// NOTE: updates to coord must be propogated to this array
@@ -327,6 +327,9 @@ namespace iceicle {
         /// facsuel[iel, 1] = ifac
         util::crs<IDX, IDX> facsuel;
 
+        /// @brief The parallel partitioning of elements
+        ElementPartitioning<IDX> element_partitioning;
+
         /// For each process i store a list of (this-local) element indices 
         /// that need to be sent 
         std::vector<std::vector<IDX>> el_send_list;
@@ -337,7 +340,10 @@ namespace iceicle {
 
         std::vector< std::vector< CommElementInfo<T, IDX, ndim> > > communicated_elements;
 
-        inline IDX nelem() { return conn_el.nrow(); }
+        /// @brief get the number of elements
+        [[nodiscard]] inline constexpr 
+        auto nelem() const noexcept -> IDX
+        { return conn_el.nelem(); }
 
         // ===============
         // = Constructor =
@@ -663,9 +669,12 @@ namespace iceicle {
 
                     conn_el = util::crs<IDX, IDX>{ragged_conn_el};
                     { // build the element coordinates matrix
-                        coord_els = util::crs<Point, IDX>{std::span{conn_el.cols(), conn_el.cols() + conn_el.nrow() + 1}};
+                        coord_els = util::crs<Point, IDX>{
+                            std::span{conn_el.dof_connectivity.cols(),
+                                conn_el.dof_connectivity.cols() 
+                                    + conn_el.dof_connectivity.nrow() + 1}};
                         for(IDX iel = 0; iel < nelem; ++iel){
-                            for(std::size_t icol = 0; icol < conn_el.rowsize(iel); ++icol){
+                            for(std::size_t icol = 0; icol < conn_el.ndof_el(iel); ++icol){
                                 coord_els[iel, icol] = coord[conn_el[iel, icol]];
                             }
                         }
@@ -895,7 +904,7 @@ namespace iceicle {
             // EXITING ORDER TEMPLATED SECTION
 
             // set up additional connectivity array
-            elsup = to_elsup(conn_el, n_nodes());
+            elsup = to_elsup(conn_el);
 
             // faces surrounding elements
             std::vector<std::vector<IDX>> facsuel_ragged(nelem);
@@ -992,8 +1001,8 @@ namespace iceicle {
         /// @brief update the element coordinate data to match the coord array 
         /// by using the element connectivity
         void update_coord_els(){
-            for(IDX i = 0; i < conn_el.nnz(); ++i){
-                IDX inode = conn_el.data()[i];
+            for(IDX i = 0; i < conn_el.size(); ++i){
+                IDX inode = conn_el.dof_connectivity.data()[i];
                 coord_els.data()[i] = coord[inode];
             }
         }

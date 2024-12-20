@@ -3,12 +3,13 @@
 #include "iceicle/geometry/face.hpp"
 #include "iceicle/geometry/face_utils.hpp"
 #include "iceicle/geometry/geo_element.hpp"
+#include <execution>
 #include <iceicle/mesh/mesh.hpp>
 #ifdef ICEICLE_USE_METIS
 #include <metis.h>
 #ifdef ICEICLE_USE_MPI 
 #include "iceicle/mpi_type.hpp"
-#include <mpi.h>
+#include <iceicle/iceicle_mpi_utils.hpp>
 
 #ifdef ICEICLE_USE_PETSC
 #include <petsclog.h>
@@ -16,6 +17,104 @@
 
 namespace iceicle {
 
+    /// @brief partition a set of element indices using METIS 
+    /// @param elsuel the ELements SUrrounding ELements connectivity 
+    /// the indices of all the elements that share a face with a given element
+    ///
+    template< class IDX, class IDX_CRS >
+    [[nodiscard]]
+    auto partition_elements( util::crs<IDX, IDX_CRS>& elsuel )
+    -> ElementPartitioning<IDX> {
+        util::crs elsuel_metis_int{util::convert_crs<idx_t, idx_t>(elsuel)};
+        idx_t nelem = elsuel.nrow();
+
+        // get mpi information
+        int nrank, myrank;
+        MPI_Comm_rank(MPI_COMM_WORLD, &myrank);
+        MPI_Comm_size(MPI_COMM_WORLD, &nrank);
+
+        // metis will floating point exception when partitioning into 1 partition
+        // ...
+        // ...
+        //
+        // :3
+        if(nrank == 1) {
+            std::vector< p_index<IDX> > ret{};
+            for(IDX ielem = 0; ielem < nelem; ++ielem){
+                ret.emplace_back(0, ielem);
+            }
+            std::vector< IDX > el_p_idxs(nelem);
+            std::iota(el_p_idxs.begin(), el_p_idxs.end(), 0);
+            return ElementPartitioning{ret, el_p_idxs};
+        } 
+        std::vector<idx_t> el_partition(nelem);
+        std::vector< p_index<IDX> > el_index_pairs{};
+        std::vector<std::vector<IDX>> el_p_idxs(nrank);
+        // only the first processor will perform the partitioning
+        if(myrank == 0) {
+            // number of balancing constraints (not specifying so leave at 1)
+            IDX ncon = 1;
+
+            // set the options
+            idx_t options[METIS_NOPTIONS];
+            METIS_SetDefaultOptions(options);
+            options[METIS_OPTION_NUMBERING] = 0;
+
+            idx_t obj_val; // the objective value (edge-cut) of the partitioning scheme
+
+            METIS_PartGraphKway(&nelem, &ncon, elsuel_metis_int.cols(), elsuel_metis_int.data(),
+                    NULL, NULL, NULL, &nrank, NULL, NULL,
+                    options, &obj_val, el_partition.data());
+        } 
+        // broadcast the completed partitioning
+        mpi::mpi_bcast_range(el_partition, 0);
+        el_index_pairs.reserve(nelem);
+        for(IDX ip_el = 0; ip_el < nelem; ++ip_el){
+            idx_t rank = el_partition[ip_el];
+            el_index_pairs.emplace_back(rank, el_p_idxs[rank].size());
+            el_p_idxs[rank].push_back(ip_el);
+        }
+        el_index_pairs.resize(nelem);
+        return ElementPartitioning{el_index_pairs, el_p_idxs[myrank]};
+    }
+
+    /// @brief renumber elements so that global indices are contiguous on each rank
+    /// @param partitioning the partitioning with disjoint global indices
+    ///                     for each rank 
+    /// @return a pair with the new partitioning and a std::vector which contains the 
+    /// old global index at each new global index (the renumbering vector)
+    template<class IDX>
+    [[nodiscard]]
+    auto renumber_elements(const ElementPartitioning<IDX>& partitioning)
+    -> std::pair<ElementPartitioning<IDX>, std::vector<IDX>>
+    {
+        auto myrank = mpi::mpi_world_rank();
+        std::vector<IDX> renumbering{};
+        renumbering.reserve(partitioning.el_index_pairs.size());
+        std::vector< p_index< IDX > > el_index_pairs{};
+        el_index_pairs.reserve(partitioning.el_index_pairs.size());
+        std::vector< IDX > el_p_idxs(partitioning.el_p_idxs.size());
+
+
+        for(int irank = 0; irank < mpi::mpi_world_size(); ++irank){
+            IDX rank_pidx_start = renumbering.size();
+            // copy el_p_idxs
+            std::vector<IDX> rank_el_p_idxs = partitioning.el_p_idxs;
+            mpi::mpi_bcast_range(rank_el_p_idxs, irank);
+            IDX ilocal = 0;
+            for(IDX pidx : rank_el_p_idxs){
+                el_index_pairs.emplace_back(irank, ilocal);
+                renumbering.push_back(pidx);
+                ++ilocal;
+            }
+
+            if(irank == myrank)
+                std::iota(el_p_idxs.begin(), el_p_idxs.end(), rank_pidx_start);
+        }
+        return std::pair{
+            ElementPartitioning<IDX>{std::move(el_index_pairs), std::move(el_p_idxs)}, 
+            renumbering};
+    }
 
     /// @brief partition the mesh using METIS 
     /// @param mesh the single processor mesh to partition
@@ -27,9 +126,7 @@ namespace iceicle {
     -> AbstractMesh<T, IDX, ndim>
     {
         // get mpi information
-        int nrank, myrank;
-        MPI_Comm_rank(MPI_COMM_WORLD, &myrank);
-        MPI_Comm_size(MPI_COMM_WORLD, &nrank);
+        int nrank = mpi::mpi_world_size(), myrank = mpi::mpi_world_rank();
 
         // metis will floating point exception when partitioning into 1 partition
         // ...
@@ -76,30 +173,18 @@ namespace iceicle {
         pmesh.el_recv_list = std::vector<std::vector<IDX>>(nrank, std::vector<IDX>());
         pmesh.communicated_elements.resize(nrank);
 
-        // only the first processor will perform the partitioning
-        if(myrank == 0){
-            IDX nelem = mesh.nelem();
-            util::crs elsuel{util::convert_crs<idx_t, idx_t>(to_elsuel<T, IDX, ndim>(nelem, mesh.faces))};
+        IDX nelem = mesh.nelem();
+        util::crs elsuel{util::convert_crs<idx_t, idx_t>(to_elsuel<T, IDX, ndim>(nelem, mesh.faces))};
 
-            // number of balancing constraints (not specifying so leave at 1)
-            IDX ncon = 1;
+        // ====================================
+        // = Generate the Partitioned Meshes  =
+        // ====================================
 
-            // set the options
-            idx_t options[METIS_NOPTIONS];
-            METIS_SetDefaultOptions(options);
-            options[METIS_OPTION_NUMBERING] = 0;
+        auto el_partition_metis = partition_elements(elsuel);
+        auto [el_partition, renumbering] = renumber_elements(el_partition_metis);
+        dof_map el_conn_global{apply_el_renumbering(mesh.el_conn)};
 
-            idx_t obj_val; // the objective value (edge-cut) of the partitioning scheme
-            std::vector<idx_t> el_partition(nelem);
-
-            METIS_PartGraphKway(&nelem, &ncon, elsuel.cols(), elsuel.data(),
-                    NULL, NULL, NULL, &nrank, NULL, NULL,
-                    options, &obj_val, el_partition.data());
-
-            // ====================================
-            // = Generate the Partitioned Meshes  =
-            // ====================================
-
+        if(myrank == 0) {
             // === Step 1: Node List ===
 
             std::vector<std::vector<unsigned long>> all_node_idxs(nrank, std::vector<unsigned long>{});
