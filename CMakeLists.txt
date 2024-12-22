@@ -215,6 +215,10 @@ if(ICEICLE_USE_VTK)
     COMPONENTS 
     CommonColor
     CommonCore
+    CommonDataModel
+    ParallelMPI
+    IOParallelXML
+    ParallelCore
     FiltersSources
     InteractionStyle
     RenderingAnnotation

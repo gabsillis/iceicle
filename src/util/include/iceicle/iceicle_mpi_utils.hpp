@@ -175,6 +175,9 @@ namespace iceicle {
 
             }
         };
+
+        template<class T>
+        on_rank(T&& val, int) -> on_rank<std::remove_reference_t<T>>;
     }
 }
 

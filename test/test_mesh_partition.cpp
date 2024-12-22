@@ -2,7 +2,7 @@
 #include <iceicle/mesh/mesh_utils.hpp>
 #include <iceicle/mesh/mesh_partition.hpp>
 #include <fmt/core.h>
-#include <mpi.h>
+#include <iceicle/vtk_writer.hpp>
 
 using namespace NUMTOOL::TENSOR::FIXED_SIZE;
 using namespace iceicle;
@@ -22,16 +22,15 @@ int main(int argc, char *argv[]) {
 
     auto elsuel = to_elsuel<double, int, 2>(mesh.nelem(), mesh.faces);
 
-    auto el_part = partition_elements(elsuel);
 
-    auto [el_part_new, renumbering] = renumber_elements(el_part);
+    auto [el_part, renumbering] = partition_elements(elsuel);
 
     for(int irank = 0; irank < nrank; ++irank) {
         if(irank == myrank){ 
             std::cout << "My rank: " << myrank << std::endl;
             fmt::print("{:12} | {:12} | {:12}\n" ,"global_index", "rank", "local_index");
             int iglobal = 0;
-            for(auto pair : el_part_new.el_index_pairs){
+            for(auto pair : el_part.index_map){
                 fmt::print("{:12} | {:12} | {:12}\n", iglobal, pair.rank, pair.index);
                 ++iglobal;
             }
@@ -42,7 +41,9 @@ int main(int argc, char *argv[]) {
     // NOTE: we will need some sort of renumbering or petsc matrices will be a mess
     // try to get all global indices in contiguous groups of same rank
 
-    AbstractMesh<double, int, 2> pmesh{partition_mesh(mesh)};
+    // AbstractMesh<double, int, 2> pmesh{partition_mesh(mesh)};
+
+    io::write_mesh_vtk(mesh);
 
     MPI_Finalize();
 }

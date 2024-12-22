@@ -328,17 +328,7 @@ namespace iceicle {
         util::crs<IDX, IDX> facsuel;
 
         /// @brief The parallel partitioning of elements
-        ElementPartitioning<IDX> element_partitioning;
-
-        /// For each process i store a list of (this-local) element indices 
-        /// that need to be sent 
-        std::vector<std::vector<IDX>> el_send_list;
-
-        /// For each process i store a list of (i-local) element indices 
-        /// that need to be recieved
-        std::vector<std::vector<IDX>> el_recv_list;
-
-        std::vector< std::vector< CommElementInfo<T, IDX, ndim> > > communicated_elements;
+        pindex_map<IDX> element_partitioning;
 
         /// @brief get the number of elements
         [[nodiscard]] inline constexpr 
@@ -352,8 +342,7 @@ namespace iceicle {
         /** @brief construct an empty mesh */
         AbstractMesh() 
         : coord{}, conn_el{}, coord_els{}, el_transformations{}, faces{}, interiorFaceStart(0), interiorFaceEnd(0), 
-          bdyFaceStart(0), bdyFaceEnd(0), elsup{}, facsuel{}, el_send_list(mpi::mpi_world_size()), 
-          el_recv_list(mpi::mpi_world_size()), communicated_elements(mpi::mpi_world_size()){}
+          bdyFaceStart(0), bdyFaceEnd(0), elsup{}, facsuel{} {}
 
         /// @brief A description of a boundary face 
         /// contains all the information needed to generate the face data structure 
@@ -364,23 +353,23 @@ namespace iceicle {
 
         /// @brief Construct a mesh from provided connectivity information
         /// @param coord the mesh coordinates 
-        /// @param conn_el compressed row storage of element connectivity
+        /// @param conn_el_arg compressed row storage of element connectivity
         /// @param el_transformations array of pointers to the corresponding transformation for each element
         /// @param boundary_face_descriptions tuple of BOUNDARY_CONDITIONS (type), integer (flag), 
         ///        and array of indices (the nodes) that describe boundary faces
         AbstractMesh(
             NodeArray<T, ndim>& coord,
-            util::crs<IDX, IDX> conn_el,
+            auto&& conn_el_arg,
             std::vector< ElementTransformation<T, IDX, ndim>* > el_transformations,
-            std::vector<boundary_face_desc> boundary_face_descriptions
-        ) : coord{coord}, conn_el{conn_el}, coord_els{}, el_transformations{el_transformations},
-            el_send_list(mpi::mpi_world_size()), el_recv_list(mpi::mpi_world_size()),
-         communicated_elements(mpi::mpi_world_size())
+            const std::vector<boundary_face_desc>& boundary_face_descriptions
+        ) : coord{coord}, conn_el{conn_el_arg}, coord_els{},
+            el_transformations{el_transformations}
         {
             { // build the element coordinates matrix
-                coord_els = util::crs<Point, IDX>{std::span{conn_el.cols(), conn_el.cols() + conn_el.nrow() + 1}};
-                for(IDX iel = 0; iel < conn_el.nrow(); ++iel){
-                    for(std::size_t icol = 0; icol < conn_el.rowsize(iel); ++icol){
+                coord_els = util::crs<Point, IDX>{std::span{conn_el.dof_connectivity.cols(),
+                    conn_el.dof_connectivity.cols() + conn_el.dof_connectivity.nrow() + 1}};
+                for(IDX iel = 0; iel < conn_el.nelem(); ++iel){
+                    for(std::size_t icol = 0; icol < conn_el.ndof_el(iel); ++icol){
                         coord_els[iel, icol] = coord[conn_el[iel, icol]];
                     }
                 }
@@ -441,7 +430,7 @@ namespace iceicle {
             bdyFaceStart = interiorFaceEnd;
 
             // make the boundary faces
-            for(boundary_face_desc& info : boundary_face_descriptions){
+            for(const boundary_face_desc& info : boundary_face_descriptions){
                 auto [bc_type, bc_flag, boundary_nodes] = info;
                 // search the elements around the first node 
                 for(IDX ielem : elsup.rowspan(boundary_nodes[0])){
@@ -483,14 +472,14 @@ namespace iceicle {
           el_transformations{other.el_transformations}, faces{},
           interiorFaceStart(other.interiorFaceStart), interiorFaceEnd(other.interiorFaceEnd),
           bdyFaceStart(other.bdyFaceStart), bdyFaceEnd(other.bdyFaceEnd), elsup{other.elsup},
-          facsuel{other.facsuel},
-          el_send_list(other.el_send_list), el_recv_list(other.el_recv_list),
-          communicated_elements(other.communicated_elements)
+          facsuel{other.facsuel}
         {
             for(auto& facptr : other.faces){
                 faces.push_back(std::move(facptr->clone()));
             }
         }
+
+        AbstractMesh(AbstractMesh<T, IDX, ndim>&& other) = default;
 
         AbstractMesh<T, IDX, ndim>& operator=(const AbstractMesh<T, IDX, ndim>& other){
             if(this != &other){
@@ -509,12 +498,11 @@ namespace iceicle {
                 bdyFaceEnd = other.bdyFaceEnd;
                 elsup = other.elsup;
                 facsuel = other.facsuel;
-                el_send_list = other.el_send_list;
-                el_recv_list = other.el_recv_list;
-                communicated_elements = other.communicated_elements;
             }
             return *this;
         }
+
+        AbstractMesh<T, IDX, ndim>& operator=(AbstractMesh<T, IDX, ndim>&& other) = default;
 
         AbstractMesh(std::size_t nnode) 
         : coord{nnode}, conn_el{}, coord_els{}, faces{}, interiorFaceStart(0), interiorFaceEnd(0), 
@@ -568,8 +556,7 @@ namespace iceicle {
         ) requires(
             std::same_as<std::ranges::range_value_t<R_bctype>, BOUNDARY_CONDITIONS> &&
             std::convertible_to<std::ranges::range_value_t<R_bcflags>, int>
-        ) : coord{}, conn_el{}, coord_els{}, faces{}, el_send_list(mpi::mpi_world_size()), 
-          el_recv_list(mpi::mpi_world_size()), communicated_elements(mpi::mpi_world_size()) 
+        ) : coord{}, conn_el{}, coord_els{}, faces{}
         {
             using namespace NUMTOOL::TENSOR::FIXED_SIZE;
             std::array<IDX, ndim> directional_nelem;

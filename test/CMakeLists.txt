@@ -66,13 +66,15 @@ if(NOT ICEICLE_ASAN)
     gtest_discover_tests(test_felib)
 endif()
 
-if(ICEICLE_USE_METIS)
+if(ICEICLE_USE_METIS AND ICEICLE_USE_VTK)
     add_executable(test_mesh_partition test_mesh_partition.cpp)
     target_link_libraries( test_mesh_partition PUBLIC iceicle_fe )
-    target_link_libraries( test_mesh_partition PUBLIC iceicle_solvers )
+    target_link_libraries( test_mesh_partition PUBLIC iceicle_io )
+    #    target_link_libraries( test_mesh_partition PUBLIC iceicle_solvers )
     target_link_libraries( test_mesh_partition PUBLIC gtest )
     target_include_directories( test_mesh_partition PUBLIC ${MPI_CXX_INCLUDE_PATH})
     target_link_libraries( test_mesh_partition PUBLIC ${MPI_CXX_LIBRARIES} )
+    target_link_libraries( test_mesh_partition PUBLIC ${VTK_LIBRARIES} )
 endif()
 
 # === Unit Tests for the Solver Library ===
