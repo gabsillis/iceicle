@@ -41,7 +41,7 @@ int main(int argc, char *argv[]) {
     // NOTE: we will need some sort of renumbering or petsc matrices will be a mess
     // try to get all global indices in contiguous groups of same rank
 
-    // AbstractMesh<double, int, 2> pmesh{partition_mesh(mesh)};
+    AbstractMesh<double, int, 2> pmesh{partition_mesh(mesh)};
 
     io::write_mesh_vtk(mesh);
 

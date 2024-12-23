@@ -56,9 +56,8 @@ namespace iceicle {
             return std::pair{pindex_map{std::move(ret), std::move(el_p_idxs), std::move(offsets)},
                 std::move(renumbering)};
         } 
+
         std::vector<idx_t> el_partition(nelem);
-        std::vector< p_index<IDX> > el_index_pairs_disjoint{};
-        std::vector<std::vector<IDX>> el_p_idxs_disjoint(nrank);
         // only the first processor will perform the partitioning
         if(myrank == 0) {
             // number of balancing constraints (not specifying so leave at 1)
@@ -77,47 +76,36 @@ namespace iceicle {
         } 
         // broadcast the completed partitioning
         mpi::mpi_bcast_range(el_partition, 0);
-        el_index_pairs_disjoint.reserve(nelem);
-        for(IDX ip_el = 0; ip_el < nelem; ++ip_el){
-            idx_t rank = el_partition[ip_el];
-            el_index_pairs_disjoint.emplace_back(rank, el_p_idxs_disjoint[rank].size());
-            el_p_idxs_disjoint[rank].push_back(ip_el);
+
+        // form the renumbering
+        std::vector<std::vector<IDX>> rank_pindices(nrank);
+        for(IDX ielem = 0; ielem < nelem; ++ielem){
+            rank_pindices[el_partition[ielem]].push_back(ielem);
         }
-
-        
         std::vector<IDX> renumbering{};
-        renumbering.reserve(el_index_pairs_disjoint.size());
-        std::vector< p_index< IDX > > el_index_pairs{};
-        el_index_pairs.reserve(el_index_pairs_disjoint.size());
-        std::vector< IDX > el_p_idxs(el_p_idxs_disjoint.size());
-        std::vector<IDX> offsets = {0};
+        std::vector< p_index<IDX> > index_map(nelem);
+        std::vector< IDX > p_indices(rank_pindices[myrank].size());
+        std::vector< IDX > owned_offsets(nrank + 1);
+        owned_offsets[0] = 0;
+        renumbering.reserve(nelem);
 
-        // build up the renumbering
-        for(int irank = 0; irank < mpi::mpi_world_size(); ++irank){
-            IDX rank_pidx_start = renumbering.size();
-            // copy el_p_idxs then fill with the one we want by broadcast
-            std::vector<IDX> rank_el_p_idxs = el_p_idxs_disjoint[irank];
-            mpi::mpi_bcast_range(rank_el_p_idxs, irank); 
-
-            // build up renumbering and index pairs
-            IDX ilocal = 0;
-            for(IDX pidx : rank_el_p_idxs){
-                el_index_pairs.emplace_back(irank, ilocal);
-                renumbering.push_back(pidx);
-                ++ilocal;
+        IDX pindex_start = 0;
+        for(int irank = 0; irank < nrank; ++irank){
+            IDX nelem_rank = rank_pindices[irank].size();
+            renumbering.insert(renumbering.end(),
+                    rank_pindices[irank].begin(),rank_pindices[irank].end());
+            for(IDX lindex = 0; lindex < nelem_rank; ++lindex) {
+                IDX pindex = lindex + pindex_start;
+                index_map[pindex] = p_index<IDX>{.rank = irank, .index = lindex};
+                p_indices[lindex] = pindex;
             }
-
-            // build the pindices for this rank (just count up from cumulative total)
-            if(irank == myrank)
-                std::iota(el_p_idxs.begin(), el_p_idxs.end(), rank_pidx_start);
-
-            // build up offsets array
-            offsets.push_back(offsets.back() + rank_el_p_idxs.size());
+            pindex_start += nelem_rank;
+            owned_offsets[irank + 1] = pindex_start;
         }
 
         return std::pair{
-            pindex_map<IDX>{std::move(el_index_pairs), 
-                std::move(el_p_idxs), std::move(offsets) },
+            pindex_map<IDX>{std::move(index_map), 
+                std::move(p_indices), std::move(owned_offsets) },
             renumbering
         };
     }
@@ -181,7 +169,8 @@ namespace iceicle {
         auto [el_partition, el_renumbering] = partition_elements(elsuel);
         dof_map el_conn_global{apply_el_renumbering(mesh.conn_el, el_renumbering)};
         auto [p_el_conn, p_el_conn_map, nodes_renumbering] =
-            partition_dofs<IDX, ndim, h1_conformity(ndim)>(el_partition, mpi::on_rank{mesh.conn_el, 0});
+            partition_dofs<IDX, ndim, h1_conformity(ndim)>(el_partition,
+                    mpi::on_rank{el_conn_global, 0});
 
         // construct the nodes
         NodeArray<T, ndim> p_coord(p_el_conn.size());

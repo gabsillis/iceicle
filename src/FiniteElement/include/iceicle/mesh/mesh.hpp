@@ -362,8 +362,12 @@ namespace iceicle {
             auto&& conn_el_arg,
             std::vector< ElementTransformation<T, IDX, ndim>* > el_transformations,
             const std::vector<boundary_face_desc>& boundary_face_descriptions
-        ) : coord{coord}, conn_el{conn_el_arg}, coord_els{},
+        )
+        requires std::constructible_from<
+            dof_map<IDX, ndim, h1_conformity(ndim)>, decltype(conn_el_arg)>
+        : coord{coord}, conn_el{conn_el_arg}, coord_els{},
             el_transformations{el_transformations}
+        
         {
             { // build the element coordinates matrix
                 coord_els = util::crs<Point, IDX>{std::span{conn_el.dof_connectivity.cols(),
@@ -466,6 +470,21 @@ namespace iceicle {
             }
             facsuel = util::crs<IDX, IDX>{facsuel_ragged};
         }
+
+        /// @brief Construct a mesh from provided connectivity information
+        /// @param coord the mesh coordinates 
+        /// @param conn_el_arg compressed row storage of element connectivity
+        /// @param el_transformations array of pointers to the corresponding transformation for each element
+        /// @param boundary_face_descriptions tuple of BOUNDARY_CONDITIONS (type), integer (flag), 
+        ///        and array of indices (the nodes) that describe boundary faces
+        AbstractMesh(
+            NodeArray<T, ndim>& coord,
+            const util::crs<IDX, IDX>& conn_el_arg,
+            std::vector< ElementTransformation<T, IDX, ndim>* > el_transformations,
+            const std::vector<boundary_face_desc>& boundary_face_descriptions
+        ) : AbstractMesh<T, IDX, ndim>(coord,
+                dof_map<IDX, ndim, h1_conformity(ndim)>{coord.size(), conn_el_arg},
+                el_transformations, boundary_face_descriptions) {}
 
         AbstractMesh(const AbstractMesh<T, IDX, ndim>& other) 
         : coord{other.coord}, conn_el{other.conn_el}, coord_els{other.coord_els}, 
@@ -654,7 +673,8 @@ namespace iceicle {
                         }
                     }
 
-                    conn_el = util::crs<IDX, IDX>{ragged_conn_el};
+                    conn_el = dof_map<IDX, ndim, h1_conformity(ndim)>{
+                        nnodes, util::crs<IDX, IDX>{ragged_conn_el}};
                     { // build the element coordinates matrix
                         coord_els = util::crs<Point, IDX>{
                             std::span{conn_el.dof_connectivity.cols(),

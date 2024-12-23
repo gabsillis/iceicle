@@ -1,5 +1,6 @@
 #pragma once
 
+#include "iceicle/anomaly_log.hpp"
 #include "iceicle/crs.hpp"
 #include "iceicle/fe_definitions.hpp"
 #include "iceicle/iceicle_mpi_utils.hpp"
@@ -20,10 +21,9 @@ namespace iceicle {
     ///
     /// local indices represent indices on the local process
     ///
-    /// index_map[pindex] -> {process mpi rank, lindex}
+    /// index_map[pindex] -> {owning process mpi rank, lindex}
     ///
     /// p_indices[lindex] -> pindex 
-    /// such that index_map[p_indices[lindex]] -> {my mpi rank, lindex}
     ///
     /// "owned" pindices are the indices that are marked as belonging to this mpi_rank 
     /// lindices can map to pindices owned by other processes in index sets with conformity 
@@ -98,6 +98,9 @@ namespace iceicle {
         // = Data Members =
         // ================
 
+        /// the total number of degrees of freedom represented
+        size_type ndof;
+
         /// the connectivity of the degrees of freedom for the elements
         /// for example, mesh nodes connectivity
         util::crs<IDX, IDX> dof_connectivity;
@@ -107,29 +110,22 @@ namespace iceicle {
         // ================
 
         constexpr 
-        dof_map() : dof_connectivity{impl::empty_crs<IDX>} {}
+        dof_map() : ndof{0}, dof_connectivity{impl::empty_crs<IDX>} {}
 
         // === Default nothrow copy and nothrow move semantics ===
-        constexpr dof_map(const dof_map<IDX, ndim, conformity>& other) noexcept 
-        : dof_connectivity{other.dof_connectivity} {}
-        constexpr dof_map(dof_map<IDX, ndim, conformity>&& other) noexcept 
-        : dof_connectivity{other.dof_connectivity} {}
-
-        constexpr dof_map& operator=(const dof_map<IDX, ndim, conformity>& other) noexcept {
-            dof_connectivity = other.dof_connectivity;
-            return *this;
-        };
-        constexpr dof_map& operator=(dof_map<IDX, ndim, conformity>&& other) noexcept {
-            dof_connectivity = other.dof_connectivity;
-            return *this;
-        }
+        constexpr dof_map(const dof_map<IDX, ndim, conformity>& other) noexcept = default;
+        constexpr dof_map(dof_map<IDX, ndim, conformity>&& other) noexcept = default;
+        constexpr dof_map& operator=(const dof_map<IDX, ndim, conformity>& other) noexcept 
+            = default;
+        constexpr dof_map& operator=(dof_map<IDX, ndim, conformity>&& other) noexcept 
+            = default;
 
         /// @brief construct from dof connectivity 
         /// takes universal reference to things that can construct dof connectivity
         constexpr 
-        dof_map(auto&& dof_connectivity) 
+        dof_map(std::integral auto ndof, auto&& dof_connectivity) 
         requires(std::constructible_from<util::crs<IDX, IDX>, decltype(dof_connectivity)>)
-        : dof_connectivity{dof_connectivity} {}
+        : ndof{(size_type) ndof}, dof_connectivity{dof_connectivity} {}
 
         // =============
         // = Accessors =
@@ -216,7 +212,7 @@ namespace iceicle {
 
         /** @brief get the size of the global degree of freedom index space represented by this map */
         [[nodiscard]] constexpr size_type size() const noexcept 
-        { return static_cast<size_type>(dof_connectivity.nnz()); }
+        { return ndof; }
     };
 
     /// @brief apply the renumbering of elements to a dof_map 
@@ -243,7 +239,7 @@ namespace iceicle {
                     new_connectivity[ielem, icol] = 
                         dofs.dof_connectivity[el_renumbering[ielem], icol];
             }
-            return dof_map< IDX, ndim, conformity >(std::move(new_connectivity));
+            return dof_map< IDX, ndim, conformity >(dofs.size(), std::move(new_connectivity));
         }
     }
 
@@ -288,16 +284,20 @@ namespace iceicle {
                 std::vector<IDX>{});
         std::vector<IDX> my_pdofs;
 
-        IDX nelem;
+        IDX nelem, ndof;
         dof_map<IDX, ndim, conformity> gdofs;
 
         // communicate the global dofs map
         if(global_dofs.has_value()){
             const auto& global_dofs_val = global_dofs.value();
             nelem = global_dofs_val.nelem();
+            ndof = global_dofs_val.ndof;
             gdofs = global_dofs.value();
 #ifdef ICEICLE_USE_MPI 
             MPI_Bcast(&nelem, 1, mpi_get_type<IDX>(), myrank, MPI_COMM_WORLD);
+            MPI_Bcast(&ndof, 1, mpi_get_type<IDX>(), myrank, MPI_COMM_WORLD);
+            MPI_Bcast(gdofs.dof_connectivity.cols(), nelem + 1,
+                    mpi_get_type<IDX>(), myrank, MPI_COMM_WORLD);
             MPI_Bcast(gdofs.dof_connectivity.data(), gdofs.dof_connectivity.nnz(),
                     mpi_get_type<IDX>(), myrank, MPI_COMM_WORLD);
 #endif
@@ -305,13 +305,15 @@ namespace iceicle {
 #ifdef ICEICLE_USE_MPI 
             MPI_Bcast(&nelem, 1, mpi_get_type<IDX>(),
                     global_dofs.valid_rank(), MPI_COMM_WORLD);
+            MPI_Bcast(&ndof, 1, mpi_get_type<IDX>(),
+                    global_dofs.valid_rank(), MPI_COMM_WORLD);
             std::vector<IDX>cols(nelem + 1);
-            MPI_Bcast(&cols, nelem + 1, mpi_get_type<IDX>(),
+            MPI_Bcast(cols.data(), nelem + 1, mpi_get_type<IDX>(),
                     global_dofs.valid_rank(), MPI_COMM_WORLD);
             util::crs<IDX, IDX> gdofs_crs{cols};
             MPI_Bcast(gdofs_crs.data(), gdofs_crs.nnz(), mpi_get_type<IDX>(), 
                     global_dofs.valid_rank(), MPI_COMM_WORLD);
-            gdofs = dof_map<IDX, ndim, conformity>{gdofs_crs};
+            gdofs = dof_map<IDX, ndim, conformity>{ndof, gdofs_crs};
 #endif
         }
 
@@ -373,7 +375,7 @@ namespace iceicle {
         }
 
         // setup the cols array for number of process local elements
-        std::vector<IDX> ldof_cols{(IDX) el_part.p_indices.size() + 1};
+        std::vector<IDX> ldof_cols((IDX) el_part.p_indices.size() + 1);
         ldof_cols[0] = 0;
         for(IDX iel = 0; iel < nelem; ++iel){
             int el_rank = el_part.index_map[iel].rank;
@@ -397,7 +399,7 @@ namespace iceicle {
         }
 
         return std::tuple{ 
-            dof_map< IDX, ndim, conformity >{std::move(ldof_crs)},
+            dof_map< IDX, ndim, conformity >{my_pdofs.size(), std::move(ldof_crs)},
             pindex_map{ index_map, my_pdofs, offsets },
             renumbering
         };
