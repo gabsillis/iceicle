@@ -94,10 +94,15 @@ namespace iceicle {
             IDX nelem_rank = rank_pindices[irank].size();
             renumbering.insert(renumbering.end(),
                     rank_pindices[irank].begin(),rank_pindices[irank].end());
+            if(irank == myrank){
+                for(IDX lindex = 0; lindex < nelem_rank; ++lindex) {
+                    IDX pindex = lindex + pindex_start;
+                    p_indices[lindex] = pindex;
+                }
+            }
             for(IDX lindex = 0; lindex < nelem_rank; ++lindex) {
                 IDX pindex = lindex + pindex_start;
                 index_map[pindex] = p_index<IDX>{.rank = irank, .index = lindex};
-                p_indices[lindex] = pindex;
             }
             pindex_start += nelem_rank;
             owned_offsets[irank + 1] = pindex_start;
@@ -167,15 +172,25 @@ namespace iceicle {
         MPI_Status status;
 
         auto [el_partition, el_renumbering] = partition_elements(elsuel);
+        std::cout << el_partition;
+        fmt::println("{}", el_renumbering);
         dof_map el_conn_global{apply_el_renumbering(mesh.conn_el, el_renumbering)};
         auto [p_el_conn, p_el_conn_map, nodes_renumbering] =
             partition_dofs<IDX, ndim, h1_conformity(ndim)>(el_partition,
                     mpi::on_rank{el_conn_global, 0});
 
+        std::cout << p_el_conn_map;
         // construct the nodes
-        NodeArray<T, ndim> p_coord(p_el_conn.size());
-        for(IDX inode = 0; inode < p_coord.size(); ++inode) {
-            p_coord[inode] = gcoord[nodes_renumbering[inode]];
+        NodeArray<T, ndim> p_coord{};
+        p_coord.reserve(p_el_conn_map.n_lindex());
+        for(IDX inode : p_el_conn_map.p_indices) {
+            p_coord.push_back(gcoord[nodes_renumbering[inode]]);
+        }
+        for(int irank = 0; irank < nrank; ++irank){
+            if(irank == myrank){
+                fmt::println("p_coord rank {}: {}", irank, p_coord);
+            }
+            mpi::mpi_sync();
         }
 
         std::vector< ElementTransformation<T, IDX, ndim>* > el_transforms{};
@@ -195,7 +210,8 @@ namespace iceicle {
                     std::vector<int> el_domains(nelem_rank);
                     std::vector<int> el_orders(nelem_rank);
                     for(IDX iel_local = 0; iel_local < nelem_rank; ++iel_local){
-                        IDX iel_global = el_renumbering[el_partition.p_indices[iel_local]];
+                        IDX iel_global = el_renumbering[
+                            el_partition.owned_offsets[irank] + iel_local];
                         el_domains[iel_local] = static_cast<int>(mesh.el_transformations[iel_global]->domain_type);
                         el_orders[iel_local] = mesh.el_transformations[iel_global]->order;
                     }
@@ -215,6 +231,14 @@ namespace iceicle {
                     }
                 }
             }
+        }
+
+        for(int irank = 0; irank < nrank; ++irank){
+            if(irank == myrank){
+                std::cout << "p_el_conn " << irank << ": " << std::endl;
+                std::cout << p_el_conn.dof_connectivity;
+            }
+            mpi::mpi_sync();
         }
 
         using boundary_face_desc = AbstractMesh<T, IDX, ndim>::boundary_face_desc;

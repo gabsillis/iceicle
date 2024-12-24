@@ -1,10 +1,13 @@
 #pragma once
 
-#include "iceicle/anomaly_log.hpp"
+#include "fmt/base.h"
 #include "iceicle/crs.hpp"
 #include "iceicle/fe_definitions.hpp"
 #include "iceicle/iceicle_mpi_utils.hpp"
 #include <type_traits>
+#include <fmt/core.h>
+#include <fmt/format.h>
+#include <fmt/ranges.h>
 namespace iceicle {
 
     namespace impl {
@@ -55,10 +58,45 @@ namespace iceicle {
         auto size() const -> size_type 
         { return index_map.size(); }
 
+        /// @brief get the number of local indices 
+        auto n_lindex() const -> size_type 
+        { return p_indices.size(); }
+
         /// @brief the size of the range of pindices that are owned by the given rank
         [[nodiscard]] inline constexpr 
         auto owned_range_size(int irank) const -> size_type 
         { return owned_offsets[irank + 1] - owned_offsets[irank]; }
+
+        friend std::ostream& operator<< (std::ostream&out, const pindex_map<IDX> pidx_map) {
+            if(mpi::mpi_world_rank() == 0){
+                out << fmt::format("index_map:\n");
+                out << fmt::format("pindex | rank | lindex\n");
+                out << fmt::format("-------+------+-------\n");
+                for(IDX pidx = 0; pidx < pidx_map.size(); ++pidx){
+                    out << fmt::format(" {:5d} | {:4d} | {:5d}\n",
+                            pidx, pidx_map.index_map[pidx].rank, pidx_map.index_map[pidx].index);
+                }
+
+                out << fmt::format("\n");
+                out << fmt::format("offsets:\n");
+                out << fmt::format("{}", pidx_map.owned_offsets);
+                out << fmt::format("\n");
+            }
+
+            for(int irank = 0; irank < mpi::mpi_world_size(); ++irank) {
+                if(irank == mpi::mpi_world_rank()){
+                    out << fmt::format(" rank{} p_indices:\n", irank);
+                    out << fmt::format(" lindex | pindex \n");
+                    out << fmt::format("--------+--------\n");
+                    for(IDX lindex = 0; lindex < pidx_map.p_indices.size(); ++lindex){
+                        out << fmt::format(" {:6d} | {:6d} \n",
+                                lindex, pidx_map.p_indices[lindex]);
+                    }
+                }
+                mpi::mpi_sync();
+            }
+            return out;
+        }
     };
 
     /// @brief a map of degrees of freedom
@@ -338,6 +376,7 @@ namespace iceicle {
         auto unique_subrange = std::ranges::unique(my_pdofs);
         my_pdofs.erase(unique_subrange.begin(), unique_subrange.end());
 
+
         // create a renumbering that makes contiguous dof ranges 
         // for each process based on ownership
         std::vector<std::vector<IDX>> owned_pdofs(nrank, std::vector<IDX>{});
@@ -350,6 +389,13 @@ namespace iceicle {
             owned_pdofs[owning_rank[pdof]].push_back(pdof);
         }
         for(int irank = 0; irank < nrank; ++irank){
+            if(irank == mpi::mpi_world_rank()){
+                fmt::println("pdofs rank {}: {}", irank, my_pdofs);
+                fmt::println("owned pdofs rank {}: {}", irank, owned_pdofs[irank] );
+            }
+            mpi::mpi_sync();
+        }
+        for(int irank = 0; irank < nrank; ++irank){
             renumbering.insert(std::end(renumbering), 
                     std::begin(owned_pdofs[irank]), std::end(owned_pdofs[irank]));
             // construct the pdof_map index_mapping while we are at it
@@ -358,6 +404,7 @@ namespace iceicle {
             }
             offsets.push_back(offsets.back() + owned_pdofs[irank].size());
         }
+        fmt::println("renumbering: {}", renumbering);
         // new_pdof = inverse_renumbering[old_pdof]
         std::vector<IDX> inverse_renumbering(renumbering.size());
         for(IDX i = 0; i < renumbering.size(); ++i){
@@ -375,7 +422,8 @@ namespace iceicle {
         }
 
         // setup the cols array for number of process local elements
-        std::vector<IDX> ldof_cols((IDX) el_part.p_indices.size() + 1);
+        IDX nelem_local = el_part.p_indices.size();
+        std::vector<IDX> ldof_cols(nelem_local + 1);
         ldof_cols[0] = 0;
         for(IDX iel = 0; iel < nelem; ++iel){
             int el_rank = el_part.index_map[iel].rank;
@@ -389,12 +437,14 @@ namespace iceicle {
         for(int i = 1; i < ldof_cols.size(); ++i)
             ldof_cols[i] = ldof_cols[i - 1] + ldof_cols[i];
         util::crs<IDX, IDX> ldof_crs{std::span<const IDX>{ldof_cols}};
+        fmt::println("ldof_cols rank {}: {}", mpi::mpi_world_rank(), ldof_cols);
 
         /// fill with inverse mapping
-        for(IDX iel_local = 0; iel_local < ldof_cols.size(); ++iel_local){
+        for(IDX iel_local = 0; iel_local < nelem_local; ++iel_local){
             IDX iel_global = el_part.p_indices[iel_local];
             for(int idof = 0; idof < ldof_crs.rowsize(iel_local); ++idof){
-                ldof_crs[iel_local, idof] = inv_pdofs[gdofs[iel_global, idof]];
+                ldof_crs[iel_local, idof] = inv_pdofs[inverse_renumbering[
+                    gdofs[iel_global, idof]]];
             }
         }
 

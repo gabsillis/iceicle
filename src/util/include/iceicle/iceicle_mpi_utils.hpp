@@ -90,6 +90,14 @@ namespace iceicle {
 #endif
         }
 
+        inline 
+        void mpi_sync()
+        {
+#ifdef ICEICLE_USE_MPI 
+            MPI_Barrier(MPI_COMM_WORLD);
+#endif
+        }
+
         /// @brief mark that data only satisfies invariants on a given mpi_rank 
         template<class T>
         class on_rank {

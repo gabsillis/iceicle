@@ -10,6 +10,9 @@
 #include <vector>
 #include <span>
 #include <algorithm>
+#include <fmt/core.h>
+#include <fmt/format.h>
+#include <fmt/ranges.h>
 namespace iceicle::util {
 
     /**
@@ -274,6 +277,13 @@ namespace iceicle::util {
         auto cols() const noexcept
         -> const index_type*
         { return _cols; }
+
+        friend std::ostream& operator<<(std::ostream& out, const crs<T, IDX>& mat){
+            for(IDX irow = 0; irow < mat.nrow(); ++irow){
+                out << fmt::format("{}\n", mat.rowspan(irow));
+            }
+            return out;
+        }
     };
 
     template<class T>

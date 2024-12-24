@@ -43,7 +43,7 @@ int main(int argc, char *argv[]) {
 
     AbstractMesh<double, int, 2> pmesh{partition_mesh(mesh)};
 
-    io::write_mesh_vtk(mesh);
+    io::write_mesh_vtk(pmesh);
 
     MPI_Finalize();
 }
