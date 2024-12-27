@@ -267,6 +267,12 @@ namespace iceicle {
         return nodes_1d;
     }
 
+    namespace impl {
+
+        template<class T, class IDX, int ndim>
+        static std::vector< std::unique_ptr< Face<T, IDX, ndim> > > empty_premade_faces{};
+    }
+
     /**
      * @brief Abstract class that defines a mesh
      *
@@ -365,8 +371,8 @@ namespace iceicle {
             auto&& conn_el_arg,
             std::vector< ElementTransformation<T, IDX, ndim>* > el_transformations,
             const std::vector<boundary_face_desc>& boundary_face_descriptions,
-            std::vector< std::unique_ptr<Face<T, IDX, ndim> > > premade_boundary_faces
-                = std::vector< std::unique_ptr< Face<T, IDX, ndim> > >{} 
+            std::vector< std::unique_ptr<Face<T, IDX, ndim> > >& premade_boundary_faces
+                = impl::empty_premade_faces<T, IDX, ndim>
         )
         requires std::constructible_from<
             dof_map<IDX, ndim, h1_conformity(ndim)>, decltype(conn_el_arg)>
@@ -459,6 +465,13 @@ namespace iceicle {
                     }
                 }
             }
+
+            // custom boundary face definitions
+            for(auto&& fac : premade_boundary_faces){
+                faces.push_back(std::move(fac));
+            }
+            premade_boundary_faces.clear(); // make sure the empty unique_ptrs dont cause any issues later
+
             bdyFaceEnd = faces.size();
 
             // faces surrounding elements
@@ -471,9 +484,18 @@ namespace iceicle {
                 facsuel_ragged[faces[ifac]->elemR][faces[ifac]->face_nr_r()] = ifac;
             }
             for(IDX ifac = bdyFaceStart; ifac < bdyFaceEnd; ++ifac) {
-                facsuel_ragged[faces[ifac]->elemL][faces[ifac]->face_nr_l()] = ifac;
+                if(faces[ifac]->bctype == BOUNDARY_CONDITIONS::PARALLEL_COM){
+                    auto [rank_other, imleft] = decode_mpi_bcflag(faces[ifac]->bcflag);
+                    if(imleft)
+                        facsuel_ragged[faces[ifac]->elemL][faces[ifac]->face_nr_l()] = ifac;
+                    else
+                        facsuel_ragged[faces[ifac]->elemR][faces[ifac]->face_nr_r()] = ifac;
+                } else {
+                    facsuel_ragged[faces[ifac]->elemL][faces[ifac]->face_nr_l()] = ifac;
+                }
             }
             facsuel = util::crs<IDX, IDX>{facsuel_ragged};
+
         }
 
         /// @brief Construct a mesh from provided connectivity information

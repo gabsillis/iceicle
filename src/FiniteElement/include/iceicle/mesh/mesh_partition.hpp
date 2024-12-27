@@ -4,7 +4,6 @@
 #include "iceicle/geometry/face_utils.hpp"
 #include "iceicle/geometry/geo_element.hpp"
 #include "iceicle/geometry/transformations_table.hpp"
-#include <execution>
 #include <iceicle/mesh/mesh.hpp>
 #include <mpi.h>
 #ifdef ICEICLE_USE_METIS
@@ -434,7 +433,7 @@ namespace iceicle {
              // send stop codes to all processes
             for(int irank = 1; irank < nrank; ++irank){
                 int stop_code = -1;
-                MPI_Send(&stop_code, 1, MPI_INT, irank, 0, MPI_COMM_WORLD);
+                MPI_Send(&stop_code, 1, MPI_INT, irank, 1, MPI_COMM_WORLD);
             }
         } else {
             // not rank 0: recieve face information
@@ -508,7 +507,7 @@ namespace iceicle {
         // create the mesh
         pmesh = std::move(AbstractMesh{
                     p_coord, p_el_conn, el_transforms, 
-                    std::vector<boundary_face_desc>{} });
+                    boundary_descs, interprocess_faces});
 
 
 #ifndef NDEBUG 
