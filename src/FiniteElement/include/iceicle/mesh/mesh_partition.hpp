@@ -6,6 +6,7 @@
 #include "iceicle/geometry/transformations_table.hpp"
 #include <execution>
 #include <iceicle/mesh/mesh.hpp>
+#include <mpi.h>
 #ifdef ICEICLE_USE_METIS
 #include <metis.h>
 #ifdef ICEICLE_USE_MPI 
@@ -278,10 +279,11 @@ namespace iceicle {
                     boundary_descs.push_back(boundary_face_desc{bctype, bcflag, nodes});
                 } else {
                     int bctype_int = (int) bctype;
+                    std::size_t nnode = pnodes.size();
                     // send bctype, bcflag, number of nodes, then nodes array
                     MPI_Send(&bctype_int, 1, MPI_INT, mpi_rank, 0, MPI_COMM_WORLD);
                     MPI_Send(&bcflag, 1, MPI_INT, mpi_rank, 1, MPI_COMM_WORLD);
-                    MPI_Send(&pnodes.size(), 1, mpi_get_type<std::size_t>(), mpi_rank, 2, MPI_COMM_WORLD);
+                    MPI_Send(&nnode, 1, mpi_get_type<std::size_t>(), mpi_rank, 2, MPI_COMM_WORLD);
                     MPI_Send(pnodes.data(), pnodes.size(), mpi_get_type(pnodes.data()), mpi_rank, 3, MPI_COMM_WORLD);
                 }
             }
@@ -317,7 +319,7 @@ namespace iceicle {
         // Create boundary face descriptions for inter-process faces
         if(myrank == 0){
 
-            auto send_face = [myrank](
+            auto send_face = [myrank, &el_partition, &p_el_conn_map, &interprocess_faces](
                 DOMAIN_TYPE face_domain_type,
                 DOMAIN_TYPE left_domain_type,
                 DOMAIN_TYPE right_domain_type,
@@ -367,7 +369,8 @@ namespace iceicle {
                     MPI_Send(&ier_p, 1, mpi_get_type(ier_p), face_rank, 6, MPI_COMM_WORLD);
 
                     // send the face nodes
-                    MPI_Send(&pnodes.size(), 1, mpi_get_type<std::size_t>(), face_rank, 7, MPI_COMM_WORLD);
+                    std::size_t nnode = pnodes.size();
+                    MPI_Send(&nnode, 1, mpi_get_type<std::size_t>(), face_rank, 7, MPI_COMM_WORLD);
                     MPI_Send(pnodes.data(), pnodes.size(), mpi_get_type(pnodes.data()), face_rank, 8, MPI_COMM_WORLD);
 
                     // send face numbers and orientation 
@@ -398,6 +401,9 @@ namespace iceicle {
                     send_face(face.domain_type(), 
                             mesh.el_transformations[face.elemL]->domain_type,
                             mesh.el_transformations[face.elemR]->domain_type,
+                            face.geometry_order(),
+                            el_renumbering[face.elemL],
+                            el_renumbering[face.elemR],
                             face.face_nr_l(),
                             face.face_nr_r(),
                             face.orientation_r(),
@@ -410,6 +416,9 @@ namespace iceicle {
                     send_face(face.domain_type(), 
                             mesh.el_transformations[face.elemL]->domain_type,
                             mesh.el_transformations[face.elemR]->domain_type,
+                            face.geometry_order(),
+                            el_renumbering[face.elemL],
+                            el_renumbering[face.elemR],
                             face.face_nr_l(),
                             face.face_nr_r(),
                             face.orientation_r(),
@@ -421,8 +430,79 @@ namespace iceicle {
 
                 }
             }
+
+             // send stop codes to all processes
+            for(int irank = 1; irank < nrank; ++irank){
+                int stop_code = -1;
+                MPI_Send(&stop_code, 1, MPI_INT, irank, 0, MPI_COMM_WORLD);
+            }
         } else {
             // not rank 0: recieve face information
+
+            auto recieve_face = [myrank, &el_partition, &p_el_conn_map, &interprocess_faces]()
+            -> bool {
+                constexpr int root_rank = 0;
+                MPI_Status status;
+                // Get the face domain type or a stop code
+                int face_domn_int, left_domain_int, right_domain_int, face_order;
+                MPI_Recv(&face_domn_int, 1, MPI_INT, root_rank, 1, MPI_COMM_WORLD, &status);
+                if(face_domn_int == -1) {
+                    return false; // stop code
+                } 
+
+                MPI_Recv(&left_domain_int, 1, MPI_INT, root_rank, 2, MPI_COMM_WORLD, &status);
+                MPI_Recv(&right_domain_int, 1, MPI_INT, root_rank, 3, MPI_COMM_WORLD, &status);
+                MPI_Recv(&face_order, 1, MPI_INT, root_rank, 4, MPI_COMM_WORLD, &status);
+
+                // parallel element indices
+                IDX iel_p, ier_p;
+                MPI_Recv(&iel_p, 1, mpi_get_type(iel_p), root_rank, 5, MPI_COMM_WORLD, &status);
+                MPI_Recv(&ier_p, 1, mpi_get_type(ier_p), root_rank, 6, MPI_COMM_WORLD, &status);
+
+                // face nodes
+                std::size_t nnode;
+                MPI_Recv(&nnode, 1, mpi_get_type(nnode), root_rank, 7, MPI_COMM_WORLD, &status);
+                std::vector<IDX> pnodes(nnode);
+                MPI_Recv(pnodes.data(), nnode, mpi_get_type(pnodes.data()), 
+                        root_rank, 8, MPI_COMM_WORLD, &status);
+
+                // face numbers and orientation
+                int face_nr_l, face_nr_r, orientation;
+                MPI_Recv(&face_nr_l, 1, MPI_INT, root_rank, 9, MPI_COMM_WORLD, &status);
+                MPI_Recv(&face_nr_r, 1, MPI_INT, root_rank, 10, MPI_COMM_WORLD, &status);
+                MPI_Recv(&orientation, 1, MPI_INT, root_rank, 11, MPI_COMM_WORLD, &status);
+
+                // bcflag
+                int bcflag;
+                MPI_Recv(&bcflag, 1, MPI_INT, root_rank, 12, MPI_COMM_WORLD, &status);
+
+                auto [neighbor_rank, left] = decode_mpi_bcflag(bcflag);
+
+                // translate the element that we own
+                IDX iel = (left) ? el_partition.inv_p_indices[iel_p] : iel_p;
+                IDX ier = (left) ? ier_p : el_partition.inv_p_indices[ier_p];
+
+                // translate to local node indices
+                std::vector<IDX> nodes{};
+                nodes.reserve(pnodes.size());
+                for(IDX node : pnodes)
+                    nodes.push_back(p_el_conn_map.inv_p_indices[node]);
+                auto fac_opt = make_face<T, IDX, ndim>(
+                        static_cast<DOMAIN_TYPE>(face_domn_int), 
+                        static_cast<DOMAIN_TYPE>(left_domain_int), 
+                        static_cast<DOMAIN_TYPE>(right_domain_int), 
+                        face_order, iel, ier, nodes, face_nr_l, face_nr_r, orientation,
+                        BOUNDARY_CONDITIONS::PARALLEL_COM, bcflag);
+                    if(fac_opt)
+                        interprocess_faces.push_back(std::move(fac_opt.value()));
+                    else 
+                        util::AnomalyLog::log_anomaly("Cannot form boundary face");
+
+                // construct the face
+                return true;
+            };
+
+            while( recieve_face() ) {}
         }
 
         // create the mesh
