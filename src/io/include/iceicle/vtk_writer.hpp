@@ -2,16 +2,17 @@
 #include "iceicle/build_config.hpp"
 #include "iceicle/fe_definitions.hpp"
 #include "iceicle/iceicle_mpi_utils.hpp"
-#include <vtkXMLPUnstructuredGridWriter.h>
-#include <vtkUnstructuredGrid.h>
-#include <vtkMPICommunicator.h>
-#include <vtkMPIController.h>
-#include <vtkMPI.h>
+#include <iceicle/mesh/mesh.hpp>
 #include <vtkLagrangeQuadrilateral.h>
 #include <vtkLagrangeHexahedron.h>
 #include <vtkLagrangeTriangle.h>
 #include <vtkLagrangeTetra.h>
-#include <iceicle/mesh/mesh.hpp>
+#include <vtkXMLPUnstructuredGridWriter.h>
+#include <vtkUnstructuredGrid.h>
+#include <vtkCellData.h>
+#include <vtkMPI.h>
+#include <vtkMPICommunicator.h>
+#include <vtkMPIController.h>
 namespace iceicle::io {
 
     template<class T, class IDX, int ndim>
@@ -70,6 +71,12 @@ namespace iceicle::io {
 
         vtk_grid->Allocate(mesh.nelem());
 
+        // ===================
+        // = Write the Nodes =
+        // ===================
+        // This is done by looping through the elements, getting the VTK reference cell 
+        // then interpolating to vtk's reference domain points
+
         IDX ivtk_pt = 0;
         vtkNew<vtkPoints> vtk_coord;
         for(IDX ielem = 0; ielem < mesh.nelem(); ++ielem){
@@ -97,6 +104,7 @@ namespace iceicle::io {
                             vtk_point[idim] = 0.0;
                         vtk_coord->InsertPoint(ivtk_pt, vtk_point);
                         pts.push_back(ivtk_pt);
+                        ++ivtk_pt;
                     }
                     vtk_grid->InsertNextCell(ref_cell->GetCellType(),
                             ref_cell->GetNumberOfPoints(), pts.data());
@@ -104,6 +112,16 @@ namespace iceicle::io {
             }
         }
         vtk_grid->SetPoints(vtk_coord);
+
+        // Create an Array to represent the MPI rank for each cell 
+        vtkSmartPointer<vtkIntArray> rank_array = vtkSmartPointer<vtkIntArray>::New();
+        rank_array->SetName("MPI rank");
+        rank_array->SetNumberOfComponents(1);
+        rank_array->SetNumberOfTuples(vtk_grid->GetCells()->GetNumberOfCells());
+        for(IDX ielem = 0; ielem < mesh.nelem(); ++ielem) {
+            rank_array->SetValue(ielem, mpi::mpi_world_rank());
+        }
+        vtk_grid->GetCellData()->AddArray(rank_array);
 
         writer->SetNumberOfPieces(mpi::mpi_world_size());
         writer->SetStartPiece(mpi::mpi_world_rank());

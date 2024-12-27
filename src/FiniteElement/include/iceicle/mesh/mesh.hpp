@@ -357,11 +357,16 @@ namespace iceicle {
         /// @param el_transformations array of pointers to the corresponding transformation for each element
         /// @param boundary_face_descriptions tuple of BOUNDARY_CONDITIONS (type), integer (flag), 
         ///        and array of indices (the nodes) that describe boundary faces
+        /// @param premade_boundary_faces optionally the user can construct faces manually (using new) 
+        ///                               and pass a vector of these pointers to be used in addition to 
+        ///                               boundary_face_descriptions
         AbstractMesh(
             NodeArray<T, ndim>& coord,
             auto&& conn_el_arg,
             std::vector< ElementTransformation<T, IDX, ndim>* > el_transformations,
-            const std::vector<boundary_face_desc>& boundary_face_descriptions
+            const std::vector<boundary_face_desc>& boundary_face_descriptions,
+            std::vector< std::unique_ptr<Face<T, IDX, ndim> > > premade_boundary_faces
+                = std::vector< std::unique_ptr< Face<T, IDX, ndim> > >{} 
         )
         requires std::constructible_from<
             dof_map<IDX, ndim, h1_conformity(ndim)>, decltype(conn_el_arg)>
@@ -450,7 +455,7 @@ namespace iceicle {
                         if(fac_opt)
                             faces.push_back(std::move(fac_opt.value()));
                         else 
-                            util::AnomalyLog::log_anomaly(util::Anomaly{"Cannot form boundary face", util::general_anomaly_tag{}});
+                            util::AnomalyLog::log_anomaly("Cannot form boundary face");
                     }
                 }
             }

@@ -94,4 +94,14 @@ template <typename T>
   return mpi_type;    
 }
 
+template <typename T>
+[[nodiscard]] constexpr MPI_Datatype mpi_get_type(T* val) noexcept {
+  return mpi_get_type<T>();
+}
+
+template <typename T>
+[[nodiscard]] constexpr MPI_Datatype mpi_get_type(T val) noexcept {
+  return mpi_get_type<std::remove_reference_t<T>>();
+}
+
 #endif // MPI_TYPE_HPP_INCLUDED

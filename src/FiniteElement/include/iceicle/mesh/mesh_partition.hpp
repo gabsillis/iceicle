@@ -50,10 +50,14 @@ namespace iceicle {
             }
             std::vector< IDX > el_p_idxs(nelem);
             std::iota(el_p_idxs.begin(), el_p_idxs.end(), 0);
+            std::unordered_map<IDX, IDX> inv_p_indices;
+            for(IDX lindex = 0; lindex < el_p_idxs.size(); ++lindex)
+                inv_p_indices[el_p_idxs[lindex]] = lindex;
             std::vector< IDX > offsets = {0, nelem + 1};
             std::vector<IDX> renumbering(nelem);
             std::iota(renumbering.begin(), renumbering.end(), 0);
-            return std::pair{pindex_map{std::move(ret), std::move(el_p_idxs), std::move(offsets)},
+            return std::pair{pindex_map{std::move(ret), std::move(el_p_idxs),
+                    std::move(inv_p_indices), std::move(offsets)},
                 std::move(renumbering)};
         } 
 
@@ -108,9 +112,13 @@ namespace iceicle {
             owned_offsets[irank + 1] = pindex_start;
         }
 
+        std::unordered_map<IDX, IDX> inv_p_indices;
+        for(IDX lindex = 0; lindex < p_indices.size(); ++lindex)
+            inv_p_indices[p_indices[lindex]] = lindex;
+
         return std::pair{
-            pindex_map<IDX>{std::move(index_map), 
-                std::move(p_indices), std::move(owned_offsets) },
+            pindex_map<IDX>{std::move(index_map), std::move(p_indices),
+                std::move(inv_p_indices), std::move(owned_offsets) },
             renumbering
         };
     }
@@ -178,6 +186,10 @@ namespace iceicle {
         auto [p_el_conn, p_el_conn_map, nodes_renumbering] =
             partition_dofs<IDX, ndim, h1_conformity(ndim)>(el_partition,
                     mpi::on_rank{el_conn_global, 0});
+        std::vector<IDX> inv_nodes_renumbering(nodes_renumbering.size());
+        for(IDX inode = 0; inode < nodes_renumbering.size(); ++inode){
+            inv_nodes_renumbering[nodes_renumbering[inode]] = inode;
+        }
 
         std::cout << p_el_conn_map;
         // construct the nodes
@@ -242,6 +254,178 @@ namespace iceicle {
         }
 
         using boundary_face_desc = AbstractMesh<T, IDX, ndim>::boundary_face_desc;
+        std::vector<boundary_face_desc> boundary_descs;
+        // Create boundary face descriptions of boundary faces
+        if(myrank == 0){
+            for(IDX ifac = mesh.bdyFaceStart; ifac < mesh.bdyFaceEnd; ++ifac){
+                const Face<T, IDX, ndim>& face = *(mesh.faces[ifac]);
+                IDX attached_element = el_renumbering[face.elemL];
+                int mpi_rank = el_partition.index_map[attached_element].rank;
+                
+                BOUNDARY_CONDITIONS bctype = face.bctype;
+                int bcflag = face.bcflag;
+                std::vector<IDX> pnodes{};
+                pnodes.reserve(face.n_nodes());
+                for(IDX node : face.nodes_span()){
+                    pnodes.push_back(inv_nodes_renumbering[node]);
+                }
+
+                if(mpi_rank == myrank) {
+                    std::vector<IDX> nodes{};
+                    nodes.reserve(face.n_nodes());
+                    for(IDX node : pnodes)
+                        nodes.push_back(p_el_conn_map.inv_p_indices[node]);
+                    boundary_descs.push_back(boundary_face_desc{bctype, bcflag, nodes});
+                } else {
+                    int bctype_int = (int) bctype;
+                    // send bctype, bcflag, number of nodes, then nodes array
+                    MPI_Send(&bctype_int, 1, MPI_INT, mpi_rank, 0, MPI_COMM_WORLD);
+                    MPI_Send(&bcflag, 1, MPI_INT, mpi_rank, 1, MPI_COMM_WORLD);
+                    MPI_Send(&pnodes.size(), 1, mpi_get_type<std::size_t>(), mpi_rank, 2, MPI_COMM_WORLD);
+                    MPI_Send(pnodes.data(), pnodes.size(), mpi_get_type(pnodes.data()), mpi_rank, 3, MPI_COMM_WORLD);
+                }
+            }
+
+            for(int irank = 1; irank < nrank; ++irank){
+                int stop_code = -1;
+                MPI_Send(&stop_code, 1, MPI_INT, irank, 0, MPI_COMM_WORLD);
+            }
+        } else {
+            int bctype_int;
+            MPI_Recv(&bctype_int, 1, MPI_INT, 0, 0, MPI_COMM_WORLD, &status);
+            while(bctype_int != -1){
+                BOUNDARY_CONDITIONS bctype = static_cast<BOUNDARY_CONDITIONS>(bctype_int);
+                int bcflag, nnode;
+                MPI_Recv(&bcflag, 1, MPI_INT, 0, 1, MPI_COMM_WORLD, &status);
+                MPI_Recv(&nnode, 1, mpi_get_type<std::size_t>(), 0, 2, MPI_COMM_WORLD, &status);
+                std::vector<IDX> pnodes(nnode);
+                MPI_Recv(pnodes.data(), nnode, mpi_get_type(pnodes.data()), 0, 3, MPI_COMM_WORLD, &status);
+                // translate to local node indices
+                std::vector<IDX> nodes{};
+                nodes.reserve(pnodes.size());
+                for(IDX node : pnodes)
+                    nodes.push_back(p_el_conn_map.inv_p_indices[node]);
+
+                boundary_descs.push_back(boundary_face_desc{bctype, bcflag, nodes});
+
+                // get the next bc type
+                MPI_Recv(&bctype_int, 1, MPI_INT, 0, 0, MPI_COMM_WORLD, &status);
+            }
+        }
+
+        std::vector< std::unique_ptr< Face<T, IDX, ndim> > > interprocess_faces{};
+        // Create boundary face descriptions for inter-process faces
+        if(myrank == 0){
+
+            auto send_face = [myrank](
+                DOMAIN_TYPE face_domain_type,
+                DOMAIN_TYPE left_domain_type,
+                DOMAIN_TYPE right_domain_type,
+                int face_order,
+                IDX iel_p,
+                IDX ier_p,
+                int face_nr_l,
+                int face_nr_r,
+                int orientation,
+                std::vector<IDX> pnodes,
+                int face_rank,
+                int neighbor_rank,
+                bool left
+            ) -> void{
+                if(face_rank == myrank){
+                    // The face we want to make is on rank 0, just make it 
+
+                    // translate the element that we own
+                    IDX iel = (left) ? el_partition.inv_p_indices[iel_p] : iel_p;
+                    IDX ier = (left) ? ier_p : el_partition.inv_p_indices[ier_p];
+
+                    // translate to local node indices
+                    std::vector<IDX> nodes{};
+                    nodes.reserve(pnodes.size());
+                    for(IDX node : pnodes)
+                        nodes.push_back(p_el_conn_map.inv_p_indices[node]);
+                    auto fac_opt = make_face<T, IDX, ndim>(face_domain_type, left_domain_type, right_domain_type,
+                            face_order, iel, ier, nodes, face_nr_l, face_nr_r, orientation,
+                            BOUNDARY_CONDITIONS::PARALLEL_COM, encode_mpi_bcflag(neighbor_rank, left));
+                        if(fac_opt)
+                            interprocess_faces.push_back(std::move(fac_opt.value()));
+                        else 
+                            util::AnomalyLog::log_anomaly("Cannot form boundary face");
+                    
+                } else {
+                    // send face geometry specifications
+                    int face_domn_int = (int) face_domain_type, 
+                        left_domain_int = (int) left_domain_type,
+                        right_domain_int = (int) right_domain_type;
+                    MPI_Send(&face_domn_int, 1, MPI_INT, face_rank, 1, MPI_COMM_WORLD);
+                    MPI_Send(&left_domain_int, 1, MPI_INT, face_rank, 2, MPI_COMM_WORLD);
+                    MPI_Send(&right_domain_int, 1, MPI_INT, face_rank, 3, MPI_COMM_WORLD);
+                    MPI_Send(&face_order, 1, MPI_INT, face_rank, 4, MPI_COMM_WORLD);
+
+                    // send the parallel element indices
+                    MPI_Send(&iel_p, 1, mpi_get_type(iel_p), face_rank, 5, MPI_COMM_WORLD);
+                    MPI_Send(&ier_p, 1, mpi_get_type(ier_p), face_rank, 6, MPI_COMM_WORLD);
+
+                    // send the face nodes
+                    MPI_Send(&pnodes.size(), 1, mpi_get_type<std::size_t>(), face_rank, 7, MPI_COMM_WORLD);
+                    MPI_Send(pnodes.data(), pnodes.size(), mpi_get_type(pnodes.data()), face_rank, 8, MPI_COMM_WORLD);
+
+                    // send face numbers and orientation 
+                    MPI_Send(&face_nr_l, 1, MPI_INT, face_rank, 9, MPI_COMM_WORLD);
+                    MPI_Send(&face_nr_r, 1, MPI_INT, face_rank, 10, MPI_COMM_WORLD);
+                    MPI_Send(&orientation, 1, MPI_INT, face_rank, 11, MPI_COMM_WORLD);
+
+                    // send the bcflag
+                    int bcflag = encode_mpi_bcflag(neighbor_rank, left);
+                    MPI_Send(&bcflag, 1, MPI_INT, face_rank, 12, MPI_COMM_WORLD);
+                }
+            };
+
+            for(IDX iface = mesh.interiorFaceStart; iface < mesh.interiorFaceEnd; ++iface){
+                Face<T, IDX, ndim>& face = *(mesh.faces[iface]);
+                IDX iel = el_renumbering[face.elemL];
+                IDX ier = el_renumbering[face.elemR];
+                int rank_l = el_partition.index_map[iel].rank;
+                int rank_r = el_partition.index_map[ier].rank;
+                if(rank_l != rank_r){
+                    // create the nodes list
+                    std::vector<IDX> pnodes;
+                    pnodes.reserve(face.n_nodes());
+                    for(IDX node : face.nodes_span()){
+                        pnodes.push_back(inv_nodes_renumbering[node]);
+                    }
+                    // send left
+                    send_face(face.domain_type(), 
+                            mesh.el_transformations[face.elemL]->domain_type,
+                            mesh.el_transformations[face.elemR]->domain_type,
+                            face.face_nr_l(),
+                            face.face_nr_r(),
+                            face.orientation_r(),
+                            pnodes,
+                            rank_l,
+                            rank_r,
+                            true
+                    );
+                    // send right
+                    send_face(face.domain_type(), 
+                            mesh.el_transformations[face.elemL]->domain_type,
+                            mesh.el_transformations[face.elemR]->domain_type,
+                            face.face_nr_l(),
+                            face.face_nr_r(),
+                            face.orientation_r(),
+                            pnodes,
+                            rank_r,
+                            rank_l,
+                            false
+                    );
+
+                }
+            }
+        } else {
+            // not rank 0: recieve face information
+        }
+
+        // create the mesh
         pmesh = std::move(AbstractMesh{
                     p_coord, p_el_conn, el_transforms, 
                     std::vector<boundary_face_desc>{} });

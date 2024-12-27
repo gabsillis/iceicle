@@ -4,6 +4,7 @@
 #include "iceicle/crs.hpp"
 #include "iceicle/fe_definitions.hpp"
 #include "iceicle/iceicle_mpi_utils.hpp"
+#include <unordered_map>
 #include <type_traits>
 #include <fmt/core.h>
 #include <fmt/format.h>
@@ -43,12 +44,16 @@ namespace iceicle {
         using index_type = IDX;
         using size_type = std::make_unsigned_t<IDX>;
 
-        /// @brief the index pairs of rank and process local index 
+        /// @brief the index pairs of owning rank and process local index 
         /// synchronized over all ranks
         std::vector< p_index<IDX> > index_map;
 
         /// @brief for each local degree of freedom, the parallel index 
         std::vector< IDX > p_indices;
+
+        /// @brief for each parallel index that has a local degree of freedom, 
+        /// inv_p_indices[pidx] = local index
+        std::unordered_map<IDX, IDX > inv_p_indices;
 
         /// @brief the offsets of "owned" pindex ranges
         std::vector< IDX > owned_offsets;
@@ -415,8 +420,8 @@ namespace iceicle {
         std::for_each(my_pdofs.begin(), my_pdofs.end(), 
                 [&inverse_renumbering](IDX &n) { n = inverse_renumbering[n]; });
        
-        // create a temporary inverse mapping of my_pdofs to ldofs
-        std::vector<IDX> inv_pdofs(gdofs.size(), -1);
+        // create a inverse mapping of my_pdofs to ldofs
+        std::unordered_map<IDX, IDX> inv_pdofs{};
         for(int ldof = 0; ldof < my_pdofs.size(); ++ldof){
             inv_pdofs[my_pdofs[ldof]] = ldof;
         }
@@ -450,7 +455,7 @@ namespace iceicle {
 
         return std::tuple{ 
             dof_map< IDX, ndim, conformity >{my_pdofs.size(), std::move(ldof_crs)},
-            pindex_map{ index_map, my_pdofs, offsets },
+            pindex_map{ index_map, my_pdofs, inv_pdofs, offsets },
             renumbering
         };
     }

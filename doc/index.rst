@@ -976,7 +976,7 @@ To uniquely define the transformation operations that a face needs to perform we
 * the domain type of the right element for :math:`T_{\xi_R}`
 
    For boundary faces this is the same as the left element with the exception of :cpp:enumerator:`iceicle::BOUNDARY_CONDITIONS::PARALLEL_COM`
-   because this retains all the information of the domain on the neighboring process.
+   Details are given below
 
 * the geometry polynomial order for the face: 
 
