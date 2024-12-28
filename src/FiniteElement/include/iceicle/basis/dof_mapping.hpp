@@ -4,6 +4,7 @@
 #include "iceicle/crs.hpp"
 #include "iceicle/fe_definitions.hpp"
 #include "iceicle/iceicle_mpi_utils.hpp"
+#include <numeric>
 #include <unordered_map>
 #include <type_traits>
 #include <fmt/core.h>
@@ -80,7 +81,7 @@ namespace iceicle {
                 for(IDX pidx = 0; pidx < pidx_map.size(); ++pidx){
                     out << fmt::format(" {:5d} | {:4d} | {:5d}\n",
                             pidx, pidx_map.index_map[pidx].rank, pidx_map.index_map[pidx].index);
-                }
+          }
 
                 out << fmt::format("\n");
                 out << fmt::format("offsets:\n");
@@ -132,7 +133,7 @@ namespace iceicle {
          * are contiguous in the layout
          * meaning that the data for a an element can be block copied 
          * to a elspan provided the layout parameters are the same
-         * This is not true for h1 conformity because there are shared dofs
+         * This is not true for any conformity other than L2 because of shared dofs
          */
         inline static constexpr bool local_dof_contiguous() noexcept 
         { return false; }
@@ -140,7 +141,6 @@ namespace iceicle {
         // ================
         // = Data Members =
         // ================
-
         /// the total number of degrees of freedom represented
         size_type ndof;
 
@@ -151,7 +151,6 @@ namespace iceicle {
         // ================
         // = Constructors =
         // ================
-
         constexpr 
         dof_map() : ndof{0}, dof_connectivity{impl::empty_crs<IDX>} {}
 
@@ -258,6 +257,139 @@ namespace iceicle {
         { return ndof; }
     };
 
+    /// @brief degree of freedom map for L2 elements 
+    /// There are no shared degrees of freedom between elements in L2 space,
+    /// allowing a specialized mapping for the disjoint nature of indices
+    template< class IDX, int ndim >
+    struct dof_map<IDX, ndim, l2_conformity(ndim) > {
+
+        // ============
+        // = Typedefs =
+        // ============
+        using index_type = IDX;
+        using size_type = std::make_unsigned_t<index_type>;
+
+        // ==============
+        // = Properties =
+        // ==============
+
+        std::size_t calculate_max_dof_size(std::vector<index_type> &offsets_arg){
+            index_type max_dof_sz = 0;
+            for(index_type i = 1; i < offsets_arg.size(); ++i){
+                max_dof_sz = std::max(max_dof_sz , offsets_arg[i] - offsets_arg[i - 1]);
+            }
+            return max_dof_sz;
+        }
+
+        /**
+         * @brief consecutive local degrees of freedom (ignoring vector components)
+         * are contiguous in the layout
+         * meaning that the data for a an element can be block copied 
+         * to a elspan provided the layout parameters are the same
+         */
+        inline static constexpr bool local_dof_contiguous() noexcept 
+        { return true; }
+
+        /// @brief offsets of the start of each element 
+        ///        the dofs for each element are in the range 
+        ///        [ offsets[ielem], offsets[ielem + 1] )
+        std::vector<index_type> offsets;
+
+        /// @brief the max size in number of degrees of freedom for an element
+        std::size_t max_dof_size;
+
+        // ================
+        // = Constructors =
+        // ================
+
+        /** @brief default constructor */
+        constexpr dof_map() noexcept : offsets{0}, max_dof_size{0} {}
+
+        /** @brief construct from a given offsets array that we move from */
+        constexpr dof_map(std::vector<index_type>&& offsets_arg)
+        : offsets{std::move(offsets_arg)}, max_dof_size{calculate_max_dof_size(offsets)}
+        {}
+
+        /** @brief construct from a range of elements that can specify the number of basis functions */
+        constexpr dof_map(std::ranges::range auto elements) noexcept 
+        : offsets(std::ranges::size(elements) + 1), max_dof_size{0} {
+            offsets[0] = 0;
+            index_type ielem = 0;
+            for(const auto& el : elements){
+                int ndof = el.nbasis();
+                max_dof_size = std::max(max_dof_size, (std::size_t) ndof);
+                offsets[ielem + 1] = offsets[ielem] + ndof;
+                ++ielem;
+            }
+        }
+
+        // === Default nothrow copy and nothrow move semantics ===
+        constexpr dof_map(const dof_map<index_type, ndim, l2_conformity(ndim)>& other) noexcept = default;
+        constexpr dof_map(dof_map<index_type, ndim, l2_conformity(ndim)>&& other) noexcept = default;
+
+        constexpr dof_map& operator=(const dof_map<index_type, ndim, l2_conformity(ndim)>& other) noexcept = default;
+        constexpr dof_map& operator=(dof_map<index_type, ndim, l2_conformity(ndim)>&& other) noexcept = default;
+
+        // =============
+        // = Accessors =
+        // =============
+
+        /** 
+         * @brief Convert element index and local degree of freedom index 
+         * to the global degree of freedom index 
+         * @param ielem the element index 
+         * @param idof the local degree of freedom index
+         */
+        constexpr index_type operator[](index_type ielem, index_type idof) 
+            const noexcept { return offsets[ielem] + idof; }
+
+        // ===========
+        // = Utility =
+        // ===========
+
+        /** @brief get the size requirement for all degrees of freedom given
+         * the number of vector components per dof 
+         * @param nv_comp th number of vector components per dof 
+         * @return the size requirement
+         */
+        constexpr size_type calculate_size_requirement( index_type nv_comp ) const noexcept {
+            return offsets.back() * nv_comp;
+        }
+
+        /**
+         * @brief calculate the largest size requirement for a single element 
+         * @param nv_comp the number of vector components per dof 
+         * @return the maximum size requirement 
+         */
+        constexpr size_type max_el_size_reqirement( index_type nv_comp ) const noexcept {
+            return nv_comp * max_dof_size;
+        }
+
+        /// @brief get a span over the degrees of freedom for a given element index
+        /// @param iel the index of the element to get the dofs for 
+        /// @return a span over the dofs
+        [[nodiscard]] inline constexpr 
+        auto rowspan( index_type iel ) const noexcept 
+        -> std::span<const index_type> 
+        { return std::span{std::ranges::iota_view{offsets[iel], offsets[iel + 1]}}; }
+
+        /**
+         * @brief get the number of degrees of freedom at the given element index 
+         * @param elidx the index of the element to get the ndofs for 
+         * @return the number of degrees of freedom 
+         */
+        [[nodiscard]] constexpr 
+        auto ndof_el( index_type elidx ) const noexcept
+        -> size_type 
+        { return offsets[elidx + 1] - offsets[elidx]; }
+
+        /** @brief get the number of elements represented in the map */
+        [[nodiscard]] constexpr size_type nelem() const noexcept { return offsets.size() - 1; }
+
+        /** @brief get the size of the global degree of freedom index space represented by this map */
+        [[nodiscard]] constexpr size_type size() const noexcept { return static_cast<size_type>(offsets.back()); }
+    };
+
     /// @brief apply the renumbering of elements to a dof_map 
     /// return a new dof map that preserves the same dofs with the new element numbers
     template< class IDX, int ndim, int conformity >
@@ -267,44 +399,34 @@ namespace iceicle {
         const std::vector<IDX>& el_renumbering 
     ) noexcept -> dof_map< IDX, ndim, conformity> {
         if constexpr( conformity == l2_conformity(ndim) ) {
-            // TODO: 
+            std::vector<IDX> new_offsets(dofs.nelem() + 1);
+            new_offsets[0] = 0;
+            for(IDX ielem = 0; ielem < dofs.nelem(); ++ielem){
+                new_offsets[ielem + 1] = new_offsets[ielem] + dofs.ndof_el(el_renumbering[ielem]);
+            }
+            return dof_map< IDX, ndim, conformity >(std::move(new_offsets));
         } else {
-            IDX nelem = dofs.dof_connectivity.nrow();
+            IDX nelem = dofs.nelem();
             std::vector<IDX> newcols(nelem + 1);
             newcols[0] = 0;
             for(IDX ielem = 0; ielem < nelem; ++ielem) {
                 newcols[ielem + 1] = newcols[ielem] 
-                    + dofs.dof_connectivity.rowsize(el_renumbering[ielem]);
+                    + dofs.ndof_el(el_renumbering[ielem]);
             }
             util::crs<IDX, IDX> new_connectivity{std::span<const IDX>{newcols}};
             for(IDX ielem = 0; ielem < new_connectivity.nrow(); ++ielem){
                 for(int icol = 0; icol < new_connectivity.rowsize(ielem); ++icol)
                     new_connectivity[ielem, icol] = 
-                        dofs.dof_connectivity[el_renumbering[ielem], icol];
+                        dofs[el_renumbering[ielem], icol];
             }
             return dof_map< IDX, ndim, conformity >(dofs.size(), std::move(new_connectivity));
         }
     }
 
-//     template< class IDX, int ndim, int conformity >
-//     [[nodiscard]] inline constexpr
-//     auto apply_dof_renumbering(
-//         const dof_map< IDX, ndim, conformity >& dofs,
-//         const std::vector<IDX>& dof_old_to_new
-//     ) noexcept -> dof_map< IDX, ndim, conformity > {
-//         if constexpr( conformity == l2_conformity(ndim) ) {
-// 
-//         } else {
-//             util::crs new_connectivity{dofs.dof_connectivity};
-//             for(IDX ielem = 0; ielem < new_connectivity.nrow(); ++ielem){
-//                 for(int icol = 0; icol < new_connectivity.rowsize(ielem); ++icol) {
-//                     new_connectivity[ielem, icol] = dof_old_to_new[new_connectivity[ielem, icol]];
-//                 }
-//             }
-//             return dof_map< IDX, ndim, conformity >(std::move(new_connectivity));
-//         }
-//     }
-
+    /// Split a global dof set over a given element partition 
+    /// @param el_part the partition of the elements 
+    /// @param global_dofs the unpartitioned set of degrees of freedom to partition over the elements 
+    ///     These dofs must match the numbering of the parallel indices of el_part
     ///
     /// @return a tuple of 
     ///  - The new dof map of process local dofs (unique per process)
@@ -323,140 +445,206 @@ namespace iceicle {
 #endif
         int nrank = mpi::mpi_world_size();
         int myrank = mpi::mpi_world_rank();
-        std::vector< std::vector < IDX > > all_pdofs(nrank,
-                std::vector<IDX>{});
-        std::vector<IDX> my_pdofs;
 
-        IDX nelem, ndof;
         dof_map<IDX, ndim, conformity> gdofs;
 
-        // communicate the global dofs map
-        if(global_dofs.has_value()){
-            const auto& global_dofs_val = global_dofs.value();
-            nelem = global_dofs_val.nelem();
-            ndof = global_dofs_val.ndof;
-            gdofs = global_dofs.value();
-#ifdef ICEICLE_USE_MPI 
-            MPI_Bcast(&nelem, 1, mpi_get_type<IDX>(), myrank, MPI_COMM_WORLD);
-            MPI_Bcast(&ndof, 1, mpi_get_type<IDX>(), myrank, MPI_COMM_WORLD);
-            MPI_Bcast(gdofs.dof_connectivity.cols(), nelem + 1,
-                    mpi_get_type<IDX>(), myrank, MPI_COMM_WORLD);
-            MPI_Bcast(gdofs.dof_connectivity.data(), gdofs.dof_connectivity.nnz(),
-                    mpi_get_type<IDX>(), myrank, MPI_COMM_WORLD);
-#endif
-        } else {
-#ifdef ICEICLE_USE_MPI 
-            MPI_Bcast(&nelem, 1, mpi_get_type<IDX>(),
-                    global_dofs.valid_rank(), MPI_COMM_WORLD);
-            MPI_Bcast(&ndof, 1, mpi_get_type<IDX>(),
-                    global_dofs.valid_rank(), MPI_COMM_WORLD);
-            std::vector<IDX>cols(nelem + 1);
-            MPI_Bcast(cols.data(), nelem + 1, mpi_get_type<IDX>(),
-                    global_dofs.valid_rank(), MPI_COMM_WORLD);
-            util::crs<IDX, IDX> gdofs_crs{cols};
-            MPI_Bcast(gdofs_crs.data(), gdofs_crs.nnz(), mpi_get_type<IDX>(), 
-                    global_dofs.valid_rank(), MPI_COMM_WORLD);
-            gdofs = dof_map<IDX, ndim, conformity>{ndof, gdofs_crs};
-#endif
-        }
+        if constexpr( conformity == l2_conformity(ndim) ){
+            // === L2 dof conformity ===
 
-        // array of which rank owns each degree of freedom
-        std::vector<int> owning_rank(gdofs.size(), nrank);
-
-        // build the dof list
-        for(IDX iel = 0; iel < nelem; ++iel){
-            int el_rank = el_part.index_map[iel].rank;
-            if(el_rank == myrank) for(IDX pdof : gdofs.rowspan(iel)){
-                my_pdofs.push_back(pdof);
-                owning_rank[pdof] = myrank; // temporarily claim ownership
-            }
-        }
+            // communicate the global dofs map
+            if(global_dofs.has_value()) {
+                const auto& global_dofs_val = global_dofs.value();
+                IDX nelem = global_dofs_val.nelem();
+                gdofs = global_dofs.value();
+#ifdef ICEICLE_USE_MPI 
+                MPI_Bcast(&nelem, 1, mpi_get_type(nelem), myrank, MPI_COMM_WORLD);
+                mpi::mpi_bcast_range(gdofs.offsets, myrank);
+#endif
+            } else {
 #ifdef ICEICLE_USE_MPI
-        // ownership is determined by lowest MPI rank
-        MPI_Allreduce(MPI_IN_PLACE, owning_rank.data(), owning_rank.size(), MPI_INT, MPI_MIN, MPI_COMM_WORLD);
+                IDX nelem;
+                MPI_Bcast(&nelem, 1, mpi_get_type(nelem), global_dofs.valid_rank(), MPI_COMM_WORLD);
+                std::vector<IDX> offsets(nelem + 1);
+                mpi::mpi_bcast_range(offsets, global_dofs.valid_rank());
+#endif
+            }
+
+            std::vector< std::vector<IDX> > rank_offsets(nrank, std::vector<IDX>{0});
+            for(IDX iel_global = 0; iel_global < el_part.size(); ++iel_global){
+                int irank = el_part.index_map[iel_global].rank;
+                rank_offsets[iel_global].push_back(
+                        rank_offsets[iel_global].back() + gdofs.ndof_el(iel_global));
+            }
+            
+            std::vector< p_index<IDX> > index_map;
+            index_map.reserve(gdofs.size());
+            std::vector< IDX > pindices(rank_offsets[myrank].back());
+            std::iota(pindices.begin(), pindices.end(), 0);
+            std::vector< IDX > owned_offsets{0};
+            std::vector< IDX > renumbering;
+
+            IDX pidx = 0;
+            for(int irank = 0; irank < nrank; ++irank){
+                IDX ndof_rank = rank_offsets[irank].back();
+                for(IDX ldof = 0; ldof < ndof_rank; ++ldof){
+                    index_map.push_back(p_index<IDX>{.rank = irank, .index = ldof});
+                }
+                for(IDX ielem = el_part.owned_offsets[irank]; ielem < el_part.owned_offsets[irank + 1]; ++ielem){
+                    for(IDX i = 0; i < gdofs.ndof_el(ielem); ++i){
+                        renumbering[pidx] = gdofs[ielem, i];
+                        ++pidx;
+                    }
+                }
+                owned_offsets.push_back(owned_offsets.back() + ndof_rank);
+            }
+
+            std::unordered_map<IDX, IDX> inv_pdofs{};
+            for(int ldof = 0; ldof < pindices.size(); ++ldof){
+                inv_pdofs[pindices[ldof]] = ldof;
+            }
+
+            return std::tuple{
+                dof_map< IDX, ndim, conformity >{std::move(rank_offsets[myrank])},
+                pindex_map{ index_map, pindices, inv_pdofs, owned_offsets },
+                renumbering
+            };
+        } else {
+            // === All other dof conformities ===
+            std::vector< std::vector < IDX > > all_pdofs(nrank,
+                    std::vector<IDX>{});
+            std::vector<IDX> my_pdofs;
+
+            IDX nelem, ndof;
+            dof_map<IDX, ndim, conformity> gdofs;
+
+            // communicate the global dofs map
+            if(global_dofs.has_value()){
+                const auto& global_dofs_val = global_dofs.value();
+                nelem = global_dofs_val.nelem();
+                ndof = global_dofs_val.size();
+                gdofs = global_dofs.value();
+#ifdef ICEICLE_USE_MPI 
+                MPI_Bcast(&nelem, 1, mpi_get_type<IDX>(), myrank, MPI_COMM_WORLD);
+                MPI_Bcast(&ndof, 1, mpi_get_type<IDX>(), myrank, MPI_COMM_WORLD);
+                MPI_Bcast(gdofs.dof_connectivity.cols(), nelem + 1,
+                        mpi_get_type<IDX>(), myrank, MPI_COMM_WORLD);
+                MPI_Bcast(gdofs.dof_connectivity.data(), gdofs.dof_connectivity.nnz(),
+                        mpi_get_type<IDX>(), myrank, MPI_COMM_WORLD);
+#endif
+            } else {
+#ifdef ICEICLE_USE_MPI 
+                MPI_Bcast(&nelem, 1, mpi_get_type<IDX>(),
+                        global_dofs.valid_rank(), MPI_COMM_WORLD);
+                MPI_Bcast(&ndof, 1, mpi_get_type<IDX>(),
+                        global_dofs.valid_rank(), MPI_COMM_WORLD);
+                std::vector<IDX>cols(nelem + 1);
+                MPI_Bcast(cols.data(), nelem + 1, mpi_get_type<IDX>(),
+                        global_dofs.valid_rank(), MPI_COMM_WORLD);
+                util::crs<IDX, IDX> gdofs_crs{cols};
+                MPI_Bcast(gdofs_crs.data(), gdofs_crs.nnz(), mpi_get_type<IDX>(), 
+                        global_dofs.valid_rank(), MPI_COMM_WORLD);
+                gdofs = dof_map<IDX, ndim, conformity>{ndof, gdofs_crs};
+#endif
+            }
+
+            // array of which rank owns each degree of freedom
+            std::vector<int> owning_rank(gdofs.size(), nrank);
+
+            // build the dof list
+            for(IDX iel = 0; iel < nelem; ++iel){
+                int el_rank = el_part.index_map[iel].rank;
+                if(el_rank == myrank) for(IDX pdof : gdofs.rowspan(iel)){
+                    my_pdofs.push_back(pdof);
+                    owning_rank[pdof] = myrank; // temporarily claim ownership
+                }
+            }
+#ifdef ICEICLE_USE_MPI
+            // ownership is determined by lowest MPI rank
+            MPI_Allreduce(MPI_IN_PLACE, owning_rank.data(), owning_rank.size(), MPI_INT, MPI_MIN, MPI_COMM_WORLD);
 #endif
 
-        // sort and remove duplicates
-        std::ranges::sort(my_pdofs);
-        auto unique_subrange = std::ranges::unique(my_pdofs);
-        my_pdofs.erase(unique_subrange.begin(), unique_subrange.end());
+            // sort and remove duplicates
+            std::ranges::sort(my_pdofs);
+            auto unique_subrange = std::ranges::unique(my_pdofs);
+            my_pdofs.erase(unique_subrange.begin(), unique_subrange.end());
 
 
-        // create a renumbering that makes contiguous dof ranges 
-        // for each process based on ownership
-        std::vector<std::vector<IDX>> owned_pdofs(nrank, std::vector<IDX>{});
-        std::vector<IDX> renumbering; // old_pdof = renumbering[new_pdof]
-        renumbering.reserve(gdofs.size());
-        std::vector<IDX> offsets = {0};
-        std::vector< p_index<IDX> > index_map;
-        index_map.reserve(gdofs.size());
-        for(IDX pdof = 0; pdof < gdofs.size(); ++pdof){
-            owned_pdofs[owning_rank[pdof]].push_back(pdof);
-        }
-        for(int irank = 0; irank < nrank; ++irank){
-            if(irank == mpi::mpi_world_rank()){
-                fmt::println("pdofs rank {}: {}", irank, my_pdofs);
-                fmt::println("owned pdofs rank {}: {}", irank, owned_pdofs[irank] );
+            // create a renumbering that makes contiguous dof ranges 
+            // for each process based on ownership
+            std::vector<std::vector<IDX>> owned_pdofs(nrank, std::vector<IDX>{});
+            std::vector<IDX> renumbering; // old_pdof = renumbering[new_pdof]
+            renumbering.reserve(gdofs.size());
+            std::vector<IDX> offsets = {0};
+            std::vector< p_index<IDX> > index_map;
+            index_map.reserve(gdofs.size());
+            for(IDX pdof = 0; pdof < gdofs.size(); ++pdof){
+                owned_pdofs[owning_rank[pdof]].push_back(pdof);
             }
-            mpi::mpi_sync();
-        }
-        for(int irank = 0; irank < nrank; ++irank){
-            renumbering.insert(std::end(renumbering), 
-                    std::begin(owned_pdofs[irank]), std::end(owned_pdofs[irank]));
-            // construct the pdof_map index_mapping while we are at it
-            for(int ldof = 0; ldof < owned_pdofs[irank].size(); ++ldof){
-                index_map.emplace_back(irank, ldof);
+            for(int irank = 0; irank < nrank; ++irank){
+                if(irank == mpi::mpi_world_rank()){
+                    fmt::println("pdofs rank {}: {}", irank, my_pdofs);
+                    fmt::println("owned pdofs rank {}: {}", irank, owned_pdofs[irank] );
+                }
+                mpi::mpi_sync();
             }
-            offsets.push_back(offsets.back() + owned_pdofs[irank].size());
-        }
-        fmt::println("renumbering: {}", renumbering);
-        // new_pdof = inverse_renumbering[old_pdof]
-        std::vector<IDX> inverse_renumbering(renumbering.size());
-        for(IDX i = 0; i < renumbering.size(); ++i){
-            inverse_renumbering[renumbering[i]] = i;
-        }
-
-        // apply the renumbering to my_pdofs 
-        std::for_each(my_pdofs.begin(), my_pdofs.end(), 
-                [&inverse_renumbering](IDX &n) { n = inverse_renumbering[n]; });
-       
-        // create a inverse mapping of my_pdofs to ldofs
-        std::unordered_map<IDX, IDX> inv_pdofs{};
-        for(int ldof = 0; ldof < my_pdofs.size(); ++ldof){
-            inv_pdofs[my_pdofs[ldof]] = ldof;
-        }
-
-        // setup the cols array for number of process local elements
-        IDX nelem_local = el_part.p_indices.size();
-        std::vector<IDX> ldof_cols(nelem_local + 1);
-        ldof_cols[0] = 0;
-        for(IDX iel = 0; iel < nelem; ++iel){
-            int el_rank = el_part.index_map[iel].rank;
-            if(el_rank == myrank){
-                IDX iel_local = el_part.index_map[iel].index;
-                // NOTE: only putting the size in for now 
-                // need another pass to accumulate
-                ldof_cols[iel_local + 1] = gdofs.ndof_el(iel);
+            for(int irank = 0; irank < nrank; ++irank){
+                renumbering.insert(std::end(renumbering), 
+                        std::begin(owned_pdofs[irank]), std::end(owned_pdofs[irank]));
+                // construct the pdof_map index_mapping while we are at it
+                for(int ldof = 0; ldof < owned_pdofs[irank].size(); ++ldof){
+                    index_map.emplace_back(irank, ldof);
+                }
+                offsets.push_back(offsets.back() + owned_pdofs[irank].size());
             }
-        }
-        for(int i = 1; i < ldof_cols.size(); ++i)
-            ldof_cols[i] = ldof_cols[i - 1] + ldof_cols[i];
-        util::crs<IDX, IDX> ldof_crs{std::span<const IDX>{ldof_cols}};
-        fmt::println("ldof_cols rank {}: {}", mpi::mpi_world_rank(), ldof_cols);
-
-        /// fill with inverse mapping
-        for(IDX iel_local = 0; iel_local < nelem_local; ++iel_local){
-            IDX iel_global = el_part.p_indices[iel_local];
-            for(int idof = 0; idof < ldof_crs.rowsize(iel_local); ++idof){
-                ldof_crs[iel_local, idof] = inv_pdofs[inverse_renumbering[
-                    gdofs[iel_global, idof]]];
+            fmt::println("renumbering: {}", renumbering);
+            // new_pdof = inverse_renumbering[old_pdof]
+            std::vector<IDX> inverse_renumbering(renumbering.size());
+            for(IDX i = 0; i < renumbering.size(); ++i){
+                inverse_renumbering[renumbering[i]] = i;
             }
-        }
 
-        return std::tuple{ 
-            dof_map< IDX, ndim, conformity >{my_pdofs.size(), std::move(ldof_crs)},
-            pindex_map{ index_map, my_pdofs, inv_pdofs, offsets },
-            renumbering
-        };
+            // apply the renumbering to my_pdofs 
+            std::for_each(my_pdofs.begin(), my_pdofs.end(), 
+                    [&inverse_renumbering](IDX &n) { n = inverse_renumbering[n]; });
+           
+            // create a inverse mapping of my_pdofs to ldofs
+            std::unordered_map<IDX, IDX> inv_pdofs{};
+            for(int ldof = 0; ldof < my_pdofs.size(); ++ldof){
+                inv_pdofs[my_pdofs[ldof]] = ldof;
+            }
+
+            // setup the cols array for number of process local elements
+            IDX nelem_local = el_part.p_indices.size();
+            std::vector<IDX> ldof_cols(nelem_local + 1);
+            ldof_cols[0] = 0;
+            for(IDX iel = 0; iel < nelem; ++iel){
+                int el_rank = el_part.index_map[iel].rank;
+                if(el_rank == myrank){
+                    IDX iel_local = el_part.index_map[iel].index;
+                    // NOTE: only putting the size in for now 
+                    // need another pass to accumulate
+                    ldof_cols[iel_local + 1] = gdofs.ndof_el(iel);
+                }
+            }
+            for(int i = 1; i < ldof_cols.size(); ++i)
+                ldof_cols[i] = ldof_cols[i - 1] + ldof_cols[i];
+            util::crs<IDX, IDX> ldof_crs{std::span<const IDX>{ldof_cols}};
+            fmt::println("ldof_cols rank {}: {}", mpi::mpi_world_rank(), ldof_cols);
+
+            /// fill with inverse mapping
+            for(IDX iel_local = 0; iel_local < nelem_local; ++iel_local){
+                IDX iel_global = el_part.p_indices[iel_local];
+                for(int idof = 0; idof < ldof_crs.rowsize(iel_local); ++idof){
+                    ldof_crs[iel_local, idof] = inv_pdofs[inverse_renumbering[
+                        gdofs[iel_global, idof]]];
+                }
+            }
+
+            return std::tuple{ 
+                dof_map< IDX, ndim, conformity >{my_pdofs.size(), std::move(ldof_crs)},
+                pindex_map{ index_map, my_pdofs, inv_pdofs, offsets },
+                renumbering
+            };
+        }
     }
 }
