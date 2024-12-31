@@ -310,7 +310,10 @@ namespace iceicle {
         : offsets{std::move(offsets_arg)}, max_dof_size{calculate_max_dof_size(offsets)}
         {}
 
-        /** @brief construct from a range of elements that can specify the number of basis functions */
+        /** @brief construct from a range of elements that can
+         * specify the number of basis functions 
+         * through a function nbasis() 
+         **/
         constexpr dof_map(std::ranges::range auto elements) noexcept 
         : offsets(std::ranges::size(elements) + 1), max_dof_size{0} {
             offsets[0] = 0;

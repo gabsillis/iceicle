@@ -17,6 +17,7 @@
 #include "iceicle/fe_function/cg_map.hpp"
 #include "iceicle/geometry/face.hpp"
 #include "iceicle/geometry/geo_element.hpp"
+#include "iceicle/iceicle_mpi_utils.hpp"
 #include "iceicle/quadrature/QuadratureRule.hpp"
 #include <iceicle/mesh/mesh.hpp>
 #include <iceicle/tmp_utils.hpp>
@@ -100,10 +101,12 @@ namespace iceicle {
      * @tparam T the numeric type 
      * @tparam IDX the index type 
      * @tparam ndim the number of dimensions
+     * @tparam conformity the conformity of degrees of freedom between elements 
+     *         index corresponds to position in exact sequence
      */
-    template<typename T, typename IDX, int ndim>
+    template<typename T, typename IDX, int ndim, int conformity = l2_conformity(ndim)>
     class FESpace {
-        public:
+    public:
 
         using ElementType = FiniteElement<T, IDX, ndim>;
         using TraceType = TraceSpace<T, IDX, ndim>;
@@ -111,22 +114,22 @@ namespace iceicle {
         using GeoFaceType = Face<T, IDX, ndim>;
         using MeshType = AbstractMesh<T, IDX, ndim>;
         using BasisType = Basis<T, ndim>;
-        using QuadratureType = QuadratureRule<T, IDX, ndim>;
-
-        /// @brief what type of finite element space is being represented
-        enum class SPACE_TYPE {
-            L2, /// L2 elements are fully discontinuous at the interfaces
-            ISOPARAMETRIC_H1, /// A continuous finite element space over the whole domain 
-                              /// Basis functions for solution are equivalent
-                              /// to basis functionss for the geometry
-        };
-
-        /// @brief what type of finite element space is being represented
-        /// by this FESpace
-        SPACE_TYPE type;
 
         /// @brief pointer to the mesh used
         MeshType *meshptr;
+
+    private:
+
+        // ========================================
+        // = Maps to Basis, Quadrature, and Evals =
+        // ========================================
+
+        using ReferenceElementType = ReferenceElement<T, IDX, ndim>;
+        using ReferenceTraceType = ReferenceTraceSpace<T, IDX, ndim>;
+        std::map<FETypeKey, ReferenceElementType> ref_el_map;
+        std::map<TraceTypeKey, ReferenceTraceType> ref_trace_map;
+
+    public:
 
         /// @brief Array of finite elements in the space
         std::vector<ElementType> elements;
@@ -144,11 +147,8 @@ namespace iceicle {
         /// @brief the end index of the boundary traces (exclusive)
         std::size_t bdy_trace_end;
 
-        /** @brief maps local dofs to global dofs for dg space */
-        dg_dof_map<IDX> dg_map;
-
-        /** @brief maps local dofs to global dofs for cg space */
-        cg_dof_map<T, IDX, ndim> cg_map;
+        /** @brief maps local dofs to global dofs */
+        dof_map<IDX, ndim, conformity> dof_map;
 
         /** @brief the mapping of faces connected to each node */
         util::crs<IDX> fac_surr_nodes;
@@ -156,24 +156,9 @@ namespace iceicle {
         /** @brief the mapping of elements connected to each node */
         util::crs<IDX, IDX> el_surr_nodes;
 
-        /** @brief the mapping of faces connected to each element */
-        util::crs<IDX> fac_surr_el;
-
-        /// @brief element information recieved from each respective MPI rank
-        std::vector<std::vector<ElementType>> comm_elements;
-
-        private:
-
-        // ========================================
-        // = Maps to Basis, Quadrature, and Evals =
-        // ========================================
-
-        using ReferenceElementType = ReferenceElement<T, IDX, ndim>;
-        using ReferenceTraceType = ReferenceTraceSpace<T, IDX, ndim>;
-        std::map<FETypeKey, ReferenceElementType> ref_el_map;
-        std::map<TraceTypeKey, ReferenceTraceType> ref_trace_map;
-
-        public:
+        /// @brief Arrays of finite elements for every rank that contains 
+        /// face neighboring elements
+        std::vector< std::vector< ElementType > > comm_elements;
 
         // default constructor
         FESpace() = default;
@@ -186,25 +171,17 @@ namespace iceicle {
         FESpace(FESpace &&other) = default;
         FESpace<T, IDX, ndim>& operator=(FESpace &&other) = default;
 
-        /**
-         * @brief construct an FESpace with uniform 
-         * quadrature rules, and basis functions over all elements 
-         *
-         * @tparam basis_order the polynomial order of 1D basis functions
-         *
-         * @param meshptr pointer to the mesh 
-         * @param basis_type enumeration of what basis to use 
-         * @param quadrature_type enumeration of what quadrature rule to use 
-         * @param basis_order_arg for template argument deduction of the basis order
-         */
+    private:
+        
         template<int basis_order>
-        FESpace(
-            MeshType *meshptr,
+        [[nodiscard]] inline constexpr 
+        auto generate_uniform_order_elements(
             FESPACE_ENUMS::FESPACE_BASIS_TYPE basis_type,
             FESPACE_ENUMS::FESPACE_QUADRATURE quadrature_type,
             tmp::compile_int<basis_order> basis_order_arg
-        ) : type{SPACE_TYPE::L2}, meshptr(meshptr), cg_map{*meshptr}, elements{} {
-
+        ) -> std::vector<ElementType>
+        {
+            std::vector<ElementType> elements;
             // Generate the Finite Elements
             elements.reserve(meshptr->nelem());
             for(ElementTransformation<T, IDX, ndim>* geo_trans : meshptr->el_transformations){
@@ -240,7 +217,70 @@ namespace iceicle {
                 // add to the elements list
                 elements.push_back(fe);
             }
+        }
 
+        template<int basis_order>
+        [[nodiscard]] inline constexpr 
+        auto get_parallel_stencil_elements(
+            FESPACE_ENUMS::FESPACE_BASIS_TYPE basis_type,
+            FESPACE_ENUMS::FESPACE_QUADRATURE quadrature_type,
+            tmp::compile_int<basis_order> basis_order_arg
+        ) -> std::vector< std::vector<ElementType> >
+        {
+            int nrank = mpi::mpi_world_size();
+            int myrank = mpi::mpi_world_rank();
+            std::vector< std::vector<ElementType> > comm_elements(nrank);
+
+            for(int irank = 0; irank < nrank; ++irank, mpi::mpi_sync()){
+
+                if(irank == myrank){
+                    // my turn to send
+                    for(IDX ifac = meshptr->bdyFaceStart; ifac < meshptr->bdyFaceEnd; ++ifac){
+                        const Face<T, IDX, ndim>& face = *(meshptr->faces[ifac]);
+                        if(face.bctype == BOUNDARY_CONDITIONS::PARALLEL_COM){
+                            auto [jrank, imleft] = decode_mpi_bcflag(face.bcflag);
+                            IDX my_ielem = (imleft) ? face.elemL : face.elemR;
+                            IDX my_p_ielem = meshptr->element_partitioning.p_indices[my_ielem];
+                            IDX other_p_ielem = (imleft) ? face.elemR : face.elemR;
+
+                            
+                            
+                        }
+                    }
+                } else {
+                    // my turn to recieve
+
+
+                }
+            }
+
+        }
+
+    public:
+
+        /**
+         * @brief construct an FESpace with uniform 
+         * quadrature rules, and basis functions over all elements 
+         *
+         * @tparam basis_order the polynomial order of 1D basis functions
+         *
+         * @param meshptr pointer to the mesh 
+         * @param basis_type enumeration of what basis to use 
+         * @param quadrature_type enumeration of what quadrature rule to use 
+         * @param basis_order_arg for template argument deduction of the basis order
+         */
+        template<int basis_order>
+        FESpace(
+            MeshType *meshptr,
+            FESPACE_ENUMS::FESPACE_BASIS_TYPE basis_type,
+            FESPACE_ENUMS::FESPACE_QUADRATURE quadrature_type,
+            tmp::compile_int<basis_order> basis_order_arg
+        ) requires( conformity == l2_conformity(ndim) ) 
+        // the only case we currently have general mappings for
+        : meshptr(meshptr), ref_el_map{}, ref_trace_map{}, 
+          elements{generate_uniform_order_elements(basis_type, quadrature_type, basis_order_arg)},
+          dof_map{elements}, comm_elements(mpi::mpi_world_size())
+        {
 
 #ifdef ICEICLE_USE_MPI
 //             // ========================
@@ -377,9 +417,6 @@ namespace iceicle {
             bdy_trace_start = meshptr->bdyFaceStart;
             bdy_trace_end = meshptr->bdyFaceEnd;
 
-            // generate the dof offsets 
-            dg_map = dg_dof_map{elements};
-
             // ===================================
             // = Build the connectivity matrices =
             // ===================================
@@ -395,30 +432,14 @@ namespace iceicle {
             fac_surr_nodes = util::crs{connectivity_ragged};
 
             el_surr_nodes = util::crs{meshptr->elsup};
-
-            std::vector<std::vector<IDX>> fac_surr_el_ragged(elements.size());
-            for(int itrace = 0; itrace < traces.size(); ++itrace) {
-                const TraceType& trace = traces[itrace];
-                if(trace.face->bctype == BOUNDARY_CONDITIONS::PARALLEL_COM){
-                    // take some extra care to not add the wrong element index
-                    auto [jrank, imleft] = decode_mpi_bcflag(trace.face->bcflag);
-                    if(imleft){
-                        fac_surr_el_ragged[trace.elL.elidx].push_back(itrace);
-                    } else {
-                        fac_surr_el_ragged[trace.elR.elidx].push_back(itrace);
-                    }
-                } else {
-                    fac_surr_el_ragged[trace.elL.elidx].push_back(itrace);
-                    fac_surr_el_ragged[trace.elR.elidx].push_back(itrace);
-                }
-            }
-            fac_surr_el = util::crs{fac_surr_el_ragged};
         } 
 
         /// @brief construct an FESpace that represents an isoparametric CG space
         /// to the given mesh 
         /// @param meshptr pointer to the mesh
-        FESpace(MeshType *meshptr) : type{SPACE_TYPE::ISOPARAMETRIC_H1}, meshptr(meshptr), cg_map{*meshptr}, elements{} {
+        FESpace(MeshType *meshptr) 
+        requires(conformity == h1_conformity(ndim))
+        : meshptr(meshptr), elements{}, dof_map{meshptr->conn_el}{
             
             // Generate the Finite Elements
             elements.reserve(meshptr->nelem());
@@ -457,52 +478,50 @@ namespace iceicle {
             }
 
 #ifdef ICEICLE_USE_MPI
-//             // ========================
-//             // = Communicate Elements =
-//             // ========================
-//             int myrank, nrank;
-//             MPI_Comm_rank(MPI_COMM_WORLD, &myrank);
-//             MPI_Comm_size(MPI_COMM_WORLD, &nrank);
-// 
-//             comm_elements.resize(nrank);
-// 
-//             // set up the communicated FiniteElements only if more than 1 process
-//             for(int irank = 0; irank < nrank; ++irank){
-//                 // basis order, quadrature_type, and basis_type we know
-//                 int geometry_order, domain_type;
-//                 for(auto& comm_el : meshptr->communicated_elements[irank]){
-//                     
-//                     FETypeKey fe_key = {
-//                         .domain_type = comm_el.trans->domain_type,
-//                         .basis_order = comm_el.trans->order,
-//                         .geometry_order = comm_el.trans->order,
-//                         .qtype = FESPACE_ENUMS::FESPACE_QUADRATURE::GAUSS_LEGENDRE,
-//                         .btype = FESPACE_ENUMS::FESPACE_BASIS_TYPE::LAGRANGE 
-//                     };
-// 
-//                     // check if an evaluation doesn't exist yet
-//                     if(ref_el_map.find(fe_key) == ref_el_map.end()){
-//                         ref_el_map[fe_key] = ReferenceElementType(comm_el.trans->domain_type, comm_el.trans->order);
-//                     }
-//                     ReferenceElementType &ref_el = ref_el_map[fe_key];
-//                 
-//                     // this will be the index of the new element
-//                     IDX ielem = elements.size();
-// 
-//                     // create the finite element
-//                     ElementType fe{
-//                         .trans = comm_el.trans, 
-//                         .basis = ref_el.basis.get(),
-//                         .quadrule = ref_el.quadrule.get(),
-//                         .qp_evals = std::span<const BasisEvaluation<T, ndim>>{ref_el.evals},
-//                         .inodes = comm_el.conn_el, // NOTE: meshptr cannot invalidate anymore
-//                         .coord_el = comm_el.coord_el,
-//                         .elidx = ielem
-//                     };
-// 
-//                     comm_elements[irank].push_back(fe);
-//                 }
-//             }
+             // ========================
+             // = Communicate Elements =
+             // ========================
+             int myrank, nrank;
+             MPI_Comm_rank(MPI_COMM_WORLD, &myrank);
+             MPI_Comm_size(MPI_COMM_WORLD, &nrank);
+ 
+             // set up the communicated FiniteElements only if more than 1 process
+             for(int irank = 0; irank < nrank; ++irank){
+                 // basis order, quadrature_type, and basis_type we know
+                 int geometry_order, domain_type;
+                 for(auto& comm_el : meshptr->communicated_elements[irank]){
+                     
+                     FETypeKey fe_key = {
+                         .domain_type = comm_el.trans->domain_type,
+                         .basis_order = comm_el.trans->order,
+                         .geometry_order = comm_el.trans->order,
+                         .qtype = FESPACE_ENUMS::FESPACE_QUADRATURE::GAUSS_LEGENDRE,
+                         .btype = FESPACE_ENUMS::FESPACE_BASIS_TYPE::LAGRANGE 
+                     };
+ 
+                     // check if an evaluation doesn't exist yet
+                     if(ref_el_map.find(fe_key) == ref_el_map.end()){
+                         ref_el_map[fe_key] = ReferenceElementType(comm_el.trans->domain_type, comm_el.trans->order);
+                     }
+                     ReferenceElementType &ref_el = ref_el_map[fe_key];
+                 
+                     // this will be the index of the new element
+                     IDX ielem = elements.size();
+ 
+                     // create the finite element
+                     ElementType fe{
+                         .trans = comm_el.trans, 
+                         .basis = ref_el.basis.get(),
+                         .quadrule = ref_el.quadrule.get(),
+                         .qp_evals = std::span<const BasisEvaluation<T, ndim>>{ref_el.evals},
+                         .inodes = comm_el.conn_el, // NOTE: meshptr cannot invalidate anymore
+                         .coord_el = comm_el.coord_el,
+                         .elidx = ielem
+                     };
+ 
+                     comm_elements[irank].push_back(fe);
+                 }
+             }
 #endif
             // Generate the Trace Spaces
             traces.reserve(meshptr->faces.size());

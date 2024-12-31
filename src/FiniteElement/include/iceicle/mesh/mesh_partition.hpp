@@ -1,3 +1,4 @@
+#include "Numtool/point.hpp"
 #include "iceicle/anomaly_log.hpp"
 #include "iceicle/fe_definitions.hpp"
 #include "iceicle/geometry/face.hpp"
@@ -5,6 +6,7 @@
 #include "iceicle/geometry/geo_element.hpp"
 #include "iceicle/geometry/transformations_table.hpp"
 #include <iceicle/mesh/mesh.hpp>
+#include <limits>
 #include <mpi.h>
 #ifdef ICEICLE_USE_METIS
 #include <metis.h>
@@ -179,30 +181,81 @@ namespace iceicle {
         // ====================================
         MPI_Status status;
 
+        // partition the elements and renumber the element node connectivity
         auto [el_partition, el_renumbering] = partition_elements(elsuel);
-        std::cout << el_partition;
-        fmt::println("{}", el_renumbering);
         dof_map el_conn_global{apply_el_renumbering(mesh.conn_el, el_renumbering)};
+
+        // element partition extended by face neighbor elements 
+        // elements neighboring ranks that share a face are included
+        pindex_map<IDX> extended_el_partition;
+        if(myrank == 0){
+            for(IDX iface = mesh.interiorFaceStart; iface < mesh.interiorFaceEnd; ++iface){
+
+                    Face<T, IDX, ndim>& face = *(mesh.faces[iface]);
+                    IDX iel = el_renumbering[face.elemL];
+                    IDX ier = el_renumbering[face.elemR];
+                    int rank_l = el_partition.index_map[iel].rank;
+                    int rank_r = el_partition.index_map[ier].rank;
+                    if(rank_l != rank_r){
+                        // rank_l needs to add ier to extended_el_partition
+                        if(rank_l == myrank){
+                            // ier is neighbor
+                            extended_el_partition.p_indices.push_back(ier);
+                            extended_el_partition.inv_p_indices[ier] 
+                                = extended_el_partition.p_indices.size() - 1;
+                        } else {
+                            MPI_Send(&ier, mpi_get_type(ier), 1, rank_l, 0, MPI_COMM_WORLD);
+                        }
+
+                        // rank_r needs to add iel to extended_el_partition
+                        if(rank_r == myrank){
+                            // iel is neighbor
+                            extended_el_partition.p_indices.push_back(iel);
+                            extended_el_partition.inv_p_indices[iel] 
+                                = extended_el_partition.p_indices.size() - 1;
+                        } else {
+#ifdef ICEICLE_USE_MPI
+                            MPI_Send(&iel, mpi_get_type(iel), 1, rank_r, 0, MPI_COMM_WORLD);
+#endif
+                        }
+                    }
+            }
+
+            // stop code
+            for(int irank = 1; irank < nrank; ++irank){
+                IDX stop_code = std::numeric_limits<IDX>::max();
+#ifdef ICEICLE_USE_MPI
+                MPI_Send(&stop_code, mpi_get_type(stop_code), 1, irank, 0, MPI_COMM_WORLD);
+#endif
+            }
+        } else {
+            IDX ielem
+#ifdef ICEICLE_USE_MPI
+            MPI_Recv(&ielem, mpi_get_type(ielem), 1, 0, 0, MPI_COMM_WORLD, &status);
+#endif
+            while(ielem != std::numeric_limits<IDX>::max()){
+                extended_el_partition.p_indices.push_back(ielem);
+                extended_el_partition.inv_p_indices[ielem] 
+                    = extended_el_partition.p_indices.size() - 1;
+            }
+        }
+
+        // partition the dof's of element-node connectivity 
         auto [p_el_conn, p_el_conn_map, nodes_renumbering] =
-            partition_dofs<IDX, ndim, h1_conformity(ndim)>(el_partition,
+            partition_dofs<IDX, ndim, h1_conformity(ndim)>(extended_el_partition,
                     mpi::on_rank{el_conn_global, 0});
+
+        // create an inverse renumbering
         std::vector<IDX> inv_nodes_renumbering(nodes_renumbering.size());
         for(IDX inode = 0; inode < nodes_renumbering.size(); ++inode){
             inv_nodes_renumbering[nodes_renumbering[inode]] = inode;
         }
 
-        std::cout << p_el_conn_map;
         // construct the nodes
         NodeArray<T, ndim> p_coord{};
         p_coord.reserve(p_el_conn_map.n_lindex());
         for(IDX inode : p_el_conn_map.p_indices) {
             p_coord.push_back(gcoord[nodes_renumbering[inode]]);
-        }
-        for(int irank = 0; irank < nrank; ++irank){
-            if(irank == myrank){
-                fmt::println("p_coord rank {}: {}", irank, p_coord);
-            }
-            mpi::mpi_sync();
         }
 
         std::vector< ElementTransformation<T, IDX, ndim>* > el_transforms{};
@@ -315,6 +368,7 @@ namespace iceicle {
         }
 
         std::vector< std::unique_ptr< Face<T, IDX, ndim> > > interprocess_faces{};
+        std::vector< std::vector< CommElementInfo<T, IDX, ndim> > > communicated_elements(nrank);
         // Create boundary face descriptions for inter-process faces
         if(myrank == 0){
 
@@ -352,7 +406,7 @@ namespace iceicle {
                             interprocess_faces.push_back(std::move(fac_opt.value()));
                         else 
                             util::AnomalyLog::log_anomaly("Cannot form boundary face");
-                    
+
                 } else {
                     // send face geometry specifications
                     int face_domn_int = (int) face_domain_type, 
@@ -383,6 +437,52 @@ namespace iceicle {
                 }
             };
 
+            auto send_element = [myrank, &inv_gnode_idxs, &el_renumbering, &mesh](
+                 int neighbor_rank, // the rank to generate comm_info for
+                 IDX p_ielem
+            ){
+                if( neighbor_rank == myrank){
+                    // sending to ourselves
+                    IDX old_index = el_renumbering[p_ielem];
+                    ElementTransformation<T, IDX, ndim>* trans = 
+                        mesh.el_transformations[old_index];
+                    std::vector<IDX> conn_el;
+                    for(IDX inode_old : mesh.conn_el[old_index]){
+                        conn_el.push_back[inv_gnode_idxs[nodes_renumbering[inode_old]]];
+                    }
+
+                    std::vector< MATH::GEOMETRY::Point<T, ndim> > coord_el;
+                    for(IDX inode : conn_el)
+                        coord_el.push_back[p_coord[inode]];
+
+                    int element_rank = p_el_conn_map.index_map[p_ielem].rank;
+
+                    CommElementInfo<T, IDX, ndim> info{trans, conn_el, coord_el};
+                    communicated_elements[element_rank].push_back(info);
+
+                } else {
+                    // first send domain type and geometry order
+                    IDX old_index = el_renumbering[p_ielem];
+                    ElementTransformation<T, IDX, ndim>* trans = 
+                        mesh.el_transformations[old_index];
+                    int domn_type_int = (int) trans->domain_type;
+                    int order = (int) trans->order;
+                    MPI_Send(&domn_type_int, 1, MPI_INT, neighbor_rank, 13, MPI_COMM_WORLD);
+                    MPI_Send(&order, 1, MPI_INT, neighbor_rank, 14, MPI_COMM_WORLD);
+
+                    // NOTE: these are the parallel indices
+                    std::vector<IDX> conn_el;
+                    for(IDX inode_old : mesh.conn_el[old_index])
+                        conn_el.push_back[nodes_renumbering[inode_old]];
+                    MPI_Send(conn_el.data(), conn_el.size(), mpi_get_type(conn_el.data()),
+                            neighbor_rank, 15, MPI_COMM_WORLD);
+
+                    int element_rank = p_el_conn_map.index_map[p_ielem].rank;
+                    MPI_Send(&element_rank, 1, MPI_INT, neighbor_rank, 16, MPI_COMM_WORLD);
+                }
+            };
+
+
             for(IDX iface = mesh.interiorFaceStart; iface < mesh.interiorFaceEnd; ++iface){
                 Face<T, IDX, ndim>& face = *(mesh.faces[iface]);
                 IDX iel = el_renumbering[face.elemL];
@@ -411,6 +511,7 @@ namespace iceicle {
                             rank_r,
                             true
                     );
+                    send_element(rank_r, iel);
                     // send right
                     send_face(face.domain_type(), 
                             mesh.el_transformations[face.elemL]->domain_type,
@@ -426,7 +527,7 @@ namespace iceicle {
                             rank_l,
                             false
                     );
-
+                    send_element(rank_l, ier);
                 }
             }
 
@@ -501,7 +602,33 @@ namespace iceicle {
                 return true;
             };
 
-            while( recieve_face() ) {}
+            auto recieve_element = [myrank, &inv_gnode_idxs, &el_renumbering](){
+                MPI_Status status;
+                int domn_type_int, order;
+                MPI_Recv(&domn_type_int, 1, MPI_INT, 0, 13, MPI_COMM_WORLD, &status);
+                MPI_Recv(&order, 1, MPI_INT, 0, 14, MPI_COMM_WORLD, &status);
+                ElementTransformationTable<T, IDX, ndim> *trans 
+                    = transformation_table<T, IDX, ndim>.get_transform
+                        ((DOMAIN_TYPE) domn_type_int, order);
+                std::vector<IDX> conn_el_p(trans->nnode);
+                MPI_Recv(conn_el_p.data(), conn_el_p.size(), mpi_get_type(conn_el_p.data()),
+                        0, 15, MPI_COMM_WORLD, &status);
+                std::vector<IDX> conn_el;
+                for(IDX ipnode : conn_el_p)
+                    conn_el.push_back(inv_gnode_idxs[ipnode]);
+                std::vector< MATH::GEOMETRY::Point<T, ndim> > coord_el;
+                for(IDX inode : conn_el)
+                    coord_el.push_back[p_coord[inode]];
+                int element_rank;
+                MPI_Recv(&element_rank, 1, MPI_INT, 0, 16, MPI_COMM_WORLD, &status);
+
+                CommElementInfo<T, IDX, ndim> info{trans, conn_el, coord_el};
+                communicated_elements[element_rank].push_back(info);
+                
+            };
+
+            while( recieve_face() ) 
+            { recieve_element(); }
         }
 
         // create the mesh

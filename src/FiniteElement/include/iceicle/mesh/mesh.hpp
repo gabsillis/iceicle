@@ -121,8 +121,15 @@ namespace iceicle {
     template<class T, class IDX, int ndim>
     struct CommElementInfo {
         using Point = MATH::GEOMETRY::Point<T, ndim>;
+
+        /// @brief the element transformation
         ElementTransformation<T, IDX, ndim> *trans;
+
+        /// @brief the element node connectivity using 
+        /// node indices local to this process
         std::vector<IDX> conn_el;
+
+        /// @brief the element coordinates array
         std::vector<Point> coord_el;
     };
 
@@ -335,6 +342,9 @@ namespace iceicle {
 
         /// @brief The parallel partitioning of elements
         pindex_map<IDX> element_partitioning;
+
+        /// @brief the parallel partitioning of the nodes
+        pindex_map<IDX> node_partitioning;
 
         /// @brief get the number of elements
         [[nodiscard]] inline constexpr 
@@ -1044,7 +1054,7 @@ namespace iceicle {
         /// @brief element coordinate data for all elements affected by the given node
         void update_node(IDX inode) {
             for(IDX iel : elsup.rowspan(inode)){
-                for(int ilocal = 0; ilocal < conn_el.rowsize(iel); ++ilocal){
+                for(int ilocal = 0; ilocal < conn_el.ndof_el(iel); ++ilocal){
                     if(conn_el[iel, ilocal] == inode)
                         coord_els[iel, ilocal] = coord[conn_el[iel, ilocal]];
                 }

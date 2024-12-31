@@ -35,7 +35,6 @@ namespace iceicle {
 #endif
         }
 
-
         /// @brief check if mpi has been initialized
         inline
         auto mpi_initialized() -> bool 
