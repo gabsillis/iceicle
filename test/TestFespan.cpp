@@ -1,14 +1,15 @@
 #include "iceicle/basis/lagrange.hpp"
 #include "iceicle/element/reference_element.hpp"
+#include "iceicle/fe_definitions.hpp"
 #include "iceicle/fe_function/component_span.hpp"
 #include "iceicle/fe_function/geo_layouts.hpp"
 #include "iceicle/geometry/hypercube_element.hpp"
 #include "iceicle/geometry/transformations_table.hpp"
 #include "iceicle/mesh/mesh.hpp"
 #include "iceicle/tmp_utils.hpp"
+#include "iceicle/basis/dof_mapping.hpp"
 #include <iceicle/quadrature/HypercubeGaussLegendre.hpp>
 #include <iceicle/fe_function/fespan.hpp>
-#include <iceicle/fe_function/dglayout.hpp>
 #include <iceicle/fe_function/layout_right.hpp>
 #include <iceicle/element/finite_element.hpp>
 
@@ -50,14 +51,14 @@ TEST(test_fespan, test_dglayout){
     elements.push_back(el2);
 
     // get the offsets
-    dg_dof_map offsets{elements};
+    dof_map<IDX, ndim, l2_conformity(ndim)>  dg_dofs{elements};
 
-    std::vector<T> data(offsets.calculate_size_requirement(2));
+    std::vector<T> data(dg_dofs.calculate_size_requirement(2));
     std::iota(data.begin(), data.end(), 0.0);
-    fe_layout_right<IDX, decltype(offsets), 2> layout(offsets);
+    fe_layout_right<IDX, decltype(dg_dofs), 2> layout(dg_dofs);
     // alternate layout syntax
     using namespace tmp;
-    fe_layout_right layout2{offsets, to_size<2>{}};
+    fe_layout_right layout2{dg_dofs, to_size<2>{}};
 
     fespan fespan1(data, layout);
 

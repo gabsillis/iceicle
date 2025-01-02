@@ -2,7 +2,6 @@
 #include "iceicle/element/finite_element.hpp"
 #include "iceicle/element/reference_element.hpp"
 #include "iceicle/fe_definitions.hpp"
-#include "iceicle/fe_function/dglayout.hpp"
 #include "iceicle/fe_function/el_layout.hpp"
 #include "iceicle/fe_function/layout_right.hpp"
 #include "iceicle/geometry/face.hpp"
