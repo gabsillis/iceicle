@@ -204,7 +204,7 @@ namespace iceicle {
                             extended_el_partition.inv_p_indices[ier] 
                                 = extended_el_partition.p_indices.size() - 1;
                         } else {
-                            MPI_Send(&ier, mpi_get_type(ier), 1, rank_l, 0, MPI_COMM_WORLD);
+                            MPI_Send(&ier, 1, mpi_get_type(ier), rank_l, 0, MPI_COMM_WORLD);
                         }
 
                         // rank_r needs to add iel to extended_el_partition
@@ -215,7 +215,7 @@ namespace iceicle {
                                 = extended_el_partition.p_indices.size() - 1;
                         } else {
 #ifdef ICEICLE_USE_MPI
-                            MPI_Send(&iel, mpi_get_type(iel), 1, rank_r, 0, MPI_COMM_WORLD);
+                            MPI_Send(&iel, 1, mpi_get_type(iel), rank_r, 0, MPI_COMM_WORLD);
 #endif
                         }
                     }
@@ -225,13 +225,13 @@ namespace iceicle {
             for(int irank = 1; irank < nrank; ++irank){
                 IDX stop_code = std::numeric_limits<IDX>::max();
 #ifdef ICEICLE_USE_MPI
-                MPI_Send(&stop_code, mpi_get_type(stop_code), 1, irank, 0, MPI_COMM_WORLD);
+                MPI_Send(&stop_code, 1, mpi_get_type(stop_code), irank, 0, MPI_COMM_WORLD);
 #endif
             }
         } else {
-            IDX ielem
+            IDX ielem;
 #ifdef ICEICLE_USE_MPI
-            MPI_Recv(&ielem, mpi_get_type(ielem), 1, 0, 0, MPI_COMM_WORLD, &status);
+            MPI_Recv(&ielem, 1, mpi_get_type(ielem), 0, 0, MPI_COMM_WORLD, &status);
 #endif
             while(ielem != std::numeric_limits<IDX>::max()){
                 extended_el_partition.p_indices.push_back(ielem);
@@ -437,7 +437,8 @@ namespace iceicle {
                 }
             };
 
-            auto send_element = [myrank, &inv_gnode_idxs, &el_renumbering, &mesh](
+            auto send_element = [myrank, &inv_gnode_idxs, &el_renumbering, &nodes_renumbering, &mesh, 
+                 &p_coord, &p_el_conn_map, &communicated_elements](
                  int neighbor_rank, // the rank to generate comm_info for
                  IDX p_ielem
             ){
@@ -448,16 +449,16 @@ namespace iceicle {
                         mesh.el_transformations[old_index];
                     std::vector<IDX> conn_el;
                     for(IDX inode_old : mesh.conn_el[old_index]){
-                        conn_el.push_back[inv_gnode_idxs[nodes_renumbering[inode_old]]];
+                        conn_el.push_back(inv_gnode_idxs[nodes_renumbering[inode_old]]);
                     }
 
                     std::vector< MATH::GEOMETRY::Point<T, ndim> > coord_el;
                     for(IDX inode : conn_el)
-                        coord_el.push_back[p_coord[inode]];
+                        coord_el.push_back(p_coord[inode]);
 
                     int element_rank = p_el_conn_map.index_map[p_ielem].rank;
 
-                    CommElementInfo<T, IDX, ndim> info{trans, conn_el, coord_el};
+                    CommElementInfo<T, IDX, ndim> info{trans, conn_el, coord_el, p_ielem};
                     communicated_elements[element_rank].push_back(info);
 
                 } else {
@@ -473,12 +474,14 @@ namespace iceicle {
                     // NOTE: these are the parallel indices
                     std::vector<IDX> conn_el;
                     for(IDX inode_old : mesh.conn_el[old_index])
-                        conn_el.push_back[nodes_renumbering[inode_old]];
+                        conn_el.push_back(nodes_renumbering[inode_old]);
                     MPI_Send(conn_el.data(), conn_el.size(), mpi_get_type(conn_el.data()),
                             neighbor_rank, 15, MPI_COMM_WORLD);
 
                     int element_rank = p_el_conn_map.index_map[p_ielem].rank;
                     MPI_Send(&element_rank, 1, MPI_INT, neighbor_rank, 16, MPI_COMM_WORLD);
+
+                    MPI_Send(&p_ielem, 1, mpi_get_type(p_ielem), neighbor_rank, 17, MPI_COMM_WORLD);
                 }
             };
 
@@ -602,12 +605,13 @@ namespace iceicle {
                 return true;
             };
 
-            auto recieve_element = [myrank, &inv_gnode_idxs, &el_renumbering](){
+            auto recieve_element = [myrank, &inv_gnode_idxs, &el_renumbering, p_el_conn_map,
+                 &p_coord, &communicated_elements](){
                 MPI_Status status;
                 int domn_type_int, order;
                 MPI_Recv(&domn_type_int, 1, MPI_INT, 0, 13, MPI_COMM_WORLD, &status);
                 MPI_Recv(&order, 1, MPI_INT, 0, 14, MPI_COMM_WORLD, &status);
-                ElementTransformationTable<T, IDX, ndim> *trans 
+                ElementTransformation<T, IDX, ndim> *trans 
                     = transformation_table<T, IDX, ndim>.get_transform
                         ((DOMAIN_TYPE) domn_type_int, order);
                 std::vector<IDX> conn_el_p(trans->nnode);
@@ -618,13 +622,15 @@ namespace iceicle {
                     conn_el.push_back(inv_gnode_idxs[ipnode]);
                 std::vector< MATH::GEOMETRY::Point<T, ndim> > coord_el;
                 for(IDX inode : conn_el)
-                    coord_el.push_back[p_coord[inode]];
+                    coord_el.push_back(p_coord[inode]);
                 int element_rank;
                 MPI_Recv(&element_rank, 1, MPI_INT, 0, 16, MPI_COMM_WORLD, &status);
 
-                CommElementInfo<T, IDX, ndim> info{trans, conn_el, coord_el};
+                IDX p_ielem;
+                MPI_Recv(&p_ielem, 1, mpi_get_type(p_ielem), 0, 17, MPI_COMM_WORLD, &status);
+
+                CommElementInfo<T, IDX, ndim> info{trans, conn_el, coord_el, p_ielem};
                 communicated_elements[element_rank].push_back(info);
-                
             };
 
             while( recieve_face() ) 
@@ -634,7 +640,7 @@ namespace iceicle {
         // create the mesh
         pmesh = std::move(AbstractMesh{
                     p_coord, p_el_conn, el_transforms, 
-                    boundary_descs, interprocess_faces});
+                    boundary_descs, interprocess_faces, communicated_elements});
 
 
 #ifndef NDEBUG 

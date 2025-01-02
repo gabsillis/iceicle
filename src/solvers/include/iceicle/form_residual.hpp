@@ -78,7 +78,7 @@ namespace iceicle::solvers {
 
         // preallocate storage for compact views of u and res 
         const std::size_t max_local_size =
-            fespace.dg_map.max_el_size_reqirement(disc_class::nv_comp);
+            fespace.dofs.max_el_size_reqirement(disc_class::nv_comp);
         T *uL_data = new T[max_local_size];
         T *uR_data = new T[max_local_size];
         T *resL_data = new T[max_local_size];
@@ -290,7 +290,7 @@ namespace iceicle::solvers {
 
         // preallocate storage for compact views of u 
         const std::size_t max_local_size =
-            fespace.dg_map.max_el_size_reqirement(disc_class::dnv_comp);
+            fespace.dofs.max_el_size_reqirement(disc_class::dnv_comp);
         std::vector<T> uL_storage(max_local_size);
         std::vector<T> uR_storage(max_local_size);
         std::vector<T> res_storage{};
@@ -349,7 +349,7 @@ namespace iceicle::solvers {
 
         // preallocate storage for compact views of u 
         const std::size_t max_local_size =
-            fespace.dg_map.max_el_size_reqirement(disc_class::dnv_comp);
+            fespace.dofs.max_el_size_reqirement(disc_class::dnv_comp);
         std::vector<T> uL_storage(max_local_size);
         std::vector<T> uR_storage(max_local_size);
         std::vector<T> res_storage{};
@@ -391,7 +391,7 @@ namespace iceicle::solvers {
         nodeset_dof_map<IDX>& nodeset,
         std::integral_constant<int, neq_mdg>& neq_mdg_arg
     ) -> IDX {
-        return fespace.dg_map.calculate_size_requirement(disc_class::nv_comp())
+        return fespace.dofs.calculate_size_requirement(disc_class::nv_comp())
             + nodeset.size() * neq_mdg;
     }
 
@@ -406,7 +406,7 @@ namespace iceicle::solvers {
     ) -> void {
 
         // create all the layouts
-        fe_layout_right dg_layout{fespace.dg_map, tmp::to_size<disc_class::nv_comp>()};
+        fe_layout_right dg_layout{fespace.dofs, tmp::to_size<disc_class::nv_comp>()};
         node_selection_layout<IDX, ndim> node_layout{nodeset};
         node_selection_layout<IDX, neq_mdg> mdg_layout{nodeset};
 
@@ -433,7 +433,7 @@ namespace iceicle::solvers {
     ) -> void {
 
         // create all the layouts
-        fe_layout_right dg_layout{fespace.dg_map, tmp::to_size<disc_class::nv_comp>()};
+        fe_layout_right dg_layout{fespace.dofs, tmp::to_size<disc_class::nv_comp>()};
         geo_data_layout x_layout{geo_map};
         ic_residual_layout<T, IDX, ndim, disc_class::nv_comp> ic_layout{geo_map};
 

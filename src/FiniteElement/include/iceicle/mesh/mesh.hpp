@@ -20,6 +20,7 @@
 #include <iceicle/geometry/geo_element.hpp>
 #include <iceicle/geometry/hypercube_element.hpp>
 #include <iceicle/crs.hpp>
+#include <ompi/mpi/cxx/mpicxx.h>
 #include <optional>
 #include <ostream>
 #include <ranges>
@@ -131,6 +132,9 @@ namespace iceicle {
 
         /// @brief the element coordinates array
         std::vector<Point> coord_el;
+
+        /// @brief the parallel index of the element
+        IDX pidx;
     };
 
     /// @brief node indices for a face and the connected elements. 
@@ -340,16 +344,22 @@ namespace iceicle {
         /// facsuel[iel, 1] = ifac
         util::crs<IDX, IDX> facsuel;
 
+        // ============================
+        // = Parallel Data Structures =
+        // ============================
+
         /// @brief The parallel partitioning of elements
         pindex_map<IDX> element_partitioning;
 
         /// @brief the parallel partitioning of the nodes
         pindex_map<IDX> node_partitioning;
 
-        /// @brief get the number of elements
-        [[nodiscard]] inline constexpr 
-        auto nelem() const noexcept -> IDX
-        { return conn_el.nelem(); }
+        /// @brief the elements on neighboring mpi rank that share a face with elements on this process 
+        ///
+        /// comm_elements[irank][ielem]
+        /// has the information for an element on rank irank
+        std::vector< std::vector < CommElementInfo<T, IDX, ndim> > > communicated_elements
+            = { {} };
 
         // ===============
         // = Constructor =
@@ -376,18 +386,21 @@ namespace iceicle {
         /// @param premade_boundary_faces optionally the user can construct faces manually (using new) 
         ///                               and pass a vector of these pointers to be used in addition to 
         ///                               boundary_face_descriptions
+        /// @param comm_elements element info on face neighbor processes
         AbstractMesh(
             NodeArray<T, ndim>& coord,
             auto&& conn_el_arg,
             std::vector< ElementTransformation<T, IDX, ndim>* > el_transformations,
             const std::vector<boundary_face_desc>& boundary_face_descriptions,
             std::vector< std::unique_ptr<Face<T, IDX, ndim> > >& premade_boundary_faces
-                = impl::empty_premade_faces<T, IDX, ndim>
+                = impl::empty_premade_faces<T, IDX, ndim>,
+            std::vector< std::vector< CommElementInfo<T, IDX, ndim> > > comm_elements
+                = { {} }
         )
         requires std::constructible_from<
             dof_map<IDX, ndim, h1_conformity(ndim)>, decltype(conn_el_arg)>
         : coord{coord}, conn_el{conn_el_arg}, coord_els{},
-            el_transformations{el_transformations}
+            el_transformations{el_transformations}, communicated_elements{comm_elements}
         
         {
             { // build the element coordinates matrix
@@ -1041,6 +1054,11 @@ namespace iceicle {
         // ===========
         // = Utility =
         // ===========
+
+        /// @brief get the number of elements
+        [[nodiscard]] inline constexpr 
+        auto nelem() const noexcept -> IDX
+        { return conn_el.nelem(); }
 
         /// @brief update the element coordinate data to match the coord array 
         /// by using the element connectivity

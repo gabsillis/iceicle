@@ -87,7 +87,7 @@ int main(int argc, char *argv[]){
         });
         // disc.interior_penalty = cli_args["interior_penalty"];
 
-        fe_layout_right u_layout{fespace.dg_map, std::integral_constant<std::size_t, neq>{}};
+        fe_layout_right u_layout{fespace.dofs, std::integral_constant<std::size_t, neq>{}};
         std::vector<T> u_data(u_layout.size());
         fespan u{u_data.data(), u_layout};
 
@@ -101,8 +101,8 @@ int main(int argc, char *argv[]){
 
         Projection<T, IDX, ndim, neq> projection{ic};
         // TODO: extract into LinearFormSolver
-        std::vector<T> u_local_data(fespace.dg_map.max_el_size_reqirement(neq));
-        std::vector<T> res_local_data(fespace.dg_map.max_el_size_reqirement(neq));
+        std::vector<T> u_local_data(fespace.dofs.max_el_size_reqirement(neq));
+        std::vector<T> res_local_data(fespace.dofs.max_el_size_reqirement(neq));
         std::for_each(fespace.elements.begin(), fespace.elements.end(), 
             [&](const FiniteElement<T, IDX, ndim> &el){
                 // form the element local views

@@ -4,6 +4,7 @@
 #include "iceicle/crs.hpp"
 #include "iceicle/fe_definitions.hpp"
 #include "iceicle/iceicle_mpi_utils.hpp"
+#include "iceicle/tmp_utils.hpp"
 #include <numeric>
 #include <unordered_map>
 #include <type_traits>
@@ -195,6 +196,14 @@ namespace iceicle {
         -> index_type&
         { return dof_connectivity[ielem, idof]; }
 
+        /// @brief get a span over the degrees of freedom for a given element index
+        /// @param iel the index of the element to get the dofs for 
+        /// @return a span over the dofs
+        [[nodiscard]] inline constexpr 
+        auto operator[]( index_type iel ) const noexcept 
+        -> std::span<const index_type> 
+        { return rowspan(iel); }
+
         // ===========
         // = Utility =
         // ===========
@@ -314,7 +323,7 @@ namespace iceicle {
          * specify the number of basis functions 
          * through a function nbasis() 
          **/
-        constexpr dof_map(std::ranges::range auto elements) noexcept 
+        constexpr dof_map(std::ranges::range auto&& elements) noexcept 
         : offsets(std::ranges::size(elements) + 1), max_dof_size{0} {
             offsets[0] = 0;
             index_type ielem = 0;
@@ -325,6 +334,10 @@ namespace iceicle {
                 ++ielem;
             }
         }
+
+        /// @brief overload of range of elements constructor for argument deduction
+        constexpr dof_map(std::ranges::range auto elements, tmp::compile_int<l2_conformity(ndim)> l2_arg) noexcept 
+        : dof_map<IDX, ndim, l2_conformity(ndim)>(elements) {}
 
         // === Default nothrow copy and nothrow move semantics ===
         constexpr dof_map(const dof_map<index_type, ndim, l2_conformity(ndim)>& other) noexcept = default;
@@ -345,6 +358,14 @@ namespace iceicle {
          */
         constexpr index_type operator[](index_type ielem, index_type idof) 
             const noexcept { return offsets[ielem] + idof; }
+
+        /// @brief get a span over the degrees of freedom for a given element index
+        /// @param iel the index of the element to get the dofs for 
+        /// @return a span over the dofs
+        [[nodiscard]] inline constexpr 
+        auto operator[]( index_type iel ) const noexcept 
+        -> std::span<const index_type> 
+        { return rowspan(iel); }
 
         // ===========
         // = Utility =

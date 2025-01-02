@@ -72,7 +72,7 @@ public:
         const StopCondition &stop_condition
     )
     requires specifies_ncomp<disc_class> && TerminationCondition<StopCondition>
-    : res_data(fespace.dg_map.calculate_size_requirement(disc_class::nv_comp)),
+    : res_data(fespace.dofs.calculate_size_requirement(disc_class::nv_comp)),
       timestep{timestep}, stop_condition{stop_condition}
     {}
 
@@ -102,7 +102,7 @@ public:
         form_residual(fespace, disc, u, res);
 
         // storage for rhs of mass matrix equation
-        int max_ndof = fespace.dg_map.max_el_size_reqirement(1);
+        int max_ndof = fespace.dofs.max_el_size_reqirement(1);
         std::vector<T> b(max_ndof);
         std::vector<T> du(max_ndof);
 

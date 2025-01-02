@@ -13,12 +13,10 @@
 #include "iceicle/element/finite_element.hpp"
 #include <iceicle/element/reference_element.hpp>
 #include "iceicle/fe_definitions.hpp"
-#include "iceicle/fe_function/dglayout.hpp"
-#include "iceicle/fe_function/cg_map.hpp"
+#include <iceicle/basis/dof_mapping.hpp>
 #include "iceicle/geometry/face.hpp"
 #include "iceicle/geometry/geo_element.hpp"
 #include "iceicle/iceicle_mpi_utils.hpp"
-#include "iceicle/quadrature/QuadratureRule.hpp"
 #include <iceicle/mesh/mesh.hpp>
 #include <iceicle/tmp_utils.hpp>
 #include <Numtool/tmp_flow_control.hpp>
@@ -148,7 +146,7 @@ namespace iceicle {
         std::size_t bdy_trace_end;
 
         /** @brief maps local dofs to global dofs */
-        dof_map<IDX, ndim, conformity> dof_map;
+        dof_map<IDX, ndim, conformity> dofs;
 
         /** @brief the mapping of faces connected to each node */
         util::crs<IDX> fac_surr_nodes;
@@ -217,43 +215,7 @@ namespace iceicle {
                 // add to the elements list
                 elements.push_back(fe);
             }
-        }
-
-        template<int basis_order>
-        [[nodiscard]] inline constexpr 
-        auto get_parallel_stencil_elements(
-            FESPACE_ENUMS::FESPACE_BASIS_TYPE basis_type,
-            FESPACE_ENUMS::FESPACE_QUADRATURE quadrature_type,
-            tmp::compile_int<basis_order> basis_order_arg
-        ) -> std::vector< std::vector<ElementType> >
-        {
-            int nrank = mpi::mpi_world_size();
-            int myrank = mpi::mpi_world_rank();
-            std::vector< std::vector<ElementType> > comm_elements(nrank);
-
-            for(int irank = 0; irank < nrank; ++irank, mpi::mpi_sync()){
-
-                if(irank == myrank){
-                    // my turn to send
-                    for(IDX ifac = meshptr->bdyFaceStart; ifac < meshptr->bdyFaceEnd; ++ifac){
-                        const Face<T, IDX, ndim>& face = *(meshptr->faces[ifac]);
-                        if(face.bctype == BOUNDARY_CONDITIONS::PARALLEL_COM){
-                            auto [jrank, imleft] = decode_mpi_bcflag(face.bcflag);
-                            IDX my_ielem = (imleft) ? face.elemL : face.elemR;
-                            IDX my_p_ielem = meshptr->element_partitioning.p_indices[my_ielem];
-                            IDX other_p_ielem = (imleft) ? face.elemR : face.elemR;
-
-                            
-                            
-                        }
-                    }
-                } else {
-                    // my turn to recieve
-
-
-                }
-            }
-
+            return elements;
         }
 
     public:
@@ -279,55 +241,55 @@ namespace iceicle {
         // the only case we currently have general mappings for
         : meshptr(meshptr), ref_el_map{}, ref_trace_map{}, 
           elements{generate_uniform_order_elements(basis_type, quadrature_type, basis_order_arg)},
-          dof_map{elements}, comm_elements(mpi::mpi_world_size())
+          dofs{elements}, comm_elements(mpi::mpi_world_size())
         {
 
 #ifdef ICEICLE_USE_MPI
-//             // ========================
-//             // = Communicate Elements =
-//             // ========================
-//             int myrank, nrank;
-//             MPI_Comm_rank(MPI_COMM_WORLD, &myrank);
-//             MPI_Comm_size(MPI_COMM_WORLD, &nrank);
-// 
-//             comm_elements.resize(nrank);
-// 
-//             // set up the communicated FiniteElements only if more than 1 process
-//             for(int irank = 0; irank < nrank; ++irank){
-//                 // basis order, quadrature_type, and basis_type we know
-//                 int geometry_order, domain_type;
-//                 for(auto& geo_el_info : meshptr->communicated_elements[irank]){
-//                     
-//                     // create the Element Domain type key
-//                     FETypeKey fe_key = {
-//                         .domain_type = geo_el_info.trans->domain_type,
-//                         .basis_order = basis_order,
-//                         .geometry_order = geo_el_info.trans->order,
-//                         .qtype = quadrature_type,
-//                         .btype = basis_type
-//                     };
-// 
-//                     // check if an evaluation doesn't exist yet
-//                     if(ref_el_map.find(fe_key) == ref_el_map.end()){
-//                         ref_el_map[fe_key] = ReferenceElementType(geo_el_info.trans->domain_type,
-//                                 geo_el_info.trans->order, basis_type, quadrature_type, basis_order_arg);
-//                     }
-//                     ReferenceElementType &ref_el = ref_el_map[fe_key];
-//                 
-//                     // create the finite element
-//                     ElementType fe(
-//                         geo_el_info.trans,
-//                         ref_el.basis.get(),
-//                         ref_el.quadrule.get(),
-//                         std::span<const BasisEvaluation<T, ndim>>{ref_el.evals},
-//                         geo_el_info.conn_el,
-//                         geo_el_info.coord_el,
-//                         elements.size() // this will be the index of the new element
-//                     );
-// 
-//                     comm_elements[irank].push_back(fe);
-//                 }
-//             }
+             // ========================
+             // = Communicate Elements =
+             // ========================
+             int myrank, nrank;
+             MPI_Comm_rank(MPI_COMM_WORLD, &myrank);
+             MPI_Comm_size(MPI_COMM_WORLD, &nrank);
+ 
+             comm_elements.resize(nrank);
+ 
+             // set up the communicated FiniteElements only if more than 1 process
+             for(int irank = 0; irank < nrank; ++irank){
+                 // basis order, quadrature_type, and basis_type we know
+                 int geometry_order, domain_type;
+                 for(auto& geo_el_info : meshptr->communicated_elements[irank]){
+                     
+                     // create the Element Domain type key
+                     FETypeKey fe_key = {
+                         .domain_type = geo_el_info.trans->domain_type,
+                         .basis_order = basis_order,
+                         .geometry_order = geo_el_info.trans->order,
+                         .qtype = quadrature_type,
+                         .btype = basis_type
+                     };
+ 
+                     // check if an evaluation doesn't exist yet
+                     if(ref_el_map.find(fe_key) == ref_el_map.end()){
+                         ref_el_map[fe_key] = ReferenceElementType(geo_el_info.trans->domain_type,
+                                 geo_el_info.trans->order, basis_type, quadrature_type, basis_order_arg);
+                     }
+                     ReferenceElementType &ref_el = ref_el_map[fe_key];
+                 
+                     // create the finite element
+                     ElementType fe(
+                         geo_el_info.trans,
+                         ref_el.basis.get(),
+                         ref_el.quadrule.get(),
+                         std::span<const BasisEvaluation<T, ndim>>{ref_el.evals},
+                         geo_el_info.conn_el,
+                         geo_el_info.coord_el,
+                         elements.size() // this will be the index of the new element
+                     );
+ 
+                     comm_elements[irank].push_back(fe);
+                 }
+             }
 #endif
 
             // Generate the Trace Spaces
@@ -340,22 +302,24 @@ namespace iceicle {
                 ElementType *elptrR = (is_interior) ? &elements[fac->elemR] : &elements[fac->elemL];
 
 #ifdef ICEICLE_USE_MPI
-//             // update the boundary trace spaces to use the new communicated FiniteElements
-//                 if(fac->bctype == BOUNDARY_CONDITIONS::PARALLEL_COM) {
-//                     auto [jrank, imleft] = decode_mpi_bcflag(fac->bcflag);
-//                     IDX jlocal_elidx = (imleft) ? fac->elemR : fac->elemL;
-// 
-//                     std::vector<IDX> &comm_el_idxs = meshptr->el_recv_list[jrank];
-//                     auto itr = lower_bound(comm_el_idxs.begin(), comm_el_idxs.end(), jlocal_elidx);
-//                     std::size_t index = distance(comm_el_idxs.begin(), itr);
-// 
-//                     if(imleft){
-//                         elptrR = &(comm_elements[jrank].at(index));
-//                     } else {
-//                         elptrL = &(comm_elements[jrank].at(index));
-//                         elptrR = &elements[fac->elemR]; // special case because parallel faces are essential interior
-//                     }
-//                 }
+                 // update the boundary trace spaces to use the new communicated FiniteElements
+                 if(fac->bctype == BOUNDARY_CONDITIONS::PARALLEL_COM) {
+                     auto [jrank, imleft] = decode_mpi_bcflag(fac->bcflag);
+                     IDX jlocal_elidx = (imleft) ? fac->elemR : fac->elemL;
+ 
+                     std::vector<CommElementInfo<T, IDX, ndim>> &comm_el_rank = meshptr->communicated_elements[jrank];
+                     auto el_idx_pred = [](const CommElementInfo<T, IDX, ndim>& el_info, const IDX& comp_index)
+                         -> bool { return el_info.pidx < comp_index; };
+                     auto itr = lower_bound(comm_el_rank.begin(), comm_el_rank.end(), jlocal_elidx, el_idx_pred);
+                     std::size_t index = distance(comm_el_rank.begin(), itr);
+ 
+                     if(imleft){
+                         elptrR = &(comm_elements[jrank].at(index));
+                     } else {
+                         elptrL = &(comm_elements[jrank].at(index));
+                         elptrR = &elements[fac->elemR]; // special case because parallel faces are essential interior
+                     }
+                 }
 #endif
                 ElementType& elL = *elptrL;
                 ElementType& elR = *elptrR;
@@ -439,7 +403,7 @@ namespace iceicle {
         /// @param meshptr pointer to the mesh
         FESpace(MeshType *meshptr) 
         requires(conformity == h1_conformity(ndim))
-        : meshptr(meshptr), elements{}, dof_map{meshptr->conn_el}{
+        : meshptr(meshptr), elements{}, dofs{meshptr->conn_el}{
             
             // Generate the Finite Elements
             elements.reserve(meshptr->nelem());
@@ -613,9 +577,6 @@ namespace iceicle {
             bdy_trace_start = meshptr->bdyFaceStart;
             bdy_trace_end = meshptr->bdyFaceEnd;
 
-            // generate the dof offsets 
-            dg_map = dg_dof_map{elements};
-
             // ===================================
             // = Build the connectivity matrices =
             // ===================================
@@ -648,18 +609,17 @@ namespace iceicle {
                     fac_surr_el_ragged[trace.elR.elidx].push_back(itrace);
                 }
             }
-            fac_surr_el = util::crs{fac_surr_el_ragged};
         }
 
         /**
-         * @brief get the number of dg degrees of freedom in the entire fespace 
+         * @brief get the number of degrees of freedom in the entire fespace 
          * multiply this by the nummber of components to get the size requirement for 
-         * a dg fespan or use the built_in function in the dg_map member
-         * @return the number of dg degrees of freedom
+         * an fespan or use the built_in function in the dof_map member
+         * @return the number of degrees of freedom
          */
-        constexpr std::size_t ndof_dg() const noexcept
+        constexpr std::size_t ndof() const noexcept
         {
-            return dg_map.calculate_size_requirement(1);
+            return dofs.calculate_size_requirement(1);
         }
 
         /**
@@ -685,16 +645,16 @@ namespace iceicle {
         auto print_info(std::ostream& out)
         -> std::ostream& {
             out << "Finite Element Space" << std::endl;
-            switch(type){
-                case SPACE_TYPE::L2:
+            switch(conformity){
+                case l2_conformity(ndim):
                     out << "Space Type: ";
                     out << "L2" << std::endl;
-                    out << "ndof: " << dg_map.size() << std::endl;
+                    out << "ndof: " << ndof() << std::endl;
                     break;
-                case SPACE_TYPE::ISOPARAMETRIC_H1:
+                case l2_conformity(ndim):
                     out << "Space Type: ";
                     out << "H1 (isoparametric)" << std::endl;
-                    out << "ndof: " << cg_map.size() << std::endl;
+                    out << "ndof: " << ndof() << std::endl;
                     break;
             }
             return out;

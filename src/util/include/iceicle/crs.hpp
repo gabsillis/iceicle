@@ -278,7 +278,7 @@ namespace iceicle::util {
         -> const index_type*
         { return _cols; }
 
-        friend std::ostream& operator<<(std::ostream& out, const crs<T, IDX>& mat){
+        inline friend std::ostream& operator<<(std::ostream& out, const crs<T, IDX>& mat){
             for(IDX irow = 0; irow < mat.nrow(); ++irow){
                 out << fmt::format("{}\n", mat.rowspan(irow));
             }

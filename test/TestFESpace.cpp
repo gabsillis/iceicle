@@ -38,7 +38,7 @@ TEST(test_fespace, test_element_construction){
 
     ASSERT_EQ(fespace.elements.size(), 4);
 
-    ASSERT_EQ(fespace.dg_map.calculate_size_requirement(2), 4 * 2 * std::pow(pn_basis + 1, ndim));
+    ASSERT_EQ(fespace.dofs.calculate_size_requirement(2), 4 * 2 * std::pow(pn_basis + 1, ndim));
 }
 
 class test_geo_el : public GeometricElement<double, int, 2>{
@@ -311,8 +311,8 @@ TEST(test_fespace, test_dg_projection){
     // create the projection discretization
     Projection<double, int, ndim, neq> projection{projfunc};
 
-    T *u = new T[fespace.ndof_dg() * neq](); // 0 initialized
-    fe_layout_right felayout{fespace.dg_map, tmp::to_size<neq>{}};
+    T *u = new T[fespace.ndof() * neq](); // 0 initialized
+    fe_layout_right felayout{fespace.dofs, tmp::to_size<neq>{}};
     fespan u_span{u, felayout};
 
     // solve the projection 
@@ -466,8 +466,8 @@ TEST(test_fespace, test_dg_projection_tri){
     // create the projection discretization
     Projection<double, int, ndim, neq> projection{projfunc};
 
-    T *u = new T[fespace.ndof_dg() * neq](); // 0 initialized
-    fe_layout_right felayout{fespace.dg_map, tmp::to_size<neq>{}};
+    T *u = new T[fespace.ndof() * neq](); // 0 initialized
+    fe_layout_right felayout{fespace.dofs, tmp::to_size<neq>{}};
     fespan u_span{u, felayout};
 
     // solve the projection 
