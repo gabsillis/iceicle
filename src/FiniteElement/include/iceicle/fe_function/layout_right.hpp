@@ -1,5 +1,6 @@
 #pragma once
 #include <iceicle/fe_function/layout_enums.hpp>
+#include <iceicle/basis/dof_mapping.hpp>
 #include <stdexcept>
 
 namespace iceicle {
@@ -87,8 +88,9 @@ namespace iceicle {
      * @tparam IDX the index type 
      * @tparam MapType the type that maps local to global dofs
      * @tparam vextent the extent of the vector component
+     * @tparam include_ghost include "ghost" elements from adjoining processes
      */
-    template<class IDX, class MapType, std::size_t vextent>
+    template<class IDX, class MapType, std::size_t vextent, bool include_ghost>
     struct fe_layout_right {
 
         // ============
@@ -107,6 +109,9 @@ namespace iceicle {
         /// @brief the map from the element and local dof indices to gdof 
         /// heavy type: will require separate maps on host and device
         const dof_mapping_type& map_ref;
+
+        /// @brief a map of parallel indices that also stores ownership information
+        const pindex_map<IDX> pindex_map;
 
         /// @brief dynamic vector component if vextent is not specified
         std::enable_if<is_dynamic_size<vextent>::value, index_type> nv_d;
@@ -127,13 +132,13 @@ namespace iceicle {
         noexcept requires(is_dynamic_size<vextent>::value) 
         : map_ref{map_ref}, nv_d{nv} {}
 
-        fe_layout_right(const fe_layout_right<IDX, dof_mapping_type, vextent>& other) noexcept = default;
-        fe_layout_right(fe_layout_right<IDX, dof_mapping_type, vextent>&& other) noexcept = default;
+        fe_layout_right(const fe_layout_right<IDX, dof_mapping_type, vextent, include_ghost>& other) noexcept = default;
+        fe_layout_right(fe_layout_right<IDX, dof_mapping_type, vextent, include_ghost>&& other) noexcept = default;
 
-        fe_layout_right<IDX, dof_mapping_type, vextent>& operator=(
-                const fe_layout_right<IDX, dof_mapping_type, vextent>& other) noexcept = default;
-        fe_layout_right<IDX, dof_mapping_type, vextent>& operator=(
-                fe_layout_right<IDX, dof_mapping_type, vextent>&& other) noexcept = default;
+        fe_layout_right<IDX, dof_mapping_type, vextent, include_ghost>& operator=(
+                const fe_layout_right<IDX, dof_mapping_type, vextent, include_ghost>& other) noexcept = default;
+        fe_layout_right<IDX, dof_mapping_type, vextent, include_ghost>& operator=(
+                fe_layout_right<IDX, dof_mapping_type, vextent, include_ghost>&& other) noexcept = default;
 
         // ==============
         // = Properties =
@@ -153,6 +158,15 @@ namespace iceicle {
             return vextent;
         }
 
+        /**
+         * @brief if the layout is over a view including ghost elements 
+         * then this is a read only view because writing to ghost elements 
+         * requires explicit communication
+         */
+        [[nodiscard]] inline static constexpr
+        auto read_only() noexcept
+        -> bool 
+        { return include_ghost; }
 
         // =========
         // = Sizes =
@@ -204,9 +218,9 @@ namespace iceicle {
         ) const noexcept(index_noexcept) {
 #ifndef NDEBUG
             // Bounds checking version in debug
-            if(ielem < 0 || ielem >= nelem()   ) throw std::out_of_range("Element index out of range");
-            if(idof  < 0 || idof >= ndof(ielem)) throw std::out_of_range("Dof index out of range");
-            if(iv < 0    || iv >= nv()         ) throw std::out_of_range("Vector compoenent index out of range");
+            if(ielem < 0 || ielem >= nelem()    ) throw std::out_of_range("Element index out of range");
+            if(idof  < 0 || idof  >= ndof(ielem)) throw std::out_of_range("Dof index out of range");
+            if(iv    < 0 || iv    >= nv()       ) throw std::out_of_range("Vector compoenent index out of range");
 #endif
             // the global degree of freedom index
             index_type gdof = map_ref[ielem, idof];

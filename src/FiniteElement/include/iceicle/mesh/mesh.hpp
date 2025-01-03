@@ -354,13 +354,6 @@ namespace iceicle {
         /// @brief the parallel partitioning of the nodes
         pindex_map<IDX> node_partitioning;
 
-        /// @brief the elements on neighboring mpi rank that share a face with elements on this process 
-        ///
-        /// comm_elements[irank][ielem]
-        /// has the information for an element on rank irank
-        std::vector< std::vector < CommElementInfo<T, IDX, ndim> > > communicated_elements
-            = { {} };
-
         // ===============
         // = Constructor =
         // ===============
@@ -400,8 +393,7 @@ namespace iceicle {
         requires std::constructible_from<
             dof_map<IDX, ndim, h1_conformity(ndim)>, decltype(conn_el_arg)>
         : coord{coord}, conn_el{conn_el_arg}, coord_els{},
-            el_transformations{el_transformations}, communicated_elements{comm_elements}
-        
+            el_transformations{el_transformations}
         {
             { // build the element coordinates matrix
                 coord_els = util::crs<Point, IDX>{std::span{conn_el.dof_connectivity.cols(),

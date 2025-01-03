@@ -9,15 +9,6 @@
 #include <utility>
 namespace iceicle {
 
-    /// @brief a parallel index pair 
-    /// contains the rank where the item being indexed is 
-    /// and the process-local index
-    template< class IDX >
-    struct p_index {
-        IDX rank;
-        IDX index;
-    };
-
     namespace mpi {
 
         /// @brief broadcast a contiguous range using MPI_Bcast  

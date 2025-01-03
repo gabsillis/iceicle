@@ -434,32 +434,39 @@ namespace iceicle {
              * @param iv the vector index
              * @return a reference to the data 
              */
-            constexpr reference operator[](index_type idof, index_type iv){
-                return _accessor.access(_ptr, _layout[idof, iv]);
-            }
+            [[nodiscard]] inline constexpr 
+            auto operator[](index_type idof, index_type iv)
+            -> reference
+            requires(!LayoutPolicy::read_only())
+            { return _accessor.access(_ptr, _layout[idof, iv]); }
 
             /** @brief index into the data using the set order
              * @param idof the degree of freedom index 
              * @param iv the vector index
              * @return a reference to the data 
              */
-            constexpr const reference operator[](index_type idof, index_type iv) const {
-                return _accessor.access(_ptr, _layout[idof, iv]);
-            }
+            [[nodiscard]] inline constexpr 
+            auto operator[](index_type idof, index_type iv) const 
+            -> const reference
+            { return _accessor.access(_ptr, _layout[idof, iv]); }
 
             /**
              * @brief if using the default accessor, allow access to the underlying storage
              * @return the underlying storage 
              */
-            constexpr pointer data() noexcept 
-            requires(std::is_same_v<AccessorPolicy, default_accessor<T>>) 
+            [[nodiscard]] inline constexpr 
+            auto data() noexcept 
+            -> pointer
+            requires(!LayoutPolicy::read_only() && std::is_same_v<AccessorPolicy, default_accessor<T>>)
             { return _ptr; }
 
             /**
              * @brief if using the default accessor, allow access to the underlying storage
              * @return the underlying storage 
              */
-            constexpr const pointer data() const noexcept 
+            [[nodiscard]] inline constexpr 
+            auto data() const noexcept 
+            -> const pointer
             requires(std::is_same_v<AccessorPolicy, default_accessor<T>>) 
             { return _ptr; }
 
@@ -469,10 +476,11 @@ namespace iceicle {
              * @param idof the degree of freedom to index at 
              * @return std::span over the vector component data at idof 
              */
-            constexpr inline 
-            auto span_at_dof(index_type idof) -> std::span<value_type> {
-                return std::span{_ptr + _layout[idof, 0], _ptr + _layout[idof, 0] + _layout.nv()};
-            }
+            [[nodiscard]] constexpr inline 
+            auto span_at_dof(index_type idof)
+            -> std::span<value_type> 
+            requires(!LayoutPolicy::read_only())
+            { return std::span{_ptr + _layout[idof, 0], _ptr + _layout[idof, 0] + _layout.nv()}; }
 
             /**
              * @brief access the underlying data as a std::span 
@@ -480,16 +488,16 @@ namespace iceicle {
              * @param idof the degree of freedom to index at 
              * @return std::span over the vector component data at idof 
              */
-            constexpr inline 
-            auto span_at_dof(index_type idof) const -> std::span<const value_type> {
-                return std::span{_ptr + _layout[idof, 0], _ptr + _layout[idof, 0] + _layout.nv()};
-            }
+            [[nodiscard]] constexpr inline 
+            auto span_at_dof(index_type idof) const 
+            -> std::span<const value_type> 
+            { return std::span{_ptr + _layout[idof, 0], _ptr + _layout[idof, 0] + _layout.nv()}; }
 
             /**
              * @brief get the equivalent 1D index of the multi-dimensional indices 
              * @return the 1D index determined by the layout 
              */
-            constexpr inline 
+            [[nodiscard]] constexpr inline 
             auto index_1d(index_type idof, index_type iv) const 
             -> index_type 
             { return _layout[idof, iv]; }
@@ -507,6 +515,7 @@ namespace iceicle {
              * @return reference to this
              */
             constexpr dofspan<T, LayoutPolicy, AccessorPolicy>& operator=( T value )
+            requires(!LayoutPolicy::read_only())
             {
                 // TODO: be more specific about the index space
                 // maybe by delegating to the LayoutPolicy
@@ -523,7 +532,9 @@ namespace iceicle {
             template<class otherAccessor>
             constexpr inline 
             auto operator+=(const dofspan<T, LayoutPolicy, otherAccessor>& other)
-            -> dofspan<T, LayoutPolicy, AccessorPolicy>& {
+            -> dofspan<T, LayoutPolicy, AccessorPolicy>& 
+            requires(!LayoutPolicy::read_only()) 
+            {
                 for(index_type idof = 0; idof < ndof(); ++idof){
                     for(index_type iv = 0; iv < nv(); ++iv){
                         operator[](idof, iv) += other[idof, iv];

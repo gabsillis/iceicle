@@ -5,6 +5,7 @@
 #include "iceicle/fe_definitions.hpp"
 #include "iceicle/iceicle_mpi_utils.hpp"
 #include "iceicle/tmp_utils.hpp"
+#include <mpi.h>
 #include <numeric>
 #include <unordered_map>
 #include <type_traits>
@@ -21,13 +22,7 @@ namespace iceicle {
     /// @brief a map between parallel indices
     /// and process local indices
     ///
-    /// Parallel indices satisfy the following:
-    /// - a parallel index (or pindex) is in the range 
-    /// (0, size)
-    ///
     /// local indices represent indices on the local process
-    ///
-    /// index_map[pindex] -> {owning process mpi rank, lindex}
     ///
     /// p_indices[lindex] -> pindex 
     ///
@@ -46,11 +41,10 @@ namespace iceicle {
         using index_type = IDX;
         using size_type = std::make_unsigned_t<IDX>;
 
-        /// @brief the index pairs of owning rank and process local index 
-        /// synchronized over all ranks
-        std::vector< p_index<IDX> > index_map;
-
         /// @brief for each local degree of freedom, the parallel index 
+        /// This can be split into two contiguous disjoint sets 
+        /// the first set is all ldofs that map to pdofs owned by this process 
+        /// the second set is the ldofs that map to pdofs owned by other processes
         std::vector< IDX > p_indices;
 
         /// @brief for each parallel index that has a local degree of freedom, 
@@ -60,10 +54,32 @@ namespace iceicle {
         /// @brief the offsets of "owned" pindex ranges
         std::vector< IDX > owned_offsets;
 
+        /// @brief check that the invariants described for this class hold
+        [[nodiscard]] inline constexpr 
+        auto check_invariants() -> bool 
+        {
+            bool valid = true;
+
+            // check contiguous disjoint sets of p_indices
+            for(IDX lidx = 0; lidx < owned_range_size(mpi::mpi_world_rank()); ++lidx){
+                IDX pidx = inv_p_indices[lidx];
+                if(
+                    pidx < owned_offsets[mpi::mpi_world_rank()] 
+                    || pidx >= owned_offsets[mpi::mpi_world_rank() + 1]
+                ) { valid = false; }
+            }
+
+            bool all_valid = valid;
+#ifdef ICEICLE_USE_MPI
+            MPI_Allreduce(&valid, &all_valid, 1, MPI_C_BOOL, MPI_LAND, MPI_COMM_WORLD);
+#endif
+            return all_valid;
+        }
+
         /// @brief get the size of the pindex space
         [[nodiscard]] inline constexpr 
         auto size() const -> size_type 
-        { return index_map.size(); }
+        { return owned_offsets.back(); }
 
         /// @brief get the number of local indices 
         auto n_lindex() const -> size_type 
@@ -74,20 +90,26 @@ namespace iceicle {
         auto owned_range_size(int irank) const -> size_type 
         { return owned_offsets[irank + 1] - owned_offsets[irank]; }
 
+        /// @brief get a range of indices 
+        [[nodiscard]] inline constexpr
+        auto owned_pindex_range(int irank) const noexcept
+        { return std::ranges::iota_view{owned_offsets[irank], owned_offsets[irank + 1]}; }
+
         friend std::ostream& operator<< (std::ostream&out, const pindex_map<IDX> pidx_map) {
+
             if(mpi::mpi_world_rank() == 0){
                 out << fmt::format("index_map:\n");
                 out << fmt::format("pindex | rank | lindex\n");
                 out << fmt::format("-------+------+-------\n");
-                for(IDX pidx = 0; pidx < pidx_map.size(); ++pidx){
-                    out << fmt::format(" {:5d} | {:4d} | {:5d}\n",
-                            pidx, pidx_map.index_map[pidx].rank, pidx_map.index_map[pidx].index);
-          }
 
-                out << fmt::format("\n");
-                out << fmt::format("offsets:\n");
-                out << fmt::format("{}", pidx_map.owned_offsets);
-                out << fmt::format("\n");
+            }
+            for(int irank = 0; irank < mpi::mpi_world_size(); ++irank) {
+                for(IDX pidx : pidx_map.owned_pindex_range(irank)){
+                    out << fmt::format(" {:5d} | {:4d} | {:5d}\n",
+                            pidx, irank, pidx_map.inv_p_indices[pidx]);
+                }
+
+                mpi::mpi_sync();
             }
 
             for(int irank = 0; irank < mpi::mpi_world_size(); ++irank) {
@@ -95,7 +117,7 @@ namespace iceicle {
                     out << fmt::format(" rank{} p_indices:\n", irank);
                     out << fmt::format(" lindex | pindex \n");
                     out << fmt::format("--------+--------\n");
-                    for(IDX lindex = 0; lindex < pidx_map.p_indices.size(); ++lindex){
+                    for(IDX lindex = 0; lindex < pidx_map.size(); ++lindex){
                         out << fmt::format(" {:6d} | {:6d} \n",
                                 lindex, pidx_map.p_indices[lindex]);
                     }
@@ -500,8 +522,6 @@ namespace iceicle {
                         rank_offsets[iel_global].back() + gdofs.ndof_el(iel_global));
             }
             
-            std::vector< p_index<IDX> > index_map;
-            index_map.reserve(gdofs.size());
             std::vector< IDX > pindices(rank_offsets[myrank].back());
             std::iota(pindices.begin(), pindices.end(), 0);
             std::vector< IDX > owned_offsets{0};
@@ -510,9 +530,6 @@ namespace iceicle {
             IDX pidx = 0;
             for(int irank = 0; irank < nrank; ++irank){
                 IDX ndof_rank = rank_offsets[irank].back();
-                for(IDX ldof = 0; ldof < ndof_rank; ++ldof){
-                    index_map.push_back(p_index<IDX>{.rank = irank, .index = ldof});
-                }
                 for(IDX ielem = el_part.owned_offsets[irank]; ielem < el_part.owned_offsets[irank + 1]; ++ielem){
                     for(IDX i = 0; i < gdofs.ndof_el(ielem); ++i){
                         renumbering[pidx] = gdofs[ielem, i];
@@ -529,7 +546,7 @@ namespace iceicle {
 
             return std::tuple{
                 dof_map< IDX, ndim, conformity >{std::move(rank_offsets[myrank])},
-                pindex_map{ index_map, pindices, inv_pdofs, owned_offsets },
+                pindex_map{ pindices, inv_pdofs, owned_offsets },
                 renumbering
             };
         } else {
@@ -599,8 +616,6 @@ namespace iceicle {
             std::vector<IDX> renumbering; // old_pdof = renumbering[new_pdof]
             renumbering.reserve(gdofs.size());
             std::vector<IDX> offsets = {0};
-            std::vector< p_index<IDX> > index_map;
-            index_map.reserve(gdofs.size());
             for(IDX pdof = 0; pdof < gdofs.size(); ++pdof){
                 owned_pdofs[owning_rank[pdof]].push_back(pdof);
             }
@@ -614,10 +629,6 @@ namespace iceicle {
             for(int irank = 0; irank < nrank; ++irank){
                 renumbering.insert(std::end(renumbering), 
                         std::begin(owned_pdofs[irank]), std::end(owned_pdofs[irank]));
-                // construct the pdof_map index_mapping while we are at it
-                for(int ldof = 0; ldof < owned_pdofs[irank].size(); ++ldof){
-                    index_map.emplace_back(irank, ldof);
-                }
                 offsets.push_back(offsets.back() + owned_pdofs[irank].size());
             }
             fmt::println("renumbering: {}", renumbering);
@@ -630,6 +641,28 @@ namespace iceicle {
             // apply the renumbering to my_pdofs 
             std::for_each(my_pdofs.begin(), my_pdofs.end(), 
                     [&inverse_renumbering](IDX &n) { n = inverse_renumbering[n]; });
+
+            // reorder the ldofs to satisfy the requirements for p_indices of pindex_map
+            std::ranges::sort(my_pdofs);
+            IDX start_owned;
+            for(IDX ldof = 0; ldof < my_pdofs.size(); ++ldof){
+                if(my_pdofs[ldof] >= offsets[mpi::mpi_world_rank()]){
+                    start_owned = ldof;
+                    break;
+                }
+            }
+            IDX end_owned = start_owned +
+                (offsets[mpi::mpi_world_rank() + 1] - offsets[mpi::mpi_world_rank()]);
+            {
+                std::vector<IDX> pdofs_rearrange{};
+                pdofs_rearrange.insert(pdofs_rearrange.end(), 
+                        my_pdofs.begin() + start_owned, my_pdofs.begin() + end_owned);
+                pdofs_rearrange.insert(pdofs_rearrange.end(), 
+                        0, my_pdofs.begin() + start_owned);
+                pdofs_rearrange.insert(pdofs_rearrange.end(), 
+                        my_pdofs.begin() + end_owned, my_pdofs.end());
+                my_pdofs = std::move(pdofs_rearrange);
+            }
            
             // create a inverse mapping of my_pdofs to ldofs
             std::unordered_map<IDX, IDX> inv_pdofs{};
@@ -640,16 +673,13 @@ namespace iceicle {
             // setup the cols array for number of process local elements
             IDX nelem_local = el_part.p_indices.size();
             std::vector<IDX> ldof_cols(nelem_local + 1);
+            // first count up the number of dofs for each element
             ldof_cols[0] = 0;
-            for(IDX iel = 0; iel < nelem; ++iel){
-                int el_rank = el_part.index_map[iel].rank;
-                if(el_rank == myrank){
-                    IDX iel_local = el_part.index_map[iel].index;
-                    // NOTE: only putting the size in for now 
-                    // need another pass to accumulate
-                    ldof_cols[iel_local + 1] = gdofs.ndof_el(iel);
-                }
+            for(IDX ielem_p : el_part.owned_pindex_range(myrank)){
+                IDX ielem_local = el_part.inv_p_indices[ielem_p];
+                ldof_cols[ielem_local + 1] = gdofs.ndof_el(ielem_p);
             }
+            // then accumulate
             for(int i = 1; i < ldof_cols.size(); ++i)
                 ldof_cols[i] = ldof_cols[i - 1] + ldof_cols[i];
             util::crs<IDX, IDX> ldof_crs{std::span<const IDX>{ldof_cols}};
@@ -666,7 +696,7 @@ namespace iceicle {
 
             return std::tuple{ 
                 dof_map< IDX, ndim, conformity >{my_pdofs.size(), std::move(ldof_crs)},
-                pindex_map{ index_map, my_pdofs, inv_pdofs, offsets },
+                pindex_map{ my_pdofs, inv_pdofs, offsets },
                 renumbering
             };
         }

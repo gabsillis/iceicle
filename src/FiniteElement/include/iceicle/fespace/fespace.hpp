@@ -128,9 +128,14 @@ namespace iceicle {
         std::map<TraceTypeKey, ReferenceTraceType> ref_trace_map;
 
     public:
+        /// @brief Array of finite elements in the space including 
+        /// ones owned by neighboring processes 
+        /// NOTE: these are needed for computing integrals on interprocess faces
+        std::vector<ElementType> all_elements;
 
-        /// @brief Array of finite elements in the space
-        std::vector<ElementType> elements;
+        /// @brief view over the finite elements in the space elements
+        /// owned by this process
+        std::span<ElementType> elements;
 
         /// @brief Array of trace spaces in the space 
         std::vector<TraceType> traces;
@@ -424,7 +429,7 @@ namespace iceicle {
                 ReferenceElementType &ref_el = ref_el_map[fe_key];
                
                 // this will be the index of the new element
-                IDX ielem = elements.size();
+                IDX ielem = all_elements.size();
 
                 // create the finite element
                 ElementType fe{
@@ -438,82 +443,38 @@ namespace iceicle {
                 };
 
                 // add to the elements list
-                elements.push_back(fe);
+                all_elements.push_back(fe);
             }
 
-#ifdef ICEICLE_USE_MPI
-             // ========================
-             // = Communicate Elements =
-             // ========================
-             int myrank, nrank;
-             MPI_Comm_rank(MPI_COMM_WORLD, &myrank);
-             MPI_Comm_size(MPI_COMM_WORLD, &nrank);
- 
-             // set up the communicated FiniteElements only if more than 1 process
-             for(int irank = 0; irank < nrank; ++irank){
-                 // basis order, quadrature_type, and basis_type we know
-                 int geometry_order, domain_type;
-                 for(auto& comm_el : meshptr->communicated_elements[irank]){
-                     
-                     FETypeKey fe_key = {
-                         .domain_type = comm_el.trans->domain_type,
-                         .basis_order = comm_el.trans->order,
-                         .geometry_order = comm_el.trans->order,
-                         .qtype = FESPACE_ENUMS::FESPACE_QUADRATURE::GAUSS_LEGENDRE,
-                         .btype = FESPACE_ENUMS::FESPACE_BASIS_TYPE::LAGRANGE 
-                     };
- 
-                     // check if an evaluation doesn't exist yet
-                     if(ref_el_map.find(fe_key) == ref_el_map.end()){
-                         ref_el_map[fe_key] = ReferenceElementType(comm_el.trans->domain_type, comm_el.trans->order);
-                     }
-                     ReferenceElementType &ref_el = ref_el_map[fe_key];
-                 
-                     // this will be the index of the new element
-                     IDX ielem = elements.size();
- 
-                     // create the finite element
-                     ElementType fe{
-                         .trans = comm_el.trans, 
-                         .basis = ref_el.basis.get(),
-                         .quadrule = ref_el.quadrule.get(),
-                         .qp_evals = std::span<const BasisEvaluation<T, ndim>>{ref_el.evals},
-                         .inodes = comm_el.conn_el, // NOTE: meshptr cannot invalidate anymore
-                         .coord_el = comm_el.coord_el,
-                         .elidx = ielem
-                     };
- 
-                     comm_elements[irank].push_back(fe);
-                 }
-             }
-#endif
+            /// 
+            elements = std::span{all_elements.begin(),
+                all_elements.begin() + meshptr->element_partitioning.owned_range_size(mpi::mpi_world_rank())};
+
             // Generate the Trace Spaces
             traces.reserve(meshptr->faces.size());
             for(const auto& fac : meshptr->faces){
                 // NOTE: assuming element indexing is the same as the mesh still
-
                 bool is_interior = fac->bctype == BOUNDARY_CONDITIONS::INTERIOR;
-                ElementType *elptrL = &elements[fac->elemL];
-                ElementType *elptrR = (is_interior) ? &elements[fac->elemR] : &elements[fac->elemL];
+                ElementType *elptrL;
+                ElementType *elptrR; 
 
-#ifdef ICEICLE_USE_MPI
-            // update the boundary trace spaces to use the new communicated FiniteElements
                 if(fac->bctype == BOUNDARY_CONDITIONS::PARALLEL_COM) {
                     auto [jrank, imleft] = decode_mpi_bcflag(fac->bcflag);
-                    IDX jlocal_elidx = (imleft) ? fac->elemR : fac->elemL;
+                    IDX neighbor_el_pidx = (imleft) ? fac->elemR : fac->elemL;
 
-                    std::vector<IDX> &comm_el_idxs = meshptr->el_recv_list[jrank];
-                    auto itr = lower_bound(comm_el_idxs.begin(), comm_el_idxs.end(), jlocal_elidx);
-                    std::size_t index = distance(comm_el_idxs.begin(), itr);
+                    IDX neighbor_el_lidx = meshptr->element_partitioning.inv_p_indices[neighbor_el_pidx];
 
                     if(imleft){
-                        elptrR = &(comm_elements[jrank].at(index));
+                        elptrL = &elements[fac->elemL];
+                        elptrR = &all_elements[neighbor_el_lidx];
                     } else {
-                        elptrL = &(comm_elements[jrank].at(index));
-                        elptrR = &elements[fac->elemR]; // special case because parallel faces are essential interior
+                        elptrL = &all_elements[neighbor_el_lidx];
+                        elptrR = &elements[fac->elemR];
                     }
+                } else {
+                    elptrL = &all_elements[fac->elemL];
+                    elptrR = (is_interior) ? &all_elements[fac->elemR] : &all_elements[fac->elemL];
                 }
-#endif
                 ElementType& elL = *elptrL;
                 ElementType& elR = *elptrR;
 
