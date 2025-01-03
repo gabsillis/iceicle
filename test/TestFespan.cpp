@@ -55,7 +55,7 @@ TEST(test_fespan, test_dglayout){
 
     std::vector<T> data(dg_dofs.calculate_size_requirement(2));
     std::iota(data.begin(), data.end(), 0.0);
-    fe_layout_right<IDX, decltype(dg_dofs), 2> layout(dg_dofs);
+    fe_layout_right<IDX, decltype(dg_dofs), 2, false> layout(dg_dofs);
     // alternate layout syntax
     using namespace tmp;
     fe_layout_right layout2{dg_dofs, to_size<2>{}};

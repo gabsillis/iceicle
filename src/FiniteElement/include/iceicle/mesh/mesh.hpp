@@ -13,7 +13,6 @@
 #include "iceicle/geometry/transformations_table.hpp"
 #include "iceicle/geometry/hypercube_face.hpp"
 #include "iceicle/geometry/simplex_element.hpp"
-#include "iceicle/iceicle_mpi_utils.hpp"
 #include "iceicle/tmp_utils.hpp"
 #include "iceicle/transformations/HypercubeTransformations.hpp"
 #include <iceicle/geometry/face.hpp>
@@ -361,7 +360,10 @@ namespace iceicle {
         /** @brief construct an empty mesh */
         AbstractMesh() 
         : coord{}, conn_el{}, coord_els{}, el_transformations{}, faces{}, interiorFaceStart(0), interiorFaceEnd(0), 
-          bdyFaceStart(0), bdyFaceEnd(0), elsup{}, facsuel{} {}
+          bdyFaceStart(0), bdyFaceEnd(0), elsup{}, facsuel{}, 
+          element_partitioning{pindex_map<IDX>::create_serial(0)}, 
+          node_partitioning{pindex_map<IDX>::create_serial(0)} 
+        {}
 
         /// @brief A description of a boundary face 
         /// contains all the information needed to generate the face data structure 
@@ -376,24 +378,26 @@ namespace iceicle {
         /// @param el_transformations array of pointers to the corresponding transformation for each element
         /// @param boundary_face_descriptions tuple of BOUNDARY_CONDITIONS (type), integer (flag), 
         ///        and array of indices (the nodes) that describe boundary faces
+        /// @param element_partitioning the parallel partitioning of the elements 
+        /// @param node_partitioning the parallel partitioning of the nodal dofs
         /// @param premade_boundary_faces optionally the user can construct faces manually (using new) 
         ///                               and pass a vector of these pointers to be used in addition to 
         ///                               boundary_face_descriptions
-        /// @param comm_elements element info on face neighbor processes
         AbstractMesh(
             NodeArray<T, ndim>& coord,
             auto&& conn_el_arg,
             std::vector< ElementTransformation<T, IDX, ndim>* > el_transformations,
             const std::vector<boundary_face_desc>& boundary_face_descriptions,
+            pindex_map<IDX> element_partitioning,
+            pindex_map<IDX> node_partitioning,
             std::vector< std::unique_ptr<Face<T, IDX, ndim> > >& premade_boundary_faces
-                = impl::empty_premade_faces<T, IDX, ndim>,
-            std::vector< std::vector< CommElementInfo<T, IDX, ndim> > > comm_elements
-                = { {} }
+                = impl::empty_premade_faces<T, IDX, ndim>
         )
         requires std::constructible_from<
             dof_map<IDX, ndim, h1_conformity(ndim)>, decltype(conn_el_arg)>
         : coord{coord}, conn_el{conn_el_arg}, coord_els{},
-            el_transformations{el_transformations}
+            el_transformations{el_transformations}, element_partitioning{element_partitioning},
+            node_partitioning{node_partitioning}
         {
             { // build the element coordinates matrix
                 coord_els = util::crs<Point, IDX>{std::span{conn_el.dof_connectivity.cols(),
@@ -514,6 +518,8 @@ namespace iceicle {
         }
 
         /// @brief Construct a mesh from provided connectivity information
+        /// NOTE: this constructor provides no parallel connectivity and assumes serial 
+        ///
         /// @param coord the mesh coordinates 
         /// @param conn_el_arg compressed row storage of element connectivity
         /// @param el_transformations array of pointers to the corresponding transformation for each element
@@ -526,14 +532,18 @@ namespace iceicle {
             const std::vector<boundary_face_desc>& boundary_face_descriptions
         ) : AbstractMesh<T, IDX, ndim>(coord,
                 dof_map<IDX, ndim, h1_conformity(ndim)>{coord.size(), conn_el_arg},
-                el_transformations, boundary_face_descriptions) {}
+                el_transformations, boundary_face_descriptions,
+                pindex_map<IDX>::create_serial(conn_el_arg.nrow()),
+                pindex_map<IDX>::create_serial(coord.size())
+            ) {}
 
         AbstractMesh(const AbstractMesh<T, IDX, ndim>& other) 
         : coord{other.coord}, conn_el{other.conn_el}, coord_els{other.coord_els}, 
           el_transformations{other.el_transformations}, faces{},
           interiorFaceStart(other.interiorFaceStart), interiorFaceEnd(other.interiorFaceEnd),
           bdyFaceStart(other.bdyFaceStart), bdyFaceEnd(other.bdyFaceEnd), elsup{other.elsup},
-          facsuel{other.facsuel}
+          facsuel{other.facsuel}, element_partitioning{other.element_partitioning},
+          node_partitioning{other.node_partitioning}
         {
             for(auto& facptr : other.faces){
                 faces.push_back(std::move(facptr->clone()));
@@ -559,15 +569,13 @@ namespace iceicle {
                 bdyFaceEnd = other.bdyFaceEnd;
                 elsup = other.elsup;
                 facsuel = other.facsuel;
+                element_partitioning = other.element_partitioning;
+                node_partitioning = other.node_partitioning;
             }
             return *this;
         }
 
         AbstractMesh<T, IDX, ndim>& operator=(AbstractMesh<T, IDX, ndim>&& other) = default;
-
-        AbstractMesh(std::size_t nnode) 
-        : coord{nnode}, conn_el{}, coord_els{}, faces{}, interiorFaceStart(0), interiorFaceEnd(0), 
-          bdyFaceStart(0), bdyFaceEnd(0) {}
 
         private:
 
@@ -647,6 +655,9 @@ namespace iceicle {
                 }
             }
             coord.resize(nnodes);
+
+            element_partitioning = pindex_map<IDX>::create_serial(nelem);
+            node_partitioning = pindex_map<IDX>::create_serial(nnodes);
 
             // Generate the nodes 
             std::array<IDX, ndim> ijk;

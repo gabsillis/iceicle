@@ -76,8 +76,12 @@ namespace iceicle {
             using value_type = T;
             using layout_type = LayoutPolicy;
             using accessor_type = AccessorPolicy;
-            using pointer = AccessorPolicy::data_handle_type;
-            using reference = AccessorPolicy::reference;
+            using pointer = typename std::conditional<LayoutPolicy::read_only(), 
+                  const typename AccessorPolicy::data_handle_type,
+                  typename AccessorPolicy::data_handle_type>::type;
+            using reference = typename std::conditional<LayoutPolicy::read_only(), 
+                  const typename AccessorPolicy::reference,
+                  typename AccessorPolicy::reference>::type;
             using index_type = LayoutPolicy::index_type;
             using size_type = std::make_unsigned_t<index_type>;
             using dof_mapping_type = LayoutPolicy::dof_mapping_type;
@@ -151,27 +155,23 @@ namespace iceicle {
             // = Data Access =
             // ===============
 
-            /** @brief index into the data using a fe_index 
+            /** 
+             * @brief index into the data using a fe_index 
              * @param fe_index represents the element, dof, and vector component indices 
              * @return a reference to the data 
              */
-            constexpr reference operator[](index_type ielem, index_type idof, index_type iv) const {
-                return _accessor.access(_ptr, _layout.operator[](ielem, idof, iv));
-            }
+            [[nodiscard]] inline constexpr
+            auto operator[](index_type ielem, index_type idof, index_type iv) const
+            -> reference
+            { return _accessor.access(_ptr, _layout.operator[](ielem, idof, iv)); }
 
             /**
              * @brief if using the default accessor, allow access to the underlying storage
              * @return the underlying storage 
              */
-            constexpr pointer data() noexcept 
-            requires(std::is_same_v<AccessorPolicy, default_accessor<T>>) 
-            { return _ptr; }
-
-            /**
-             * @brief if using the default accessor, allow access to the underlying storage
-             * @return the underlying storage 
-             */
-            constexpr const pointer data() const noexcept 
+            [[nodiscard]] inline constexpr 
+            auto data() const noexcept 
+            -> pointer
             requires(std::is_same_v<AccessorPolicy, default_accessor<T>>) 
             { return _ptr; }
 
@@ -208,6 +208,7 @@ namespace iceicle {
              * @return reference to this
              */
             constexpr fespan<T, LayoutPolicy, AccessorPolicy> &operator=( T value )
+            requires(!LayoutPolicy::read_only())
             {
                 for(int i = 0; i < size(); ++i){
                     _ptr[i] = value;
@@ -435,30 +436,9 @@ namespace iceicle {
              * @return a reference to the data 
              */
             [[nodiscard]] inline constexpr 
-            auto operator[](index_type idof, index_type iv)
-            -> reference
-            requires(!LayoutPolicy::read_only())
-            { return _accessor.access(_ptr, _layout[idof, iv]); }
-
-            /** @brief index into the data using the set order
-             * @param idof the degree of freedom index 
-             * @param iv the vector index
-             * @return a reference to the data 
-             */
-            [[nodiscard]] inline constexpr 
             auto operator[](index_type idof, index_type iv) const 
-            -> const reference
+            -> reference
             { return _accessor.access(_ptr, _layout[idof, iv]); }
-
-            /**
-             * @brief if using the default accessor, allow access to the underlying storage
-             * @return the underlying storage 
-             */
-            [[nodiscard]] inline constexpr 
-            auto data() noexcept 
-            -> pointer
-            requires(!LayoutPolicy::read_only() && std::is_same_v<AccessorPolicy, default_accessor<T>>)
-            { return _ptr; }
 
             /**
              * @brief if using the default accessor, allow access to the underlying storage
@@ -466,7 +446,7 @@ namespace iceicle {
              */
             [[nodiscard]] inline constexpr 
             auto data() const noexcept 
-            -> const pointer
+            -> pointer
             requires(std::is_same_v<AccessorPolicy, default_accessor<T>>) 
             { return _ptr; }
 
@@ -478,19 +458,7 @@ namespace iceicle {
              */
             [[nodiscard]] constexpr inline 
             auto span_at_dof(index_type idof)
-            -> std::span<value_type> 
-            requires(!LayoutPolicy::read_only())
-            { return std::span{_ptr + _layout[idof, 0], _ptr + _layout[idof, 0] + _layout.nv()}; }
-
-            /**
-             * @brief access the underlying data as a std::span 
-             * at the given dof 
-             * @param idof the degree of freedom to index at 
-             * @return std::span over the vector component data at idof 
-             */
-            [[nodiscard]] constexpr inline 
-            auto span_at_dof(index_type idof) const 
-            -> std::span<const value_type> 
+            -> std::span<value_type>
             { return std::span{_ptr + _layout[idof, 0], _ptr + _layout[idof, 0] + _layout.nv()}; }
 
             /**
@@ -515,7 +483,6 @@ namespace iceicle {
              * @return reference to this
              */
             constexpr dofspan<T, LayoutPolicy, AccessorPolicy>& operator=( T value )
-            requires(!LayoutPolicy::read_only())
             {
                 // TODO: be more specific about the index space
                 // maybe by delegating to the LayoutPolicy
@@ -533,7 +500,6 @@ namespace iceicle {
             constexpr inline 
             auto operator+=(const dofspan<T, LayoutPolicy, otherAccessor>& other)
             -> dofspan<T, LayoutPolicy, AccessorPolicy>& 
-            requires(!LayoutPolicy::read_only()) 
             {
                 for(index_type idof = 0; idof < ndof(); ++idof){
                     for(index_type iv = 0; iv < nv(); ++iv){

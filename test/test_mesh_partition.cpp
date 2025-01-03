@@ -25,18 +25,7 @@ int main(int argc, char *argv[]) {
 
     auto [el_part, renumbering] = partition_elements(elsuel);
 
-    for(int irank = 0; irank < nrank; ++irank) {
-        if(irank == myrank){ 
-            std::cout << "My rank: " << myrank << std::endl;
-            fmt::print("{:12} | {:12} | {:12}\n" ,"global_index", "rank", "local_index");
-            int iglobal = 0;
-            for(auto pair : el_part.index_map){
-                fmt::print("{:12} | {:12} | {:12}\n", iglobal, pair.rank, pair.index);
-                ++iglobal;
-            }
-        }
-        MPI_Barrier(MPI_COMM_WORLD);
-    }
+    std::cout << el_part;
 
     // NOTE: we will need some sort of renumbering or petsc matrices will be a mess
     // try to get all global indices in contiguous groups of same rank

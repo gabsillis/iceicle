@@ -49,10 +49,31 @@ namespace iceicle {
 
         /// @brief for each parallel index that has a local degree of freedom, 
         /// inv_p_indices[pidx] = local index
-        std::unordered_map<IDX, IDX > inv_p_indices;
+        std::unordered_map< IDX, IDX > inv_p_indices;
 
         /// @brief the offsets of "owned" pindex ranges
         std::vector< IDX > owned_offsets;
+
+        // create an index map that represents serial indices 
+        // in the range [0, nindices)
+        // all indices belong to the current mpi rank
+        [[nodiscard]] static inline constexpr 
+        auto create_serial(IDX nindices)
+        -> pindex_map<IDX>
+        {
+            std::vector<IDX> p_indices(nindices);
+            std::iota(p_indices.begin(), p_indices.end(), 0);
+            std::unordered_map<IDX, IDX> inv_p_indices{};
+            for(IDX pindex = 0; pindex < nindices; ++pindex){
+                inv_p_indices[pindex] = pindex;
+            }
+            std::vector< IDX > owned_offsets{0, nindices};
+            return pindex_map<IDX>{
+                .p_indices = p_indices,
+                .inv_p_indices = inv_p_indices,
+                .owned_offsets = owned_offsets
+            };
+        }
 
         /// @brief check that the invariants described for this class hold
         [[nodiscard]] inline constexpr 
@@ -85,6 +106,15 @@ namespace iceicle {
         auto n_lindex() const -> size_type 
         { return p_indices.size(); }
 
+        /// @brief get the rank that owns the given index
+        [[nodiscard]] inline constexpr 
+        auto owning_rank(IDX index)
+        -> int 
+        {
+            return std::distance(owned_offsets.begin(), 
+                std::lower_bound(owned_offsets.begin(), owned_offsets.end(), index)) - 1;
+        }
+
         /// @brief the size of the range of pindices that are owned by the given rank
         [[nodiscard]] inline constexpr 
         auto owned_range_size(int irank) const -> size_type 
@@ -103,10 +133,12 @@ namespace iceicle {
                 out << fmt::format("-------+------+-------\n");
 
             }
+            mpi::mpi_sync();
+
             for(int irank = 0; irank < mpi::mpi_world_size(); ++irank) {
-                for(IDX pidx : pidx_map.owned_pindex_range(irank)){
+                if(irank == mpi::mpi_world_rank()) for(IDX pidx : pidx_map.owned_pindex_range(irank)){
                     out << fmt::format(" {:5d} | {:4d} | {:5d}\n",
-                            pidx, irank, pidx_map.inv_p_indices[pidx]);
+                            pidx, irank, pidx_map.inv_p_indices.at(pidx));
                 }
 
                 mpi::mpi_sync();
@@ -592,9 +624,8 @@ namespace iceicle {
             std::vector<int> owning_rank(gdofs.size(), nrank);
 
             // build the dof list
-            for(IDX iel = 0; iel < nelem; ++iel){
-                int el_rank = el_part.index_map[iel].rank;
-                if(el_rank == myrank) for(IDX pdof : gdofs.rowspan(iel)){
+            for(IDX iel : el_part.owned_offsets){
+                for(IDX pdof : gdofs.rowspan(iel)){
                     my_pdofs.push_back(pdof);
                     owning_rank[pdof] = myrank; // temporarily claim ownership
                 }
@@ -658,7 +689,7 @@ namespace iceicle {
                 pdofs_rearrange.insert(pdofs_rearrange.end(), 
                         my_pdofs.begin() + start_owned, my_pdofs.begin() + end_owned);
                 pdofs_rearrange.insert(pdofs_rearrange.end(), 
-                        0, my_pdofs.begin() + start_owned);
+                        my_pdofs.begin(), my_pdofs.begin() + start_owned);
                 pdofs_rearrange.insert(pdofs_rearrange.end(), 
                         my_pdofs.begin() + end_owned, my_pdofs.end());
                 my_pdofs = std::move(pdofs_rearrange);
@@ -676,7 +707,7 @@ namespace iceicle {
             // first count up the number of dofs for each element
             ldof_cols[0] = 0;
             for(IDX ielem_p : el_part.owned_pindex_range(myrank)){
-                IDX ielem_local = el_part.inv_p_indices[ielem_p];
+                IDX ielem_local = el_part.inv_p_indices.at(ielem_p);
                 ldof_cols[ielem_local + 1] = gdofs.ndof_el(ielem_p);
             }
             // then accumulate

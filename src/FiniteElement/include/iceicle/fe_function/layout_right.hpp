@@ -2,6 +2,7 @@
 #include <iceicle/fe_function/layout_enums.hpp>
 #include <iceicle/basis/dof_mapping.hpp>
 #include <stdexcept>
+#include <type_traits>
 
 namespace iceicle {
 
@@ -110,8 +111,8 @@ namespace iceicle {
         /// heavy type: will require separate maps on host and device
         const dof_mapping_type& map_ref;
 
-        /// @brief a map of parallel indices that also stores ownership information
-        const pindex_map<IDX> pindex_map;
+        /// @brief a map of parallel indices of elements that also stores ownership information
+        const pindex_map<IDX> pel_map;
 
         /// @brief dynamic vector component if vextent is not specified
         std::enable_if<is_dynamic_size<vextent>::value, index_type> nv_d;
@@ -124,11 +125,14 @@ namespace iceicle {
         : map_ref{map_ref} {}
 
         /// @brief integral constant for argument deduction
-        fe_layout_right(const MapType& map_ref, std::integral_constant<std::size_t, vextent>) 
+        fe_layout_right(const MapType& map_ref, std::integral_constant<std::size_t, vextent>,
+                std::integral_constant<bool, include_ghost> ghost_arg = std::false_type{})
         noexcept requires(!is_dynamic_size<vextent>::value) 
         : map_ref{map_ref} {}
 
-        fe_layout_right(const MapType& map_ref, index_type nv) 
+        fe_layout_right(const MapType& map_ref, index_type nv,
+                std::integral_constant<bool, include_ghost> ghost_arg = std::false_type{})
+
         noexcept requires(is_dynamic_size<vextent>::value) 
         : map_ref{map_ref}, nv_d{nv} {}
 
@@ -230,11 +234,18 @@ namespace iceicle {
 
     // deduction guides
     template<class IDX, class MapT>
-    fe_layout_right(const MapT&, IDX nv) -> fe_layout_right<IDX, MapT, dynamic_ncomp>;
+    fe_layout_right(const MapT&, IDX nv) -> fe_layout_right<IDX, MapT, dynamic_ncomp, false>;
+    template<class IDX, class MapT, bool include_ghost>
+    fe_layout_right(const MapT&, IDX nv, std::integral_constant<bool, include_ghost>)
+    -> fe_layout_right<IDX, MapT, dynamic_ncomp, include_ghost>;
 
     template<class MapT, std::size_t vextent>
     fe_layout_right(const MapT&, std::integral_constant<std::size_t, vextent>)
-        -> fe_layout_right<typename MapT::index_type, MapT, vextent>; 
+        -> fe_layout_right<typename MapT::index_type, MapT, vextent, false>; 
+    template<class MapT, std::size_t vextent, bool include_ghost>
+    fe_layout_right(const MapT&, std::integral_constant<std::size_t, vextent>,
+            std::integral_constant<bool, include_ghost>)
+        -> fe_layout_right<typename MapT::index_type, MapT, vextent, include_ghost>; 
 
     // === Type Aliases for clarity ===
 

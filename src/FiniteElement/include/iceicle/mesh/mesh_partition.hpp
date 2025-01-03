@@ -51,7 +51,7 @@ namespace iceicle {
             std::unordered_map<IDX, IDX> inv_p_indices;
             for(IDX lindex = 0; lindex < el_p_idxs.size(); ++lindex)
                 inv_p_indices[el_p_idxs[lindex]] = lindex;
-            std::vector< IDX > offsets = {0, nelem + 1};
+            std::vector< IDX > offsets = {0, nelem};
             std::vector<IDX> renumbering(nelem);
             std::iota(renumbering.begin(), renumbering.end(), 0);
             return std::pair{pindex_map{std::move(el_p_idxs),
@@ -184,8 +184,8 @@ namespace iceicle {
                     Face<T, IDX, ndim>& face = *(mesh.faces[iface]);
                     IDX iel = el_renumbering[face.elemL];
                     IDX ier = el_renumbering[face.elemR];
-                    int rank_l = el_partition.index_map[iel].rank;
-                    int rank_r = el_partition.index_map[ier].rank;
+                    int rank_l = el_partition.owning_rank(iel);
+                    int rank_r = el_partition.owning_rank(ier);
                     if(rank_l != rank_r){
                         // rank_l needs to add ier to extended_el_partition
                         if(rank_l == myrank){
@@ -252,7 +252,7 @@ namespace iceicle {
         { // element transformations 
             // take care of rank 0 first 
             if(myrank == 0){
-                el_transforms.reserve(el_partition.index_map.size());
+                el_transforms.reserve(el_partition.p_indices.size());
                 for(IDX iel : el_partition.p_indices) {
                     el_transforms.push_back(mesh.el_transformations[el_renumbering[iel]]);
                 }
@@ -303,7 +303,7 @@ namespace iceicle {
             for(IDX ifac = mesh.bdyFaceStart; ifac < mesh.bdyFaceEnd; ++ifac){
                 const Face<T, IDX, ndim>& face = *(mesh.faces[ifac]);
                 IDX attached_element = el_renumbering[face.elemL];
-                int mpi_rank = el_partition.index_map[attached_element].rank;
+                int mpi_rank = el_partition.owning_rank(attached_element);
                 
                 BOUNDARY_CONDITIONS bctype = face.bctype;
                 int bcflag = face.bcflag;
@@ -379,9 +379,11 @@ namespace iceicle {
                 if(face_rank == myrank){
                     // The face we want to make is on rank 0, just make it 
 
-                    // translate the element that we own
-                    IDX iel = (left) ? el_partition.inv_p_indices[iel_p] : iel_p;
-                    IDX ier = (left) ? ier_p : el_partition.inv_p_indices[ier_p];
+                    // translate the elements to process-local indices
+                    IDX iel = el_partition.inv_p_indices[iel_p];
+                    IDX ier = el_partition.inv_p_indices[ier_p];
+                    if(iel == -1 or ier == -1) 
+                        util::AnomalyLog::log_anomaly("Don't have process-local index of inter-process face elements");
 
                     // translate to local node indices
                     std::vector<IDX> nodes{};
@@ -395,7 +397,6 @@ namespace iceicle {
                             interprocess_faces.push_back(std::move(fac_opt.value()));
                         else 
                             util::AnomalyLog::log_anomaly("Cannot form boundary face");
-
                 } else {
                     // send face geometry specifications
                     int face_domn_int = (int) face_domain_type, 
@@ -430,8 +431,8 @@ namespace iceicle {
                 Face<T, IDX, ndim>& face = *(mesh.faces[iface]);
                 IDX iel = el_renumbering[face.elemL];
                 IDX ier = el_renumbering[face.elemR];
-                int rank_l = el_partition.index_map[iel].rank;
-                int rank_r = el_partition.index_map[ier].rank;
+                int rank_l = el_partition.owning_rank(iel);
+                int rank_r = el_partition.owning_rank(ier);
                 if(rank_l != rank_r){
                     // create the nodes list
                     std::vector<IDX> pnodes;
@@ -519,9 +520,11 @@ namespace iceicle {
 
                 auto [neighbor_rank, left] = decode_mpi_bcflag(bcflag);
 
-                // translate the element that we own
-                IDX iel = (left) ? el_partition.inv_p_indices[iel_p] : iel_p;
-                IDX ier = (left) ? ier_p : el_partition.inv_p_indices[ier_p];
+                // translate the elements to process-local indices
+                IDX iel = el_partition.inv_p_indices[iel_p];
+                IDX ier = el_partition.inv_p_indices[ier_p];
+                if(iel == -1 or ier == -1) 
+                    util::AnomalyLog::log_anomaly("Don't have process-local index of inter-process face elements");
 
                 // translate to local node indices
                 std::vector<IDX> nodes{};
@@ -549,7 +552,8 @@ namespace iceicle {
         // create the mesh
         pmesh = std::move(AbstractMesh{
                     p_coord, p_el_conn, el_transforms, 
-                    boundary_descs, interprocess_faces});
+                    boundary_descs, el_partition, p_el_conn_map,
+                    interprocess_faces});
 
 
 #ifndef NDEBUG 
