@@ -19,7 +19,6 @@
 #include <iceicle/geometry/geo_element.hpp>
 #include <iceicle/geometry/hypercube_element.hpp>
 #include <iceicle/crs.hpp>
-#include <ompi/mpi/cxx/mpicxx.h>
 #include <optional>
 #include <ostream>
 #include <ranges>

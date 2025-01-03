@@ -624,7 +624,7 @@ namespace iceicle {
             std::vector<int> owning_rank(gdofs.size(), nrank);
 
             // build the dof list
-            for(IDX iel : el_part.owned_offsets){
+            for(IDX iel : el_part.owned_pindex_range(myrank)){
                 for(IDX pdof : gdofs.rowspan(iel)){
                     my_pdofs.push_back(pdof);
                     owning_rank[pdof] = myrank; // temporarily claim ownership
