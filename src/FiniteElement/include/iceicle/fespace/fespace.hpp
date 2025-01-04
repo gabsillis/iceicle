@@ -113,6 +113,11 @@ namespace iceicle {
         using MeshType = AbstractMesh<T, IDX, ndim>;
         using BasisType = Basis<T, ndim>;
 
+        /// @brief get the conformity of the degrees of freedom between elements 
+        /// The index corresponds to the position in the exact sequence
+        static constexpr int conformity_class()
+        { return conformity; } 
+
         /// @brief pointer to the mesh used
         MeshType *meshptr;
 
@@ -168,11 +173,11 @@ namespace iceicle {
 
         // delete copy semantics
         FESpace(const FESpace &other) = delete;
-        FESpace<T, IDX, ndim>& operator=(const FESpace &other) = delete;
+        FESpace<T, IDX, ndim, conformity>& operator=(const FESpace &other) = delete;
 
         // keep move semantics
         FESpace(FESpace &&other) = default;
-        FESpace<T, IDX, ndim>& operator=(FESpace &&other) = default;
+        FESpace<T, IDX, ndim, conformity>& operator=(FESpace &&other) = default;
 
     private:
         
@@ -540,6 +545,14 @@ namespace iceicle {
                 traces.begin() + bdy_trace_end};
         }
 
+        /**
+         * @brief get the element partitioning map 
+         */
+        [[nodiscard]] inline constexpr 
+        auto element_partitioning() const noexcept
+        -> pindex_map<IDX>&
+        { return meshptr->element_partitioning; }
+
         auto print_info(std::ostream& out)
         -> std::ostream& {
             out << "Finite Element Space" << std::endl;
@@ -559,5 +572,20 @@ namespace iceicle {
         }
 
     };
-    
+
+    // Deduction Guides 
+
+    // Isoparametric CG constructor
+    template<class T, class IDX, int ndim>
+    FESpace(AbstractMesh<T, IDX, ndim>*)
+    -> FESpace<T, IDX, ndim, h1_conformity(ndim)>;
+
+    // Uniform basis order DG constructor
+    template<class T, class IDX, int ndim, int basis_order>
+    FESpace(
+        AbstractMesh<T, IDX, ndim> *meshptr,
+        FESPACE_ENUMS::FESPACE_BASIS_TYPE basis_type,
+        FESPACE_ENUMS::FESPACE_QUADRATURE quadrature_type,
+        tmp::compile_int<basis_order> basis_order_arg
+    ) -> FESpace<T, IDX, ndim, l2_conformity(ndim)>;
 }

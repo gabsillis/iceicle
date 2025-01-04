@@ -1,4 +1,5 @@
 #pragma once
+#include "iceicle/iceicle_mpi_utils.hpp"
 #include <iceicle/fe_function/layout_enums.hpp>
 #include <iceicle/basis/dof_mapping.hpp>
 #include <stdexcept>
@@ -112,7 +113,10 @@ namespace iceicle {
         const dof_mapping_type& map_ref;
 
         /// @brief a map of parallel indices of elements that also stores ownership information
-        const pindex_map<IDX> pel_map;
+        const pindex_map<IDX>& element_partitioning;
+
+        /// @brief a map of the parallel indices of dofs that stores ownership information
+        const pindex_map<IDX>& dof_partitioning;
 
         /// @brief dynamic vector component if vextent is not specified
         std::enable_if<is_dynamic_size<vextent>::value, index_type> nv_d;
@@ -154,13 +158,16 @@ namespace iceicle {
          * meaning that the data for a an element can be block copied 
          * to a elspan provided the layout parameters are the same
          */
-        inline static constexpr bool local_dof_contiguous() noexcept {
-            return dof_mapping_type::local_dof_contiguous(); }
+        [[nodiscard]] inline static constexpr 
+        auto local_dof_contiguous() noexcept
+        -> bool
+        { return dof_mapping_type::local_dof_contiguous(); }
 
         /// @brief static access to the extents 
-        inline static constexpr std::size_t static_extent() noexcept {
-            return vextent;
-        }
+        [[nodiscard]] inline static constexpr 
+        auto static_extent() noexcept
+        -> std::size_t 
+        { return vextent; }
 
         /**
          * @brief if the layout is over a view including ghost elements 
@@ -177,27 +184,41 @@ namespace iceicle {
         // =========
        
         /// @brief the number of elements in the index space */
-        [[nodiscard]] constexpr size_type nelem() const noexcept { return map_ref.nelem(); }
-
-        /// @brief get the number of degrees of freedom for the given element 
-        /// @param elidx the element index
-        [[nodiscard]] constexpr size_type ndof(index_type ielem) const noexcept { 
-            return map_ref.ndof_el(ielem);
+        [[nodiscard]] inline constexpr 
+        auto nelem() const noexcept 
+        -> size_type
+        { 
+            if constexpr (include_ghost) {
+                return map_ref.nelem(); 
+            } else {
+                return element_partitioning.owned_range_size(mpi::mpi_world_rank());
+            }
         }
 
+        /// @brief get the number of degrees of freedom for the given element 
+        /// @param ielem the element index
+        [[nodiscard]] inline constexpr 
+        auto ndof(index_type ielem) const noexcept
+        -> size_type
+        { return map_ref.ndof_el(ielem); }
+
         /// @brief get the number of vector components
-        [[nodiscard]] inline constexpr std::size_t nv() const noexcept {
+        [[nodiscard]] inline constexpr 
+        auto nv() const noexcept
+        -> size_type 
+        {
             if constexpr(is_dynamic_size<vextent>::value){
                 return nv_d;
             } else {
-                return vextent;
+                return (size_type) vextent;
             }
         }
 
         /// @brief the total size of the global index space represented by this layout
-        constexpr size_type size() const noexcept {
-            return map_ref.size() * nv();
-        }
+        [[nodiscard]] inline constexpr 
+        auto size() const noexcept 
+        -> size_type 
+        { return nelem() * nv(); }
 
         // ============
         // = Indexing =

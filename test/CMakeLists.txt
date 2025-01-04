@@ -62,19 +62,18 @@ target_link_libraries( test_felib PUBLIC iceicle_solvers )
 target_link_libraries( test_felib PUBLIC nt_autodiff) 
 target_link_libraries( test_felib PUBLIC gtest gtest_main) 
 
-if(NOT ICEICLE_ASAN)
-    gtest_discover_tests(test_felib)
+# === Unit tests for Finite Element Library Functionality under mesh partitioning ===
+if(ICEICLE_USE_METIS AND ICEICLE_USE_MPI)
+    add_executable(test_partition_felib test_partition.cpp)
+    target_link_libraries( test_partition_felib PUBLIC iceicle_fe )
+    target_link_libraries( test_partition_felib PUBLIC iceicle_solvers )
+    target_link_libraries( test_partition_felib PUBLIC gtest gtest) 
+    target_include_directories( test_partition_felib PUBLIC ${MPI_CXX_INCLUDE_PATH})
+    target_link_libraries( test_partition_felib PUBLIC ${MPI_CXX_LIBRARIES} )
 endif()
 
-if(ICEICLE_USE_METIS AND ICEICLE_USE_VTK)
-    add_executable(test_mesh_partition test_mesh_partition.cpp)
-    target_link_libraries( test_mesh_partition PUBLIC iceicle_fe )
-    target_link_libraries( test_mesh_partition PUBLIC iceicle_io )
-    #    target_link_libraries( test_mesh_partition PUBLIC iceicle_solvers )
-    target_link_libraries( test_mesh_partition PUBLIC gtest )
-    target_include_directories( test_mesh_partition PUBLIC ${MPI_CXX_INCLUDE_PATH})
-    target_link_libraries( test_mesh_partition PUBLIC ${MPI_CXX_LIBRARIES} )
-    target_link_libraries( test_mesh_partition PUBLIC ${VTK_LIBRARIES} )
+if(NOT ICEICLE_ASAN)
+    gtest_discover_tests(test_felib)
 endif()
 
 # === Unit Tests for the Solver Library ===
@@ -106,3 +105,18 @@ endif()
 
 add_executable(test_linalg test_linalg.cpp)
 target_link_libraries( test_linalg PUBLIC iceicle_fe )
+
+# =========================
+# === Integration Tests ===
+# =========================
+
+if(ICEICLE_USE_METIS AND ICEICLE_USE_VTK)
+    add_executable(test_mesh_partition test_mesh_partition.cpp)
+    target_link_libraries( test_mesh_partition PUBLIC iceicle_fe )
+    target_link_libraries( test_mesh_partition PUBLIC iceicle_io )
+    #    target_link_libraries( test_mesh_partition PUBLIC iceicle_solvers )
+    target_link_libraries( test_mesh_partition PUBLIC gtest )
+    target_include_directories( test_mesh_partition PUBLIC ${MPI_CXX_INCLUDE_PATH})
+    target_link_libraries( test_mesh_partition PUBLIC ${MPI_CXX_LIBRARIES} )
+    target_link_libraries( test_mesh_partition PUBLIC ${VTK_LIBRARIES} )
+endif()

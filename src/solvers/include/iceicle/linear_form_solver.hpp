@@ -2,6 +2,8 @@
 /// @author Gianni Absillis (gabsill@ncsu.edu)
 
 #pragma once
+#include "iceicle/anomaly_log.hpp"
+#include "iceicle/fe_definitions.hpp"
 #include <iceicle/fespace/fespace.hpp>
 #include <iceicle/fe_function/fespan.hpp>
 #include <iceicle/element_linear_solve.hpp>
@@ -50,8 +52,12 @@ namespace iceicle::solvers {
             fespan<T, LayoutPolicy, AccessorPolicy> u
         ) -> void {
             // TODO: generalize to CG and remove reliance on ElementLinearSolve
-            std::vector<T> u_local_data(fespace.dg_map.max_el_size_reqirement(neq));
-            std::vector<T> res_local_data(fespace.dg_map.max_el_size_reqirement(neq));
+            std::vector<T> u_local_data(fespace.dofs.max_el_size_reqirement(neq));
+            std::vector<T> res_local_data(fespace.dofs.max_el_size_reqirement(neq));
+            if constexpr (std::remove_reference_t<decltype(fespace)>::conformity_class() != l2_conformity(ndim)){
+                util::AnomalyLog::log_anomaly("Only implemented for L2 elements");
+                return;
+            }
             std::for_each(fespace.elements.begin(), fespace.elements.end(), 
                 [&](const FiniteElement<T, IDX, ndim> &el){
                     // form the element local views
