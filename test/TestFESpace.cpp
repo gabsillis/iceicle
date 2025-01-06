@@ -311,7 +311,7 @@ TEST(test_fespace, test_dg_projection){
     Projection<double, int, ndim, neq> projection{projfunc};
 
     T *u = new T[fespace.ndof() * neq](); // 0 initialized
-    fe_layout_right felayout{fespace.dofs, tmp::to_size<neq>{}};
+    fe_layout_right felayout{fespace, tmp::to_size<neq>{}};
     fespan u_span{u, felayout};
 
     // solve the projection 
@@ -466,7 +466,7 @@ TEST(test_fespace, test_dg_projection_tri){
     Projection<double, int, ndim, neq> projection{projfunc};
 
     T *u = new T[fespace.ndof() * neq](); // 0 initialized
-    fe_layout_right felayout{fespace.dofs, tmp::to_size<neq>{}};
+    fe_layout_right felayout{fespace, tmp::to_size<neq>{}};
     fespan u_span{u, felayout};
 
     // solve the projection 

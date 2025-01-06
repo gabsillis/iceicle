@@ -135,7 +135,7 @@ public:
         static constexpr int nstag = 3;
 
         // create view of the residual using the same Layout as u 
-        fespan res{res_data.data(), u.get_layout()};
+        fespan res{res_data.data(), exclude_ghost(u.get_layout())};
 
         // calculate the timestep 
         T dt = timestep(fespace, disc, u);
@@ -155,7 +155,7 @@ public:
         std::vector<T> du(max_ndof);
 
         // function to get the residual for a single stage
-        auto stage_residual = [&](fespan<T, LayoutPolicy> u_stage, fespan<T, LayoutPolicy> res_stage){
+        auto stage_residual = [&](fespan<T, LayoutPolicy> u_stage, auto res_stage){
             // zero out
             res_stage = 0;
 
@@ -206,10 +206,10 @@ public:
         };
 
         // describe fespans for intermediate states 
-        fespan res1{res1_data.data(), u.get_layout()};
-        fespan res2{res2_data.data(), u.get_layout()};
-        fespan res3{res3_data.data(), u.get_layout()};
-        fespan u_old{u_stage_data.data(), u.get_layout()};
+        fespan res1{res1_data.data(), exclude_ghost(u.get_layout())};
+        fespan res2{res2_data.data(), exclude_ghost(u.get_layout())};
+        fespan res3{res3_data.data(), exclude_ghost(u.get_layout())};
+        fespan u_old{u_stage_data.data(), exclude_ghost(u.get_layout())};
 
 
         copy_fespan(u, u_old);
@@ -247,7 +247,7 @@ public:
         // call initial residual to get initial wavespeeds for dt 
         {
             // create view of the residual using the same Layout as u 
-            fespan res{res_data.data(), u.get_layout()};
+            fespan res{res_data.data(), exclude_ghost(u.get_layout())};
 
             // get the rhs
             form_residual(fespace, disc, u, res);

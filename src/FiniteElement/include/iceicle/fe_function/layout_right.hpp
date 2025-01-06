@@ -1,6 +1,8 @@
 #pragma once
 #include "iceicle/iceicle_mpi_utils.hpp"
+#include "iceicle/tmp_utils.hpp"
 #include <iceicle/fe_function/layout_enums.hpp>
+#include <iceicle/fespace/fespace.hpp>
 #include <iceicle/basis/dof_mapping.hpp>
 #include <stdexcept>
 #include <type_traits>
@@ -124,29 +126,65 @@ namespace iceicle {
         // ================
         // = Constructors =
         // ================
-        fe_layout_right(const MapType& map_ref) 
-        noexcept requires(!is_dynamic_size<vextent>::value) 
-        : map_ref{map_ref} {}
+        
+        /// @brief Constructor from the three required mappings to define the layout 
+        /// with static extent
+        /// @param map_ref the element-wise dof mapping for the index set of this mpi rank 
+        /// @param element_partitioning a map of parallel indices between mpi ranks for the elements
+        /// @param dof_partitioning a map of parallel indices between mpi ranks for the dofs 
+        /// @param ghost_arg set to true to include degrees of freedom corresponding to interprocess chost elements
+        fe_layout_right(const MapType& map_ref, const pindex_map<IDX>& element_partitioning,
+                const pindex_map<IDX>& dof_partitioning,
+                std::integral_constant<bool, include_ghost> ghost_arg = std::false_type{}) 
+        noexcept requires( !is_dynamic_size<vextent>::value )
+        : map_ref{map_ref}, element_partitioning{element_partitioning}, dof_partitioning{dof_partitioning}
+        {}
 
-        /// @brief integral constant for argument deduction
-        fe_layout_right(const MapType& map_ref, std::integral_constant<std::size_t, vextent>,
+        /// @brief Constructor from the three required mappings to define the layout 
+        /// with runtime size vector component extent
+        /// @param map_ref the element-wise dof mapping for the index set of this mpi rank 
+        /// @param element_partitioning a map of parallel indices between mpi ranks for the elements
+        /// @param dof_partitioning a map of parallel indices between mpi ranks for the dofs 
+        /// @param ghost_arg set to true to include degrees of freedom corresponding to interprocess chost elements
+        fe_layout_right(const MapType& map_ref, const pindex_map<IDX>& element_partitioning,
+                const pindex_map<IDX>& dof_partitioning, index_type nv,
+                std::integral_constant<bool, include_ghost> ghost_arg = std::false_type{}) 
+        noexcept requires( is_dynamic_size<vextent>::value )
+        : map_ref{map_ref}, element_partitioning{element_partitioning}, dof_partitioning{dof_partitioning}, nv_d{nv}
+        {}
+
+        /// @brief Constructor from the three required mappings to define the layout 
+        /// with integral constant for argument deduction
+        /// @param map_ref the element-wise dof mapping for the index set of this mpi rank 
+        /// @param element_partitioning a map of parallel indices between mpi ranks for the elements
+        /// @param dof_partitioning a map of parallel indices between mpi ranks for the dofs 
+        /// @param ghost_arg set to true to include degrees of freedom corresponding to interprocess chost elements
+        fe_layout_right(const MapType& map_ref, const pindex_map<IDX>& element_partitioning,
+                const pindex_map<IDX>& dof_partitioning,
+                std::integral_constant<std::size_t, vextent>,
                 std::integral_constant<bool, include_ghost> ghost_arg = std::false_type{})
         noexcept requires(!is_dynamic_size<vextent>::value) 
-        : map_ref{map_ref} {}
+        : map_ref{map_ref}, element_partitioning{element_partitioning}, dof_partitioning{dof_partitioning} {}
 
-        fe_layout_right(const MapType& map_ref, index_type nv,
-                std::integral_constant<bool, include_ghost> ghost_arg = std::false_type{})
-
-        noexcept requires(is_dynamic_size<vextent>::value) 
-        : map_ref{map_ref}, nv_d{nv} {}
+        /// @brief construct a layout to map the degrees of freedom of the given FESpace 
+        /// with integral constant for argument deduction
+        /// @param fespace the finite element space 
+        template< class T, int conformity, int ndim >
+        fe_layout_right(
+            const FESpace<T, IDX, ndim, conformity>& fespace,
+            std::integral_constant<std::size_t, vextent>,
+            std::integral_constant<bool, include_ghost> ghost_arg = std::false_type{}
+        ) : map_ref{fespace.dofs}, element_partitioning{fespace.meshptr->element_partitioning}, 
+            dof_partitioning{fespace.dof_partitioning} {}
 
         fe_layout_right(const fe_layout_right<IDX, dof_mapping_type, vextent, include_ghost>& other) noexcept = default;
         fe_layout_right(fe_layout_right<IDX, dof_mapping_type, vextent, include_ghost>&& other) noexcept = default;
 
-        fe_layout_right<IDX, dof_mapping_type, vextent, include_ghost>& operator=(
-                const fe_layout_right<IDX, dof_mapping_type, vextent, include_ghost>& other) noexcept = default;
-        fe_layout_right<IDX, dof_mapping_type, vextent, include_ghost>& operator=(
-                fe_layout_right<IDX, dof_mapping_type, vextent, include_ghost>&& other) noexcept = default;
+        // reference members can't assign
+//         fe_layout_right<IDX, dof_mapping_type, vextent, include_ghost>& operator=(
+//                 const fe_layout_right<IDX, dof_mapping_type, vextent, include_ghost>& other) noexcept = default;
+//         fe_layout_right<IDX, dof_mapping_type, vextent, include_ghost>& operator=(
+//                 fe_layout_right<IDX, dof_mapping_type, vextent, include_ghost>&& other) noexcept = default;
 
         // ==============
         // = Properties =
@@ -253,20 +291,53 @@ namespace iceicle {
         }
     };
 
-    // deduction guides
-    template<class IDX, class MapT>
-    fe_layout_right(const MapT&, IDX nv) -> fe_layout_right<IDX, MapT, dynamic_ncomp, false>;
-    template<class IDX, class MapT, bool include_ghost>
-    fe_layout_right(const MapT&, IDX nv, std::integral_constant<bool, include_ghost>)
-    -> fe_layout_right<IDX, MapT, dynamic_ncomp, include_ghost>;
+    /// @brief cast the layout to a an index subset that excludes ghost interprocess elements
+    /// @param layout the layout to cast
+    template<class IDX, class MapT, std::size_t vextent, bool include_ghost>
+    auto exclude_ghost(fe_layout_right<IDX, MapT, vextent, include_ghost> layout)
+    noexcept -> fe_layout_right<IDX, MapT, vextent, false> 
+    {
+        if constexpr(vextent == dynamic_ncomp){
+            return fe_layout_right{layout.map_ref, layout.element_partitioning,
+                layout.dof_partitioning, layout.nv(), std::false_type{}};
+        } else {
+            return fe_layout_right{layout.map_ref, layout.element_partitioning,
+                layout.dof_partitioning, tmp::to_size<vextent>{}, std::false_type{}};
+        }
+    }
 
-    template<class MapT, std::size_t vextent>
-    fe_layout_right(const MapT&, std::integral_constant<std::size_t, vextent>)
-        -> fe_layout_right<typename MapT::index_type, MapT, vextent, false>; 
-    template<class MapT, std::size_t vextent, bool include_ghost>
-    fe_layout_right(const MapT&, std::integral_constant<std::size_t, vextent>,
-            std::integral_constant<bool, include_ghost>)
-        -> fe_layout_right<typename MapT::index_type, MapT, vextent, include_ghost>; 
+    // ====================
+    // = Deduction Guides =
+    // ====================
+
+    // dynamic extent, no ghost
+    template<class IDX, class MapT>
+    fe_layout_right(const MapT&, IDX nv, const pindex_map<IDX>&, const pindex_map<IDX>&, IDX)
+    -> fe_layout_right<IDX, MapT, dynamic_ncomp, false>;
+
+    // static extent, no ghost
+    template<class IDX, class MapT, std::size_t vextent>
+    fe_layout_right(const MapT&, const pindex_map<IDX>&, const pindex_map<IDX>&,
+            std::integral_constant<std::size_t, vextent>) 
+    -> fe_layout_right<IDX, MapT, vextent, false>;
+
+    // static extent, ghost option
+    template<class IDX, class MapT, std::size_t vextent, bool use_ghost>
+    fe_layout_right(const MapT&, const pindex_map<IDX>&, const pindex_map<IDX>&,
+            std::integral_constant<std::size_t, vextent>, std::integral_constant<bool, use_ghost>) 
+    -> fe_layout_right<IDX, MapT, vextent, use_ghost>;
+
+    // fespace constructor static extent, no ghost
+    template<class T, class IDX, int ndim, int conformity, std::size_t vextent>
+    fe_layout_right(const FESpace<T, IDX, ndim, conformity>&,
+            std::integral_constant<std::size_t, vextent>)
+    -> fe_layout_right<IDX, dof_map<IDX, ndim, conformity>, vextent, false>;
+
+    // fespace constructor static extent, ghost option
+    template<class T, class IDX, int ndim, int conformity, std::size_t vextent, bool use_ghost>
+    fe_layout_right(const FESpace<T, IDX, ndim, conformity>&,
+            std::integral_constant<std::size_t, vextent>, std::integral_constant<bool, use_ghost>) 
+    -> fe_layout_right<IDX, dof_map<IDX, ndim, conformity>, vextent, use_ghost>;
 
     // === Type Aliases for clarity ===
 

@@ -50,8 +50,8 @@ int main(int argc, char *argv[]){
         cli_option{"ivis", "the number of timesteps between outputs", parse_type<IDX>{}},
         cli_option{"dt", "the timestep", parse_type<T>{}}, 
         cli_option{"ddgic_mult", "multiplier for ddgic", parse_type<T>{}}, 
-        cli_option{"fo", "fourier number", parse_type<T>{}}
-//        cli_flag{"interior_penalty", "enable interior penalty instead of ddg"}
+        cli_option{"fo", "fourier number", parse_type<T>{}},
+        cli_flag{"interior_penalty", "enable interior penalty instead of ddg"}
     );
     if(cli_args["help"]){
         cli_args.print_options(std::cout);
@@ -85,9 +85,9 @@ int main(int argc, char *argv[]){
             [](const T *x, T *out){
                 out[0] = 0.0;
         });
-        // disc.interior_penalty = cli_args["interior_penalty"];
+        disc.interior_penalty = cli_args["interior_penalty"];
 
-        fe_layout_right u_layout{fespace.dofs, std::integral_constant<std::size_t, neq>{}};
+        fe_layout_right u_layout{fespace, std::integral_constant<std::size_t, neq>{}, std::true_type{}};
         std::vector<T> u_data(u_layout.size());
         fespan u{u_data.data(), u_layout};
 

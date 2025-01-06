@@ -158,15 +158,15 @@ namespace iceicle {
         /** @brief maps local dofs to global dofs */
         dof_map<IDX, ndim, conformity> dofs;
 
+        /// @brief the parallel index partitioning of the dofs
+        pindex_map<IDX> dof_partitioning;
+
         /** @brief the mapping of faces connected to each node */
         util::crs<IDX> fac_surr_nodes;
 
         /** @brief the mapping of elements connected to each node */
         util::crs<IDX, IDX> el_surr_nodes;
 
-        /// @brief Arrays of finite elements for every rank that contains 
-        /// face neighboring elements
-        std::vector< std::vector< ElementType > > comm_elements;
 
         // default constructor
         FESpace() = default;
@@ -253,8 +253,30 @@ namespace iceicle {
           all_elements{generate_uniform_order_elements(basis_type, quadrature_type, basis_order_arg)},
           elements{all_elements.begin(), all_elements.begin() 
               + meshptr->element_partitioning.owned_range_size(mpi::mpi_world_rank())},
-          dofs{elements}, comm_elements(mpi::mpi_world_size())
+          dofs{elements}
         {
+            // create a partitioning for the dofs
+            {
+                IDX my_ndof = dofs.size();
+                std::vector<IDX> offsets{0};
+                std::vector<IDX> p_indices(my_ndof);
+                std::unordered_map< IDX, IDX > inv_p_indices{};
+                for(int irank = 0; irank < mpi::mpi_world_size(); ++irank){
+                    IDX ndof = my_ndof;
+#ifdef ICEICLE_USE_MPI
+                    MPI_Bcast(&ndof, 1, mpi_get_type(ndof), irank, MPI_COMM_WORLD);
+                    offsets.push_back(offsets[irank] + ndof);
+#endif
+                    if(irank == mpi::mpi_world_rank()){
+                        std::iota(p_indices.begin(), p_indices.end(), offsets[irank]);
+                        for(IDX lidx = 0; lidx < p_indices.size(); ++lidx){
+                            inv_p_indices[p_indices[lidx]] = lidx;
+                        }
+                    }
+                }
+                dof_partitioning = pindex_map{p_indices, inv_p_indices, offsets};
+            }
+
             // Generate the Trace Spaces
             traces.reserve(meshptr->faces.size());
             for(const auto& fac : meshptr->faces){
@@ -350,7 +372,7 @@ namespace iceicle {
         /// @param meshptr pointer to the mesh
         FESpace(MeshType *meshptr) 
         requires(conformity == h1_conformity(ndim))
-        : meshptr(meshptr), elements{}, dofs{meshptr->conn_el}{
+        : meshptr(meshptr), elements{}, dofs{meshptr->conn_el}, dof_partitioning{meshptr->node_partitioning}{
             
             // Generate the Finite Elements
             elements.reserve(meshptr->nelem());

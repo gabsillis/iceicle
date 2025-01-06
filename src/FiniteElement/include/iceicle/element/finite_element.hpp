@@ -17,7 +17,6 @@
 #include <iceicle/linalg/linalg_utils.hpp>
 #include <span>
 #include <vector>
-
 #include <mdspan/mdspan.hpp>
 
 namespace iceicle {

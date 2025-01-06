@@ -1,5 +1,7 @@
 #include "iceicle/element/reference_element.hpp"
+#include "iceicle/iceicle_mpi_utils.hpp"
 #include "iceicle/tmp_utils.hpp"
+#include "iceicle/disc/l2_error.hpp"
 #include <cmath>
 #include <gtest/gtest.h>
 #include <iceicle/fespace/fespace.hpp>
@@ -8,6 +10,7 @@
 #include <iceicle/disc/projection.hpp>
 #include <iceicle/linear_form_solver.hpp>
 #include <mpi.h>
+#include <string>
 
 using namespace NUMTOOL::TENSOR::FIXED_SIZE;
 using namespace iceicle;
@@ -52,7 +55,7 @@ TEST(test_projection, test_l2) {
     if(myrank == 0){
         // === set up our data storage and data view ===
         std::vector<double> u_serial_data(serial_fespace.ndof() * neq);
-        fe_layout_right u_serial_layout{serial_fespace.dofs, tmp::to_size<neq>{}};
+        fe_layout_right u_serial_layout{serial_fespace, tmp::to_size<neq>{}};
         fespan u_serial{u_serial_data, u_serial_layout};
 
         // === perform the projection ===
@@ -60,13 +63,17 @@ TEST(test_projection, test_l2) {
             solvers::LinearFormSolver projection_solver{serial_fespace, projection};
             projection_solver.solve(u_serial);
         }
+
+        std::function<void(double*, double*)> exact = [projfunc](double *x, double * out){ projfunc(x, out); };
+        serial_l2_error = l2_error(exact, serial_fespace, u_serial);
     }
+    MPI_Bcast(&serial_l2_error, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
 
     // ========================================
     // = Parallel version of same computation =
     // ========================================
 
-    AbstractMesh<double, int, 2> pmesh{partition_mesh(mesh)};
+    AbstractMesh pmesh{partition_mesh(mesh)};
     FESpace parallel_fespace{&mesh, FESPACE_ENUMS::FESPACE_BASIS_TYPE::LAGRANGE,
     FESPACE_ENUMS::FESPACE_QUADRATURE::GAUSS_LEGENDRE, tmp::compile_int<3>{}};
 
@@ -77,7 +84,7 @@ TEST(test_projection, test_l2) {
     std::vector<double> u_parallel_data(parallel_fespace.ndof() * neq); 
     // in our view for projection we do not include ghost dofs 
     // (this is the default but we explicitly use std::false_type for clarity)
-    fe_layout_right u_parallel_layout{parallel_fespace.dofs, tmp::to_size<neq>{}, std::false_type{}};
+    fe_layout_right u_parallel_layout{parallel_fespace, tmp::to_size<neq>{}, std::false_type{}};
     fespan u_parallel{u_parallel_data, u_parallel_layout};
 
     // === perform the projection ===
@@ -85,4 +92,10 @@ TEST(test_projection, test_l2) {
         solvers::LinearFormSolver projection_solver{parallel_fespace, projection};
         projection_solver.solve(u_parallel);
     }
+    std::function<void(double*, double*)> exact = [projfunc](double *x, double * out){ projfunc(x, out); };
+    double parallel_l2_error = l2_error(exact, parallel_fespace, u_parallel);
+
+
+    SCOPED_TRACE("MPI rank = " + std::to_string(mpi::mpi_world_rank()));
+    ASSERT_NEAR(serial_l2_error, parallel_l2_error, 1e-10);
 }

@@ -216,8 +216,11 @@ namespace iceicle {
                 return *this;
             }
 
-            /** @brief get a const reference too the layout policy */
-            constexpr const LayoutPolicy &get_layout() const { return _layout; }
+            /** @brief get a const reference to the layout policy */
+            constexpr const LayoutPolicy& get_layout() const { return _layout; }
+
+            /** @brief get a const reference to the accessor policy */
+            constexpr const AccessorPolicy& get_accessor() const { return _accessor; }
 
             /**
              * @brief get the norm of the vector data components 
@@ -351,6 +354,16 @@ namespace iceicle {
             }
         }
     }
+
+    /** 
+     * @brief cast the view u, to one that excludes the additional dofs from interprocess ghost elements 
+     * This ensures that the span meets the invariants enforced for writeability
+     * @param u the data view to cast 
+     * @return a new fespan with over the dofs without the interprocess ghost elements
+     */
+    template<class T, class LayoutPolicy, class AccessorPolicy>
+    auto exclude_ghost(fespan<T, LayoutPolicy, AccessorPolicy> u)
+    { return fespan{u.data(), exclude_ghost(u.get_layout()), u.get_accessor()}; }
 
     /**
      * @brief dofspan represents a non-owning view for the data over a set of degreees of freedom 

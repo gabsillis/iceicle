@@ -44,7 +44,7 @@ namespace iceicle {
     T l2_error(
         std::function<void(T*, T*)> exact_sol,
         FESpace<T, IDX, ndim> &fespace,
-        fespan<T, uLayoutPolicy, uAccessorPolicy> &fedata
+        fespan<T, uLayoutPolicy, uAccessorPolicy> fedata
     ) {
         using Element = FiniteElement<T, IDX, ndim>;
         using Point = MATH::GEOMETRY::Point<T, ndim>;
@@ -120,7 +120,7 @@ namespace iceicle {
     T l1_error(
         std::function<void(T*, T*)> exact_sol,
         FESpace<T, IDX, ndim> &fespace,
-        fespan<T, uLayoutPolicy, uAccessorPolicy> &fedata
+        fespan<T, uLayoutPolicy, uAccessorPolicy> fedata
     ) {
         using Element = FiniteElement<T, IDX, ndim>;
         using Point = MATH::GEOMETRY::Point<T, ndim>;
@@ -199,7 +199,7 @@ namespace iceicle {
     std::vector<T> linf_error(
         std::function<void(T*, T*)> exact_sol,
         FESpace<T, IDX, ndim> &fespace,
-        fespan<T, uLayoutPolicy, uAccessorPolicy> &fedata
+        fespan<T, uLayoutPolicy, uAccessorPolicy> fedata
     ) {
         using Element = FiniteElement<T, IDX, ndim>;
         using Point = MATH::GEOMETRY::Point<T, ndim>;
