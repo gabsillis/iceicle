@@ -112,7 +112,7 @@ namespace iceicle {
         -> int 
         {
             return std::distance(owned_offsets.begin(), 
-                std::lower_bound(owned_offsets.begin(), owned_offsets.end(), index)) - 1;
+                std::lower_bound(owned_offsets.begin(), owned_offsets.end(), index + 1)) - 1;
         }
 
         /// @brief the size of the range of pindices that are owned by the given rank
@@ -706,8 +706,9 @@ namespace iceicle {
             std::vector<IDX> ldof_cols(nelem_local + 1);
             // first count up the number of dofs for each element
             ldof_cols[0] = 0;
-            for(IDX ielem_p : el_part.owned_pindex_range(myrank)){
-                IDX ielem_local = el_part.inv_p_indices.at(ielem_p);
+            for(IDX ielem_local = 0; ielem_local < el_part.p_indices.size();
+                    ++ielem_local){
+                IDX ielem_p = el_part.p_indices[ielem_local];
                 ldof_cols[ielem_local + 1] = gdofs.ndof_el(ielem_p);
             }
             // then accumulate
