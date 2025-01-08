@@ -429,19 +429,23 @@ namespace iceicle {
 
             // find the interior faces
             // if elements share at least ndim points, then they have a face
-            for(IDX ielem = 0; ielem < nelem(); ++ielem){
+            for(IDX ielem = 0; ielem < nelem_owned(); ++ielem){
                 int max_faces = el_transformations[ielem]->nfac;
                 std::vector<IDX> connected_elements;
                 connected_elements.reserve(max_faces);
 
                 // loop through elements that share a node
                 for(IDX inode : conn_el.rowspan(ielem)){
-                    for(auto jelem_iter = std::lower_bound(elsup.rowspan(inode).begin(), elsup.rowspan(inode).end(), ielem);
+                    for(auto jelem_iter = std::lower_bound(elsup.rowspan(inode).begin(),
+                                elsup.rowspan(inode).end(), ielem);
                             jelem_iter != elsup.rowspan(inode).end(); ++jelem_iter){
                         IDX jelem = *jelem_iter;
 
                         // skip the cases that would lead to duplicate or boundary faces
-                        if( ielem == jelem || std::ranges::find(connected_elements, jelem) != std::ranges::end(connected_elements) )
+                        if( jelem >= nelem_owned()
+                            || ielem == jelem 
+                            || std::ranges::find(connected_elements, jelem) 
+                                != std::ranges::end(connected_elements))
                             continue; 
 
                         // try making the face that is the intersection of the two elements
@@ -1061,6 +1065,12 @@ namespace iceicle {
         [[nodiscard]] inline constexpr 
         auto nelem() const noexcept -> IDX
         { return conn_el.nelem(); }
+
+        /// @brief get the number of elements owned by this process 
+        [[nodiscard]] inline constexpr 
+        auto nelem_owned() const noexcept 
+        -> IDX 
+        { return element_partitioning.owned_range_size(mpi::mpi_world_rank()); }
 
         /// @brief update the element coordinate data to match the coord array 
         /// by using the element connectivity

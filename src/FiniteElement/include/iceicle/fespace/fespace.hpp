@@ -240,13 +240,16 @@ namespace iceicle {
          * @param basis_type enumeration of what basis to use 
          * @param quadrature_type enumeration of what quadrature rule to use 
          * @param basis_order_arg for template argument deduction of the basis order
+         * @param serial_tag set to true to build an fespace only on this process
+         *        and ignore communication
          */
         template<int basis_order>
         FESpace(
             MeshType *meshptr,
             FESPACE_ENUMS::FESPACE_BASIS_TYPE basis_type,
             FESPACE_ENUMS::FESPACE_QUADRATURE quadrature_type,
-            tmp::compile_int<basis_order> basis_order_arg
+            tmp::compile_int<basis_order> basis_order_arg,
+            bool serial_tag = false
         ) requires( conformity == l2_conformity(ndim) ) 
         // the only case we currently have general mappings for
         : meshptr(meshptr), ref_el_map{}, ref_trace_map{}, 
@@ -256,7 +259,9 @@ namespace iceicle {
           dofs{elements}
         {
             // create a partitioning for the dofs
-            {
+            if (serial_tag){
+                dof_partitioning = pindex_map<IDX>::create_serial(elements.size());
+            } else {
                 IDX my_ndof = dofs.size();
                 std::vector<IDX> offsets{0};
                 std::vector<IDX> p_indices(my_ndof);

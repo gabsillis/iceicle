@@ -227,6 +227,9 @@ namespace iceicle {
                 el_partition.p_indices.push_back(ielem);
                 el_partition.inv_p_indices[ielem] 
                     =el_partition.p_indices.size() - 1;
+#ifdef ICEICLE_USE_MPI
+                MPI_Recv(&ielem, 1, mpi_get_type(ielem), 0, 0, MPI_COMM_WORLD, &status);
+#endif
             }
         }
 

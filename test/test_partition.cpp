@@ -11,6 +11,7 @@
 #include <iceicle/linear_form_solver.hpp>
 #include <mpi.h>
 #include <string>
+#include <type_traits>
 
 using namespace NUMTOOL::TENSOR::FIXED_SIZE;
 using namespace iceicle;
@@ -37,8 +38,6 @@ TEST(test_projection, test_l2) {
         Tensor<int, 2>{10, 7},
         1);
 
-    FESpace serial_fespace{&mesh, FESPACE_ENUMS::FESPACE_BASIS_TYPE::LAGRANGE,
-    FESPACE_ENUMS::FESPACE_QUADRATURE::GAUSS_LEGENDRE, tmp::compile_int<3>{}};
 
     // === define our exact solution that we will l2 project onto the space ===
     static constexpr int neq = 2;
@@ -53,6 +52,11 @@ TEST(test_projection, test_l2) {
 
     double serial_l2_error; // will bcast to this from rank 0
     if(myrank == 0){
+
+        FESpace serial_fespace{&mesh, FESPACE_ENUMS::FESPACE_BASIS_TYPE::LAGRANGE,
+            FESPACE_ENUMS::FESPACE_QUADRATURE::GAUSS_LEGENDRE, 
+            tmp::compile_int<3>{}, true};
+
         // === set up our data storage and data view ===
         std::vector<double> u_serial_data(serial_fespace.ndof() * neq);
         fe_layout_right u_serial_layout{serial_fespace, tmp::to_size<neq>{}};
