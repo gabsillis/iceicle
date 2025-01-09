@@ -59,6 +59,9 @@ TEST(test_projection, test_l2) {
     // Linear form of our rhs
     Projection<double, int, 2, neq> projection{projfunc};
 
+    int color = (myrank == 0) ? 0 : 1;
+    MPI_Comm serial_comm;
+    MPI_Comm_split(MPI_COMM_WORLD, color, myrank, &serial_comm);
     double serial_l2_error; // will bcast to this from rank 0
     if(myrank == 0){
 
@@ -78,7 +81,7 @@ TEST(test_projection, test_l2) {
         }
 
         std::function<void(double*, double*)> exact = [projfunc](double *x, double * out){ projfunc(x, out); };
-        serial_l2_error = l2_error(exact, serial_fespace, u_serial);
+        serial_l2_error = l2_error(exact, serial_fespace, u_serial, serial_comm);
     }
     MPI_Bcast(&serial_l2_error, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
 

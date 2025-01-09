@@ -5,6 +5,10 @@
 
 #pragma once
 
+#ifdef ICEICLE_USE_MPI 
+#include <mpi.h>
+#endif
+#include <iceicle/iceicle_mpi_utils.hpp>
 #include "Numtool/point.hpp"
 #include "iceicle/build_config.hpp"
 #include "iceicle/element/finite_element.hpp"
@@ -48,7 +52,8 @@ namespace iceicle {
     T l2_error(
         std::function<void(T*, T*)> exact_sol,
         FESpace<T, IDX, ndim> &fespace,
-        fespan<T, uLayoutPolicy, uAccessorPolicy> fedata
+        fespan<T, uLayoutPolicy, uAccessorPolicy> fedata,
+        mpi::communicator_type comm = mpi::comm_world
     ) {
         using Element = FiniteElement<T, IDX, ndim>;
         using Point = MATH::GEOMETRY::Point<T, ndim>;
@@ -110,6 +115,9 @@ namespace iceicle {
 
         T l2_sum = 0;
         for(int ieq = 0; ieq < fedata.nv(); ++ieq){ l2_sum += l2_eq[ieq]; }
+#ifdef ICEICLE_USE_MPI 
+        MPI_Allreduce(MPI_IN_PLACE, &l2_sum, 1, mpi_get_type(l2_sum), MPI_SUM, comm);
+#endif
         return std::sqrt(l2_sum);
     }
 
@@ -140,7 +148,8 @@ namespace iceicle {
     T l1_error(
         std::function<void(T*, T*)> exact_sol,
         FESpace<T, IDX, ndim> &fespace,
-        fespan<T, uLayoutPolicy, uAccessorPolicy> fedata
+        fespan<T, uLayoutPolicy, uAccessorPolicy> fedata,
+        mpi::communicator_type comm = mpi::comm_world
     ) {
         using Element = FiniteElement<T, IDX, ndim>;
         using Point = MATH::GEOMETRY::Point<T, ndim>;
@@ -203,6 +212,9 @@ namespace iceicle {
 
         T l1_sum = 0;
         for(int ieq = 0; ieq < fedata.nv(); ++ieq){ l1_sum += l1_eq[ieq]; }
+#ifdef ICEICLE_USE_MPI 
+        MPI_Allreduce(MPI_IN_PLACE, &l1_sum, 1, mpi_get_type(l1_sum), MPI_SUM, comm);
+#endif
         return l1_sum;
     }
 

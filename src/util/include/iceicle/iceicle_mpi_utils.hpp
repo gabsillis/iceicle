@@ -11,6 +11,21 @@ namespace iceicle {
 
     namespace mpi {
 
+        using communicator_type = 
+#ifdef ICEICLE_USE_MPI
+            MPI_Comm;
+#else 
+            std::size_t;
+#endif
+
+        inline static constexpr communicator_type comm_world = 
+#ifdef ICEICLE_USE_MPI
+            MPI_COMM_WORLD;
+#else 
+            0;
+#endif
+
+
         /// @brief broadcast a contiguous range using MPI_Bcast  
         /// After calling this the range on all processes will contain 
         /// the data of the "root"
