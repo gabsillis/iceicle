@@ -87,9 +87,8 @@ TEST(test_projection, test_l2) {
     // ========================================
 
     AbstractMesh pmesh{partition_mesh(mesh)};
-    FESpace parallel_fespace{&mesh, FESPACE_ENUMS::FESPACE_BASIS_TYPE::LAGRANGE,
+    FESpace parallel_fespace{&pmesh, FESPACE_ENUMS::FESPACE_BASIS_TYPE::LAGRANGE,
     FESPACE_ENUMS::FESPACE_QUADRATURE::GAUSS_LEGENDRE, tmp::compile_int<3>{}};
-
 
     // === set up our data storage and data view ===
 
@@ -108,6 +107,7 @@ TEST(test_projection, test_l2) {
     std::function<void(double*, double*)> exact = [projfunc](double *x, double * out){ projfunc(x, out); };
     double parallel_l2_error = l2_error(exact, parallel_fespace, u_parallel);
 
+    mpi::execute_on_rank(0, [&]{ std::cout << "l2_error serial : " << serial_l2_error << " | parallel : " << parallel_l2_error << std::endl; });
 
     SCOPED_TRACE("MPI rank = " + std::to_string(mpi::mpi_world_rank()));
     ASSERT_NEAR(serial_l2_error, parallel_l2_error, 1e-10);

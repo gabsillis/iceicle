@@ -265,15 +265,15 @@ namespace iceicle {
                 if(myrank == irank) {
                     // send p_indices to request el_transformations
                     std::size_t nelem_rank = el_partition.p_indices.size();
-                    MPI_Send(&nelem_rank, 1, mpi_get_type<std::size_t>(), 0, 0, MPI_COMM_WORLD);
-                    MPI_Send(&el_partition.p_indices.data(), nelem_rank, mpi_get_type(el_partition.p_indices.data()),
-                            0, 0, MPI_COMM_WORLD);
+                    MPI_Send(&nelem_rank, 1, mpi_get_type<std::size_t>(), 0, irank, MPI_COMM_WORLD);
+                    MPI_Send(el_partition.p_indices.data(), nelem_rank, mpi_get_type(el_partition.p_indices.data()),
+                            0, irank, MPI_COMM_WORLD);
 
                     // recieve transformation descriptions
                     std::vector<int> el_domains(nelem_rank);
                     std::vector<int> el_orders(nelem_rank);
-                    MPI_Recv( el_domains.data(), nelem_rank, MPI_INT, 0, 0, MPI_COMM_WORLD, &status );
-                    MPI_Recv( el_orders.data(), nelem_rank, MPI_INT, 0, 0, MPI_COMM_WORLD, &status );
+                    MPI_Recv( el_domains.data(), nelem_rank, MPI_INT, 0, irank, MPI_COMM_WORLD, &status );
+                    MPI_Recv( el_orders.data(), nelem_rank, MPI_INT, 0, irank, MPI_COMM_WORLD, &status );
                     for(IDX iel_local = 0; iel_local < nelem_rank; ++iel_local){
                         el_transforms.push_back(transformation_table<T, IDX, ndim>.get_transform(
                                 (DOMAIN_TYPE) el_domains[iel_local], el_orders[iel_local]));
@@ -282,10 +282,10 @@ namespace iceicle {
                 } else if(myrank == 0){
                     // get requested p_indices
                     std::size_t nelem_rank;
-                    MPI_Recv(&nelem_rank, 1, mpi_get_type(nelem_rank), irank, 0, MPI_COMM_WORLD, &status);
+                    MPI_Recv(&nelem_rank, 1, mpi_get_type(nelem_rank), irank, irank, MPI_COMM_WORLD, &status);
                     std::vector<IDX> rank_pindices(nelem_rank);
                     MPI_Recv(rank_pindices.data(), rank_pindices.size(), mpi_get_type(rank_pindices.data()), 
-                            irank, 0, MPI_COMM_WORLD, &status);
+                            irank, irank, MPI_COMM_WORLD, &status);
 
                     // send requested transformation descriptions
                     std::vector<int> el_domains(nelem_rank);
@@ -295,8 +295,8 @@ namespace iceicle {
                         el_domains[iel_local] = static_cast<int>(mesh.el_transformations[iel_global]->domain_type);
                         el_orders[iel_local] = mesh.el_transformations[iel_global]->order;
                     }
-                    MPI_Send( el_domains.data(), nelem_rank, MPI_INT, irank, 0, MPI_COMM_WORLD );
-                    MPI_Send( el_orders.data(), nelem_rank, MPI_INT, irank, 0, MPI_COMM_WORLD );
+                    MPI_Send( el_domains.data(), nelem_rank, MPI_INT, irank, irank, MPI_COMM_WORLD );
+                    MPI_Send( el_orders.data(), nelem_rank, MPI_INT, irank, irank, MPI_COMM_WORLD );
                 }
             }
         }

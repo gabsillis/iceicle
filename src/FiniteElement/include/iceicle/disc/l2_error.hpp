@@ -6,10 +6,14 @@
 #pragma once
 
 #include "Numtool/point.hpp"
+#include "iceicle/build_config.hpp"
 #include "iceicle/element/finite_element.hpp"
+#include "iceicle/fe_definitions.hpp"
 #include "iceicle/fe_function/fespan.hpp"
+#include "iceicle/geometry/geo_element.hpp"
 #include "iceicle/iceicle_mpi_utils.hpp"
 #include "iceicle/quadrature/QuadratureRule.hpp"
+#include "iceicle/quadrature/SimplexQuadrature.hpp"
 #include <algorithm>
 #include <cmath>
 #include <iceicle/fespace/fespace.hpp>
@@ -54,11 +58,26 @@ namespace iceicle {
         std::vector<T> feval(fedata.nv());
         std::vector<T> u(fedata.nv());
 
+        // make high accuracy quadrature rules
+        auto quadrule_hypercube = HypercubeGaussLegendre<T, IDX, ndim, 
+             2 * (build_config::FESPACE_BUILD_PN + build_config::FESPACE_BUILD_GEO_PN + 1)>{};
+        auto quadrule_simplex= GrundmannMollerSimplexQuadrature<T, IDX, ndim, 
+             2 * (build_config::FESPACE_BUILD_PN + build_config::FESPACE_BUILD_GEO_PN + 1)>{};
+
         // loop over quadrature points
         for(const Element &el : fespace.elements) {
-            for(int iqp = 0; iqp < el.nQP(); ++iqp) {
+            QuadratureRule<T, IDX, ndim>* quadrule;
+            switch(el.trans->domain_type){
+                case DOMAIN_TYPE::HYPERCUBE:
+                    quadrule = &quadrule_hypercube;
+                    break;
+                case DOMAIN_TYPE::SIMPLEX:
+                    quadrule = &quadrule_simplex;
+                    break;
+            }
+            for(int iqp = 0; iqp < quadrule->npoints(); ++iqp) {
                 // convert the quadrature point to the physical domain
-                const QuadraturePoint<T, ndim> quadpt = el.getQP(iqp);
+                const QuadraturePoint<T, ndim> quadpt = quadrule->getPoint(iqp);
                 Point phys_pt = el.transform(quadpt.abscisse);
 
                 // calculate the jacobian determinant
@@ -69,7 +88,8 @@ namespace iceicle {
                 exact_sol(phys_pt.data(), feval.data());
 
                 // evaluate the basis functions
-                auto bi = el.eval_basis_qp(iqp);
+                std::vector<T> bi(el.nbasis());
+                el.eval_basis(quadpt.abscisse, bi.data());
 
                 // construct the solution
                 std::fill(u.begin(), u.end(), 0.0);
@@ -131,11 +151,26 @@ namespace iceicle {
         std::vector<T> feval(fedata.nv());
         std::vector<T> u(fedata.nv());
 
+        // make high accuracy quadrature rules
+        auto quadrule_hypercube = HypercubeGaussLegendre<T, IDX, ndim, 
+             2 * (build_config::FESPACE_BUILD_PN + build_config::FESPACE_BUILD_GEO_PN + 1)>{};
+        auto quadrule_simplex= GrundmannMollerSimplexQuadrature<T, IDX, ndim, 
+             2 * (build_config::FESPACE_BUILD_PN + build_config::FESPACE_BUILD_GEO_PN + 1)>{};
+
         // loop over quadrature points
         for(const Element &el : fespace.elements) {
-            for(int iqp = 0; iqp < el.nQP(); ++iqp) {
+            QuadratureRule<T, IDX, ndim>* quadrule;
+            switch(el.trans->domain_type){
+                case DOMAIN_TYPE::HYPERCUBE:
+                    quadrule = &quadrule_hypercube;
+                    break;
+                case DOMAIN_TYPE::SIMPLEX:
+                    quadrule = &quadrule_simplex;
+                    break;
+            }
+            for(int iqp = 0; iqp < quadrule->npoints(); ++iqp) {
                 // convert the quadrature point to the physical domain
-                const QuadraturePoint<T, ndim> quadpt = el.getQP(iqp);
+                const QuadraturePoint<T, ndim> quadpt = quadrule->getPoint(iqp);
                 Point phys_pt = el.transform(quadpt.abscisse);
 
                 // calculate the jacobian determinant
@@ -146,7 +181,8 @@ namespace iceicle {
                 exact_sol(phys_pt.data(), feval.data());
 
                 // evaluate the basis functions
-                auto bi = el.eval_basis_qp(iqp);
+                std::vector<T> bi(el.nbasis());
+                el.eval_basis(quadpt.abscisse, bi.data());
 
                 // construct the solution
                 std::fill(u.begin(), u.end(), 0.0);
