@@ -249,7 +249,7 @@ namespace iceicle {
             FESPACE_ENUMS::FESPACE_BASIS_TYPE basis_type,
             FESPACE_ENUMS::FESPACE_QUADRATURE quadrature_type,
             tmp::compile_int<basis_order> basis_order_arg,
-            bool serial_tag = false
+            mpi::communicator_type comm = mpi::comm_world
         ) requires( conformity == l2_conformity(ndim) ) 
         // the only case we currently have general mappings for
         : meshptr(meshptr), ref_el_map{}, ref_trace_map{}, 
@@ -259,28 +259,35 @@ namespace iceicle {
           dofs{elements}
         {
             // create a partitioning for the dofs
-            if (serial_tag){
-                dof_partitioning = pindex_map<IDX>::create_serial(elements.size());
-            } else {
-                IDX my_ndof = dofs.size();
-                std::vector<IDX> offsets{0};
-                std::vector<IDX> p_indices(my_ndof);
-                std::unordered_map< IDX, IDX > inv_p_indices{};
-                for(int irank = 0; irank < mpi::mpi_world_size(); ++irank){
-                    IDX ndof = my_ndof;
+            IDX my_ndof = dofs.size();
+            std::vector<IDX> offsets{0};
+            std::vector<IDX> p_indices(my_ndof);
+            std::unordered_map< IDX, IDX > inv_p_indices{};
+
+            int nrank, myrank;
 #ifdef ICEICLE_USE_MPI
-                    MPI_Bcast(&ndof, 1, mpi_get_type(ndof), irank, MPI_COMM_WORLD);
-                    offsets.push_back(offsets[irank] + ndof);
+            MPI_Comm_rank(comm, &myrank);
+            MPI_Comm_size(comm, &nrank);
+#else 
+            nrank = 1;
+            myrank = 0;
 #endif
-                    if(irank == mpi::mpi_world_rank()){
-                        std::iota(p_indices.begin(), p_indices.end(), offsets[irank]);
-                        for(IDX lidx = 0; lidx < p_indices.size(); ++lidx){
-                            inv_p_indices[p_indices[lidx]] = lidx;
-                        }
+
+
+            for(int irank = 0; irank < nrank; ++irank){
+                IDX ndof = my_ndof;
+#ifdef ICEICLE_USE_MPI
+                MPI_Bcast(&ndof, 1, mpi_get_type(ndof), irank, comm);
+                offsets.push_back(offsets[irank] + ndof);
+#endif
+                if(irank == myrank){
+                    std::iota(p_indices.begin(), p_indices.end(), offsets[irank]);
+                    for(IDX lidx = 0; lidx < p_indices.size(); ++lidx){
+                        inv_p_indices[p_indices[lidx]] = lidx;
                     }
                 }
-                dof_partitioning = pindex_map{p_indices, inv_p_indices, offsets};
             }
+            dof_partitioning = pindex_map{p_indices, inv_p_indices, offsets};
 
             // Generate the Trace Spaces
             traces.reserve(meshptr->faces.size());

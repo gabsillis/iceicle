@@ -37,7 +37,7 @@ namespace iceicle {
         using data_handle_type = ElementType*;
 
         constexpr reference access(data_handle_type p, std::size_t i) const noexcept {
-            return p[i];
+return p[i];
         } 
 
         constexpr data_handle_type offset(data_handle_type p, std::size_t i) const noexcept {
@@ -178,6 +178,28 @@ namespace iceicle {
             // ===========
             // = Utility =
             // ===========
+
+            inline constexpr
+            auto sync_mpi(
+                mpi::communicator_type comm = mpi::comm_world
+            ) -> void
+            requires(LayoutPolicy::read_only())
+            {
+                const pindex_map<index_type> dof_partitioning = _layout.dof_partitioning;
+                
+                int nrank = mpi::rank(comm), myrank = mpi::size(comm);
+
+                // for each mpi rank, list the dofs we need to recieve
+                std::vector< std::vector< index_type > > to_recieve(nrank);
+                for(index_type lindex = dof_partitioning.owned_range_size(myrank); 
+                        lindex < dof_partitioning.n_lindex; ++lindex) {
+                    
+                }
+
+
+
+
+            }
 
             /**
              * @brief create an element local layout 

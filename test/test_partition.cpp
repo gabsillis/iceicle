@@ -2,6 +2,8 @@
 #include "iceicle/iceicle_mpi_utils.hpp"
 #include "iceicle/tmp_utils.hpp"
 #include "iceicle/disc/l2_error.hpp"
+#include <iceicle/disc/conservation_law.hpp>
+#include <iceicle/form_residual.hpp>
 #include <cmath>
 #include <gtest/gtest.h>
 #include <iceicle/fespace/fespace.hpp>
@@ -9,7 +11,9 @@
 #include <iceicle/mesh/mesh_partition.hpp>
 #include <iceicle/disc/projection.hpp>
 #include <iceicle/linear_form_solver.hpp>
+#include <iceicle/disc/burgers.hpp>
 #include <mpi.h>
+#include <numbers>
 #include <string>
 #include <type_traits>
 
@@ -67,7 +71,7 @@ TEST(test_projection, test_l2) {
 
         FESpace serial_fespace{&mesh, FESPACE_ENUMS::FESPACE_BASIS_TYPE::LAGRANGE,
             FESPACE_ENUMS::FESPACE_QUADRATURE::GAUSS_LEGENDRE, 
-            tmp::compile_int<3>{}, true};
+            tmp::compile_int<3>{}, serial_comm};
 
         // === set up our data storage and data view ===
         std::vector<double> u_serial_data(serial_fespace.ndof() * neq);
@@ -93,7 +97,7 @@ TEST(test_projection, test_l2) {
     FESpace parallel_fespace{&pmesh, FESPACE_ENUMS::FESPACE_BASIS_TYPE::LAGRANGE,
     FESPACE_ENUMS::FESPACE_QUADRATURE::GAUSS_LEGENDRE, tmp::compile_int<3>{}};
 
-    // === set up our data storage and data view ===
+// === set up our data storage and data view ===
 
     // note this includes ghost dofs (unused)
     std::vector<double> u_parallel_data(parallel_fespace.ndof() * neq); 
@@ -114,4 +118,107 @@ TEST(test_projection, test_l2) {
 
     SCOPED_TRACE("MPI rank = " + std::to_string(mpi::mpi_world_rank()));
     ASSERT_NEAR(serial_l2_error, parallel_l2_error, 1e-10);
+}
+
+TEST(test_residual, test_heat_equation) {
+
+    // === get mpi information ===
+    int nrank, myrank;
+    MPI_Comm_rank(MPI_COMM_WORLD, &myrank);
+    MPI_Comm_size(MPI_COMM_WORLD, &nrank);
+
+    // === create a serial mesh ===
+    AbstractMesh<double, int, 2> mesh(
+        Tensor<double, 2>{0.0, 0.0},
+        Tensor<double, 2>{1.0, 1.0},
+        Tensor<int, 2>{10, 7},
+        1, 
+        Tensor<BOUNDARY_CONDITIONS, 4>{BOUNDARY_CONDITIONS::DIRICHLET, BOUNDARY_CONDITIONS::DIRICHLET,
+            BOUNDARY_CONDITIONS::DIRICHLET, BOUNDARY_CONDITIONS::DIRICHLET},
+        Tensor<int, 4>{0, 0, 0, 0}
+    );
+
+    // === set up the discretization ===
+    static constexpr int neq = 1;
+    BurgersCoefficients<double, 2> burgers_coeffs{
+        .mu = 1e-3,
+        .a = Tensor<double, 2>{0.0, 0.0},
+        .b = Tensor<double, 2>{0.0, 0.0}
+    };
+    BurgersFlux physical_flux{burgers_coeffs};
+    BurgersUpwind convective_flux{burgers_coeffs};
+    BurgersDiffusionFlux diffusive_flux{burgers_coeffs};
+    ConservationLawDDG disc{std::move(physical_flux),
+                          std::move(convective_flux),
+                          std::move(diffusive_flux)};
+    disc.field_names = std::vector<std::string>{"u"};
+    disc.residual_names = std::vector<std::string>{"residual"};
+
+    auto bc = [](const double* xarr, double *out){
+        double x = xarr[0];
+        double y = xarr[1];
+        out[0] = 1 + 0.1 * std::sin(std::numbers::pi * y);
+    };
+
+    auto ic = [](const double* xarr, double *out){
+        double x = xarr[0];
+        double y = xarr[1];
+        out[0] = std::sin(x);
+    };
+
+    int color = (myrank == 0) ? 0 : 1;
+    MPI_Comm serial_comm;
+    MPI_Comm_split(MPI_COMM_WORLD, color, myrank, &serial_comm);
+
+    // initialization linear form
+    Projection<double, int, 2, neq> projection{ic};
+
+    double res_vector_norm;
+    if(myrank == 0){
+
+        FESpace serial_fespace{&mesh, FESPACE_ENUMS::FESPACE_BASIS_TYPE::LAGRANGE,
+            FESPACE_ENUMS::FESPACE_QUADRATURE::GAUSS_LEGENDRE, 
+            tmp::compile_int<3>{}, serial_comm};
+
+        // === set up our data storage and data view ===
+        std::vector<double> u_serial_data(serial_fespace.ndof() * neq);
+        fe_layout_right u_serial_layout{serial_fespace, tmp::to_size<neq>{}};
+        fespan u_serial{u_serial_data, u_serial_layout};
+
+        // === perform the projection ===
+        {
+            solvers::LinearFormSolver projection_solver{serial_fespace, projection};
+            projection_solver.solve(u_serial);
+        }
+
+        fe_layout_right u_layout{serial_fespace, tmp::to_size<neq>{}, std::true_type{}};
+        fe_layout_right res_layout{serial_fespace, tmp::to_size<neq>{}, std::false_type{}};
+        std::vector<double> u_data(u_layout.size());
+        std::vector<double> res_data(res_layout.size());
+        fespan u{u_data, u_layout};
+        fespan res{res_data, res_layout};
+
+        solvers::form_residual(serial_fespace, disc, u, res);
+
+        res_vector_norm = res.vector_norm();
+    }
+
+    // ========================================
+    // = Parallel version of same computation =
+    // ========================================
+
+    AbstractMesh pmesh{partition_mesh(mesh)};
+    FESpace parallel_fespace{&pmesh, FESPACE_ENUMS::FESPACE_BASIS_TYPE::LAGRANGE,
+    FESPACE_ENUMS::FESPACE_QUADRATURE::GAUSS_LEGENDRE, tmp::compile_int<3>{}};
+
+    // === set up our data storage and data view ===
+    fe_layout_right u_layout{parallel_fespace, tmp::to_size<neq>{}, std::true_type{}};
+    fe_layout_right res_layout{parallel_fespace, tmp::to_size<neq>{}, std::false_type{}};
+    std::vector<double> u_data(u_layout.size());
+    std::vector<double> res_data(res_layout.size());
+    fespan u{u_data, u_layout};
+    fespan res{res_data, res_layout};
+
+    SCOPED_TRACE("MPI rank = " + std::to_string(mpi::mpi_world_rank()));
+    ASSERT_NEAR(res_vector_norm, res.vector_norm(), 1e-10);
 }

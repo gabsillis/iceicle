@@ -106,13 +106,13 @@ namespace iceicle {
         auto n_lindex() const -> size_type 
         { return p_indices.size(); }
 
-        /// @brief get the rank that owns the given index
+        /// @brief get the rank that owns the given parallel index
         [[nodiscard]] inline constexpr 
-        auto owning_rank(IDX index)
+        auto owning_rank(IDX pindex)
         -> int 
         {
             return std::distance(owned_offsets.begin(), 
-                std::lower_bound(owned_offsets.begin(), owned_offsets.end(), index + 1)) - 1;
+                std::lower_bound(owned_offsets.begin(), owned_offsets.end(), pindex + 1)) - 1;
         }
 
         /// @brief the size of the range of pindices that are owned by the given rank

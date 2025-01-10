@@ -82,6 +82,19 @@ namespace iceicle {
 #endif
         }
 
+        [[nodiscard]] inline 
+        auto rank(communicator_type comm)
+        -> int 
+        {
+#ifdef ICEICLE_USE_MPI
+            int myrank;
+            MPI_Comm_rank(comm, &myrank);
+            return myrank;
+#else 
+            return 0;
+#endif
+        }
+
         inline 
         auto mpi_world_size() -> int 
         {
@@ -95,6 +108,18 @@ namespace iceicle {
 #endif
         }
 
+        [[nodiscard]] inline 
+        auto size(communicator_type comm)
+        -> int 
+        {
+#ifdef ICEICLE_USE_MPI
+            int size;
+            MPI_Comm_size(comm, &size);
+            return size;
+#else 
+            return 1;
+#endif
+        }
         inline 
         void mpi_sync()
         {
