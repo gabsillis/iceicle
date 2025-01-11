@@ -251,6 +251,7 @@ TEST(test_residual, test_heat_equation) {
 
         res_vector_norm = res.vector_norm();
     }
+    MPI_Bcast(&res_vector_norm, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
 
     // ========================================
     // = Parallel version of same computation =

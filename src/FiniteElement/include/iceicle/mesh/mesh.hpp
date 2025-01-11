@@ -471,19 +471,22 @@ namespace iceicle {
                 auto [bc_type, bc_flag, boundary_nodes] = info;
                 // search the elements around the first node 
                 for(IDX ielem : elsup.rowspan(boundary_nodes[0])){
-                    ElementTransformation<T, IDX, ndim>* trans = el_transformations[ielem];
-                    std::span<IDX> elnodes = get_el_nodes(ielem);
-                    auto fac_info_optional = boundary_face_info(boundary_nodes, trans, elnodes);
-                    if(fac_info_optional){
-                        // make the face and add it
-                        auto [fac_domain, face_nr] = fac_info_optional.value();
-                        std::vector<IDX> face_nodes = trans->get_face_nodes(face_nr, elnodes);
-                        auto fac_opt = make_face<T, IDX, ndim>(fac_domain, trans->domain_type, trans->domain_type, 
-                            trans->order, ielem, ielem, face_nodes, face_nr, 0, 0, bc_type, bc_flag);
-                        if(fac_opt)
-                            faces.push_back(std::move(fac_opt.value()));
-                        else 
-                            util::AnomalyLog::log_anomaly("Cannot form boundary face");
+                    // make sure the element isn't a ghost element
+                    if(ielem < element_partitioning.owned_range_size(mpi::mpi_world_rank())){
+                        ElementTransformation<T, IDX, ndim>* trans = el_transformations[ielem];
+                        std::span<IDX> elnodes = get_el_nodes(ielem);
+                        auto fac_info_optional = boundary_face_info(boundary_nodes, trans, elnodes);
+                        if(fac_info_optional){
+                            // make the face and add it
+                            auto [fac_domain, face_nr] = fac_info_optional.value();
+                            std::vector<IDX> face_nodes = trans->get_face_nodes(face_nr, elnodes);
+                            auto fac_opt = make_face<T, IDX, ndim>(fac_domain, trans->domain_type, trans->domain_type, 
+                                trans->order, ielem, ielem, face_nodes, face_nr, 0, 0, bc_type, bc_flag);
+                            if(fac_opt)
+                                faces.push_back(std::move(fac_opt.value()));
+                            else 
+                                util::AnomalyLog::log_anomaly("Cannot form boundary face");
+                        }
                     }
                 }
             }
