@@ -6,6 +6,12 @@
 #include <mpi.h>
 #include <iceicle/mpi_type.hpp>
 #endif
+
+#ifdef ICEICLE_USE_PETSC 
+#include <petscsys.h>
+#endif
+
+
 #include <utility>
 namespace iceicle {
 
@@ -18,13 +24,12 @@ namespace iceicle {
             std::size_t;
 #endif
 
-        inline static constexpr communicator_type comm_world = 
+        inline static communicator_type comm_world = 
 #ifdef ICEICLE_USE_MPI
             MPI_COMM_WORLD;
 #else 
             0;
 #endif
-
 
         /// @brief broadcast a contiguous range using MPI_Bcast  
         /// After calling this the range on all processes will contain 
@@ -38,6 +43,33 @@ namespace iceicle {
 #ifdef ICEICLE_USE_MPI 
             MPI_Bcast(std::ranges::data(range), std::ranges::size(range), 
                 mpi_get_type<value_type>(), root, MPI_COMM_WORLD);
+#endif
+        }
+
+        /// @brief call the appropriate mpi initialization routine
+        /// usage init(&argc, &argv)
+        __attribute__((no_sanitize("address")))
+        inline
+        auto init(int *argc, char*** argv) 
+        -> void 
+        {
+#ifdef ICEICLE_USE_PETSC 
+            PetscInitialize(argc, argv, nullptr, nullptr);
+#elifdef ICEICLE_USE_MPI 
+            MPI_Init(argc, argv);
+#endif
+        }
+
+        /// @brief call the appropriate mpi finalize routine
+        __attribute__((no_sanitize("address")))
+        inline
+        auto finalize()
+        -> void 
+        {
+#ifdef ICEICLE_USE_PETSC
+              PetscFinalize();
+#elifdef ICEICLE_USE_MPI
+              MPI_Finalize();
 #endif
         }
 

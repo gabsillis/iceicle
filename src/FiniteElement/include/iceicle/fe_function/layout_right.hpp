@@ -233,6 +233,12 @@ namespace iceicle {
             }
         }
 
+        /// @brief get the number of global degrees of freedom
+        [[nodiscard]] inline constexpr 
+        auto ndof() const noexcept
+        -> size_type
+        { return map_ref.size(); }
+
         /// @brief get the number of degrees of freedom for the given element 
         /// @param ielem the element index
         [[nodiscard]] inline constexpr 
@@ -256,7 +262,7 @@ namespace iceicle {
         [[nodiscard]] inline constexpr 
         auto size() const noexcept 
         -> size_type 
-        { return nelem() * nv(); }
+        { return ndof() * nv(); }
 
         // ============
         // = Indexing =
@@ -288,6 +294,25 @@ namespace iceicle {
             // the global degree of freedom index
             index_type gdof = map_ref[ielem, idof];
             return gdof * nv() + iv; 
+        }
+
+        /**
+         * @brief get the result of mapping from a (idof, iv) index pair 
+         * to the global index 
+         * @param igdof the global degree of freedom index 
+         * @param iv the vector component index
+         */
+        [[nodiscard]] constexpr index_type operator[](
+            index_type igdof,
+            index_type iv
+        ) const noexcept(index_noexcept) {
+#ifndef NDEBUG
+            // Bounds checking version in debug
+            if(igdof  < 0 || igdof  >= map_ref.size()) throw std::out_of_range("Dof index out of range");
+            if(iv    < 0 || iv    >= nv()       ) throw std::out_of_range("Vector compoenent index out of range");
+#endif
+            // the global degree of freedom index
+            return igdof * nv() + iv; 
         }
     };
 

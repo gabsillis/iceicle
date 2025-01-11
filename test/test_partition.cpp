@@ -16,12 +16,14 @@
 #include <numbers>
 #include <string>
 #include <type_traits>
-
 using namespace NUMTOOL::TENSOR::FIXED_SIZE;
 using namespace iceicle;
 
+
+
 int main(int argc, char **argv){
-    MPI_Init(&argc, &argv);
+
+    mpi::init(&argc, &argv);
 //    {
 //        volatile int i = 0;
 //        char hostname[256];
@@ -33,7 +35,7 @@ int main(int argc, char **argv){
 //    }
     ::testing::InitGoogleTest(&argc, argv);
     int result = RUN_ALL_TESTS();
-    MPI_Finalize();
+    mpi::finalize();
     return result;
 }
 
@@ -120,6 +122,51 @@ TEST(test_projection, test_l2) {
     ASSERT_NEAR(serial_l2_error, parallel_l2_error, 1e-10);
 }
 
+TEST( test_fespan, test_sync ) {
+    // === get mpi information ===
+    int nrank, myrank;
+    MPI_Comm_rank(MPI_COMM_WORLD, &myrank);
+    MPI_Comm_size(MPI_COMM_WORLD, &nrank);
+
+    // === create a serial mesh ===
+    AbstractMesh<double, int, 2> mesh(
+        Tensor<double, 2>{0.0, 0.0},
+        Tensor<double, 2>{1.0, 1.0},
+        Tensor<int, 2>{10, 7},
+        1, 
+        Tensor<BOUNDARY_CONDITIONS, 4>{BOUNDARY_CONDITIONS::DIRICHLET, BOUNDARY_CONDITIONS::DIRICHLET,
+            BOUNDARY_CONDITIONS::DIRICHLET, BOUNDARY_CONDITIONS::DIRICHLET},
+        Tensor<int, 4>{0, 0, 0, 0}
+    );
+
+    static constexpr int neq = 2;
+    AbstractMesh pmesh{partition_mesh(mesh)};
+    FESpace parallel_fespace{&pmesh, FESPACE_ENUMS::FESPACE_BASIS_TYPE::LAGRANGE,
+    FESPACE_ENUMS::FESPACE_QUADRATURE::GAUSS_LEGENDRE, tmp::compile_int<3>{}};
+    fe_layout_right u_layout{parallel_fespace, tmp::to_size<neq>{}, std::true_type{}};
+    std::vector<double> u_data(u_layout.size());
+    fespan u{u_data, u_layout};
+
+    for(int igdof = 0; igdof < u.ndof(); ++igdof){
+        int pidx = u.get_pindex(igdof);
+        if(u.owning_rank(pidx) == myrank){
+            for(int iv = 0; iv < neq; ++iv){
+                u[igdof, iv] = 2 * pidx + iv;
+            }
+        }
+    }
+
+    u.sync_mpi();
+
+    
+    for(int igdof = 0; igdof < u.ndof(); ++igdof){
+        int pidx = u.get_pindex(igdof);
+        for(int iv = 0; iv < neq; ++iv){
+            ASSERT_DOUBLE_EQ((u[igdof, iv]), (double) (2 * pidx + iv));
+        }
+    }
+}
+
 TEST(test_residual, test_heat_equation) {
 
     // === get mpi information ===
@@ -159,12 +206,14 @@ TEST(test_residual, test_heat_equation) {
         double y = xarr[1];
         out[0] = 1 + 0.1 * std::sin(std::numbers::pi * y);
     };
+    disc.dirichlet_callbacks.push_back(bc);
 
     auto ic = [](const double* xarr, double *out){
         double x = xarr[0];
         double y = xarr[1];
         out[0] = std::sin(x);
     };
+
 
     int color = (myrank == 0) ? 0 : 1;
     MPI_Comm serial_comm;
@@ -218,6 +267,7 @@ TEST(test_residual, test_heat_equation) {
     std::vector<double> res_data(res_layout.size());
     fespan u{u_data, u_layout};
     fespan res{res_data, res_layout};
+    solvers::form_residual(parallel_fespace, disc, u, res);
 
     SCOPED_TRACE("MPI rank = " + std::to_string(mpi::mpi_world_rank()));
     ASSERT_NEAR(res_vector_norm, res.vector_norm(), 1e-10);

@@ -1,0 +1,4 @@
+leak:mvapich2
+leak:libpsm2.so
+leak:libmpi.so
+#leak:libevent_core-2.1.so

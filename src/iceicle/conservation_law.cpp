@@ -357,13 +357,7 @@ void setup(sol::table script_config, cli_parser cli_args) {
 
 int main(int argc, char *argv[]) {
 
-  // Initialize
-#ifdef ICEICLE_USE_PETSC
-  PetscInitialize(&argc, &argv, nullptr, nullptr);
-#elifdef ICEICLE_USE_MPI
-  /* Initialize MPI */
-  MPI_Init(&argc, &argv);
-#endif
+  mpi::init(&argc, &argv);
 
   // ===============================
   // = Command line argument setup =
@@ -433,13 +427,7 @@ int main(int argc, char *argv[]) {
   //        ndim_arg,
   //        ndim_func);
 
-#ifdef ICEICLE_USE_PETSC
-  // cleanup
-  PetscFinalize();
-#elifdef ICEICLE_USE_MPI
-  // cleanup
-  MPI_Finalize();
-#endif
+  mpi::finalize();
   AnomalyLog::handle_anomalies();
   return 0;
 }

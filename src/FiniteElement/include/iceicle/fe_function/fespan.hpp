@@ -12,6 +12,7 @@
 #include "iceicle/fe_function/node_set_layout.hpp"
 #include "iceicle/fespace/fespace.hpp"
 #include <cstdlib>
+#include <mpi.h>
 #include <ostream>
 #include <ranges>
 #include <span>
@@ -145,25 +146,59 @@ return p[i];
             /** @brief get the number of degrees of freedom for a given element represented in the layout */
             [[nodiscard]] constexpr size_type ndof(index_type ielem) const noexcept { return _layout.ndof(ielem); }
 
+            /** @brief get the number of global degrees of freedom */
+            [[nodiscard]] constexpr size_type ndof() const noexcept { return _layout.ndof(); }
+
             /** @brief get the number of vector components */
             [[nodiscard]] constexpr size_type nv() const noexcept { return _layout.nv(); }
 
             /** @brief get the static vector extent */
             [[nodiscard]] inline static constexpr std::size_t static_extent() noexcept { return LayoutPolicy::static_extent(); }
 
+            // ====================
+            // = Index Operations =
+            // ====================
+
+            /** @brief given a process-local global degree of freedom, get the parallel dof index */
+            [[nodiscard]] inline constexpr 
+            auto get_pindex(index_type igdof) const noexcept 
+            -> index_type 
+            { return _layout.dof_partitioning.p_indices[igdof]; }
+
+            /** @brief given the parallel dof index, get the mpi rank that owns this index */
+            [[nodiscard]] inline constexpr 
+            auto owning_rank(index_type pdof) const noexcept
+            -> int 
+            { return _layout.dof_partitioning.owning_rank(pdof); }
+
             // ===============
             // = Data Access =
             // ===============
 
             /** 
-             * @brief index into the data using a fe_index 
-             * @param fe_index represents the element, dof, and vector component indices 
-             * @return a reference to the data 
+             * @brief index into the data using a finite element index triple 
+             * the element index, the element local dof index, the vector component index
+             * @param ielem the element index 
+             * @param idof the element local dof index
+             * @param iv the vector component index
+             * @return a reference to the data at the given index triple
              */
             [[nodiscard]] inline constexpr
             auto operator[](index_type ielem, index_type idof, index_type iv) const
             -> reference
             { return _accessor.access(_ptr, _layout.operator[](ielem, idof, iv)); }
+
+            /** 
+             * @brief index into the data using a index pair
+             * the global dof index, the vector component index
+             * @param igdof the element local dof index
+             * @param iv the vector component index
+             * @return a reference to the data at the given index pair
+             */
+            [[nodiscard]] inline constexpr
+            auto operator[](index_type igdof, index_type iv) const
+            -> reference
+            { return _accessor.access(_ptr, _layout.operator[](igdof, iv)); }
 
             /**
              * @brief if using the default accessor, allow access to the underlying storage
@@ -179,25 +214,100 @@ return p[i];
             // = Utility =
             // ===========
 
+            /**
+             * @brief synchronize data from the owning ranks 
+             * after this call all data at each parallel dof index should match the value 
+             * on the owning rank for that parallel dof index
+             * @param comm the mpi communicator
+             */
             inline constexpr
             auto sync_mpi(
                 mpi::communicator_type comm = mpi::comm_world
             ) -> void
-            requires(LayoutPolicy::read_only())
             {
-                const pindex_map<index_type> dof_partitioning = _layout.dof_partitioning;
+                const pindex_map<index_type> &dof_partitioning = _layout.dof_partitioning;
                 
-                int nrank = mpi::rank(comm), myrank = mpi::size(comm);
+                int nrank = mpi::size(comm), myrank = mpi::rank(comm);
 
                 // for each mpi rank, list the dofs we need to recieve
                 std::vector< std::vector< index_type > > to_recieve(nrank);
+                // start loop after owned range
                 for(index_type lindex = dof_partitioning.owned_range_size(myrank); 
-                        lindex < dof_partitioning.n_lindex; ++lindex) {
-                    
+                        lindex < ndof(); ++lindex) {
+                    index_type pindex = dof_partitioning.p_indices[lindex];
+                    to_recieve[dof_partitioning.owning_rank(pindex)].push_back(pindex);
                 }
 
+                // for each mpi rank, list the dofs we need to send
+                std::vector< std::vector< index_type > > to_send(nrank);
+                std::vector< std::vector< T > > send_data(nrank);
 
+                std::vector<MPI_Request> requests;
+                for(int irank = 0; irank < nrank; ++irank){
+                    if(irank != myrank){ 
+                        requests.emplace_back();
+                        MPI_Isend(to_recieve[irank].data(), to_recieve[irank].size(), 
+                                mpi_get_type(to_recieve[irank].data()), irank, 0, comm, &requests.back());
+                    }
+                }
 
+                for(int irank = 0; irank < nrank; ++irank){
+                    if(irank != myrank){
+                        MPI_Status status;
+                        MPI_Probe(irank, 0, comm, &status);
+                        int recv_sz;
+                        MPI_Get_count(&status, mpi_get_type<index_type>(), &recv_sz);
+                        to_send[irank].resize(recv_sz);
+                        MPI_Recv(to_send[irank].data(), recv_sz, mpi_get_type<index_type>(), 
+                                irank, 0, comm, MPI_STATUS_IGNORE);
+                    }
+                }
+
+                // wait for isends
+                MPI_Waitall(requests.size(), requests.data(), MPI_STATUSES_IGNORE);
+                requests.clear();
+
+                // build the data vectors to send
+                for(int irank = 0; irank < nrank; ++irank){
+                    if(irank != myrank){
+                        send_data[irank].reserve(to_send[irank].size());
+                        for(index_type pidx : to_send[irank]){
+                            index_type igdof = dof_partitioning.inv_p_indices.at(pidx);
+                            for(int iv = 0; iv < nv(); ++iv)
+                                send_data[irank].push_back(operator[](igdof, iv));
+                        }
+
+                        requests.emplace_back();
+                        MPI_Isend(send_data[irank].data(), send_data[irank].size(),
+                                mpi_get_type(send_data[irank].data()), 
+                                irank, 1, comm, &requests.back());
+                    }
+                }
+
+                for(int irank = 0; irank < nrank; ++irank){
+                    if(irank != myrank){
+                        MPI_Status status;
+                        MPI_Probe(irank, 1, comm, &status);
+                        int recv_sz;
+                        MPI_Get_count(&status, mpi_get_type<index_type>(), &recv_sz);
+                        std::vector<T> recv_data(recv_sz);
+                        MPI_Recv(recv_data.data(), recv_sz, mpi_get_type<T>(), 
+                                irank, 1, comm, MPI_STATUS_IGNORE);
+
+                        auto recieve_it = recv_data.begin();
+                        for(index_type pidx : to_recieve[irank]){
+                            index_type igdof = dof_partitioning.inv_p_indices.at(pidx);
+                            for(int iv = 0; iv < nv(); ++iv){
+                                operator[](igdof, iv) = *recieve_it;
+                                ++recieve_it;
+                            }
+                        }
+                    }
+                }
+
+                // wait for isends
+                MPI_Waitall(requests.size(), requests.data(), MPI_STATUSES_IGNORE);
+                requests.clear();
 
             }
 

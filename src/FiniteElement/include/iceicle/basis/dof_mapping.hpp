@@ -77,7 +77,8 @@ namespace iceicle {
 
         /// @brief check that the invariants described for this class hold
         [[nodiscard]] inline constexpr 
-        auto check_invariants() -> bool 
+        auto check_invariants() const 
+        -> bool 
         {
             bool valid = true;
 
@@ -99,16 +100,17 @@ namespace iceicle {
 
         /// @brief get the size of the pindex space
         [[nodiscard]] inline constexpr 
-        auto size() const -> size_type 
+        auto size() const noexcept -> size_type 
         { return owned_offsets.back(); }
 
         /// @brief get the number of local indices 
-        auto n_lindex() const -> size_type 
+        [[nodiscard]] inline constexpr
+        auto n_lindex() const noexcept -> size_type 
         { return p_indices.size(); }
 
         /// @brief get the rank that owns the given parallel index
         [[nodiscard]] inline constexpr 
-        auto owning_rank(IDX pindex)
+        auto owning_rank(IDX pindex) const noexcept
         -> int 
         {
             return std::distance(owned_offsets.begin(), 
