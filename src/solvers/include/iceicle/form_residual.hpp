@@ -14,6 +14,7 @@
 #include "iceicle/fe_function/component_span.hpp"
 #include "iceicle/fespace/fespace.hpp"
 #include "iceicle/geometry/face.hpp"
+#include "iceicle/iceicle_mpi_utils.hpp"
 #include "iceicle/tmp_utils.hpp"
 #include <type_traits>
 
@@ -51,7 +52,9 @@ namespace iceicle::solvers {
      *
      * @param fespace the finite element space 
      * @param disc the discretization
-     * @param u_data the 
+     * @param u the current solution 
+     * @param res the residual 
+     * @param comm the multi-process communicator
      */
     template<
         class T, 
@@ -66,7 +69,8 @@ namespace iceicle::solvers {
         FESpace<T, IDX, ndim> &fespace,
         disc_class &disc,
         fespan<T, uLayoutPolicy, uAccessorPolicy> u,
-        fespan<T, resLayoutPolicy> res
+        fespan<T, resLayoutPolicy> res,
+        mpi::communicator_type comm
     )
     requires specifies_ncomp<disc_class>
     {
@@ -84,55 +88,8 @@ namespace iceicle::solvers {
         T *resL_data = new T[max_local_size];
         T *resR_data = new T[max_local_size];
 
-#ifdef ICEICLE_USE_MPI
-//         int myrank, nrank;
-//         MPI_Comm_rank(MPI_COMM_WORLD, &myrank);
-//         MPI_Comm_size(MPI_COMM_WORLD, &nrank);
-//         std::vector< std::vector< std::vector< T > > > interprocess_u(nrank);
-//         for(int irank = 0; irank < nrank; ++irank) {
-//             // we want to index by local element index on the other rank 
-//             // so we resize to the maximum of the local element indexes we know of
-//             std::vector<IDX>& recv_list = fespace.meshptr->el_recv_list[irank];
-//             IDX max_iel = (recv_list.size() == 0) ? 0 : std::ranges::max(recv_list) + 1;
-//             interprocess_u[irank].resize(max_iel);
-//         }
-// 
-//         // communicate inter-process element data 
-//         for(int irank = 0; irank < nrank; ++irank){
-//             if(irank == myrank) {
-//                 // send data to each process
-//                 for(int jrank = 0; jrank < nrank; ++jrank){
-//                     for(IDX ielem : fespace.meshptr->el_send_list[jrank]){
-//                         // set up the buffer and layout
-//                         FiniteElement<T, IDX, ndim>& el = fespace.elements[ielem];
-//                         compact_layout_right<IDX, disc_class::nv_comp> layout(el);
-//                         int size = layout.size();
-//                         std::vector<T> u_to_send(size);
-// 
-//                         // copy over the data to send into the buffer
-//                         dofspan uel{u_to_send, layout};
-//                         extract_elspan(ielem, u, uel);
-// 
-//                         // send the data
-//                         MPI_Send(u_to_send.data(), size, mpi_get_type<T>(), jrank, ielem, MPI_COMM_WORLD);
-//                     }
-//                 }
-//             } else {
-//                 for(int irecv = 0; irecv < fespace.meshptr->el_recv_list[irank].size(); ++irecv){
-//                     IDX ielem = fespace.meshptr->el_recv_list[irank][irecv];
-//                     // set up the layout for sizing
-//                     FiniteElement<T, IDX, ndim>& el = fespace.comm_elements[irank][irecv];
-//                     compact_layout_right<IDX, disc_class::nv_comp> layout(el);
-//                     int size = layout.size();
-//                     interprocess_u[irank][ielem].resize(size);
-// 
-//                     // get the data
-//                     MPI_Recv(interprocess_u[irank][ielem].data(), size, mpi_get_type<T>(), 
-//                         irank, ielem, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-//                 }
-//             }
-//         }
-#endif
+        // get the ghost element information 
+        u.sync_mpi(comm);
 
         // boundary faces 
         for(const Trace &trace : fespace.get_boundary_traces()){
@@ -140,54 +97,36 @@ namespace iceicle::solvers {
             if(trace.face->bctype == BOUNDARY_CONDITIONS::PARALLEL_COM) {
 
 #ifdef ICEICLE_USE_MPI
-//                 auto [jrank, imleft] = decode_mpi_bcflag(trace.face->bcflag);
-//                 if(imleft){
-//                     // set up compact data layouts
-//                     auto uL_layout = u.create_element_layout(trace.elL.elidx);
-//                     dofspan uL{uL_data, uL_layout};
-//                     compact_layout_right<IDX, disc_class::nv_comp> uR_layout{trace.elR};
-//                     dofspan uR{interprocess_u[jrank][trace.face->elemR], uR_layout};
-// 
-//                     auto resL_layout = res.create_element_layout(trace.elL.elidx);
-//                     dofspan resL{resL_data, resL_layout};
-//                     compact_layout_right<IDX, disc_class::nv_comp> resR_layout{trace.elR};
-//                     dofspan resR{resR_data, resR_layout};
-// 
-//                     // extract the compact values from the global u view
-//                     extract_elspan(trace.elL.elidx, u, uL);
-// 
-//                     // zero out residual 
-//                     resL = 0;
-// 
-//                     disc.trace_integral(trace, fespace.meshptr->coord, uL, uR, resL, resR);
-// 
-//                     // scatter only the left
-//                     scatter_elspan(trace.elL.elidx, 1.0, resL, 1.0, res);
-//                 } else {
-//                     compact_layout_right<IDX, disc_class::nv_comp> uL_layout{trace.elL};
-//                     dofspan uL{interprocess_u[jrank][trace.face->elemL], uL_layout};
-//                     auto uR_layout = u.create_element_layout(trace.elR.elidx);
-//                     dofspan uR{uR_data, uR_layout};
-// 
-// 
-//                     compact_layout_right<IDX, disc_class::nv_comp> resL_layout{trace.elL};
-//                     dofspan resL{resL_data, resL_layout};
-//                     auto resR_layout = u.create_element_layout(trace.elR.elidx);
-//                     dofspan resR{resR_data, resR_layout};
-// 
-//                     // extract the compact values from the global u view
-//                     extract_elspan(trace.elR.elidx, u, uR);
-// 
-//                     // zero out residual 
-//                     resR = 0;
-// 
-//                     disc.trace_integral(trace, fespace.meshptr->coord, uL, uR, resL, resR);
-// 
-//                     // scatter only the right
-//                     scatter_elspan(trace.elR.elidx, 1.0, resR, 1.0, res);
-//                 }
+                 auto [jrank, imleft] = decode_mpi_bcflag(trace.face->bcflag);
+                 // set up compact data layouts
+                 auto uL_layout = u.create_element_layout(trace.elL.elidx);
+                 dofspan uL{uL_data, uL_layout};
+                 // translate the parallel index to a local one
+                 compact_layout_right<IDX, disc_class::nv_comp> uR_layout{trace.elR};
+                 dofspan uR{uR_data, uR_layout};
+
+                 auto resL_layout = res.create_element_layout(trace.elL.elidx);
+                 dofspan resL{resL_data, resL_layout};
+                 compact_layout_right<IDX, disc_class::nv_comp> resR_layout{trace.elR};
+                 dofspan resR{resR_data, resR_layout};
+
+                 // extract the compact values from the global u view
+                 extract_elspan(trace.elL.elidx, u, uL);
+                 extract_elspan(trace.elR.elidx, u, uL);
+
+                 // zero out residual 
+                 resL = 0;
+
+                 disc.trace_integral(trace, fespace.meshptr->coord, uL, uR, resL, resR);
+                 if(imleft){
+                     // scatter only the left
+                     scatter_elspan(trace.elL.elidx, 1.0, resL, 1.0, res);
+                 } else {
+                     // scatter only the right
+                     scatter_elspan(trace.elR.elidx, 1.0, resR, 1.0, res);
+                 }
 #else 
-                util::AnomalyLog::log_anomaly(util::Anomaly{"Built without mpi, parallel communication boundary condition will not work", util::general_anomaly_tag{}});
+            util::AnomalyLog::log_anomaly(util::Anomaly{"Built without mpi, parallel communication boundary condition will not work", util::general_anomaly_tag{}});
 #endif
 
             } else {

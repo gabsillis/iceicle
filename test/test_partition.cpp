@@ -178,7 +178,7 @@ TEST(test_residual, test_heat_equation) {
     AbstractMesh<double, int, 2> mesh(
         Tensor<double, 2>{0.0, 0.0},
         Tensor<double, 2>{1.0, 1.0},
-        Tensor<int, 2>{10, 7},
+        Tensor<int, 2>{1, 7},
         1, 
         Tensor<BOUNDARY_CONDITIONS, 4>{BOUNDARY_CONDITIONS::DIRICHLET, BOUNDARY_CONDITIONS::DIRICHLET,
             BOUNDARY_CONDITIONS::DIRICHLET, BOUNDARY_CONDITIONS::DIRICHLET},
@@ -192,9 +192,15 @@ TEST(test_residual, test_heat_equation) {
         .a = Tensor<double, 2>{0.0, 0.0},
         .b = Tensor<double, 2>{0.0, 0.0}
     };
+
+    BurgersCoefficients<double, 2> disable_coeffs{
+        .mu = 0,
+        .a = Tensor<double, 2>{0.0, 0.0},
+        .b = Tensor<double, 2>{0.0, 0.0}
+    };
     BurgersFlux physical_flux{burgers_coeffs};
-    BurgersUpwind convective_flux{burgers_coeffs};
-    BurgersDiffusionFlux diffusive_flux{burgers_coeffs};
+    BurgersUpwind convective_flux{disable_coeffs};
+    BurgersDiffusionFlux diffusive_flux{disable_coeffs};
     ConservationLawDDG disc{std::move(physical_flux),
                           std::move(convective_flux),
                           std::move(diffusive_flux)};
@@ -230,16 +236,6 @@ TEST(test_residual, test_heat_equation) {
             tmp::compile_int<3>{}, serial_comm};
 
         // === set up our data storage and data view ===
-        std::vector<double> u_serial_data(serial_fespace.ndof() * neq);
-        fe_layout_right u_serial_layout{serial_fespace, tmp::to_size<neq>{}};
-        fespan u_serial{u_serial_data, u_serial_layout};
-
-        // === perform the projection ===
-        {
-            solvers::LinearFormSolver projection_solver{serial_fespace, projection};
-            projection_solver.solve(u_serial);
-        }
-
         fe_layout_right u_layout{serial_fespace, tmp::to_size<neq>{}, std::true_type{}};
         fe_layout_right res_layout{serial_fespace, tmp::to_size<neq>{}, std::false_type{}};
         std::vector<double> u_data(u_layout.size());
@@ -247,9 +243,17 @@ TEST(test_residual, test_heat_equation) {
         fespan u{u_data, u_layout};
         fespan res{res_data, res_layout};
 
-        solvers::form_residual(serial_fespace, disc, u, res);
+        // === perform the projection ===
+        {
+            solvers::LinearFormSolver projection_solver{serial_fespace, projection};
+            projection_solver.solve(u);
+        }
 
-        res_vector_norm = res.vector_norm();
+        solvers::form_residual(serial_fespace, disc, u, res, serial_comm);
+
+        res_vector_norm = res.vector_norm(serial_comm);
+
+        std::cout << res;
     }
     MPI_Bcast(&res_vector_norm, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
 
@@ -268,8 +272,23 @@ TEST(test_residual, test_heat_equation) {
     std::vector<double> res_data(res_layout.size());
     fespan u{u_data, u_layout};
     fespan res{res_data, res_layout};
-    solvers::form_residual(parallel_fespace, disc, u, res);
 
+
+    // === perform the projection ===
+    {
+        solvers::LinearFormSolver projection_solver{parallel_fespace, projection};
+        projection_solver.solve(u);
+    }
+
+    solvers::form_residual(parallel_fespace, disc, u, res, mpi::comm_world);
+
+    mpi::mpi_sync();
+    for(int irank = 0; irank < nrank; ++irank){
+        if(irank == myrank){
+            std::cout << res;
+        }
+        mpi::mpi_sync();
+    }
     SCOPED_TRACE("MPI rank = " + std::to_string(mpi::mpi_world_rank()));
     ASSERT_NEAR(res_vector_norm, res.vector_norm(), 1e-10);
 }

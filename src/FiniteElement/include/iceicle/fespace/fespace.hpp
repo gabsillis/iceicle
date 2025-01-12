@@ -256,7 +256,7 @@ namespace iceicle {
           all_elements{generate_uniform_order_elements(basis_type, quadrature_type, basis_order_arg)},
           elements{all_elements.begin(), all_elements.begin() 
               + meshptr->element_partitioning.owned_range_size(mpi::mpi_world_rank())},
-          dofs{elements}
+          dofs{all_elements}
         {
             // create a partitioning for the dofs
             IDX my_ndof = dofs.size();

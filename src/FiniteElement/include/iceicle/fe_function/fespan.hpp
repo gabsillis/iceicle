@@ -11,7 +11,7 @@
 #include "iceicle/fe_function/layout_right.hpp"
 #include "iceicle/fe_function/node_set_layout.hpp"
 #include "iceicle/fespace/fespace.hpp"
-#include <cstdlib>
+#include "iceicle/iceicle_mpi_utils.hpp"
 #include <mpi.h>
 #include <ostream>
 #include <ranges>
@@ -170,6 +170,12 @@ return p[i];
             auto owning_rank(index_type pdof) const noexcept
             -> int 
             { return _layout.dof_partitioning.owning_rank(pdof); }
+
+            //** @brief get the number of dofs owned by this process */
+            [[nodiscard]] inline constexpr 
+            auto owned_ndof(mpi::communicator_type comm) const noexcept 
+            -> size_type
+            { return _layout.dof_partitioning.owned_range_size(mpi::rank(comm)); }
 
             // ===============
             // = Data Access =
@@ -362,14 +368,17 @@ return p[i];
              * @return the vector L^p norm 
              */
             template<int order = 2>
-            constexpr T vector_norm(){
+            constexpr T vector_norm(mpi::communicator_type comm = mpi::comm_world){
 
                 T sum = 0;
-                // TODO: be more specific about the index space
-                // maybe by delegating to the LayoutPolicy
-                for(int i = 0; i < size(); ++i){
-                    sum += std::pow(_ptr[i], order);
+                for(index_type idof = 0; idof < owned_ndof(comm); ++idof){
+                    for(index_type iv = 0; iv < nv(); ++iv){
+                        sum += std::pow(operator[](idof, iv), order);
+                    }
                 }
+#ifdef ICEICLE_USE_MPI
+                MPI_Allreduce(MPI_IN_PLACE, &sum, 1, mpi_get_type(sum), MPI_SUM, comm);
+#endif
                 
                 if constexpr (order == 2){
                     return std::sqrt(sum);
