@@ -677,7 +677,7 @@ namespace iceicle {
 
             // reorder the ldofs to satisfy the requirements for p_indices of pindex_map
             std::ranges::sort(my_pdofs);
-            IDX start_owned;
+            IDX start_owned = 0;
             for(IDX ldof = 0; ldof < my_pdofs.size(); ++ldof){
                 if(my_pdofs[ldof] >= offsets[mpi::mpi_world_rank()]){
                     start_owned = ldof;

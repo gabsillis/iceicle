@@ -92,93 +92,94 @@ namespace iceicle::solvers {
         u.sync_mpi(comm);
 
         // boundary faces 
-        for(const Trace &trace : fespace.get_boundary_traces()){
-
-            if(trace.face->bctype == BOUNDARY_CONDITIONS::PARALLEL_COM) {
-
-#ifdef ICEICLE_USE_MPI
-                 auto [jrank, imleft] = decode_mpi_bcflag(trace.face->bcflag);
-                 // set up compact data layouts
+         for(const Trace &trace : fespace.get_boundary_traces()){
+ 
+             if(trace.face->bctype == BOUNDARY_CONDITIONS::PARALLEL_COM) {
+ 
+ #ifdef ICEICLE_USE_MPI
+                   auto [jrank, imleft] = decode_mpi_bcflag(trace.face->bcflag);
+                   // set up compact data layouts
+                   auto uL_layout = u.create_element_layout(trace.elL.elidx);
+                   dofspan uL{uL_data, uL_layout};
+                   // translate the parallel index to a local one
+                   compact_layout_right<IDX, disc_class::nv_comp> uR_layout{trace.elR};
+                   dofspan uR{uR_data, uR_layout};
+  
+                   auto resL_layout = res.create_element_layout(trace.elL.elidx);
+                   dofspan resL{resL_data, resL_layout};
+                   compact_layout_right<IDX, disc_class::nv_comp> resR_layout{trace.elR};
+                   dofspan resR{resR_data, resR_layout};
+  
+                   // extract the compact values from the global u view
+                   extract_elspan(trace.elL.elidx, u, uL);
+                   extract_elspan(trace.elR.elidx, u, uR);
+  
+                   // zero out residual 
+                   resL = 0;
+                   resR = 0;
+  
+                   disc.trace_integral(trace, fespace.meshptr->coord, uL, uR, resL, resR);
+                   if(imleft){
+                       // scatter only the left
+                       scatter_elspan(trace.elL.elidx, 1.0, resL, 1.0, res);
+                   } else {
+                       // scatter only the right
+                       scatter_elspan(trace.elR.elidx, 1.0, resR, 1.0, res);
+                   }
+ #else 
+             util::AnomalyLog::log_anomaly(util::Anomaly{"Built without mpi, parallel communication boundary condition will not work", util::general_anomaly_tag{}});
+ #endif
+ 
+             } else {
+                 // set up compact data views
                  auto uL_layout = u.create_element_layout(trace.elL.elidx);
                  dofspan uL{uL_data, uL_layout};
-                 // translate the parallel index to a local one
-                 compact_layout_right<IDX, disc_class::nv_comp> uR_layout{trace.elR};
+                 auto uR_layout = u.create_element_layout(trace.elR.elidx);
                  dofspan uR{uR_data, uR_layout};
-
+ 
                  auto resL_layout = res.create_element_layout(trace.elL.elidx);
                  dofspan resL{resL_data, resL_layout};
-                 compact_layout_right<IDX, disc_class::nv_comp> resR_layout{trace.elR};
-                 dofspan resR{resR_data, resR_layout};
-
+ 
                  // extract the compact values from the global u view
                  extract_elspan(trace.elL.elidx, u, uL);
-                 extract_elspan(trace.elR.elidx, u, uL);
-
-                 // zero out residual 
+                 extract_elspan(trace.elR.elidx, u, uR);
+ 
+                 // zero out the residual
                  resL = 0;
-
-                 disc.trace_integral(trace, fespace.meshptr->coord, uL, uR, resL, resR);
-                 if(imleft){
-                     // scatter only the left
-                     scatter_elspan(trace.elL.elidx, 1.0, resL, 1.0, res);
-                 } else {
-                     // scatter only the right
-                     scatter_elspan(trace.elR.elidx, 1.0, resR, 1.0, res);
-                 }
-#else 
-            util::AnomalyLog::log_anomaly(util::Anomaly{"Built without mpi, parallel communication boundary condition will not work", util::general_anomaly_tag{}});
-#endif
-
-            } else {
-                // set up compact data views
-                auto uL_layout = u.create_element_layout(trace.elL.elidx);
-                dofspan uL{uL_data, uL_layout};
-                auto uR_layout = u.create_element_layout(trace.elR.elidx);
-                dofspan uR{uR_data, uR_layout};
-
-                auto resL_layout = res.create_element_layout(trace.elL.elidx);
-                dofspan resL{resL_data, resL_layout};
-
-                // extract the compact values from the global u view
-                extract_elspan(trace.elL.elidx, u, uL);
-                extract_elspan(trace.elR.elidx, u, uR);
-
-                // zero out the residual
-                resL = 0;
-
-                disc.boundaryIntegral(trace, fespace.meshptr->coord, uL, uR, resL);
-
-                scatter_elspan(trace.elL.elidx, 1.0, resL, 1.0, res);
-            }
-
-        }
-
-        // interior faces 
-        for(const Trace &trace : fespace.get_interior_traces()){
-            // set up compact data views
-            auto uL_layout = u.create_element_layout(trace.elL.elidx);
-            dofspan uL{uL_data, uL_layout};
-            auto uR_layout = u.create_element_layout(trace.elR.elidx);
-            dofspan uR{uR_data, uR_layout};
-
-            auto resL_layout = res.create_element_layout(trace.elL.elidx);
-            dofspan resL{resL_data, resL_layout};
-            auto resR_layout = res.create_element_layout(trace.elR.elidx);
-            dofspan resR{resR_data, resR_layout};
-
-            // extract the compact values from the global u view
-            extract_elspan(trace.elL.elidx, u, uL);
-            extract_elspan(trace.elR.elidx, u, uR);
-
-            // zero out the residual
-            resL = 0;
-            resR = 0;
-
-           disc.trace_integral(trace, fespace.meshptr->coord, uL, uR, resL, resR); 
-
-           scatter_elspan(trace.elL.elidx, 1.0, resL, 1.0, res);
-           scatter_elspan(trace.elR.elidx, 1.0, resR, 1.0, res);
-        }
+ 
+                 disc.boundaryIntegral(trace, fespace.meshptr->coord, uL, uR, resL);
+ 
+                 scatter_elspan(trace.elL.elidx, 1.0, resL, 1.0, res);
+             }
+ 
+         }
+ 
+         // interior faces 
+         for(const Trace &trace : fespace.get_interior_traces()){
+             // set up compact data views
+             auto uL_layout = u.create_element_layout(trace.elL.elidx);
+             dofspan uL{uL_data, uL_layout};
+             auto uR_layout = u.create_element_layout(trace.elR.elidx);
+             dofspan uR{uR_data, uR_layout};
+ 
+             auto resL_layout = res.create_element_layout(trace.elL.elidx);
+             dofspan resL{resL_data, resL_layout};
+             auto resR_layout = res.create_element_layout(trace.elR.elidx);
+             dofspan resR{resR_data, resR_layout};
+ 
+             // extract the compact values from the global u view
+             extract_elspan(trace.elL.elidx, u, uL);
+             extract_elspan(trace.elR.elidx, u, uR);
+ 
+             // zero out the residual
+             resL = 0;
+             resR = 0;
+ 
+            disc.trace_integral(trace, fespace.meshptr->coord, uL, uR, resL, resR); 
+ 
+            scatter_elspan(trace.elL.elidx, 1.0, resL, 1.0, res);
+            scatter_elspan(trace.elR.elidx, 1.0, resR, 1.0, res);
+         }
 
         // domain integral
         for(const Element &el : fespace.elements){

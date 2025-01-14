@@ -178,7 +178,7 @@ TEST(test_residual, test_heat_equation) {
     AbstractMesh<double, int, 2> mesh(
         Tensor<double, 2>{0.0, 0.0},
         Tensor<double, 2>{1.0, 1.0},
-        Tensor<int, 2>{1, 7},
+        Tensor<int, 2>{2, 1},
         1, 
         Tensor<BOUNDARY_CONDITIONS, 4>{BOUNDARY_CONDITIONS::DIRICHLET, BOUNDARY_CONDITIONS::DIRICHLET,
             BOUNDARY_CONDITIONS::DIRICHLET, BOUNDARY_CONDITIONS::DIRICHLET},
@@ -194,7 +194,7 @@ TEST(test_residual, test_heat_equation) {
     };
 
     BurgersCoefficients<double, 2> disable_coeffs{
-        .mu = 0,
+        .mu = 1e-3,
         .a = Tensor<double, 2>{0.0, 0.0},
         .b = Tensor<double, 2>{0.0, 0.0}
     };
@@ -253,7 +253,8 @@ TEST(test_residual, test_heat_equation) {
 
         res_vector_norm = res.vector_norm(serial_comm);
 
-        std::cout << res;
+        std::cout << "RESIDUAL: " << res;
+        std::cout << " U: " << u;
     }
     MPI_Bcast(&res_vector_norm, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
 
@@ -261,7 +262,7 @@ TEST(test_residual, test_heat_equation) {
     // = Parallel version of same computation =
     // ========================================
 
-    AbstractMesh pmesh{partition_mesh(mesh)};
+    AbstractMesh pmesh{partition_mesh(mesh, EL_PARTITION_ALGORITHM::NAIVE)};
     FESpace parallel_fespace{&pmesh, FESPACE_ENUMS::FESPACE_BASIS_TYPE::LAGRANGE,
     FESPACE_ENUMS::FESPACE_QUADRATURE::GAUSS_LEGENDRE, tmp::compile_int<3>{}};
 
@@ -285,7 +286,8 @@ TEST(test_residual, test_heat_equation) {
     mpi::mpi_sync();
     for(int irank = 0; irank < nrank; ++irank){
         if(irank == myrank){
-            std::cout << res;
+            std::cout << "RESIDUAL: " << res;
+            std::cout << "U: " << exclude_ghost(u);
         }
         mpi::mpi_sync();
     }

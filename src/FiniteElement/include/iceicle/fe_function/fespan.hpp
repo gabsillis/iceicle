@@ -120,9 +120,12 @@ return p[i];
                 }
             }
 
-            constexpr fespan(std::ranges::contiguous_range auto data_range, const LayoutPolicy &dof_map,
-                    const AccessorPolicy &_accessor)
-            noexcept : _ptr(std::ranges::data(data_range)), _layout{dof_map}, _accessor{_accessor}
+            constexpr fespan(
+                    std::ranges::contiguous_range auto data_range,
+                    const LayoutPolicy &dof_map,
+                    const AccessorPolicy &_accessor
+            ) noexcept : _ptr(std::ranges::data(data_range)),
+                      _layout{dof_map}, _accessor{_accessor}
             {
                 static_assert(std::is_same_v<std::ranges::range_value_t<decltype(data_range)>, T>, "value type must match");
                 util::AnomalyLog::check(std::ranges::size(data_range) < dof_map.size(),
@@ -417,6 +420,10 @@ return p[i];
     template<std::ranges::contiguous_range R, class LayoutPolicy>
     fespan(R&& data_range, const LayoutPolicy &) -> fespan< std::ranges::range_value_t<R>, LayoutPolicy >;
 
+    template<std::ranges::contiguous_range R, class LayoutPolicy, class AccessorPolicy>
+    fespan(R&& data_range, const LayoutPolicy &, const AccessorPolicy&)
+    -> fespan< std::ranges::range_value_t<R>, LayoutPolicy, AccessorPolicy>;
+
     /**
      * @brief compute a vector scalar product and add to a vector 
      * y <= alpha * x + y
@@ -504,7 +511,10 @@ return p[i];
      */
     template<class T, class LayoutPolicy, class AccessorPolicy>
     auto exclude_ghost(fespan<T, LayoutPolicy, AccessorPolicy> u)
-    { return fespan{u.data(), exclude_ghost(u.get_layout()), u.get_accessor()}; }
+    { 
+        return fespan{std::span{u.data(), u.data() + u.size()},
+                exclude_ghost(u.get_layout()), u.get_accessor()}; 
+    }
 
     /**
      * @brief dofspan represents a non-owning view for the data over a set of degreees of freedom 

@@ -23,7 +23,7 @@ int main(int argc, char *argv[]) {
     auto elsuel = to_elsuel<double, int, 2>(mesh.nelem(), mesh.faces);
 
 
-    auto [el_part, renumbering] = partition_elements(elsuel);
+    auto [el_part, renumbering] = partition_elements(elsuel, EL_PARTITION_ALGORITHM::METIS);
 
     std::cout << el_part;
 

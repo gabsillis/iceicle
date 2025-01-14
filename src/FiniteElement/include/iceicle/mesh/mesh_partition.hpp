@@ -20,6 +20,58 @@
 
 namespace iceicle {
 
+    /// @brief the different algorithms available for element partitioning
+    enum class EL_PARTITION_ALGORITHM {
+        METIS,
+        NAIVE
+    };
+
+    /// @brief evenly partitions elements by element index 
+    /// @param elsuel the ELements SUrrounding ELements connectivity 
+    /// the indices of all the elements that share a face with a given element
+    ///
+    /// Indices are renumbered so pindices are contiguous for each process rank
+    ///
+    /// @return the parallel index map and a std::vector of indices that cointains
+    /// old global index at each new global index (the renumbering vector)
+    template< class IDX, class IDX_CRS >
+    [[nodiscard]]
+    auto partition_elements_naive( util::crs<IDX, IDX_CRS>& elsuel )
+    -> std::pair<pindex_map<IDX>, std::vector<IDX>> {
+
+        idx_t nelem = elsuel.nrow();
+
+        // get mpi information
+        int nrank, myrank;
+        MPI_Comm_rank(MPI_COMM_WORLD, &myrank);
+        MPI_Comm_size(MPI_COMM_WORLD, &nrank);
+
+        std::vector< IDX > offsets(nrank + 1);
+        std::vector< IDX > p_indices{};
+        std::vector< IDX > renumbering(nelem);
+        std::iota(renumbering.begin(), renumbering.end(), 0);
+        std::unordered_map<IDX, IDX> inv_p_indices{};
+        IDX nelem_div = nelem / nrank;
+        IDX nelem_mod = nelem % nrank;
+        offsets[0] = 0;
+        for(int irank = 0; irank < nrank; ++irank){
+
+            // distribute the modulus among the first nelem_mod ranks
+            IDX nelem_rank = (irank < nelem_mod) ? nelem_div + 1 : nelem_div;
+            offsets[irank + 1] = offsets[irank] + nelem_rank;
+
+            if(irank == myrank){
+                p_indices = std::vector<IDX>(nelem_rank);
+                std::iota(p_indices.begin(), p_indices.end(), offsets[irank]);
+                for(IDX lindex = 0; lindex < p_indices.size(); ++lindex)
+                    inv_p_indices[p_indices[lindex]] = lindex;
+            }
+        }
+        return std::pair{pindex_map{std::move(p_indices),
+                std::move(inv_p_indices), std::move(offsets)},
+            std::move(renumbering)};
+    }
+
     /// @brief partition a set of element indices using METIS 
     /// @param elsuel the ELements SUrrounding ELements connectivity 
     /// the indices of all the elements that share a face with a given element
@@ -30,7 +82,7 @@ namespace iceicle {
     /// old global index at each new global index (the renumbering vector)
     template< class IDX, class IDX_CRS >
     [[nodiscard]]
-    auto partition_elements( util::crs<IDX, IDX_CRS>& elsuel )
+    auto partition_elements_metis( util::crs<IDX, IDX_CRS>& elsuel )
     -> std::pair<pindex_map<IDX>, std::vector<IDX>> {
         util::crs elsuel_metis_int{util::convert_crs<idx_t, idx_t>(elsuel)};
         idx_t nelem = elsuel.nrow();
@@ -116,13 +168,29 @@ namespace iceicle {
         };
     }
 
-    /// @brief partition the mesh using METIS 
+    template< class IDX, class IDX_CRS >
+    [[nodiscard]] inline
+    auto partition_elements( util::crs<IDX, IDX_CRS>& elsuel,
+            EL_PARTITION_ALGORITHM algo)
+    -> std::pair<pindex_map<IDX>, std::vector<IDX>> {
+        switch(algo){
+            case EL_PARTITION_ALGORITHM::METIS:
+                return partition_elements_metis(elsuel);
+            case EL_PARTITION_ALGORITHM::NAIVE:
+                return partition_elements_naive(elsuel);
+            default:
+                return partition_elements_metis(elsuel);
+        }
+    }
+
+    /// @brief partition the mesh using METIS by default
     /// @param mesh the single processor mesh to partition
     /// NOTE: assumes valid mesh is on rank 0, other ranks can be empty or incomplete
     ///
     /// @return the partitioned mesh on each processor 
     template<class T, class IDX, int ndim>
-    auto partition_mesh(AbstractMesh<T, IDX, ndim>& mesh) 
+    auto partition_mesh(AbstractMesh<T, IDX, ndim>& mesh, 
+            EL_PARTITION_ALGORITHM el_part_algo = EL_PARTITION_ALGORITHM::METIS) 
     -> AbstractMesh<T, IDX, ndim>
     {
         // get mpi information
@@ -173,7 +241,7 @@ namespace iceicle {
         MPI_Status status;
 
         // partition the elements and renumber the element node connectivity
-        auto [el_partition, el_renumbering] = partition_elements(elsuel);
+        auto [el_partition, el_renumbering] = partition_elements(elsuel, el_part_algo);
         dof_map el_conn_global{apply_el_renumbering(mesh.conn_el, el_renumbering)};
 
         // element partition extended by face neighbor elements 
