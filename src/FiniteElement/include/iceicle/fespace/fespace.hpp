@@ -259,7 +259,15 @@ namespace iceicle {
           dofs{all_elements}
         {
             // create a partitioning for the dofs
-            IDX my_ndof = dofs.size();
+            // TODO: generalize dof map creation and partititioning based on 
+            // conformity, mesh, element partitioning, and iterator of basis type per element
+            // probably in dof_mapping.hpp
+            IDX my_ndof = 0;
+            // count up degrees of freedom for each element that we own (not ghost)
+            for(const auto& element : elements){
+                my_ndof += element.nbasis();
+            }
+
             std::vector<IDX> offsets{0};
             std::vector<IDX> p_indices(my_ndof);
             std::unordered_map< IDX, IDX > inv_p_indices{};
@@ -274,6 +282,7 @@ namespace iceicle {
 #endif
 
 
+            // generate p_indices and offsets for our element dofs
             for(int irank = 0; irank < nrank; ++irank){
                 IDX ndof = my_ndof;
 #ifdef ICEICLE_USE_MPI
@@ -282,11 +291,99 @@ namespace iceicle {
 #endif
                 if(irank == myrank){
                     std::iota(p_indices.begin(), p_indices.end(), offsets[irank]);
-                    for(IDX lidx = 0; lidx < p_indices.size(); ++lidx){
-                        inv_p_indices[p_indices[lidx]] = lidx;
+                }
+            }
+
+            // generate the p_indices for ghost element dofs
+            std::vector< std::vector< IDX > > p_ielem_requests(nrank);
+            for(IDX ielem = elements.size(); ielem < all_elements.size(); ++ielem){
+                IDX p_ielem = meshptr->element_partitioning.p_indices[ielem];
+                p_ielem_requests[meshptr->element_partitioning.owning_rank(p_ielem)].push_back(p_ielem);
+            }
+#ifdef ICEICLE_USE_MPI
+            std::vector<MPI_Request> requests;
+            for(int irank = 0; irank < nrank; ++irank){
+                if(irank != myrank){
+                    requests.emplace_back();
+                    MPI_Isend(p_ielem_requests[irank].data(), p_ielem_requests[irank].size(), 
+                            mpi_get_type(p_ielem_requests[irank].data()), irank, 0, comm, &requests.back());
+                }
+            }
+            // build arrays of pdofs to send
+            std::vector<std::vector<IDX>> send_pdofs(nrank); // array of pdofs contiguous for requested elements
+            std::vector<std::vector<IDX>> send_sizes(nrank); // array of number of degrees of freedom for each element requested
+            for(int irank = 0; irank < nrank; ++irank){
+                if(irank != myrank){
+                    MPI_Status status;
+                    MPI_Probe(irank, 0, comm, &status);
+                    int recv_sz;
+                    MPI_Get_count(&status, mpi_get_type<IDX>(), &recv_sz);
+                    std::vector<IDX> p_iel_to_send(recv_sz);
+                    MPI_Recv(p_iel_to_send.data(), recv_sz, mpi_get_type(p_iel_to_send.data()),
+                            irank, 0, comm, MPI_STATUS_IGNORE);
+                    for(IDX p_ielem : p_iel_to_send){
+                        IDX ielem = meshptr->element_partitioning.inv_p_indices[p_ielem];
+                        for(IDX ldof : dofs.rowview(ielem)){
+                            send_pdofs[irank].push_back(p_indices[ldof]);
+                        }
+                        send_sizes[irank].push_back(dofs.ndof_el(ielem));
                     }
                 }
             }
+            // wait for isends
+            MPI_Waitall(requests.size(), requests.data(), MPI_STATUSES_IGNORE);
+            requests.clear();
+            // send the pdof arrays
+            for(int irank = 0; irank < nrank; ++irank){
+                if(irank != myrank){
+                    requests.emplace_back();
+                    MPI_Isend(send_pdofs[irank].data(), send_pdofs[irank].size(), 
+                            mpi_get_type(send_pdofs[irank].data()), irank, 1, comm, &requests.back());
+                    requests.emplace_back();
+                    MPI_Isend(send_sizes[irank].data(), send_sizes[irank].size(), 
+                            mpi_get_type(send_sizes[irank].data()), irank, 2, comm, &requests.back());
+                }
+            }
+            // recieve and process the pdof arrays
+            {
+                std::vector<std::vector<IDX>> ghost_el_pdofs(all_elements.size() - elements.size());
+                for(int irank = 0; irank < nrank; ++irank){
+                    if(irank != myrank){
+                        MPI_Status status;
+                        MPI_Probe(irank, 1, comm, &status);
+                        int recv_sz;
+                        MPI_Get_count(&status, mpi_get_type<IDX>(), &recv_sz);
+                        std::vector<IDX> pdofs(recv_sz);
+                        MPI_Recv(pdofs.data(), recv_sz, mpi_get_type(pdofs.data()),
+                                irank, 1, comm, MPI_STATUS_IGNORE);
+
+                        MPI_Probe(irank, 2, comm, &status);
+                        MPI_Get_count(&status, mpi_get_type<IDX>(), &recv_sz);
+                        std::vector<IDX> ndof_el(recv_sz);
+                        MPI_Recv(ndof_el.data(), recv_sz, mpi_get_type(ndof_el.data()),
+                                irank, 2, comm, MPI_STATUS_IGNORE);
+
+                        auto pdof_it = pdofs.begin();
+                        for(IDX iel = 0; iel < ndof_el.size(); ++iel){
+                            IDX p_ielem = p_ielem_requests[irank][iel];
+                            IDX ielem_local = meshptr->element_partitioning.inv_p_indices[p_ielem];
+                            for(int idof = 0; idof < ndof_el[iel]; ++idof, ++pdof_it){
+                                ghost_el_pdofs[ielem_local - elements.size()].push_back(*pdof_it);
+                            }
+                        }
+                    }
+                }
+                for(auto& el_pdofs : ghost_el_pdofs){
+                    p_indices.insert(p_indices.end(), el_pdofs.begin(), el_pdofs.end());
+                }
+
+            }
+            MPI_Waitall(requests.size(), requests.data(), MPI_STATUSES_IGNORE);
+            requests.clear();
+            for(IDX lindex = 0; lindex < p_indices.size(); ++lindex){
+                inv_p_indices[p_indices[lindex]] = lindex;
+            }
+#endif
             dof_partitioning = pindex_map{p_indices, inv_p_indices, offsets};
 
             // Generate the Trace Spaces

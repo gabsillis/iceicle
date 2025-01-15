@@ -447,11 +447,10 @@ namespace iceicle {
 
         /// @brief get a span over the degrees of freedom for a given element index
         /// @param iel the index of the element to get the dofs for 
-        /// @return a span over the dofs
+        /// @return a view over the dofs for the given row
         [[nodiscard]] inline constexpr 
-        auto rowspan( index_type iel ) const noexcept 
-        -> std::span<const index_type> 
-        { return std::span{std::ranges::iota_view{offsets[iel], offsets[iel + 1]}}; }
+        auto rowview( index_type iel ) const noexcept 
+        { return std::ranges::iota_view{offsets[iel], offsets[iel + 1]}; }
 
         /**
          * @brief get the number of degrees of freedom at the given element index 

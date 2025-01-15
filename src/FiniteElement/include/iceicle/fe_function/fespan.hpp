@@ -37,9 +37,8 @@ namespace iceicle {
         using reference = ElementType&;
         using data_handle_type = ElementType*;
 
-        constexpr reference access(data_handle_type p, std::size_t i) const noexcept {
-return p[i];
-        } 
+        constexpr reference access(data_handle_type p, std::size_t i) const noexcept 
+        { return p[i]; } 
 
         constexpr data_handle_type offset(data_handle_type p, std::size_t i) const noexcept {
             return p + i;
