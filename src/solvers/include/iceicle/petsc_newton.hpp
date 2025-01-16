@@ -7,6 +7,7 @@
 #include "iceicle/fespace/fespace.hpp"
 #include "iceicle/form_petsc_jacobian.hpp"
 #include "iceicle/form_residual.hpp"
+#include "iceicle/iceicle_mpi_utils.hpp"
 #include "iceicle/nonlinear_solver_utils.hpp"
 #include "iceicle/petsc_interface.hpp"
 #include "iceicle/mdg_utils.hpp"
@@ -31,10 +32,12 @@ namespace iceicle::solvers {
      * @tparam T the floating point type 
      * @tparam IDX the index type
      * @tparam ndim the number of dimensions
+     * @param conformity the conformity class of the degrees of freedom
      * @tparam disc_class the discretization
      * @tparam ls_type the linesearch type to use
      */
-    template<class T, class IDX, int ndim, class disc_class, class ls_type = no_linesearch<T, IDX>>
+    template<class T, class IDX, int ndim, int conformity,
+        class disc_class, class ls_type = no_linesearch<T, IDX>>
     class PetscNewton {
 
         // ================
@@ -144,17 +147,20 @@ namespace iceicle::solvers {
          * @param fespace the finite element space
          * @param disc the discretization
          * @param conv_criteria the convergence criteria for terminating the solve 
+         * @param comm the parallel communicator
          */
         PetscNewton(
-            FESpace<T, IDX, ndim> &fespace,
+            FESpace<T, IDX, ndim, conformity> &fespace,
             disc_class &disc,
             const ConvergenceCriteria<T, IDX> &conv_criteria,
-            const ls_type& linesearch
+            const ls_type& linesearch,
+            mpi::communicator_type comm
         ) : fespace(fespace), disc(disc), linesearch{linesearch}, 
             conv_criteria{conv_criteria} 
         {
-            PetscInt local_res_size = fespace.dg_map.calculate_size_requirement(disc_class::dnv_comp);
-            PetscInt local_u_size = local_res_size;
+            PetscInt local_u_size = fespace.owned_ndof(comm) * disc_class::nv_comp;
+            PetscInt local_res_size = local_u_size;
+
             // Create and set up the matrix if not given 
             MatCreate(PETSC_COMM_WORLD, &(this->jac));
             MatSetSizes(this->jac, local_res_size, local_u_size, PETSC_DETERMINE, PETSC_DETERMINE);
@@ -183,10 +189,11 @@ namespace iceicle::solvers {
         }
 
         PetscNewton(
-            FESpace<T, IDX, ndim> &fespace,
+            FESpace<T, IDX, ndim, conformity> &fespace,
             disc_class &disc,
-            const ConvergenceCriteria<T, IDX> &conv_criteria
-        ) : PetscNewton(fespace, disc, conv_criteria, no_linesearch<T, IDX>{}) {}
+            const ConvergenceCriteria<T, IDX> &conv_criteria,
+            mpi::communicator_type comm
+        ) : PetscNewton(fespace, disc, conv_criteria, no_linesearch<T, IDX>{}, comm) {}
 
         // ====================
         // = Member Functions =
@@ -211,7 +218,7 @@ namespace iceicle::solvers {
             // get the initial residual and jacobian
             {
                 petsc::VecSpan res_view{res_data};
-                fespan res{res_view.data(), u.get_layout()};
+                fespan res{res_view.data(), exclude_ghost(u.get_layout())};
                 form_petsc_jacobian_fd(fespace, disc, u, res, jac);
 //                std::cout << "res_initial" << std::endl;
 //                std::cout << res;
@@ -302,7 +309,7 @@ namespace iceicle::solvers {
                 // Get the new residual and Jacobian (for the next step)
                 {
                     petsc::VecSpan res_view{res_data};
-                    fespan res{res_view.data(), u.get_layout()};
+                    fespan res{res_view.data(), exclude_ghost(u.get_layout())};
                     MatZeroEntries(jac); // zero out the jacobian
                     form_petsc_jacobian_fd(fespace, disc, u, res, jac);
                 } // end scope of res_view
@@ -337,29 +344,16 @@ namespace iceicle::solvers {
     };
 
     /// Deduction guides
-    template<class T, class IDX, int ndim, class disc_class, class ls_type>
-    PetscNewton(FESpace<T, IDX, ndim> &, disc_class &,
-        const ConvergenceCriteria<T, IDX> &, const ls_type&) -> PetscNewton<T, IDX, ndim, disc_class, ls_type>;
+    template<class T, class IDX, int ndim, int conformity,
+        class disc_class, class ls_type>
+    PetscNewton(FESpace<T, IDX, ndim, conformity> &, disc_class &,
+        const ConvergenceCriteria<T, IDX> &, const ls_type&,
+        mpi::communicator_type comm) 
+    -> PetscNewton<T, IDX, ndim, conformity, disc_class, ls_type>;
 
-    template<class T, class IDX, int ndim, class disc_class, class ls_type>
-    PetscNewton(FESpace<T, IDX, ndim> &, disc_class &,
-        const ConvergenceCriteria<T, IDX> &, const ls_type&, Mat) -> PetscNewton<T, IDX, ndim, disc_class, ls_type>;
-
-    template<class T, class IDX, int ndim, class disc_class, class ls_type>
-    PetscNewton(FESpace<T, IDX, ndim> &, disc_class &,
-        const ConvergenceCriteria<T, IDX> &, const ls_type&, Mat, MPI_Comm) -> PetscNewton<T, IDX, ndim, disc_class, ls_type>;
-
-    /// Deduction guides
-    template<class T, class IDX, int ndim, class disc_class>
-    PetscNewton(FESpace<T, IDX, ndim> &, disc_class &,
-        const ConvergenceCriteria<T, IDX> &) -> PetscNewton<T, IDX, ndim, disc_class, no_linesearch<T, IDX>>;
-
-    template<class T, class IDX, int ndim, class disc_class>
-    PetscNewton(FESpace<T, IDX, ndim> &, disc_class &,
-        const ConvergenceCriteria<T, IDX> &, Mat) -> PetscNewton<T, IDX, ndim, disc_class, no_linesearch<T, IDX>>;
-
-    template<class T, class IDX, int ndim, class disc_class>
-    PetscNewton(FESpace<T, IDX, ndim> &, disc_class &,
-        const ConvergenceCriteria<T, IDX> &, Mat, MPI_Comm) -> PetscNewton<T, IDX, ndim, disc_class, no_linesearch<T, IDX>>;
-
+    template<class T, class IDX, int ndim, int conformity, 
+        class disc_class>
+    PetscNewton(FESpace<T, IDX, ndim, conformity> &, disc_class &,
+        const ConvergenceCriteria<T, IDX> &, mpi::communicator_type comm) 
+    -> PetscNewton<T, IDX, ndim, conformity, disc_class, no_linesearch<T, IDX>>;
 }

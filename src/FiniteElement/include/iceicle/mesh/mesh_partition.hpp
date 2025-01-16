@@ -44,8 +44,8 @@ namespace iceicle {
 
         // get mpi information
         int nrank, myrank;
-        MPI_Comm_rank(MPI_COMM_WORLD, &myrank);
-        MPI_Comm_size(MPI_COMM_WORLD, &nrank);
+        MPI_Comm_rank(mpi::comm_world, &myrank);
+        MPI_Comm_size(mpi::comm_world, &nrank);
 
         std::vector< IDX > offsets(nrank + 1);
         std::vector< IDX > p_indices{};
@@ -90,8 +90,8 @@ namespace iceicle {
 
         // get mpi information
         int nrank, myrank;
-        MPI_Comm_rank(MPI_COMM_WORLD, &myrank);
-        MPI_Comm_size(MPI_COMM_WORLD, &nrank);
+        MPI_Comm_rank(mpi::comm_world, &myrank);
+        MPI_Comm_size(mpi::comm_world, &nrank);
 
         // metis will floating point exception when partitioning into 1 partition
         // ...
@@ -217,12 +217,12 @@ namespace iceicle {
             gcoord = mesh.coord;
             n_nodes_total = mesh.coord.size();
         }
-        MPI_Bcast(&n_nodes_total, 1, MPI_UNSIGNED_LONG, 0, MPI_COMM_WORLD);
+        MPI_Bcast(&n_nodes_total, 1, MPI_UNSIGNED_LONG, 0, mpi::comm_world);
         if(myrank != 0)
         { gcoord.resize(n_nodes_total); }
 
         // WARNING: assumption about size of Point type
-        MPI_Bcast(gcoord[0].data(), gcoord.size() * ndim, mpi_get_type<T>(), 0, MPI_COMM_WORLD);
+        MPI_Bcast(gcoord[0].data(), gcoord.size() * ndim, mpi_get_type<T>(), 0, mpi::comm_world);
 
         // global node index for each local node
         std::vector<long unsigned int> gnode_idxs;
@@ -279,7 +279,7 @@ namespace iceicle {
             for(int irank = 1; irank < nrank; ++irank){
                 requests.emplace_back();
                 MPI_Isend(rank_ghost_piel[irank].data(), rank_ghost_piel[irank].size(), 
-                        mpi_get_type<IDX>(), irank, 0, MPI_COMM_WORLD, &requests.back());
+                        mpi_get_type<IDX>(), irank, 0, mpi::comm_world, &requests.back());
             }
 
             // process ghost_elements
@@ -342,15 +342,15 @@ namespace iceicle {
                 if(myrank == irank) {
                     // send p_indices to request el_transformations
                     std::size_t nelem_rank = el_partition.p_indices.size();
-                    MPI_Send(&nelem_rank, 1, mpi_get_type<std::size_t>(), 0, irank, MPI_COMM_WORLD);
+                    MPI_Send(&nelem_rank, 1, mpi_get_type<std::size_t>(), 0, irank, mpi::comm_world);
                     MPI_Send(el_partition.p_indices.data(), nelem_rank, mpi_get_type(el_partition.p_indices.data()),
-                            0, irank, MPI_COMM_WORLD);
+                            0, irank, mpi::comm_world);
 
                     // recieve transformation descriptions
                     std::vector<int> el_domains(nelem_rank);
                     std::vector<int> el_orders(nelem_rank);
-                    MPI_Recv( el_domains.data(), nelem_rank, MPI_INT, 0, irank, MPI_COMM_WORLD, &status );
-                    MPI_Recv( el_orders.data(), nelem_rank, MPI_INT, 0, irank, MPI_COMM_WORLD, &status );
+                    MPI_Recv( el_domains.data(), nelem_rank, MPI_INT, 0, irank, mpi::comm_world, &status );
+                    MPI_Recv( el_orders.data(), nelem_rank, MPI_INT, 0, irank, mpi::comm_world, &status );
                     for(IDX iel_local = 0; iel_local < nelem_rank; ++iel_local){
                         el_transforms.push_back(transformation_table<T, IDX, ndim>.get_transform(
                                 (DOMAIN_TYPE) el_domains[iel_local], el_orders[iel_local]));
@@ -359,10 +359,10 @@ namespace iceicle {
                 } else if(myrank == 0){
                     // get requested p_indices
                     std::size_t nelem_rank;
-                    MPI_Recv(&nelem_rank, 1, mpi_get_type(nelem_rank), irank, irank, MPI_COMM_WORLD, &status);
+                    MPI_Recv(&nelem_rank, 1, mpi_get_type(nelem_rank), irank, irank, mpi::comm_world, &status);
                     std::vector<IDX> rank_pindices(nelem_rank);
                     MPI_Recv(rank_pindices.data(), rank_pindices.size(), mpi_get_type(rank_pindices.data()), 
-                            irank, irank, MPI_COMM_WORLD, &status);
+                            irank, irank, mpi::comm_world, &status);
 
                     // send requested transformation descriptions
                     std::vector<int> el_domains(nelem_rank);
@@ -372,8 +372,8 @@ namespace iceicle {
                         el_domains[iel_local] = static_cast<int>(mesh.el_transformations[iel_global]->domain_type);
                         el_orders[iel_local] = mesh.el_transformations[iel_global]->order;
                     }
-                    MPI_Send( el_domains.data(), nelem_rank, MPI_INT, irank, irank, MPI_COMM_WORLD );
-                    MPI_Send( el_orders.data(), nelem_rank, MPI_INT, irank, irank, MPI_COMM_WORLD );
+                    MPI_Send( el_domains.data(), nelem_rank, MPI_INT, irank, irank, mpi::comm_world );
+                    MPI_Send( el_orders.data(), nelem_rank, MPI_INT, irank, irank, mpi::comm_world );
                 }
             }
         }
@@ -415,33 +415,33 @@ namespace iceicle {
 
 
                     // send bctype, bcflag, number of nodes, then nodes array
-                    MPI_Send(&bctype_int, 1, MPI_INT, mpi_rank, 0, MPI_COMM_WORLD);
-                    MPI_Send(&bcflag, 1, MPI_INT, mpi_rank, 1, MPI_COMM_WORLD);
-                    MPI_Send(&nnode, 1, mpi_get_type<std::size_t>(), mpi_rank, 2, MPI_COMM_WORLD);
-                    MPI_Send(pnodes.data(), pnodes.size(), mpi_get_type(pnodes.data()), mpi_rank, 3, MPI_COMM_WORLD);
+                    MPI_Send(&bctype_int, 1, MPI_INT, mpi_rank, 0, mpi::comm_world);
+                    MPI_Send(&bcflag, 1, MPI_INT, mpi_rank, 1, mpi::comm_world);
+                    MPI_Send(&nnode, 1, mpi_get_type<std::size_t>(), mpi_rank, 2, mpi::comm_world);
+                    MPI_Send(pnodes.data(), pnodes.size(), mpi_get_type(pnodes.data()), mpi_rank, 3, mpi::comm_world);
                     // TODO: for debug
-                    MPI_Send(&attached_element, 1, mpi_get_type<IDX>(), mpi_rank, 0, MPI_COMM_WORLD);
+                    MPI_Send(&attached_element, 1, mpi_get_type<IDX>(), mpi_rank, 0, mpi::comm_world);
                 }
             }
 
             for(int irank = 1; irank < nrank; ++irank){
                 int stop_code = -1;
-                MPI_Send(&stop_code, 1, MPI_INT, irank, 0, MPI_COMM_WORLD);
+                MPI_Send(&stop_code, 1, MPI_INT, irank, 0, mpi::comm_world);
             }
         } else {
             int bctype_int;
-            MPI_Recv(&bctype_int, 1, MPI_INT, 0, 0, MPI_COMM_WORLD, &status);
+            MPI_Recv(&bctype_int, 1, MPI_INT, 0, 0, mpi::comm_world, &status);
             while(bctype_int != -1){
                 BOUNDARY_CONDITIONS bctype = static_cast<BOUNDARY_CONDITIONS>(bctype_int);
                 int bcflag, nnode;
-                MPI_Recv(&bcflag, 1, MPI_INT, 0, 1, MPI_COMM_WORLD, &status);
-                MPI_Recv(&nnode, 1, mpi_get_type<std::size_t>(), 0, 2, MPI_COMM_WORLD, &status);
+                MPI_Recv(&bcflag, 1, MPI_INT, 0, 1, mpi::comm_world, &status);
+                MPI_Recv(&nnode, 1, mpi_get_type<std::size_t>(), 0, 2, mpi::comm_world, &status);
                 std::vector<IDX> pnodes(nnode);
-                MPI_Recv(pnodes.data(), nnode, mpi_get_type(pnodes.data()), 0, 3, MPI_COMM_WORLD, &status);
+                MPI_Recv(pnodes.data(), nnode, mpi_get_type(pnodes.data()), 0, 3, mpi::comm_world, &status);
 
                     // TODO: for debug
                     IDX attached_element;
-                    MPI_Recv(&attached_element, 1, mpi_get_type<IDX>(), 0, 0, MPI_COMM_WORLD, &status);
+                    MPI_Recv(&attached_element, 1, mpi_get_type<IDX>(), 0, 0, mpi::comm_world, &status);
                 // translate to local node indices
                 std::vector<IDX> nodes{};
                 nodes.reserve(pnodes.size());
@@ -451,7 +451,7 @@ namespace iceicle {
                 boundary_descs.push_back(boundary_face_desc{bctype, bcflag, nodes});
 
                 // get the next bc type
-                MPI_Recv(&bctype_int, 1, MPI_INT, 0, 0, MPI_COMM_WORLD, &status);
+                MPI_Recv(&bctype_int, 1, MPI_INT, 0, 0, mpi::comm_world, &status);
             }
         }
 
@@ -500,28 +500,28 @@ namespace iceicle {
                     int face_domn_int = (int) face_domain_type, 
                         left_domain_int = (int) left_domain_type,
                         right_domain_int = (int) right_domain_type;
-                    MPI_Send(&face_domn_int, 1, MPI_INT, face_rank, 1, MPI_COMM_WORLD);
-                    MPI_Send(&left_domain_int, 1, MPI_INT, face_rank, 2, MPI_COMM_WORLD);
-                    MPI_Send(&right_domain_int, 1, MPI_INT, face_rank, 3, MPI_COMM_WORLD);
-                    MPI_Send(&face_order, 1, MPI_INT, face_rank, 4, MPI_COMM_WORLD);
+                    MPI_Send(&face_domn_int, 1, MPI_INT, face_rank, 1, mpi::comm_world);
+                    MPI_Send(&left_domain_int, 1, MPI_INT, face_rank, 2, mpi::comm_world);
+                    MPI_Send(&right_domain_int, 1, MPI_INT, face_rank, 3, mpi::comm_world);
+                    MPI_Send(&face_order, 1, MPI_INT, face_rank, 4, mpi::comm_world);
 
                     // send the parallel element indices
-                    MPI_Send(&iel_p, 1, mpi_get_type(iel_p), face_rank, 5, MPI_COMM_WORLD);
-                    MPI_Send(&ier_p, 1, mpi_get_type(ier_p), face_rank, 6, MPI_COMM_WORLD);
+                    MPI_Send(&iel_p, 1, mpi_get_type(iel_p), face_rank, 5, mpi::comm_world);
+                    MPI_Send(&ier_p, 1, mpi_get_type(ier_p), face_rank, 6, mpi::comm_world);
 
                     // send the face nodes
                     std::size_t nnode = pnodes.size();
-                    MPI_Send(&nnode, 1, mpi_get_type<std::size_t>(), face_rank, 7, MPI_COMM_WORLD);
-                    MPI_Send(pnodes.data(), pnodes.size(), mpi_get_type(pnodes.data()), face_rank, 8, MPI_COMM_WORLD);
+                    MPI_Send(&nnode, 1, mpi_get_type<std::size_t>(), face_rank, 7, mpi::comm_world);
+                    MPI_Send(pnodes.data(), pnodes.size(), mpi_get_type(pnodes.data()), face_rank, 8, mpi::comm_world);
 
                     // send face numbers and orientation 
-                    MPI_Send(&face_nr_l, 1, MPI_INT, face_rank, 9, MPI_COMM_WORLD);
-                    MPI_Send(&face_nr_r, 1, MPI_INT, face_rank, 10, MPI_COMM_WORLD);
-                    MPI_Send(&orientation, 1, MPI_INT, face_rank, 11, MPI_COMM_WORLD);
+                    MPI_Send(&face_nr_l, 1, MPI_INT, face_rank, 9, mpi::comm_world);
+                    MPI_Send(&face_nr_r, 1, MPI_INT, face_rank, 10, mpi::comm_world);
+                    MPI_Send(&orientation, 1, MPI_INT, face_rank, 11, mpi::comm_world);
 
                     // send the bcflag
                     int bcflag = encode_mpi_bcflag(neighbor_rank, left);
-                    MPI_Send(&bcflag, 1, MPI_INT, face_rank, 12, MPI_COMM_WORLD);
+                    MPI_Send(&bcflag, 1, MPI_INT, face_rank, 12, mpi::comm_world);
                 }
             };
 
@@ -574,7 +574,7 @@ namespace iceicle {
              // send stop codes to all processes
             for(int irank = 1; irank < nrank; ++irank){
                 int stop_code = -1;
-                MPI_Send(&stop_code, 1, MPI_INT, irank, 1, MPI_COMM_WORLD);
+                MPI_Send(&stop_code, 1, MPI_INT, irank, 1, mpi::comm_world);
             }
         } else {
             // not rank 0: recieve face information
@@ -585,36 +585,36 @@ namespace iceicle {
                 MPI_Status status;
                 // Get the face domain type or a stop code
                 int face_domn_int, left_domain_int, right_domain_int, face_order;
-                MPI_Recv(&face_domn_int, 1, MPI_INT, root_rank, 1, MPI_COMM_WORLD, &status);
+                MPI_Recv(&face_domn_int, 1, MPI_INT, root_rank, 1, mpi::comm_world, &status);
                 if(face_domn_int == -1) {
                     return false; // stop code
                 } 
 
-                MPI_Recv(&left_domain_int, 1, MPI_INT, root_rank, 2, MPI_COMM_WORLD, &status);
-                MPI_Recv(&right_domain_int, 1, MPI_INT, root_rank, 3, MPI_COMM_WORLD, &status);
-                MPI_Recv(&face_order, 1, MPI_INT, root_rank, 4, MPI_COMM_WORLD, &status);
+                MPI_Recv(&left_domain_int, 1, MPI_INT, root_rank, 2, mpi::comm_world, &status);
+                MPI_Recv(&right_domain_int, 1, MPI_INT, root_rank, 3, mpi::comm_world, &status);
+                MPI_Recv(&face_order, 1, MPI_INT, root_rank, 4, mpi::comm_world, &status);
 
                 // parallel element indices
                 IDX iel_p, ier_p;
-                MPI_Recv(&iel_p, 1, mpi_get_type(iel_p), root_rank, 5, MPI_COMM_WORLD, &status);
-                MPI_Recv(&ier_p, 1, mpi_get_type(ier_p), root_rank, 6, MPI_COMM_WORLD, &status);
+                MPI_Recv(&iel_p, 1, mpi_get_type(iel_p), root_rank, 5, mpi::comm_world, &status);
+                MPI_Recv(&ier_p, 1, mpi_get_type(ier_p), root_rank, 6, mpi::comm_world, &status);
 
                 // face nodes
                 std::size_t nnode;
-                MPI_Recv(&nnode, 1, mpi_get_type(nnode), root_rank, 7, MPI_COMM_WORLD, &status);
+                MPI_Recv(&nnode, 1, mpi_get_type(nnode), root_rank, 7, mpi::comm_world, &status);
                 std::vector<IDX> pnodes(nnode);
                 MPI_Recv(pnodes.data(), nnode, mpi_get_type(pnodes.data()), 
-                        root_rank, 8, MPI_COMM_WORLD, &status);
+                        root_rank, 8, mpi::comm_world, &status);
 
                 // face numbers and orientation
                 int face_nr_l, face_nr_r, orientation;
-                MPI_Recv(&face_nr_l, 1, MPI_INT, root_rank, 9, MPI_COMM_WORLD, &status);
-                MPI_Recv(&face_nr_r, 1, MPI_INT, root_rank, 10, MPI_COMM_WORLD, &status);
-                MPI_Recv(&orientation, 1, MPI_INT, root_rank, 11, MPI_COMM_WORLD, &status);
+                MPI_Recv(&face_nr_l, 1, MPI_INT, root_rank, 9, mpi::comm_world, &status);
+                MPI_Recv(&face_nr_r, 1, MPI_INT, root_rank, 10, mpi::comm_world, &status);
+                MPI_Recv(&orientation, 1, MPI_INT, root_rank, 11, mpi::comm_world, &status);
 
                 // bcflag
                 int bcflag;
-                MPI_Recv(&bcflag, 1, MPI_INT, root_rank, 12, MPI_COMM_WORLD, &status);
+                MPI_Recv(&bcflag, 1, MPI_INT, root_rank, 12, mpi::comm_world, &status);
 
                 auto [neighbor_rank, left] = decode_mpi_bcflag(bcflag);
 
@@ -656,7 +656,7 @@ namespace iceicle {
 
 #ifndef NDEBUG 
 //        for(int i = 0; i < nrank; ++i){
-//            MPI_Barrier(MPI_COMM_WORLD);
+//            MPI_Barrier(mpi::comm_world);
 //            if(i == myrank){
 //                std::cout << "====== Mesh " << myrank << " ======" << std::endl;
 //                pmesh.printNodes(std::cout);
@@ -668,7 +668,7 @@ namespace iceicle {
 #endif
 
         for(int i = 0; i < nrank; ++i){
-            MPI_Barrier(MPI_COMM_WORLD);
+            MPI_Barrier(mpi::comm_world);
             if(i == myrank){
                 if(util::AnomalyLog::size() > 0) {
                     std::cout << "====== Errors on rank: " << myrank << " ======" << std::endl;

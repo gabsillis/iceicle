@@ -43,7 +43,7 @@ namespace iceicle {
             using value_type = std::ranges::range_value_t<R>;
 #ifdef ICEICLE_USE_MPI 
             MPI_Bcast(std::ranges::data(range), std::ranges::size(range), 
-                mpi_get_type<value_type>(), root, MPI_COMM_WORLD);
+                mpi_get_type<value_type>(), root, mpi::comm_world);
 #endif
         }
 
@@ -93,7 +93,7 @@ namespace iceicle {
         auto execute_on_rank(int irank, const F& fcn, ArgsT&&... args) -> void {
 #ifdef ICEICLE_USE_MPI
             int myrank;
-            MPI_Comm_rank(MPI_COMM_WORLD, &myrank);
+            MPI_Comm_rank(mpi::comm_world, &myrank);
             if(myrank == irank){
                 fcn(std::forward<ArgsT>(args)...);
             }
@@ -108,7 +108,7 @@ namespace iceicle {
 #ifdef ICEICLE_USE_MPI
             if(!mpi_initialized()) return 0;
             int myrank;
-            MPI_Comm_rank(MPI_COMM_WORLD, &myrank);
+            MPI_Comm_rank(mpi::comm_world, &myrank);
             return myrank;
 #else 
             return 0;
@@ -134,7 +134,7 @@ namespace iceicle {
 #ifdef ICEICLE_USE_MPI
             if(!mpi_initialized()) return 0;
             int size;
-            MPI_Comm_size(MPI_COMM_WORLD, &size);
+            MPI_Comm_size(mpi::comm_world, &size);
             return size;
 #else 
             return 1;
@@ -157,7 +157,7 @@ namespace iceicle {
         void mpi_sync()
         {
 #ifdef ICEICLE_USE_MPI 
-            MPI_Barrier(MPI_COMM_WORLD);
+            MPI_Barrier(mpi::comm_world);
 #endif
         }
 

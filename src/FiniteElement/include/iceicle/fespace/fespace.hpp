@@ -657,6 +657,14 @@ namespace iceicle {
         }
 
         /**
+         * @brief get the number of degrees of freedom owned by this process 
+         */
+        [[nodiscard]] inline constexpr
+        auto owned_ndof(mpi::communicator_type comm) const noexcept
+        -> std::size_t
+        { return dof_partitioning.owned_range_size(mpi::rank(comm)); }
+
+        /**
          * @brief get the span that is the subset of the trace space list 
          * that only includes interior traces 
          * @return span over the interior traces 

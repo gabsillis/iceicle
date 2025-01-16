@@ -7,6 +7,7 @@
 #pragma once 
 #include "iceicle/anomaly_log.hpp"
 #include "iceicle/element/finite_element.hpp"
+#include "iceicle/fe_definitions.hpp"
 #include "iceicle/fe_function/fespan.hpp"
 #include "iceicle/fe_function/geo_layouts.hpp"
 #include "iceicle/fe_function/layout_right.hpp"
@@ -320,74 +321,34 @@ namespace iceicle::solvers {
         }
     }
 
-    /**
-     * calculate the contiguous storage requirement to represent the dg residual and 
-     * selected mdg dofs in a single residual array 
-     */
-    template<class T, class IDX, int ndim, class disc_class, int neq_mdg>
-    auto calculate_residual_size_square_mdg(
-        FESpace<T, IDX, ndim>& fespace,
-        disc_class& disc,
-        nodeset_dof_map<IDX>& nodeset,
-        std::integral_constant<int, neq_mdg>& neq_mdg_arg
-    ) -> IDX {
-        return fespace.dofs.calculate_size_requirement(disc_class::nv_comp())
-            + nodeset.size() * neq_mdg;
-    }
-
-    template<class T, class IDX, int ndim, class disc_class, int neq_mdg>
-    auto form_residual(
-        FESpace<T, IDX, ndim>& fespace,
-        disc_class& disc,
-        nodeset_dof_map<IDX>& nodeset,
-        std::span<T> u,
-        std::span<T> res,
-        std::integral_constant<int, neq_mdg> neq_mdg_arg
-    ) -> void {
-
-        // create all the layouts
-        fe_layout_right dg_layout{fespace.dofs, tmp::to_size<disc_class::nv_comp>()};
-        node_selection_layout<IDX, ndim> node_layout{nodeset};
-        node_selection_layout<IDX, neq_mdg> mdg_layout{nodeset};
-
-        // create views over the u and res arrays
-        fespan u_dg{u.data(), dg_layout};
-        dofspan u_nodes{std::span{u.begin() + dg_layout.size(), u.end()}, node_layout};
-        fespan res_dg{res.data(), dg_layout};
-        dofspan res_mdg{std::span{res.begin() + dg_layout.size(), res.end()}, mdg_layout};
-
-        // set the mesh from u_nodes
-        scatter_node_selection_span(1.0, u_nodes, 0.0, fespace.meshptr->coord);
-
-        form_residual(fespace, disc, u_dg, res_dg);
-        form_mdg_residual(fespace, disc, u_dg, res_mdg);
-    }
-
     template<class T, class IDX, int ndim, class disc_class>
     auto form_residual(
-        FESpace<T, IDX, ndim>& fespace,
+        FESpace<T, IDX, ndim, l2_conformity(ndim)>& fespace,
         disc_class& disc,
         const geo_dof_map<T, IDX, ndim>& geo_map,
         std::span<T> u,
-        std::span<T> res
+        std::span<T> res,
+        mpi::communicator_type comm
     ) -> void {
 
         // create all the layouts
-        fe_layout_right dg_layout{fespace.dofs, tmp::to_size<disc_class::nv_comp>()};
+        fe_layout_right u_layout{fespace, tmp::to_size<disc_class::nv_comp>{},
+            std::true_type{}}; // include ghost element dofs
+        fe_layout_right res_layout = exclude_ghost(u_layout);
         geo_data_layout x_layout{geo_map};
         ic_residual_layout<T, IDX, ndim, disc_class::nv_comp> ic_layout{geo_map};
 
 
         // create views over the u and res arrays
-        fespan u_dg{u.data(), dg_layout};
-        fespan res_dg{res.data(), dg_layout};
-        component_span x{std::span{u.begin() + dg_layout.size(), u.end()}, x_layout};
-        dofspan res_mdg{std::span{res.begin() + dg_layout.size(), res.end()}, ic_layout};
+        fespan u_dg{u.data(), u_layout};
+        fespan res_dg{res.data(), exclude_ghost(res_layout)};
+        component_span x{std::span{u.begin() + u_layout.size(), u.end()}, x_layout};
+        dofspan res_mdg{std::span{res.begin() + res_layout.size(), res.end()}, ic_layout};
 
         // apply the geometric parameterization to the mesh
         update_mesh(x, *(fespace.meshptr));
 
-        form_residual(fespace, disc, u_dg, res_dg);
+        form_residual(fespace, disc, u_dg, res_dg, comm);
         form_mdg_residual(fespace, disc, u_dg, geo_map, res_mdg);
     }
 }

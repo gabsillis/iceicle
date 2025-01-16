@@ -4,7 +4,7 @@
 #include "iceicle/dat_writer.hpp"
 #include "iceicle/disc/burgers.hpp"
 #include "iceicle/fe_function/fespan.hpp"
-#include "iceicle/fe_function/node_set_layout.hpp"
+#include "iceicle/fe_function/geo_layouts.hpp"
 #include "iceicle/fespace/fespace.hpp"
 #include "iceicle/geometry/face.hpp"
 #include "iceicle/disc/projection.hpp"
@@ -101,7 +101,8 @@ int main(int argc, char *argv[]){
         disc.dirichlet_callbacks.push_back([](const T*x, T*out){ out[0] = 0.0; });
         disc.dirichlet_callbacks.push_back([](const T*x, T*out){ out[0] = 1.0; });
 
-        fe_layout_right u_layout{fespace.dg_map, std::integral_constant<std::size_t, neq>{}};
+        fe_layout_right u_layout{fespace, std::integral_constant<std::size_t, neq>{},
+            std::true_type{}};
         std::vector<T> u_data(u_layout.size());
         fespan u{u_data.data(), u_layout};
 
@@ -115,8 +116,8 @@ int main(int argc, char *argv[]){
 
         Projection<T, IDX, ndim, neq> projection{ic};
         // TODO: extract into LinearFormSolver
-        std::vector<T> u_local_data(fespace.dg_map.max_el_size_reqirement(neq));
-        std::vector<T> res_local_data(fespace.dg_map.max_el_size_reqirement(neq));
+        std::vector<T> u_local_data(u_layout.size());
+        std::vector<T> res_local_data(u_layout.size());
         std::for_each(fespace.elements.begin(), fespace.elements.end(), 
             [&](const FiniteElement<T, IDX, ndim> &el){
                 // form the element local views
@@ -156,7 +157,7 @@ int main(int argc, char *argv[]){
                 .tau_rel = 1e-9,
                 .kmax = 5
             };
-            PetscNewton solver{fespace, disc, conv_criteria};
+            PetscNewton solver{fespace, disc, conv_criteria, mpi::comm_world};
             solver.ivis = 1;
             io::DatWriter<T, IDX, ndim> writer{fespace};
             writer.register_fields(u, "u");
@@ -174,11 +175,12 @@ int main(int argc, char *argv[]){
             solver.solve(u);
 
             std::vector<IDX> selected_traces = {0};
-            nodeset_dof_map selected_dofs{selected_traces, fespace};
+            geo_dof_map geo_map{selected_traces, fespace};
             std::vector<T> r_mdg_data{0.0};
-            node_selection_layout<IDX, 1> mdg_layout{selected_dofs};
-            dofspan r_mdg{r_mdg_data, mdg_layout};
-            form_mdg_residual(fespace, disc, u, r_mdg);
+            geo_data_layout mdg_layout{geo_map};
+            ic_residual_layout<T, IDX, ndim, neq> ice_layout{geo_map};
+            dofspan r_mdg{r_mdg_data, ice_layout};
+            form_mdg_residual(fespace, disc, u, geo_map, r_mdg);
             ic_out << mesh.coord[1][0] << " " << r_mdg[0, 0] << std::endl;;
         }
 
@@ -204,16 +206,6 @@ int main(int argc, char *argv[]){
             exactfunc(&x, &f);
             outexact << " " << fmt::format("{:>{}.{}e}", f, field_width, precision) << std::endl;
         }
-
-        // mdg selection
-        nodeset_dof_map<IDX> nodeset;
-        nodeset = select_nodeset(fespace, disc, u, 0.01, tmp::to_size<ndim>{});
-
-        std::cout << "Selected Nodes: ";
-        for(IDX inode : nodeset.selected_nodes){
-            std::cout << " " << inode;
-        }
-        std::cout << std::endl;
 
         AnomalyLog::handle_anomalies();
         return 0;

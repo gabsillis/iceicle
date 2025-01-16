@@ -93,7 +93,7 @@ namespace iceicle {
 
             bool all_valid = valid;
 #ifdef ICEICLE_USE_MPI
-            MPI_Allreduce(&valid, &all_valid, 1, MPI_C_BOOL, MPI_LAND, MPI_COMM_WORLD);
+            MPI_Allreduce(&valid, &all_valid, 1, MPI_C_BOOL, MPI_LAND, mpi::comm_world);
 #endif
             return all_valid;
         }
@@ -536,13 +536,13 @@ namespace iceicle {
                 IDX nelem = global_dofs_val.nelem();
                 gdofs = global_dofs.value();
 #ifdef ICEICLE_USE_MPI 
-                MPI_Bcast(&nelem, 1, mpi_get_type(nelem), myrank, MPI_COMM_WORLD);
+                MPI_Bcast(&nelem, 1, mpi_get_type(nelem), myrank, mpi::comm_world);
                 mpi::mpi_bcast_range(gdofs.offsets, myrank);
 #endif
             } else {
 #ifdef ICEICLE_USE_MPI
                 IDX nelem;
-                MPI_Bcast(&nelem, 1, mpi_get_type(nelem), global_dofs.valid_rank(), MPI_COMM_WORLD);
+                MPI_Bcast(&nelem, 1, mpi_get_type(nelem), global_dofs.valid_rank(), mpi::comm_world);
                 std::vector<IDX> offsets(nelem + 1);
                 mpi::mpi_bcast_range(offsets, global_dofs.valid_rank());
 #endif
@@ -600,25 +600,25 @@ namespace iceicle {
                 ndof = global_dofs_val.size();
                 gdofs = global_dofs.value();
 #ifdef ICEICLE_USE_MPI 
-                MPI_Bcast(&nelem, 1, mpi_get_type<IDX>(), myrank, MPI_COMM_WORLD);
-                MPI_Bcast(&ndof, 1, mpi_get_type<IDX>(), myrank, MPI_COMM_WORLD);
+                MPI_Bcast(&nelem, 1, mpi_get_type<IDX>(), myrank, mpi::comm_world);
+                MPI_Bcast(&ndof, 1, mpi_get_type<IDX>(), myrank, mpi::comm_world);
                 MPI_Bcast(gdofs.dof_connectivity.cols(), nelem + 1,
-                        mpi_get_type<IDX>(), myrank, MPI_COMM_WORLD);
+                        mpi_get_type<IDX>(), myrank, mpi::comm_world);
                 MPI_Bcast(gdofs.dof_connectivity.data(), gdofs.dof_connectivity.nnz(),
-                        mpi_get_type<IDX>(), myrank, MPI_COMM_WORLD);
+                        mpi_get_type<IDX>(), myrank, mpi::comm_world);
 #endif
             } else {
 #ifdef ICEICLE_USE_MPI 
                 MPI_Bcast(&nelem, 1, mpi_get_type<IDX>(),
-                        global_dofs.valid_rank(), MPI_COMM_WORLD);
+                        global_dofs.valid_rank(), mpi::comm_world);
                 MPI_Bcast(&ndof, 1, mpi_get_type<IDX>(),
-                        global_dofs.valid_rank(), MPI_COMM_WORLD);
+                        global_dofs.valid_rank(), mpi::comm_world);
                 std::vector<IDX>cols(nelem + 1);
                 MPI_Bcast(cols.data(), nelem + 1, mpi_get_type<IDX>(),
-                        global_dofs.valid_rank(), MPI_COMM_WORLD);
+                        global_dofs.valid_rank(), mpi::comm_world);
                 util::crs<IDX, IDX> gdofs_crs{cols};
                 MPI_Bcast(gdofs_crs.data(), gdofs_crs.nnz(), mpi_get_type<IDX>(), 
-                        global_dofs.valid_rank(), MPI_COMM_WORLD);
+                        global_dofs.valid_rank(), mpi::comm_world);
                 gdofs = dof_map<IDX, ndim, conformity>{ndof, gdofs_crs};
 #endif
             }
@@ -635,7 +635,7 @@ namespace iceicle {
             }
 #ifdef ICEICLE_USE_MPI
             // ownership is determined by lowest MPI rank
-            MPI_Allreduce(MPI_IN_PLACE, owning_rank.data(), owning_rank.size(), MPI_INT, MPI_MIN, MPI_COMM_WORLD);
+            MPI_Allreduce(MPI_IN_PLACE, owning_rank.data(), owning_rank.size(), MPI_INT, MPI_MIN, mpi::comm_world);
 #endif
             // add dofs from non-owned elements (don't claim ownership of these dofs)
             for(IDX iel = el_part.owned_range_size(myrank); iel < el_part.p_indices.size(); ++iel){

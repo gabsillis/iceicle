@@ -72,7 +72,7 @@ namespace iceicle::solvers {
 
         // preallocate storage for compact views of u and res 
         const std::size_t max_local_size =
-            fespace.dg_map.max_el_size_reqirement(disc_class::dnv_comp);
+            fespace.dofs.max_el_size_reqirement(disc_class::dnv_comp);
         const std::size_t ncomp = disc_class::dnv_comp;
 
         // get the start indices for the petsc matrix on this processor
@@ -690,7 +690,7 @@ template<
 
         // preallocate storage for compact views of u 
         const std::size_t max_local_size =
-            fespace.dg_map.max_el_size_reqirement(neq);
+            fespace.dofs.max_el_size_reqirement(neq);
         std::vector<T> uL_storage(max_local_size);
         std::vector<T> uR_storage(max_local_size);
         std::vector<T> jacL_storage{};
@@ -805,10 +805,10 @@ template<
             }
         }
 
-        std::vector<T> resL_storage(fespace.dg_map.max_el_size_reqirement(u.nv()));
-        std::vector<T> resLp_storage(fespace.dg_map.max_el_size_reqirement(u.nv()));
-        std::vector<T> resR_storage(fespace.dg_map.max_el_size_reqirement(u.nv()));
-        std::vector<T> resRp_storage(fespace.dg_map.max_el_size_reqirement(u.nv()));
+        std::vector<T> resL_storage(fespace.dofs.max_el_size_reqirement(u.nv()));
+        std::vector<T> resLp_storage(fespace.dofs.max_el_size_reqirement(u.nv()));
+        std::vector<T> resR_storage(fespace.dofs.max_el_size_reqirement(u.nv()));
+        std::vector<T> resRp_storage(fespace.dofs.max_el_size_reqirement(u.nv()));
 
         // Jacobian wrt x 
         for(IDX jmdg = 0; jmdg < mdg_residual.ndof(); ++jmdg){
@@ -879,7 +879,7 @@ template<
             // use a set to prevent repeats
             std::set<IDX>traces_to_visit{};
             for(IDX iel : fespace.el_surr_nodes.rowspan(inode)){
-                for(IDX itrace : fespace.fac_surr_el.rowspan(iel)){
+                for(IDX itrace : fespace.meshptr->facsuel.rowspan(iel)){
                     traces_to_visit.insert(itrace);
                 }
             }

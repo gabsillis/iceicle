@@ -41,7 +41,7 @@ int main(int argc, char **argv){
 //        delete listeners.Release(listeners.default_result_printer());
 //    }
     int result = RUN_ALL_TESTS();
-    MPI_Allreduce(MPI_IN_PLACE, &result, 1, MPI_INT, MPI_MAX, MPI_COMM_WORLD);
+    MPI_Allreduce(MPI_IN_PLACE, &result, 1, MPI_INT, MPI_MAX, mpi::comm_world);
     mpi::finalize();
     return result;
 }
@@ -51,8 +51,8 @@ TEST(test_projection, test_l2) {
 
     // === get mpi information ===
     int nrank, myrank;
-    MPI_Comm_rank(MPI_COMM_WORLD, &myrank);
-    MPI_Comm_size(MPI_COMM_WORLD, &nrank);
+    MPI_Comm_rank(mpi::comm_world, &myrank);
+    MPI_Comm_size(mpi::comm_world, &nrank);
 
     // === create a serial mesh ===
     AbstractMesh<double, int, 2> mesh(
@@ -75,7 +75,7 @@ TEST(test_projection, test_l2) {
 
     int color = (myrank == 0) ? 0 : 1;
     MPI_Comm serial_comm;
-    MPI_Comm_split(MPI_COMM_WORLD, color, myrank, &serial_comm);
+    MPI_Comm_split(mpi::comm_world, color, myrank, &serial_comm);
     double serial_l2_error; // will bcast to this from rank 0
     if(myrank == 0){
 
@@ -97,7 +97,7 @@ TEST(test_projection, test_l2) {
         std::function<void(double*, double*)> exact = [projfunc](double *x, double * out){ projfunc(x, out); };
         serial_l2_error = l2_error(exact, serial_fespace, u_serial, serial_comm);
     }
-    MPI_Bcast(&serial_l2_error, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+    MPI_Bcast(&serial_l2_error, 1, MPI_DOUBLE, 0, mpi::comm_world);
 
     // ========================================
     // = Parallel version of same computation =
@@ -134,8 +134,8 @@ TEST( test_fespan, test_sync ) {
     mpi::mpi_sync();
     // === get mpi information ===
     int nrank, myrank;
-    MPI_Comm_rank(MPI_COMM_WORLD, &myrank);
-    MPI_Comm_size(MPI_COMM_WORLD, &nrank);
+    MPI_Comm_rank(mpi::comm_world, &myrank);
+    MPI_Comm_size(mpi::comm_world, &nrank);
 
     // === create a serial mesh ===
     AbstractMesh<double, int, 2> mesh(
@@ -181,8 +181,8 @@ TEST(test_residual, test_heat_equation) {
     mpi::mpi_sync();
     // === get mpi information ===
     int nrank, myrank;
-    MPI_Comm_rank(MPI_COMM_WORLD, &myrank);
-    MPI_Comm_size(MPI_COMM_WORLD, &nrank);
+    MPI_Comm_rank(mpi::comm_world, &myrank);
+    MPI_Comm_size(mpi::comm_world, &nrank);
 
     // === create a serial mesh ===
     AbstractMesh<double, int, 2> mesh(
@@ -233,7 +233,7 @@ TEST(test_residual, test_heat_equation) {
 
     int color = (myrank == 0) ? 0 : 1;
     MPI_Comm serial_comm;
-    MPI_Comm_split(MPI_COMM_WORLD, color, myrank, &serial_comm);
+    MPI_Comm_split(mpi::comm_world, color, myrank, &serial_comm);
 
     // initialization linear form
     Projection<double, int, 2, neq> projection{ic};
@@ -263,7 +263,7 @@ TEST(test_residual, test_heat_equation) {
 
         res_vector_norm = res.vector_norm(serial_comm);
     }
-    MPI_Bcast(&res_vector_norm, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+    MPI_Bcast(&res_vector_norm, 1, MPI_DOUBLE, 0, mpi::comm_world);
 
     // ========================================
     // = Parallel version of same computation =

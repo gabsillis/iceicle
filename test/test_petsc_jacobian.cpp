@@ -7,6 +7,7 @@
 #include "iceicle/fespace/fespace.hpp"
 #include "iceicle/fe_function/layout_right.hpp"
 #include "iceicle/form_dense_jacobian.hpp"
+#include "iceicle/iceicle_mpi_utils.hpp"
 #include "iceicle/petsc_newton.hpp"
 #include "iceicle/form_petsc_jacobian.hpp"
 #include "mdspan/mdspan.hpp"
@@ -72,7 +73,9 @@ TEST(test_petsc_jacobian, test_mdg_bl){
     });
 
     // define layout
-    fe_layout_right u_layout{fespace.dg_map, std::integral_constant<std::size_t, neq>{}};
+    fe_layout_right u_layout{fespace, std::integral_constant<std::size_t, neq>{},
+        std::true_type{}};
+    fe_layout_right res_layout = exclude_ghost(u_layout);
 
     std::vector<T> u_storage(u_layout.size());
    
@@ -87,11 +90,8 @@ TEST(test_petsc_jacobian, test_mdg_bl){
         .tau_rel = 1e-9,
         .kmax = 2
     };
-    PetscNewton solver{fespace, disc, conv_criteria};
+    PetscNewton solver{fespace, disc, conv_criteria, mpi::comm_world};
     solver.solve(u);
-
-
-    nodeset_dof_map<IDX> nodeset = select_all_nodes(fespace);
 
     // create a dof map selecting all traces 
     auto all_traces = std::views::iota( (std::size_t) 0 , fespace.traces.size());
@@ -107,13 +107,13 @@ TEST(test_petsc_jacobian, test_mdg_bl){
     ic_residual_layout<T, IDX, ndim, 1> mdg_layout{geo_map};
     geo_data_layout<T, IDX, ndim> geo_layout{geo_map};
 
-    PetscInt local_res_size = u_layout.size() + mdg_layout.size();
+    PetscInt local_res_size = res_layout.size() + mdg_layout.size();
     PetscInt local_u_size = u_layout.size() + geo_layout.size();
 
     std::vector<T> res_storage(local_res_size);
     std::vector<T> coord_data(geo_layout.size());
 
-    fespan res{res_storage.data(), u_layout};
+    fespan res{res_storage.data(), res_layout};
     dofspan mdg_res{res_storage.data() + res.size(), mdg_layout};
     component_span coord{coord_data, geo_layout};
     extract_geospan(*(fespace.meshptr), coord);

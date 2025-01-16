@@ -76,14 +76,14 @@ namespace iceicle::solvers{
         }
        
         // form the unperturbed residual
-        form_residual(fespace, disc, geo_map, u, res);
+        form_residual(fespace, disc, geo_map, u, res, mpi::comm_world);
 
         // do the perturbed residuals
         std::vector<T> resp(res.size());
         for(IDX jdof = 0; jdof < u.size(); ++jdof){
             T uold = u[jdof];
             u[jdof] += epsilon;
-            form_residual(fespace, disc, geo_map, u, std::span{resp});
+            form_residual(fespace, disc, geo_map, u, std::span{resp}, mpi::comm_world);
             for(IDX ieq = 0; ieq < res.size(); ++ieq){
                 jac[ieq, jdof] = (resp[ieq] - res[ieq]) / epsilon;
             }
