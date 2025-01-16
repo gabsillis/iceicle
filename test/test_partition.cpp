@@ -2,6 +2,7 @@
 #include "iceicle/iceicle_mpi_utils.hpp"
 #include "iceicle/tmp_utils.hpp"
 #include "iceicle/disc/l2_error.hpp"
+#include <cstdio>
 #include <iceicle/disc/conservation_law.hpp>
 #include <iceicle/form_residual.hpp>
 #include <cmath>
@@ -34,12 +35,19 @@ int main(int argc, char **argv){
 //            sleep(5);
 //    }
     ::testing::InitGoogleTest(&argc, argv);
+//    ::testing::TestEventListeners& listeners =
+//    ::testing::UnitTest::GetInstance()->listeners();
+//    if (mpi::mpi_world_rank() != 0) {
+//        delete listeners.Release(listeners.default_result_printer());
+//    }
     int result = RUN_ALL_TESTS();
+    MPI_Allreduce(MPI_IN_PLACE, &result, 1, MPI_INT, MPI_MAX, MPI_COMM_WORLD);
     mpi::finalize();
     return result;
 }
 
 TEST(test_projection, test_l2) {
+    mpi::mpi_sync();
 
     // === get mpi information ===
     int nrank, myrank;
@@ -123,6 +131,7 @@ TEST(test_projection, test_l2) {
 }
 
 TEST( test_fespan, test_sync ) {
+    mpi::mpi_sync();
     // === get mpi information ===
     int nrank, myrank;
     MPI_Comm_rank(MPI_COMM_WORLD, &myrank);
@@ -169,9 +178,7 @@ TEST( test_fespan, test_sync ) {
 }
 
 TEST(test_residual, test_heat_equation) {
-
-    return;
-
+    mpi::mpi_sync();
     // === get mpi information ===
     int nrank, myrank;
     MPI_Comm_rank(MPI_COMM_WORLD, &myrank);
@@ -181,7 +188,7 @@ TEST(test_residual, test_heat_equation) {
     AbstractMesh<double, int, 2> mesh(
         Tensor<double, 2>{0.0, 0.0},
         Tensor<double, 2>{1.0, 1.0},
-        Tensor<int, 2>{2, 1},
+        Tensor<int, 2>{7, 5},
         1, 
         Tensor<BOUNDARY_CONDITIONS, 4>{BOUNDARY_CONDITIONS::DIRICHLET, BOUNDARY_CONDITIONS::DIRICHLET,
             BOUNDARY_CONDITIONS::DIRICHLET, BOUNDARY_CONDITIONS::DIRICHLET},
@@ -202,8 +209,8 @@ TEST(test_residual, test_heat_equation) {
         .b = Tensor<double, 2>{0.0, 0.0}
     };
     BurgersFlux physical_flux{burgers_coeffs};
-    BurgersUpwind convective_flux{disable_coeffs};
-    BurgersDiffusionFlux diffusive_flux{disable_coeffs};
+    BurgersUpwind convective_flux{burgers_coeffs};
+    BurgersDiffusionFlux diffusive_flux{burgers_coeffs};
     ConservationLawDDG disc{std::move(physical_flux),
                           std::move(convective_flux),
                           std::move(diffusive_flux)};
@@ -255,9 +262,6 @@ TEST(test_residual, test_heat_equation) {
         solvers::form_residual(serial_fespace, disc, u, res, serial_comm);
 
         res_vector_norm = res.vector_norm(serial_comm);
-
-        std::cout << "RESIDUAL: " << res;
-        std::cout << " U: " << u;
     }
     MPI_Bcast(&res_vector_norm, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
 
@@ -287,13 +291,6 @@ TEST(test_residual, test_heat_equation) {
     solvers::form_residual(parallel_fespace, disc, u, res, mpi::comm_world);
 
     mpi::mpi_sync();
-    for(int irank = 0; irank < nrank; ++irank){
-        if(irank == myrank){
-            std::cout << "RESIDUAL: " << res;
-            std::cout << "U: " << exclude_ghost(u);
-        }
-        mpi::mpi_sync();
-    }
     SCOPED_TRACE("MPI rank = " + std::to_string(mpi::mpi_world_rank()));
     ASSERT_NEAR(res_vector_norm, res.vector_norm(), 1e-10);
 }

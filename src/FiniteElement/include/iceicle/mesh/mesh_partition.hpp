@@ -7,6 +7,7 @@
 #include "iceicle/geometry/transformations_table.hpp"
 #include <iceicle/mesh/mesh.hpp>
 #include <limits>
+#include <set>
 #include <mpi.h>
 #ifdef ICEICLE_USE_METIS
 #include <metis.h>
@@ -244,60 +245,63 @@ namespace iceicle {
         auto [el_partition, el_renumbering] = partition_elements(elsuel, el_part_algo);
         dof_map el_conn_global{apply_el_renumbering(mesh.conn_el, el_renumbering)};
 
+
         // element partition extended by face neighbor elements 
         // elements neighboring ranks that share a face are included
-        if(myrank == 0){
-            for(IDX iface = mesh.interiorFaceStart; iface < mesh.interiorFaceEnd; ++iface){
 
+        if(myrank == 0){
+            // determine the ghost elements for each rank
+            std::vector< std::vector<IDX> > rank_ghost_piel;
+            { // lifetime of the set
+                std::vector< std::set<IDX> > rank_ghost_piel_set(nrank);
+                for(IDX iface = mesh.interiorFaceStart; iface < mesh.interiorFaceEnd; ++iface){
                     Face<T, IDX, ndim>& face = *(mesh.faces[iface]);
                     IDX iel = el_renumbering[face.elemL];
                     IDX ier = el_renumbering[face.elemR];
                     int rank_l = el_partition.owning_rank(iel);
                     int rank_r = el_partition.owning_rank(ier);
                     if(rank_l != rank_r){
-                        // rank_l needs to add ier to extended_el_partition
-                        if(rank_l == myrank){
-                            // ier is neighbor
-                            el_partition.p_indices.push_back(ier);
-                            el_partition.inv_p_indices[ier] 
-                                = el_partition.p_indices.size() - 1;
-                        } else {
-                            MPI_Send(&ier, 1, mpi_get_type(ier), rank_l, 0, MPI_COMM_WORLD);
-                        }
-
-                        // rank_r needs to add iel to extended_el_partition
-                        if(rank_r == myrank){
-                            // iel is neighbor
-                            el_partition.p_indices.push_back(iel);
-                            el_partition.inv_p_indices[iel] 
-                                = el_partition.p_indices.size() - 1;
-                        } else {
-#ifdef ICEICLE_USE_MPI
-                            MPI_Send(&iel, 1, mpi_get_type(iel), rank_r, 0, MPI_COMM_WORLD);
-#endif
-                        }
+                        // register the ghost element
+                        rank_ghost_piel_set[rank_l].insert(ier);
+                        rank_ghost_piel_set[rank_r].insert(iel);
                     }
+                }
+                for(int irank = 0; irank < nrank; ++irank){
+                    std::vector<IDX> ghost_piel(rank_ghost_piel_set[irank].begin(),
+                            rank_ghost_piel_set[irank].end());
+                    rank_ghost_piel.emplace_back(std::move(ghost_piel));
+                }
             }
 
-            // stop code
+            // communicate ghost element arrays
+#ifdef ICEICLE_USE_MPI
+            std::vector<MPI_Request> requests;
             for(int irank = 1; irank < nrank; ++irank){
-                IDX stop_code = std::numeric_limits<IDX>::max();
-#ifdef ICEICLE_USE_MPI
-                MPI_Send(&stop_code, 1, mpi_get_type(stop_code), irank, 0, MPI_COMM_WORLD);
-#endif
+                requests.emplace_back();
+                MPI_Isend(rank_ghost_piel[irank].data(), rank_ghost_piel[irank].size(), 
+                        mpi_get_type<IDX>(), irank, 0, MPI_COMM_WORLD, &requests.back());
             }
+
+            // process ghost_elements
+            std::vector<IDX> ghost_pielems = rank_ghost_piel[0];
+            for(IDX pielem : ghost_pielems){
+                el_partition.p_indices.push_back(pielem);
+                el_partition.inv_p_indices[pielem] 
+                    = el_partition.p_indices.size() - 1;
+            }
+
+
+            // wait for isends
+            MPI_Waitall(requests.size(), requests.data(), MPI_STATUSES_IGNORE);
+            requests.clear();
+#endif
         } else {
-            IDX ielem;
-#ifdef ICEICLE_USE_MPI
-            MPI_Recv(&ielem, 1, mpi_get_type(ielem), 0, 0, MPI_COMM_WORLD, &status);
-#endif
-            while(ielem != std::numeric_limits<IDX>::max()){
-                el_partition.p_indices.push_back(ielem);
-                el_partition.inv_p_indices[ielem] 
-                    =el_partition.p_indices.size() - 1;
-#ifdef ICEICLE_USE_MPI
-                MPI_Recv(&ielem, 1, mpi_get_type(ielem), 0, 0, MPI_COMM_WORLD, &status);
-#endif
+            // recieve ghost element array communication
+            std::vector<IDX> ghost_pielems = mpi::recieve_vector<IDX>(0, 0, mpi::comm_world);
+            for(IDX pielem : ghost_pielems){
+                el_partition.p_indices.push_back(pielem);
+                el_partition.inv_p_indices[pielem] 
+                    = el_partition.p_indices.size() - 1;
             }
         }
 
@@ -310,6 +314,11 @@ namespace iceicle {
         std::vector<IDX> inv_nodes_renumbering(nodes_renumbering.size());
         for(IDX inode = 0; inode < nodes_renumbering.size(); ++inode){
             inv_nodes_renumbering[nodes_renumbering[inode]] = inode;
+        }
+        // create an inverse renumbering
+        std::vector<IDX> inv_el_renumbering(el_renumbering.size());
+        for(IDX inode = 0; inode < el_renumbering.size(); ++inode){
+            inv_el_renumbering[el_renumbering[inode]] = inode;
         }
 
         // construct the nodes
@@ -369,13 +378,13 @@ namespace iceicle {
             }
         }
 
-        for(int irank = 0; irank < nrank; ++irank){
-            if(irank == myrank){
-                std::cout << "p_el_conn " << irank << ": " << std::endl;
-                std::cout << p_el_conn.dof_connectivity;
-            }
-            mpi::mpi_sync();
-        }
+//        for(int irank = 0; irank < nrank; ++irank){
+//            if(irank == myrank){
+//                std::cout << "p_el_conn " << irank << ": " << std::endl;
+//                std::cout << p_el_conn.dof_connectivity;
+//            }
+//            mpi::mpi_sync();
+//        }
 
         using boundary_face_desc = AbstractMesh<T, IDX, ndim>::boundary_face_desc;
         std::vector<boundary_face_desc> boundary_descs;
@@ -383,7 +392,7 @@ namespace iceicle {
         if(myrank == 0){
             for(IDX ifac = mesh.bdyFaceStart; ifac < mesh.bdyFaceEnd; ++ifac){
                 const Face<T, IDX, ndim>& face = *(mesh.faces[ifac]);
-                IDX attached_element = el_renumbering[face.elemL];
+                IDX attached_element = inv_el_renumbering[face.elemL];
                 int mpi_rank = el_partition.owning_rank(attached_element);
                 
                 BOUNDARY_CONDITIONS bctype = face.bctype;
@@ -391,7 +400,7 @@ namespace iceicle {
                 std::vector<IDX> pnodes{};
                 pnodes.reserve(face.n_nodes());
                 for(IDX node : face.nodes_span()){
-                    pnodes.push_back(inv_nodes_renumbering[node]);
+                    pnodes.push_back(inv_nodes_renumbering.at(node));
                 }
 
                 if(mpi_rank == myrank) {
@@ -403,11 +412,15 @@ namespace iceicle {
                 } else {
                     int bctype_int = (int) bctype;
                     std::size_t nnode = pnodes.size();
+
+
                     // send bctype, bcflag, number of nodes, then nodes array
                     MPI_Send(&bctype_int, 1, MPI_INT, mpi_rank, 0, MPI_COMM_WORLD);
                     MPI_Send(&bcflag, 1, MPI_INT, mpi_rank, 1, MPI_COMM_WORLD);
                     MPI_Send(&nnode, 1, mpi_get_type<std::size_t>(), mpi_rank, 2, MPI_COMM_WORLD);
                     MPI_Send(pnodes.data(), pnodes.size(), mpi_get_type(pnodes.data()), mpi_rank, 3, MPI_COMM_WORLD);
+                    // TODO: for debug
+                    MPI_Send(&attached_element, 1, mpi_get_type<IDX>(), mpi_rank, 0, MPI_COMM_WORLD);
                 }
             }
 
@@ -425,11 +438,15 @@ namespace iceicle {
                 MPI_Recv(&nnode, 1, mpi_get_type<std::size_t>(), 0, 2, MPI_COMM_WORLD, &status);
                 std::vector<IDX> pnodes(nnode);
                 MPI_Recv(pnodes.data(), nnode, mpi_get_type(pnodes.data()), 0, 3, MPI_COMM_WORLD, &status);
+
+                    // TODO: for debug
+                    IDX attached_element;
+                    MPI_Recv(&attached_element, 1, mpi_get_type<IDX>(), 0, 0, MPI_COMM_WORLD, &status);
                 // translate to local node indices
                 std::vector<IDX> nodes{};
                 nodes.reserve(pnodes.size());
                 for(IDX node : pnodes)
-                    nodes.push_back(p_el_conn_map.inv_p_indices[node]);
+                    nodes.push_back(p_el_conn_map.inv_p_indices.at(node)); 
 
                 boundary_descs.push_back(boundary_face_desc{bctype, bcflag, nodes});
 
@@ -602,8 +619,8 @@ namespace iceicle {
                 auto [neighbor_rank, left] = decode_mpi_bcflag(bcflag);
 
                 // translate the elements to process-local indices
-                IDX iel = el_partition.inv_p_indices[iel_p];
-                IDX ier = el_partition.inv_p_indices[ier_p];
+                IDX iel = el_partition.inv_p_indices.at(iel_p);
+                IDX ier = el_partition.inv_p_indices.at(ier_p);
                 if(iel == -1 or ier == -1) 
                     util::AnomalyLog::log_anomaly("Don't have process-local index of inter-process face elements");
 
@@ -638,16 +655,16 @@ namespace iceicle {
 
 
 #ifndef NDEBUG 
-        for(int i = 0; i < nrank; ++i){
-            MPI_Barrier(MPI_COMM_WORLD);
-            if(i == myrank){
-                std::cout << "====== Mesh " << myrank << " ======" << std::endl;
-                pmesh.printNodes(std::cout);
-                pmesh.printElements(std::cout);
-                pmesh.printFaces(std::cout);
-                std::cout << std::endl;
-            }
-        }
+//        for(int i = 0; i < nrank; ++i){
+//            MPI_Barrier(MPI_COMM_WORLD);
+//            if(i == myrank){
+//                std::cout << "====== Mesh " << myrank << " ======" << std::endl;
+//                pmesh.printNodes(std::cout);
+//                pmesh.printElements(std::cout);
+//                pmesh.printFaces(std::cout);
+//                std::cout << std::endl;
+//            }
+//        }
 #endif
 
         for(int i = 0; i < nrank; ++i){

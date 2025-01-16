@@ -2,6 +2,7 @@
 #pragma once
 #include <optional>
 #include <ranges>
+#include <vector>
 #ifdef ICEICLE_USE_MPI
 #include <mpi.h>
 #include <iceicle/mpi_type.hpp>
@@ -158,6 +159,25 @@ namespace iceicle {
 #ifdef ICEICLE_USE_MPI 
             MPI_Barrier(MPI_COMM_WORLD);
 #endif
+        }
+
+        template<class T>
+        [[nodiscard]] inline 
+        auto recieve_vector(int source, int tag, mpi::communicator_type comm)
+        -> std::vector<T>
+        {
+            int recv_sz = 0;
+#ifdef ICEICLE_USE_MPI 
+            MPI_Status status;
+            MPI_Probe(source, tag, comm, &status);
+            MPI_Get_count(&status, mpi_get_type<T>(), &recv_sz);
+#endif
+            std::vector<T> data(recv_sz);
+#ifdef ICEICLE_USE_MPI 
+            MPI_Recv(data.data(), recv_sz, mpi_get_type<T>(), 
+                                    source, tag, comm, MPI_STATUS_IGNORE);
+#endif
+            return data;
         }
 
         /// @brief mark that data only satisfies invariants on a given mpi_rank 

@@ -1116,6 +1116,7 @@ namespace iceicle {
                     out << coord[inode][idim] << " ";
                 out << "}" << std::endl;
             }
+            out << std::flush;
         }
 
         void printElements(std::ostream &out){
@@ -1127,6 +1128,7 @@ namespace iceicle {
                 }
                 out << "}\n";
             }
+            out << std::flush;
         }
 
         void printFaces(std::ostream &out){
@@ -1161,6 +1163,7 @@ namespace iceicle {
                 out << "bctype: " << bc_name(fac.bctype) << " | bcflag: " << fac.bcflag << std::endl;
                 out << "-------------------------\n";
            }
+           out << std::flush;
         }
 
         ~AbstractMesh() = default;

@@ -560,12 +560,14 @@ namespace iceicle {
             std::vector< IDX > owned_offsets{0};
             std::vector< IDX > renumbering;
 
+            IDX nelem_local = el_part.p_indices.size();
             IDX pidx = 0;
             for(int irank = 0; irank < nrank; ++irank){
                 IDX ndof_rank = rank_offsets[irank].back();
-                for(IDX ielem = el_part.owned_offsets[irank]; ielem < el_part.owned_offsets[irank + 1]; ++ielem){
-                    for(IDX i = 0; i < gdofs.ndof_el(ielem); ++i){
-                        renumbering[pidx] = gdofs[ielem, i];
+                for(IDX ielem = 0; ielem < el_part.p_indices.size(); ++ielem){
+                    IDX p_ielem = el_part.p_indices[ielem];
+                    for(IDX i = 0; i < gdofs.ndof_el(p_ielem); ++i){
+                        renumbering[pidx] = gdofs[p_ielem, i];
                         ++pidx;
                     }
                 }
@@ -635,6 +637,13 @@ namespace iceicle {
             // ownership is determined by lowest MPI rank
             MPI_Allreduce(MPI_IN_PLACE, owning_rank.data(), owning_rank.size(), MPI_INT, MPI_MIN, MPI_COMM_WORLD);
 #endif
+            // add dofs from non-owned elements (don't claim ownership of these dofs)
+            for(IDX iel = el_part.owned_range_size(myrank); iel < el_part.p_indices.size(); ++iel){
+                IDX p_ielem = el_part.p_indices[iel];
+                for(IDX pdof : gdofs.rowspan(p_ielem)){
+                    my_pdofs.push_back(pdof);
+                }
+            }
 
             // sort and remove duplicates
             std::ranges::sort(my_pdofs);
@@ -652,18 +661,11 @@ namespace iceicle {
                 owned_pdofs[owning_rank[pdof]].push_back(pdof);
             }
             for(int irank = 0; irank < nrank; ++irank){
-                if(irank == mpi::mpi_world_rank()){
-                    fmt::println("pdofs rank {}: {}", irank, my_pdofs);
-                    fmt::println("owned pdofs rank {}: {}", irank, owned_pdofs[irank] );
-                }
-                mpi::mpi_sync();
-            }
-            for(int irank = 0; irank < nrank; ++irank){
                 renumbering.insert(std::end(renumbering), 
                         std::begin(owned_pdofs[irank]), std::end(owned_pdofs[irank]));
                 offsets.push_back(offsets.back() + owned_pdofs[irank].size());
             }
-            fmt::println("renumbering: {}", renumbering);
+//             fmt::println("renumbering: {}", renumbering);
             // new_pdof = inverse_renumbering[old_pdof]
             std::vector<IDX> inverse_renumbering(renumbering.size());
             for(IDX i = 0; i < renumbering.size(); ++i){
@@ -674,17 +676,19 @@ namespace iceicle {
             std::for_each(my_pdofs.begin(), my_pdofs.end(), 
                     [&inverse_renumbering](IDX &n) { n = inverse_renumbering[n]; });
 
-            // reorder the ldofs to satisfy the requirements for p_indices of pindex_map
+            // reorder the ldofs to satisfy the requirements 
+            // for p_indices of pindex_map
+            // (owned p_indices come first in contiguous range)
             std::ranges::sort(my_pdofs);
             IDX start_owned = 0;
             for(IDX ldof = 0; ldof < my_pdofs.size(); ++ldof){
-                if(my_pdofs[ldof] >= offsets[mpi::mpi_world_rank()]){
+                if(my_pdofs[ldof] >= offsets[myrank]){
                     start_owned = ldof;
                     break;
                 }
             }
             IDX end_owned = start_owned +
-                (offsets[mpi::mpi_world_rank() + 1] - offsets[mpi::mpi_world_rank()]);
+                (offsets[myrank + 1] - offsets[myrank]);
             {
                 std::vector<IDX> pdofs_rearrange{};
                 pdofs_rearrange.insert(pdofs_rearrange.end(), 
@@ -695,6 +699,13 @@ namespace iceicle {
                         my_pdofs.begin() + end_owned, my_pdofs.end());
                 my_pdofs = std::move(pdofs_rearrange);
             }
+//             for(int irank = 0; irank < nrank; ++irank){
+//                 if(irank == mpi::mpi_world_rank()){
+//                     fmt::println("pdofs rank {}: {}", irank, my_pdofs);
+//                     fmt::println("owned pdofs rank {}: {}", irank, owned_pdofs[irank] );
+//                 }
+//                 mpi::mpi_sync();
+//             }
            
             // create a inverse mapping of my_pdofs to ldofs
             std::unordered_map<IDX, IDX> inv_pdofs{};
@@ -716,14 +727,15 @@ namespace iceicle {
             for(int i = 1; i < ldof_cols.size(); ++i)
                 ldof_cols[i] = ldof_cols[i - 1] + ldof_cols[i];
             util::crs<IDX, IDX> ldof_crs{std::span<const IDX>{ldof_cols}};
-            fmt::println("ldof_cols rank {}: {}", mpi::mpi_world_rank(), ldof_cols);
+            // fmt::println("ldof_cols rank {}: {}", mpi::mpi_world_rank(), ldof_cols);
 
             /// fill with inverse mapping
             for(IDX iel_local = 0; iel_local < nelem_local; ++iel_local){
                 IDX iel_global = el_part.p_indices[iel_local];
                 for(int idof = 0; idof < ldof_crs.rowsize(iel_local); ++idof){
-                    ldof_crs[iel_local, idof] = inv_pdofs[inverse_renumbering[
-                        gdofs[iel_global, idof]]];
+                    IDX pdof_old = gdofs[iel_global, idof];
+                    ldof_crs[iel_local, idof] = inv_pdofs.at(
+                            inverse_renumbering[pdof_old]);
                 }
             }
 
