@@ -1078,7 +1078,7 @@ namespace iceicle {
         /// @brief update the element coordinate data to match the coord array 
         /// by using the element connectivity
         void update_coord_els(){
-            for(IDX i = 0; i < conn_el.size(); ++i){
+            for(IDX i = 0; i < conn_el.dof_connectivity.nnz(); ++i){
                 IDX inode = conn_el.dof_connectivity.data()[i];
                 coord_els.data()[i] = coord[inode];
             }
