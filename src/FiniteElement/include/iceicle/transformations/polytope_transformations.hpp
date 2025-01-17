@@ -77,6 +77,16 @@ namespace iceicle {
       get_ndim(code);
     };
 
+    /// @brief get the tcode of the polytope that forms the "base" of an extruded polytope
+    /// i.e the bottom square of a pyramid
+    template< std::size_t ndim >
+    [[nodiscard]] inline constexpr 
+    auto base_tcode(bitset<ndim> tcode)
+    { 
+      if constexpr (ndim == 0) return bitset<0>{};
+      else return bitset<ndim - 1>(tcode.to_ullong()); 
+    }
+
     // ============
     // = Vertices =
     // ============
@@ -112,7 +122,7 @@ namespace iceicle {
     template<geo_code auto t>
     constexpr
     auto gen_vert() noexcept -> vertex_list<t>
-    {
+{
       static constexpr int ndim = get_ndim(t);
       vertex_list<t> vertices;
       std::ranges::fill(vertices, vcode<ndim>{0});
@@ -139,20 +149,30 @@ namespace iceicle {
     // = Facets =
     // ==========
 
-    /// @brief get the number of facets of the given extrusion of the topology 
-    template<std::size_t ndim>
-    constexpr
-    auto n_facets(tcode<ndim> t, ecode<ndim> e) -> std::size_t {
-      if (e.to_ullong() == 0) return 0;
+    /// @brief get the number of facets of a given dimension of a topology
+    /// @param t the topology code 
+    /// @param idim the dimension of the facets 
+    ///       (0 is vertices, ndim is the volume)
+    template<int idim>
+    [[nodiscard]] inline constexpr
+    auto n_facets(geo_code auto t) 
+    -> std::size_t 
+    {
+      if constexpr (idim == 0) return n_vert(t);
+      else if (idim == get_ndim(t)) return 1;
+      else if (idim > get_ndim(t)) return 0;
       else {
-        std::size_t nvert = 1;
-        for(int idim = 0; idim < ndim; ++idim){
-          if(e[idim] == 1){
-            if(t[idim] == prism_ext) nvert *= 2;
-            else nvert += 1;
-          }
-        }
-        return nvert;
+        auto t_base{base_tcode(t)};
+
+        std::size_t facet_count = n_facets<idim>(t_base);
+        // count the number of facets on the base
+        if(t[get_ndim(t) - 1] == prism_ext)
+          facet_count *= 2;
+
+        // count the number of facets in the extrusion
+        // this is the number of idim - 1 facets of the base shape
+        facet_count += n_facets<idim - 1>(t_base);
+        return facet_count;
       }
     }
 

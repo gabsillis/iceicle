@@ -157,3 +157,71 @@ TEST(test_polytope, test_extrusion_parities) {
     }
 }
 
+TEST(test_polytope, test_n_facets){
+
+    // Vertices
+    ASSERT_EQ(n_facets<0>(segment_t), 2);
+    ASSERT_EQ(n_facets<0>(segmentb_t), 2);
+    ASSERT_EQ(n_facets<0>(tri_a_t), 3);
+    ASSERT_EQ(n_facets<0>(tri_b_t), 3);
+    ASSERT_EQ(n_facets<0>(quad_a_t), 4);
+    ASSERT_EQ(n_facets<0>(quad_b_t), 4);
+    ASSERT_EQ(n_facets<0>(tet_a_t), 4);
+    ASSERT_EQ(n_facets<0>(tet_b_t), 4);
+    ASSERT_EQ(n_facets<0>(prism_a_t), 6);
+    ASSERT_EQ(n_facets<0>(prism_b_t), 6);
+    ASSERT_EQ(n_facets<0>(pyra_a_t), 5);
+    ASSERT_EQ(n_facets<0>(pyra_b_t), 5);
+    ASSERT_EQ(n_facets<0>(hexa_a_t), 8);
+    ASSERT_EQ(n_facets<0>(hexa_b_t), 8);
+
+    // lines
+    ASSERT_EQ(n_facets<1>(segment_t), 1);
+    ASSERT_EQ(n_facets<1>(segmentb_t), 1);
+    ASSERT_EQ(n_facets<1>(tri_a_t), 3);
+    ASSERT_EQ(n_facets<1>(tri_b_t), 3);
+    ASSERT_EQ(n_facets<1>(quad_a_t), 4);
+    ASSERT_EQ(n_facets<1>(quad_b_t), 4);
+    ASSERT_EQ(n_facets<1>(tet_a_t), 6);
+    ASSERT_EQ(n_facets<1>(tet_b_t), 6);
+    ASSERT_EQ(n_facets<1>(prism_a_t), 9);
+    ASSERT_EQ(n_facets<1>(prism_b_t), 9);
+    ASSERT_EQ(n_facets<1>(pyra_a_t), 8);
+    ASSERT_EQ(n_facets<1>(pyra_b_t), 8);
+    ASSERT_EQ(n_facets<1>(hexa_a_t), 12);
+    ASSERT_EQ(n_facets<1>(hexa_b_t), 12);
+
+    // surfaces
+    ASSERT_EQ(n_facets<2>(segment_t), 0);
+    ASSERT_EQ(n_facets<2>(segmentb_t), 0);
+    ASSERT_EQ(n_facets<2>(tri_a_t), 1);
+    ASSERT_EQ(n_facets<2>(tri_b_t), 1);
+    ASSERT_EQ(n_facets<2>(quad_a_t), 1);
+    ASSERT_EQ(n_facets<2>(quad_b_t), 1);
+    ASSERT_EQ(n_facets<2>(tet_a_t), 4);
+    ASSERT_EQ(n_facets<2>(tet_b_t), 4);
+    ASSERT_EQ(n_facets<2>(prism_a_t), 5);
+    ASSERT_EQ(n_facets<2>(prism_b_t), 5);
+    ASSERT_EQ(n_facets<2>(pyra_a_t), 5);
+    ASSERT_EQ(n_facets<2>(pyra_b_t), 5);
+    ASSERT_EQ(n_facets<2>(hexa_a_t), 6);
+    ASSERT_EQ(n_facets<2>(hexa_b_t), 6);
+
+    // volumes
+    ASSERT_EQ(n_facets<3>(segment_t), 0);
+    ASSERT_EQ(n_facets<3>(segmentb_t), 0);
+    ASSERT_EQ(n_facets<3>(tri_a_t), 0);
+    ASSERT_EQ(n_facets<3>(tri_b_t), 0);
+    ASSERT_EQ(n_facets<3>(quad_a_t), 0);
+    ASSERT_EQ(n_facets<3>(quad_b_t), 0);
+    ASSERT_EQ(n_facets<3>(tet_a_t), 1);
+    ASSERT_EQ(n_facets<3>(tet_b_t), 1);
+    ASSERT_EQ(n_facets<3>(prism_a_t), 1);
+    ASSERT_EQ(n_facets<3>(prism_b_t), 1);
+    ASSERT_EQ(n_facets<3>(pyra_a_t), 1);
+    ASSERT_EQ(n_facets<3>(pyra_b_t), 1);
+    ASSERT_EQ(n_facets<3>(hexa_a_t), 1);
+    ASSERT_EQ(n_facets<3>(hexa_b_t), 1);
+
+}
+

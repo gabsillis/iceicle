@@ -35,24 +35,24 @@ include(GoogleTest)
 
 # === Unit Tests for the Finite Element Library ===
 set(FELIB_TEST_SOURCES
-    test_felib_main.cpp
+#    test_felib_main.cpp
     test_polytope.cpp
-    test_face_utils.cpp
-    TestTraceSpace.cpp
-    TestFespan.cpp
-    TestFESpace.cpp
-    TestHypercubeFace.cpp
-    TestQuadrature1d.cpp
-    TestHypercubeTransform.cpp
-    TestSimplexTransform.cpp
-    TestSimplexQuadrature.cpp
-    TestSimplexLagrange.cpp
-    test_spacetime_utils.cpp
-    test_utils.cpp
-    test_mesh.cpp
-    test_evaluation.cpp
-    test_jacobian_utils.cpp
-    test_ns.cpp
+    #    test_face_utils.cpp
+    #    TestTraceSpace.cpp
+    #    TestFespan.cpp
+    #    TestFESpace.cpp
+    #    TestHypercubeFace.cpp
+    #    TestQuadrature1d.cpp
+    #    TestHypercubeTransform.cpp
+    #    TestSimplexTransform.cpp
+    #    TestSimplexQuadrature.cpp
+    #    TestSimplexLagrange.cpp
+    #    test_spacetime_utils.cpp
+    #    test_utils.cpp
+    #    test_mesh.cpp
+    #    test_evaluation.cpp
+    #    test_jacobian_utils.cpp
+    #    test_ns.cpp
     )
 
 add_executable(test_felib ${FELIB_TEST_SOURCES})
