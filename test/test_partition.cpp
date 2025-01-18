@@ -17,6 +17,9 @@
 #include <numbers>
 #include <string>
 #include <type_traits>
+#ifdef ICEICLE_USE_PETSC 
+#include <iceicle/form_petsc_jacobian.hpp>
+#endif
 using namespace NUMTOOL::TENSOR::FIXED_SIZE;
 using namespace iceicle;
 
@@ -158,7 +161,7 @@ TEST( test_fespan, test_sync ) {
     fespan u{u_data, u_layout};
 
     for(int igdof = 0; igdof < u.ndof(); ++igdof){
-        int pidx = u.get_pindex(igdof);
+        int pidx = u.get_pdof(igdof);
         if(u.owning_rank(pidx) == myrank){
             for(int iv = 0; iv < neq; ++iv){
                 u[igdof, iv] = 2 * pidx + iv;
@@ -170,7 +173,7 @@ TEST( test_fespan, test_sync ) {
 
     
     for(int igdof = 0; igdof < u.ndof(); ++igdof){
-        int pidx = u.get_pindex(igdof);
+        int pidx = u.get_pdof(igdof);
         for(int iv = 0; iv < neq; ++iv){
             ASSERT_DOUBLE_EQ((u[igdof, iv]), (double) (2 * pidx + iv));
         }
@@ -294,3 +297,197 @@ TEST(test_residual, test_heat_equation) {
     SCOPED_TRACE("MPI rank = " + std::to_string(mpi::mpi_world_rank()));
     ASSERT_NEAR(res_vector_norm, res.vector_norm(), 1e-10);
 }
+
+#ifdef ICEICLE_USE_PETSC 
+using T = build_config::T;
+using IDX = build_config::IDX;
+class domain_test_disc {
+    public:
+    static constexpr int ndim = 2;
+    static constexpr int nv_comp = 2;
+    static const int dnv_comp = 2;
+
+    auto domain_integral(
+        const FiniteElement<T, IDX, ndim> &el,
+        elspan auto unkel,
+        elspan auto res
+    ) const -> void {
+        static constexpr int neq = decltype(unkel)::static_extent();
+
+// use the centroid distance from origin as a semi-unique identifier of elements
+        auto centroid = el.centroid();
+        T dist = std::sqrt(std::pow(centroid[0], 2) + std::pow(centroid[1], 2));
+        // want
+        // d res[i, j] / d u[k, l]= dist * (i * neq + j) * (k * neq + l);
+        for(int i = 0; i < el.nbasis(); ++i){
+            for(int j = 0; j < neq; ++j){
+                for(int k = 0; k < el.nbasis(); ++k){
+                    for(int l = 0; l < neq; ++l){
+                        res[i, j] += dist * unkel[k, l] * (i * neq + j) * (k * neq + l);
+                    }
+                }
+            }
+        }
+    }
+    
+    template<class IDX>
+    auto domain_integral_jacobian(
+        const FiniteElement<T, IDX, ndim>& el,
+        elspan auto unkel,
+        linalg::out_matrix auto dfdu
+    ) {
+        static constexpr int neq = decltype(unkel)::static_extent();
+        auto centroid = el.centroid();
+        T dist = std::sqrt(std::pow(centroid[0], 2) + std::pow(centroid[1], 2));
+        auto el_layout = unkel.get_layout();
+        for(int i = 0; i < el.nbasis(); ++i){
+            for(int j = 0; j < neq; ++j){
+                for(int k = 0; k < el.nbasis(); ++k){
+                    for(int l = 0; l < neq; ++l){
+                        int ijac = el_layout[k, l];
+                        int jjac = el_layout[i, j];
+                        dfdu[ijac, jjac] = dist * (i * neq + j) * (k * neq + l);
+                    }
+                }
+            }
+        }
+    }
+
+    template<class IDX, class ULayoutPolicy, class UAccessorPolicy, class ResLayoutPolicy>
+    void trace_integral(
+        const TraceSpace<T, IDX, ndim> &trace,
+        NodeArray<T, ndim> &coord,
+        dofspan<T, ULayoutPolicy, UAccessorPolicy> unkelL,
+        dofspan<T, ULayoutPolicy, UAccessorPolicy> unkelR,
+        dofspan<T, ResLayoutPolicy> resL,
+        dofspan<T, ResLayoutPolicy> resR
+    ) const requires ( 
+        elspan<decltype(unkelL)> && 
+        elspan<decltype(unkelR)> && 
+        elspan<decltype(resL)> && 
+        elspan<decltype(resL)>
+    ) {}
+
+    template<class IDX, class ULayoutPolicy, class UAccessorPolicy, class ResLayoutPolicy>
+    void boundaryIntegral(
+        const TraceSpace<T, IDX, ndim> &trace,
+        NodeArray<T, ndim> &coord,
+        dofspan<T, ULayoutPolicy, UAccessorPolicy> unkelL,
+        dofspan<T, ULayoutPolicy, UAccessorPolicy> unkelR,
+        dofspan<T, ResLayoutPolicy> resL
+    ) const requires(
+        elspan<decltype(unkelL)> &&
+        elspan<decltype(unkelR)> &&
+        elspan<decltype(resL)> 
+    ) {}
+
+    template<class IDX>
+    void interface_conservation(
+        const TraceSpace<T, IDX, ndim>& trace,
+        NodeArray<T, ndim>& coord,
+        elspan auto unkelL,
+        elspan auto unkelR,
+        facspan auto res
+    ) const {}
+};
+
+TEST(test_petsc_jacobian, test_domain_integral){
+
+    using namespace NUMTOOL::TENSOR::FIXED_SIZE;
+    static constexpr int ndim = 2;
+    static constexpr int pn_order = 1;
+    int nelemx = 11;
+    int nelemy = 7;
+
+    // set up mesh and fespace
+    AbstractMesh mesh{partition_mesh(AbstractMesh<T, IDX, ndim>{
+        Tensor<T, ndim>{{0.0, 0.0}},
+        Tensor<T, ndim>{{1.0, 1.0}},
+        Tensor<IDX, ndim>{{nelemx, nelemy}},
+        1,
+        Tensor<BOUNDARY_CONDITIONS, 4>{
+            BOUNDARY_CONDITIONS::DIRICHLET,
+            BOUNDARY_CONDITIONS::NEUMANN,
+            BOUNDARY_CONDITIONS::DIRICHLET,
+            BOUNDARY_CONDITIONS::NEUMANN,
+        },
+        Tensor<int, 4>{0, 0, 1, 0}
+    })};
+
+    FESpace<T, IDX, ndim> fespace{&mesh, FESPACE_ENUMS::LAGRANGE, FESPACE_ENUMS::GAUSS_LEGENDRE, std::integral_constant<int, pn_order>{}};
+
+    domain_test_disc disc{};
+
+    static constexpr int neq = domain_test_disc::nv_comp;
+    fe_layout_right u_layout{fespace, std::integral_constant<std::size_t, neq>{},
+        std::true_type{}};
+    fe_layout_right res_layout = exclude_ghost(u_layout);
+
+    std::vector<T> u_storage(u_layout.size());
+   
+    fespan u{u_storage.data(), u_layout};
+   
+    // initialize solution to 0;
+    std::iota(u_storage.begin(), u_storage.end(), 0.0);
+
+    /// ===========================
+    /// = Set up the data vectors =
+    /// ===========================
+    PetscInt local_res_size = res_layout.size();
+    PetscInt local_u_size = u_layout.size();
+
+    std::vector<T> res_storage(local_res_size);
+
+    fespan res{res_storage.data(), res_layout};
+
+    /// ===========================
+    /// = Set up the Petsc matrix =
+    /// ===========================
+
+    Mat jac;
+    MatCreate(PETSC_COMM_WORLD, &jac);
+    MatSetSizes(jac, local_res_size, local_u_size, PETSC_DETERMINE, PETSC_DETERMINE);
+    MatSetFromOptions(jac);
+
+    // get the jacobian and residual from petsc interface
+    solvers::form_petsc_jacobian_fd(fespace, disc, u, res, jac);
+
+    for(IDX ielem = 0; ielem < fespace.elements.size(); ++ielem){
+        const FiniteElement<T, IDX, ndim>& el = fespace.elements[ielem];
+        // use the centroid distance from origin as a semi-unique identifier of elements
+        auto centroid = el.centroid();
+        T dist = std::sqrt(std::pow(centroid[0], 2) + std::pow(centroid[1], 2));
+        for(int i = 0; i < el.nbasis(); ++i ){
+            for(int j = 0; j < neq; ++j){
+                for(int k = 0; k < el.nbasis(); ++k){
+                    for(int l = 0; l < neq; ++l){
+                        T jac_val_expected = dist * (i * neq + j) * (k * neq + l);
+                        IDX ijac = res.get_pindex(ielem, i, j);
+                        IDX jjac = u.get_pindex(ielem, k, l);
+    MatAssemblyBegin(jac, MAT_FINAL_ASSEMBLY);
+    MatAssemblyEnd(jac, MAT_FINAL_ASSEMBLY);
+                        PetscScalar matval;
+                        MatGetValue(jac, ijac, jjac, &matval);
+                        // subtract out expected jacobian contribution
+                        MatSetValue(jac, ijac, jjac, -jac_val_expected, ADD_VALUES);
+                    }
+                }
+            }
+        }
+
+    }
+
+    MatAssemblyBegin(jac, MAT_FINAL_ASSEMBLY);
+    MatAssemblyEnd(jac, MAT_FINAL_ASSEMBLY);
+
+    for(IDX ijac = 0; ijac < res.size_parallel(); ++ijac) {
+        for(IDX jjac = 0; jjac < u.size_parallel(); ++jjac) {
+            PetscScalar matval;
+            MatGetValue(jac, ijac, jjac, &matval);
+            SCOPED_TRACE("irow = " + std::to_string(ijac));
+            SCOPED_TRACE("jcol = " + std::to_string(jjac));
+            ASSERT_NEAR(0.0, matval, 1e-8);
+        }
+    }
+}
+#endif

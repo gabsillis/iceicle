@@ -142,6 +142,12 @@ namespace iceicle {
             /** @brief get the upper bound of the 1D index space */
             constexpr size_type size() const noexcept { return _layout.size(); }
 
+            /** @brief get the cumulative size of the 1D index space accross all parallel partitions */
+            [[nodiscard]] inline constexpr 
+            auto size_parallel() const noexcept 
+            -> size_type
+            { return _layout.dof_partitioning.size(); }
+
             /** @brief get the number of elements represented in the layout */
             [[nodiscard]] constexpr size_type nelem() const noexcept { return _layout.nelem(); }
 
@@ -163,9 +169,27 @@ namespace iceicle {
 
             /** @brief given a process-local global degree of freedom, get the parallel dof index */
             [[nodiscard]] inline constexpr 
-            auto get_pindex(index_type igdof) const noexcept 
+            auto get_pdof(index_type igdof) const noexcept 
             -> index_type 
             { return _layout.dof_partitioning.p_indices[igdof]; }
+
+            /** 
+             * @brief given a process-local global degree of freedom and vector componeent index,
+             * get the parallel data index
+             */
+            [[nodiscard]] inline constexpr 
+            auto get_pindex(index_type igdof, index_type iv) const noexcept 
+            -> index_type 
+            { return _layout.get_pindex(igdof, iv); }
+
+            /** 
+             * @brief given an index triple
+             * get the parallel data index
+             */
+            [[nodiscard]] inline constexpr 
+            auto get_pindex(index_type ielem, index_type ildof, index_type iv) const noexcept 
+            -> index_type 
+            { return _layout.get_pindex(ielem, ildof, iv); }
 
             /** @brief given the parallel dof index, get the mpi rank that owns this index */
             [[nodiscard]] inline constexpr 

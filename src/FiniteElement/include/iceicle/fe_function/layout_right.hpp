@@ -314,6 +314,41 @@ namespace iceicle {
             // the global degree of freedom index
             return igdof * nv() + iv; 
         }
+
+        /** 
+         * @brief given a process-local global degree of freedom and vector componeent index,
+         * get the parallel data index
+         */
+        [[nodiscard]] inline constexpr 
+        auto get_pindex(index_type igdof, index_type iv) const noexcept(index_noexcept)
+        -> index_type
+        { 
+#ifndef NDEBUG
+            // Bounds checking version in debug
+            if(igdof  < 0 || igdof  >= map_ref.size()) throw std::out_of_range("Dof index out of range");
+            if(iv    < 0 || iv    >= nv()       ) throw std::out_of_range("Vector compoenent index out of range");
+#endif
+            return dof_partitioning.p_indices[igdof] * nv() + iv;
+        }
+
+        /** 
+         * @brief given an index triple
+         * get the parallel data index
+         */
+        [[nodiscard]] inline constexpr 
+        auto get_pindex(index_type ielem, index_type ildof, index_type iv) const noexcept(index_noexcept)
+        -> index_type 
+        {
+#ifndef NDEBUG
+            // Bounds checking version in debug
+            if(ielem < 0 || ielem >= nelem()    ) throw std::out_of_range("Element index out of range");
+            if(ildof  < 0 || ildof  >= ndof(ielem)) throw std::out_of_range("Dof index out of range");
+            if(iv    < 0 || iv    >= nv()       ) throw std::out_of_range("Vector compoenent index out of range");
+#endif
+
+            index_type igdof = map_ref[ielem, ildof];
+            return dof_partitioning.p_indices[igdof] * nv() + iv;
+        }
     };
 
     /// @brief cast the layout to a an index subset that excludes ghost interprocess elements

@@ -190,7 +190,7 @@ namespace iceicle {
     ///
     /// @return the partitioned mesh on each processor 
     template<class T, class IDX, int ndim>
-    auto partition_mesh(AbstractMesh<T, IDX, ndim>& mesh, 
+    auto partition_mesh(const AbstractMesh<T, IDX, ndim>& mesh, 
             EL_PARTITION_ALGORITHM el_part_algo = EL_PARTITION_ALGORITHM::METIS) 
     -> AbstractMesh<T, IDX, ndim>
     {
@@ -245,6 +245,11 @@ namespace iceicle {
         auto [el_partition, el_renumbering] = partition_elements(elsuel, el_part_algo);
         dof_map el_conn_global{apply_el_renumbering(mesh.conn_el, el_renumbering)};
 
+        // create an inverse renumbering
+        std::vector<IDX> inv_el_renumbering(el_renumbering.size());
+        for(IDX inode = 0; inode < el_renumbering.size(); ++inode){
+            inv_el_renumbering[el_renumbering[inode]] = inode;
+        }
 
         // element partition extended by face neighbor elements 
         // elements neighboring ranks that share a face are included
@@ -256,8 +261,8 @@ namespace iceicle {
                 std::vector< std::set<IDX> > rank_ghost_piel_set(nrank);
                 for(IDX iface = mesh.interiorFaceStart; iface < mesh.interiorFaceEnd; ++iface){
                     Face<T, IDX, ndim>& face = *(mesh.faces[iface]);
-                    IDX iel = el_renumbering[face.elemL];
-                    IDX ier = el_renumbering[face.elemR];
+                    IDX iel = inv_el_renumbering[face.elemL];
+                    IDX ier = inv_el_renumbering[face.elemR];
                     int rank_l = el_partition.owning_rank(iel);
                     int rank_r = el_partition.owning_rank(ier);
                     if(rank_l != rank_r){
@@ -314,11 +319,6 @@ namespace iceicle {
         std::vector<IDX> inv_nodes_renumbering(nodes_renumbering.size());
         for(IDX inode = 0; inode < nodes_renumbering.size(); ++inode){
             inv_nodes_renumbering[nodes_renumbering[inode]] = inode;
-        }
-        // create an inverse renumbering
-        std::vector<IDX> inv_el_renumbering(el_renumbering.size());
-        for(IDX inode = 0; inode < el_renumbering.size(); ++inode){
-            inv_el_renumbering[el_renumbering[inode]] = inode;
         }
 
         // construct the nodes
@@ -527,8 +527,8 @@ namespace iceicle {
 
             for(IDX iface = mesh.interiorFaceStart; iface < mesh.interiorFaceEnd; ++iface){
                 Face<T, IDX, ndim>& face = *(mesh.faces[iface]);
-                IDX iel = el_renumbering[face.elemL];
-                IDX ier = el_renumbering[face.elemR];
+                IDX iel = inv_el_renumbering[face.elemL];
+                IDX ier = inv_el_renumbering[face.elemR];
                 int rank_l = el_partition.owning_rank(iel);
                 int rank_r = el_partition.owning_rank(ier);
                 if(rank_l != rank_r){
@@ -540,11 +540,11 @@ namespace iceicle {
                     }
                     // send left
                     send_face(face.domain_type(), 
-                            mesh.el_transformations[face.elemL]->domain_type,
-                            mesh.el_transformations[face.elemR]->domain_type,
+                            mesh.el_transformations[iel]->domain_type,
+                            mesh.el_transformations[ier]->domain_type,
                             face.geometry_order(),
-                            el_renumbering[face.elemL],
-                            el_renumbering[face.elemR],
+                            iel,
+                            ier,
                             face.face_nr_l(),
                             face.face_nr_r(),
                             face.orientation_r(),
@@ -555,11 +555,11 @@ namespace iceicle {
                     );
                     // send right
                     send_face(face.domain_type(), 
-                            mesh.el_transformations[face.elemL]->domain_type,
-                            mesh.el_transformations[face.elemR]->domain_type,
+                            mesh.el_transformations[iel]->domain_type,
+                            mesh.el_transformations[ier]->domain_type,
                             face.geometry_order(),
-                            el_renumbering[face.elemL],
-                            el_renumbering[face.elemR],
+                            iel,
+                            ier,
                             face.face_nr_l(),
                             face.face_nr_r(),
                             face.orientation_r(),

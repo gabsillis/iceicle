@@ -31,6 +31,7 @@ namespace iceicle::solvers {
      * @tparam T the floaating point type
      * @tparam IDX the index type 
      * @tparam ndim the number of dimensions 
+     * @tparam conformity the dof conformity for the finite element space
      * @tparam  disc_class the discretization type 
      *
      * @param fespace the finite element space 
@@ -47,13 +48,14 @@ namespace iceicle::solvers {
         class T,
         class IDX,
         int ndim,
+        int conformity,
         class disc_class,
         class uLayoutPolicy,
         class uAccessorPolicy,
         class resLayoutPolicy
     >
     void form_petsc_jacobian_fd(
-        FESpace<T, IDX, ndim> &fespace,
+        FESpace<T, IDX, ndim, conformity> &fespace,
         disc_class &disc,
         fespan<T, uLayoutPolicy, uAccessorPolicy> u,
         fespan<T, resLayoutPolicy> res,

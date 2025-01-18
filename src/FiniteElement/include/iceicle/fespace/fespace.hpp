@@ -390,14 +390,17 @@ namespace iceicle {
             traces.reserve(meshptr->faces.size());
             for(const auto& fac : meshptr->faces){
                 // NOTE: assuming element indexing is the same as the mesh still
+                IDX elemL = fac->elemL;
+                IDX elemR = fac->elemR;
 
                 // parallel bdy faces are essentially also interior faces 
                 // aside from being a bit *special* :3
+                // NOTE: the ghost element index has already been translated to local element indices
                 bool is_interior = 
                     fac->bctype == BOUNDARY_CONDITIONS::INTERIOR 
                     or fac->bctype == BOUNDARY_CONDITIONS::PARALLEL_COM;
-                ElementType *elptrL = &elements[fac->elemL];
-                ElementType *elptrR = (is_interior) ? &elements[fac->elemR] : &elements[fac->elemL];
+                ElementType *elptrL = &all_elements[elemL];
+                ElementType *elptrR = (is_interior) ? &all_elements[elemR] : &all_elements[elemL];
 
                 ElementType& elL = *elptrL;
                 ElementType& elR = *elptrR;
@@ -528,26 +531,8 @@ namespace iceicle {
             for(const auto& fac : meshptr->faces){
                 // NOTE: assuming element indexing is the same as the mesh still
                 bool is_interior = fac->bctype == BOUNDARY_CONDITIONS::INTERIOR;
-                ElementType *elptrL;
-                ElementType *elptrR; 
-
-                if(fac->bctype == BOUNDARY_CONDITIONS::PARALLEL_COM) {
-                    auto [jrank, imleft] = decode_mpi_bcflag(fac->bcflag);
-                    IDX neighbor_el_pidx = (imleft) ? fac->elemR : fac->elemL;
-
-                    IDX neighbor_el_lidx = meshptr->element_partitioning.inv_p_indices[neighbor_el_pidx];
-
-                    if(imleft){
-                        elptrL = &elements[fac->elemL];
-                        elptrR = &all_elements[neighbor_el_lidx];
-                    } else {
-                        elptrL = &all_elements[neighbor_el_lidx];
-                        elptrR = &elements[fac->elemR];
-                    }
-                } else {
-                    elptrL = &all_elements[fac->elemL];
-                    elptrR = (is_interior) ? &all_elements[fac->elemR] : &all_elements[fac->elemL];
-                }
+                ElementType *elptrL = &all_elements[fac->elemL];
+                ElementType *elptrR = (is_interior) ? &all_elements[fac->elemR] : &all_elements[fac->elemL];
                 ElementType& elL = *elptrL;
                 ElementType& elR = *elptrR;
 
