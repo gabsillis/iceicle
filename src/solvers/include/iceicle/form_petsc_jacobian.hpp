@@ -114,9 +114,12 @@ namespace iceicle::solvers {
                 dofspan resRp{resRp_data.data(), res.create_element_layout(trace.elR.elidx)};
 
                 // compact jacobian views 
-                mdspan jac{jacL_data.data(), extents{(imleft) ? resL.size() : resR.size(),
-                    (imleft) ? uL.size() : uR.size()}};
-                std::fill_n(jacL_data.begin(), jac.size(), 0);
+                mdspan jacL{jacL_data.data(), extents{(imleft) ? resL.size() : resR.size(),
+                    uL.size()}};
+                mdspan jacR{jacR_data.data(), extents{(imleft) ? resL.size() : resR.size(),
+                    uR.size()}};
+                std::fill_n(jacL_data.begin(), jacL.size(), 0);
+                std::fill_n(jacR_data.begin(), jacR.size(), 0);
 
                 // extract the compact values from the global u view 
                 extract_elspan(trace.elL.elidx, u, uL);
@@ -138,21 +141,19 @@ namespace iceicle::solvers {
                 // set up the perturbation amount scaled by unperturbed residual 
                 T eps_scaled = scale_fd_epsilon(epsilon, resL.vector_norm());
 
-                std::size_t glob_index_L = u.get_layout()[trace.elL.elidx, 0, 0];
-                std::size_t glob_index_R = u.get_layout()[trace.elR.elidx, 0, 0];
+                std::size_t glob_index_L = u.get_pindex(trace.elL.elidx, 0, 0);
+                std::size_t glob_index_R = u.get_pindex(trace.elR.elidx, 0, 0);
 
                 // perturb and form jacobian 
-                // TODO: add dependence on ghost element
-                int ndof = (imleft) ? trace.elL.nbasis() : trace.elR.nbasis();
-                for(IDX idofu = 0; idofu < ndof; ++idofu){
+                int ndofu = trace.elL.nbasis();
+                for(IDX idofu = 0; idofu < ndofu; ++idofu){
                     for(IDX iequ = 0; iequ < ncomp; ++iequ){
                         // get the compact column index for this dof and component 
                         IDX jcol = uL.get_layout()[idofu, iequ];
 
-                        const auto& u = (imleft) ? uL : uR;
                         // perturb
                         T old_val = uL[idofu, iequ];
-                        u[idofu, iequ] += eps_scaled;
+                        uL[idofu, iequ] += eps_scaled;
 
                         // zero out the residual 
                         resLp = 0;
@@ -164,25 +165,60 @@ namespace iceicle::solvers {
                         const auto& res = (imleft) ? resL : resR;
                         const auto& resp = (imleft) ? resLp : resRp;
                         // fill jacobian for this perturbation
-                        for(IDX idoff = 0; idoff < ndof; ++idoff) {
+                        int ndoff = (imleft) ? trace.elL.nbasis() : trace.elR.nbasis();
+                        for(IDX idoff = 0; idoff < ndoff; ++idoff) {
                             for(IDX ieqf = 0; ieqf < ncomp; ++ieqf){
-                                IDX irow = uL.get_layout()[idoff, ieqf];
-                                jac[irow, jcol] += (resp[idoff, ieqf] - res[idoff, ieqf]) / eps_scaled;
+                                IDX irow = (imleft) ? uL.get_layout()[idoff, ieqf]
+                                                    : uR.get_layout()[idoff, ieqf];
+                                jacL[irow, jcol] += (resp[idoff, ieqf] - res[idoff, ieqf]) / eps_scaled;
                             }
                         }
 
                         // undo the perturbation
-                        u[idofu, iequ] = old_val;
+                        uL[idofu, iequ] = old_val;
+                    }
+                }
+                ndofu = trace.elR.nbasis();
+                for(IDX idofu = 0; idofu < ndofu; ++idofu){
+                    for(IDX iequ = 0; iequ < ncomp; ++iequ){
+                        // get the compact column index for this dof and component 
+                        IDX jcol = uR.get_layout()[idofu, iequ];
+
+                        // perturb
+                        T old_val = uR[idofu, iequ];
+                        uR[idofu, iequ] += eps_scaled;
+
+                        // zero out the residual 
+                        resLp = 0;
+                        resRp = 0;
+
+                        // get the perturbed residual
+                        disc.trace_integral(trace, fespace.meshptr->coord, uL, uR, resLp, resRp);
+
+                        const auto& res = (imleft) ? resL : resR;
+                        const auto& resp = (imleft) ? resLp : resRp;
+                        // fill jacobian for this perturbation
+                        int ndoff = (imleft) ? trace.elL.nbasis() : trace.elR.nbasis();
+                        for(IDX idoff = 0; idoff < ndoff; ++idoff) {
+                            for(IDX ieqf = 0; ieqf < ncomp; ++ieqf){
+                                IDX irow = (imleft) ? uL.get_layout()[idoff, ieqf]
+                                                    : uR.get_layout()[idoff, ieqf];
+                                jacL[irow, jcol] += (resp[idoff, ieqf] - res[idoff, ieqf]) / eps_scaled;
+                            }
+                        }
+
+                        // undo the perturbation
+                        uR[idofu, iequ] = old_val;
                     }
                 }
 
                 // TODO: change to a scatter generalized operation to support CG structures
-                if(imleft)
-                    petsc::add_to_petsc_mat(jac, proc_range_beg + glob_index_L, 
-                            proc_range_beg + glob_index_L, jac);
-                else
-                    petsc::add_to_petsc_mat(jac, proc_range_beg + glob_index_R, 
-                            proc_range_beg + glob_index_R, jac);
+                IDX glob_index_res = (imleft) 
+                    ? res.get_pindex(trace.elL.elidx, 0, 0)
+                    : res.get_pindex(trace.elR.elidx, 0, 0);
+
+                petsc::add_to_petsc_mat(jac, glob_index_res, glob_index_L, jacL);
+                petsc::add_to_petsc_mat(jac, glob_index_res, glob_index_R, jacR);
             } else {
                 // compact data views 
                 dofspan uL{uL_data.data(), u.create_element_layout(trace.elL.elidx)};
@@ -210,7 +246,8 @@ namespace iceicle::solvers {
                 // set up the perturbation amount scaled by unperturbed residual 
                 T eps_scaled = scale_fd_epsilon(epsilon, resL.vector_norm());
 
-                std::size_t glob_index_L = u.get_layout()[trace.elL.elidx, 0, 0];
+                std::size_t glob_index_L = u.get_pindex(trace.elL.elidx, 0, 0);
+                std::size_t glob_res_index_L = res.get_pindex(trace.elL.elidx, 0, 0);
 
                 // perturb and form jacobian 
                 for(IDX idofu = 0; idofu < trace.elL.nbasis(); ++idofu){
@@ -242,8 +279,7 @@ namespace iceicle::solvers {
                 }
 
                 // TODO: change to a scatter generalized operation to support CG structures
-                petsc::add_to_petsc_mat(jac, proc_range_beg + glob_index_L, 
-                        proc_range_beg + glob_index_L, jacL);
+                petsc::add_to_petsc_mat(jac, glob_index_L, glob_res_index_L, jacL);
             }
         }
 

@@ -15,6 +15,7 @@
 #include <iceicle/disc/burgers.hpp>
 #include <mpi.h>
 #include <numbers>
+#include <petscsys.h>
 #include <string>
 #include <type_traits>
 #ifdef ICEICLE_USE_PETSC 
@@ -444,13 +445,21 @@ TEST(test_petsc_jacobian, test_domain_integral){
     /// = Set up the Petsc matrix =
     /// ===========================
 
+    // NOTE: we use owned sizes when forming petsc matrix
+    // only
     Mat jac;
     MatCreate(PETSC_COMM_WORLD, &jac);
-    MatSetSizes(jac, local_res_size, local_u_size, PETSC_DETERMINE, PETSC_DETERMINE);
+    MatSetSizes(jac, res.owned_size(PETSC_COMM_WORLD),
+            u.owned_size(PETSC_COMM_WORLD),
+            PETSC_DETERMINE, PETSC_DETERMINE);
     MatSetFromOptions(jac);
 
+    PetscInt rowstart, rowend;
+    MatGetOwnershipRange(jac, &rowstart, &rowend);
     // get the jacobian and residual from petsc interface
     solvers::form_petsc_jacobian_fd(fespace, disc, u, res, jac);
+    PetscCallVoid(MatAssemblyBegin(jac, MAT_FINAL_ASSEMBLY));
+    PetscCallVoid(MatAssemblyEnd(jac, MAT_FINAL_ASSEMBLY));
 
     for(IDX ielem = 0; ielem < fespace.elements.size(); ++ielem){
         const FiniteElement<T, IDX, ndim>& el = fespace.elements[ielem];
@@ -464,10 +473,6 @@ TEST(test_petsc_jacobian, test_domain_integral){
                         T jac_val_expected = dist * (i * neq + j) * (k * neq + l);
                         IDX ijac = res.get_pindex(ielem, i, j);
                         IDX jjac = u.get_pindex(ielem, k, l);
-    MatAssemblyBegin(jac, MAT_FINAL_ASSEMBLY);
-    MatAssemblyEnd(jac, MAT_FINAL_ASSEMBLY);
-                        PetscScalar matval;
-                        MatGetValue(jac, ijac, jjac, &matval);
                         // subtract out expected jacobian contribution
                         MatSetValue(jac, ijac, jjac, -jac_val_expected, ADD_VALUES);
                     }
@@ -477,13 +482,13 @@ TEST(test_petsc_jacobian, test_domain_integral){
 
     }
 
-    MatAssemblyBegin(jac, MAT_FINAL_ASSEMBLY);
-    MatAssemblyEnd(jac, MAT_FINAL_ASSEMBLY);
+    PetscCallVoid(MatAssemblyBegin(jac, MAT_FINAL_ASSEMBLY));
+    PetscCallVoid(MatAssemblyEnd(jac, MAT_FINAL_ASSEMBLY));
 
-    for(IDX ijac = 0; ijac < res.size_parallel(); ++ijac) {
+    for(IDX ijac = rowstart; ijac < rowend; ++ijac) {
         for(IDX jjac = 0; jjac < u.size_parallel(); ++jjac) {
             PetscScalar matval;
-            MatGetValue(jac, ijac, jjac, &matval);
+            PetscCallVoid(MatGetValue(jac, ijac, jjac, &matval));
             SCOPED_TRACE("irow = " + std::to_string(ijac));
             SCOPED_TRACE("jcol = " + std::to_string(jjac));
             ASSERT_NEAR(0.0, matval, 1e-8);

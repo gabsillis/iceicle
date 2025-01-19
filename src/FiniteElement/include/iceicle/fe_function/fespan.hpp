@@ -203,6 +203,14 @@ namespace iceicle {
             -> size_type
             { return _layout.dof_partitioning.owned_range_size(mpi::rank(comm)); }
 
+            /** @brief get the number of data entries (vector components)
+             * on this process 
+             */
+            [[nodiscard]] inline constexpr 
+            auto owned_size(mpi::communicator_type comm) const noexcept 
+            -> size_type
+            { return owned_ndof(comm) * nv(); }
+
             // ===============
             // = Data Access =
             // ===============

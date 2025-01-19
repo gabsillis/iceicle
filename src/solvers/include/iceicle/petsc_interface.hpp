@@ -1,4 +1,5 @@
 #pragma once
+#include "iceicle/anomaly_log.hpp"
 #include <mpi.h>
 #include <petsc.h>
 #include <petscerror.h>
@@ -32,6 +33,29 @@ namespace iceicle::petsc {
         std::vector<PetscInt> idxn(data.extent(1));
         std::iota(idxm.begin(), idxm.end(), rowstart);
         std::iota(idxn.begin(), idxn.end(), colstart);
+
+#ifndef NDEBUG 
+        { // im too lazy to come up with new names
+            PetscInt rowstart, rowend, M, N;
+            MatGetOwnershipRange(A, &rowstart, &rowend);
+            MatGetSize(A, &M, &N);
+            for(auto i : idxm){
+                if(i < rowstart || i >= rowend)
+                    util::AnomalyLog::log_anomaly("row" + std::to_string(i) 
+                            + " out of range");
+            }
+            for(auto j : idxn){
+                if(j < 0 || j > N)
+                    util::AnomalyLog::log_anomaly("column" + std::to_string(j) 
+                            + " out of range");
+            }
+
+            if(util::AnomalyLog::size() > 0){
+                util::AnomalyLog::handle_anomalies();
+                return;
+            }
+        }
+#endif
 
         std::vector<T> values{};
         values.reserve(dimprod);
