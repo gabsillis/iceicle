@@ -495,4 +495,262 @@ TEST(test_petsc_jacobian, test_domain_integral){
         }
     }
 }
+
+class trace_test_disc {
+    public:
+    static constexpr int ndim = 2;
+    static constexpr int nv_comp = 2;
+    static const int dnv_comp = 2;
+
+    auto domain_integral(
+        const FiniteElement<T, IDX, ndim> &el,
+        elspan auto unkel,
+        elspan auto res
+    ) const -> void {}
+    
+    template<class IDX>
+    auto domain_integral_jacobian(
+        const FiniteElement<T, IDX, ndim>& el,
+        elspan auto unkel,
+        linalg::out_matrix auto dfdu
+    ) {}
+
+    template<class IDX, class ULayoutPolicy, class UAccessorPolicy, class ResLayoutPolicy>
+    void trace_integral(
+        const TraceSpace<T, IDX, ndim> &trace,
+        NodeArray<T, ndim> &coord,
+        dofspan<T, ULayoutPolicy, UAccessorPolicy> unkelL,
+        dofspan<T, ULayoutPolicy, UAccessorPolicy> unkelR,
+        dofspan<T, ResLayoutPolicy> resL,
+        dofspan<T, ResLayoutPolicy> resR
+    ) const requires ( 
+        elspan<decltype(unkelL)> && 
+        elspan<decltype(unkelR)> && 
+        elspan<decltype(resL)> && 
+        elspan<decltype(resR)>
+    ) {
+        static constexpr int neq = nv_comp;
+        auto centroidL = trace.elL.centroid();
+        auto centroidR = trace.elR.centroid();
+        T distL = std::sqrt(std::pow(centroidL[0], 2) + std::pow(centroidL[1], 2));
+        T distR = std::sqrt(std::pow(centroidR[0], 2) + std::pow(centroidR[1], 2));
+
+        // left residual 
+        for(int i = 0; i < trace.elL.nbasis(); ++i){
+            for(int j = 0; j < neq; ++j){
+               
+                // left solution
+                for(int k = 0; k < trace.elL.nbasis(); ++k){
+                    for(int l = 0; l < neq; ++l){
+                        resL[i, j] += distL * unkelL[k, l]
+                            * (i * neq + j) * (k * neq + l);
+
+                    }
+                }
+                // right solution
+                for(int k = 0; k < trace.elR.nbasis(); ++k){
+                    for(int l = 0; l < neq; ++l){
+                        resL[i, j] += distR * unkelR[k, l]
+                            * (i * neq + j) * (k * neq + l);
+
+                    }
+                }
+            }
+        }
+        // right residual 
+        for(int i = 0; i < trace.elR.nbasis(); ++i){
+            for(int j = 0; j < neq; ++j){
+               
+                // left solution
+                for(int k = 0; k < trace.elL.nbasis(); ++k){
+                    for(int l = 0; l < neq; ++l){
+                        resR[i, j] += distL * unkelL[k, l]
+                            * (i * neq + j) * (k * neq + l);
+
+                    }
+                }
+                // right solution
+                for(int k = 0; k < trace.elR.nbasis(); ++k){
+                    for(int l = 0; l < neq; ++l){
+                        resR[i, j] += distR * unkelR[k, l]
+                            * (i * neq + j) * (k * neq + l);
+
+                    }
+                }
+            }
+        }
+    }
+
+    template<class IDX, class ULayoutPolicy, class UAccessorPolicy, class ResLayoutPolicy>
+    void boundaryIntegral(
+        const TraceSpace<T, IDX, ndim> &trace,
+        NodeArray<T, ndim> &coord,
+        dofspan<T, ULayoutPolicy, UAccessorPolicy> unkelL,
+        dofspan<T, ULayoutPolicy, UAccessorPolicy> unkelR,
+        dofspan<T, ResLayoutPolicy> resL
+    ) const requires(
+        elspan<decltype(unkelL)> &&
+        elspan<decltype(unkelR)> &&
+        elspan<decltype(resL)> 
+    ) {}
+
+    template<class IDX>
+    void interface_conservation(
+        const TraceSpace<T, IDX, ndim>& trace,
+        NodeArray<T, ndim>& coord,
+        elspan auto unkelL,
+        elspan auto unkelR,
+        facspan auto res
+    ) const {}
+};
+
+TEST(test_petsc_jacobian, test_trace_integral){
+
+    using namespace NUMTOOL::TENSOR::FIXED_SIZE;
+    static constexpr int ndim = 2;
+    static constexpr int pn_order = 1;
+    int nelemx = 11;
+    int nelemy = 7;
+
+    // set up mesh and fespace
+    AbstractMesh mesh{partition_mesh(AbstractMesh<T, IDX, ndim>{
+        Tensor<T, ndim>{{0.0, 0.0}},
+        Tensor<T, ndim>{{1.0, 1.0}},
+        Tensor<IDX, ndim>{{nelemx, nelemy}},
+        1,
+        Tensor<BOUNDARY_CONDITIONS, 4>{
+            BOUNDARY_CONDITIONS::DIRICHLET,
+            BOUNDARY_CONDITIONS::NEUMANN,
+            BOUNDARY_CONDITIONS::DIRICHLET,
+            BOUNDARY_CONDITIONS::NEUMANN,
+        },
+        Tensor<int, 4>{0, 0, 1, 0}
+    })};
+
+    FESpace<T, IDX, ndim> fespace{&mesh, FESPACE_ENUMS::LAGRANGE, FESPACE_ENUMS::GAUSS_LEGENDRE, std::integral_constant<int, pn_order>{}};
+
+    trace_test_disc disc{};
+
+    static constexpr int neq = domain_test_disc::nv_comp;
+    fe_layout_right u_layout{fespace, std::integral_constant<std::size_t, neq>{},
+        std::true_type{}};
+    fe_layout_right res_layout = exclude_ghost(u_layout);
+
+    std::vector<T> u_storage(u_layout.size());
+   
+    fespan u{u_storage.data(), u_layout};
+   
+    // initialize solution to 0;
+    std::iota(u_storage.begin(), u_storage.end(), 0.0);
+
+    /// ===========================
+    /// = Set up the data vectors =
+    /// ===========================
+    PetscInt local_res_size = res_layout.size();
+    PetscInt local_u_size = u_layout.size();
+
+    std::vector<T> res_storage(local_res_size);
+
+    fespan res{res_storage.data(), res_layout};
+
+    /// ===========================
+    /// = Set up the Petsc matrix =
+    /// ===========================
+
+    // NOTE: we use owned sizes when forming petsc matrix
+    // only
+    Mat jac;
+    MatCreate(PETSC_COMM_WORLD, &jac);
+    MatSetSizes(jac, res.owned_size(PETSC_COMM_WORLD),
+            u.owned_size(PETSC_COMM_WORLD),
+            PETSC_DETERMINE, PETSC_DETERMINE);
+    MatSetFromOptions(jac);
+
+    PetscInt rowstart, rowend;
+    MatGetOwnershipRange(jac, &rowstart, &rowend);
+    // get the jacobian and residual from petsc interface
+    solvers::form_petsc_jacobian_fd(fespace, disc, u, res, jac);
+    PetscCallVoid(MatAssemblyBegin(jac, MAT_FINAL_ASSEMBLY));
+    PetscCallVoid(MatAssemblyEnd(jac, MAT_FINAL_ASSEMBLY));
+
+    for(const TraceSpace<T, IDX, 2>&trace : fespace.get_interior_traces()){
+        
+        auto centroidL = trace.elL.centroid();
+        auto centroidR = trace.elR.centroid();
+        T distL = std::sqrt(std::pow(centroidL[0], 2) + std::pow(centroidL[1], 2));
+        T distR = std::sqrt(std::pow(centroidR[0], 2) + std::pow(centroidR[1], 2));
+
+        // jac of residual L
+        for(int i = 0; i < trace.elL.nbasis(); ++i){
+            for(int j = 0; j < neq; ++j){
+
+                // jac wrt left sol
+                for(int k = 0; k < trace.elL.nbasis(); ++k){
+                    for(int l = 0; l < neq; ++l){
+
+                        T jac_val_expected = distL * (i * neq + j) * (k * neq + l);
+                        IDX ijac = res.get_pindex(trace.elL.elidx, i, j);
+                        IDX jjac = u.get_pindex(trace.elL.elidx, k, l);
+                        // subtract out expected jacobian contribution
+                        MatSetValue(jac, ijac, jjac, -jac_val_expected, ADD_VALUES);
+                    }
+                }
+
+                // jac wrt right sol
+                for(int k = 0; k < trace.elR.nbasis(); ++k){
+                    for(int l = 0; l < neq; ++l){
+
+                        T jac_val_expected = distR * (i * neq + j) * (k * neq + l);
+                        IDX ijac = res.get_pindex(trace.elL.elidx, i, j);
+                        IDX jjac = u.get_pindex(trace.elR.elidx, k, l);
+                        // subtract out expected jacobian contribution
+                        MatSetValue(jac, ijac, jjac, -jac_val_expected, ADD_VALUES);
+                    }
+                }
+            }
+        }
+        // jac of residual R
+        for(int i = 0; i < trace.elR.nbasis(); ++i){
+            for(int j = 0; j < neq; ++j){
+
+                // jac wrt left sol
+                for(int k = 0; k < trace.elL.nbasis(); ++k){
+                    for(int l = 0; l < neq; ++l){
+
+                        T jac_val_expected = distL * (i * neq + j) * (k * neq + l);
+                        IDX ijac = res.get_pindex(trace.elR.elidx, i, j);
+                        IDX jjac = u.get_pindex(trace.elL.elidx, k, l);
+                        // subtract out expected jacobian contribution
+                        MatSetValue(jac, ijac, jjac, -jac_val_expected, ADD_VALUES);
+                    }
+                }
+
+                // jac wrt right sol
+                for(int k = 0; k < trace.elR.nbasis(); ++k){
+                    for(int l = 0; l < neq; ++l){
+
+                        T jac_val_expected = distR * (i * neq + j) * (k * neq + l);
+                        IDX ijac = res.get_pindex(trace.elR.elidx, i, j);
+                        IDX jjac = u.get_pindex(trace.elR.elidx, k, l);
+                        // subtract out expected jacobian contribution
+                        MatSetValue(jac, ijac, jjac, -jac_val_expected, ADD_VALUES);
+                    }
+                }
+            }
+        }
+    }
+
+    PetscCallVoid(MatAssemblyBegin(jac, MAT_FINAL_ASSEMBLY));
+    PetscCallVoid(MatAssemblyEnd(jac, MAT_FINAL_ASSEMBLY));
+
+    for(IDX ijac = rowstart; ijac < rowend; ++ijac) {
+        for(IDX jjac = 0; jjac < u.size_parallel(); ++jjac) {
+            PetscScalar matval;
+            PetscCallVoid(MatGetValue(jac, ijac, jjac, &matval));
+            SCOPED_TRACE("irow = " + std::to_string(ijac));
+            SCOPED_TRACE("jcol = " + std::to_string(jjac));
+            ASSERT_NEAR(0.0, matval, 1e-7);
+        }
+    }
+}
 #endif
